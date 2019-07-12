@@ -1,0 +1,186 @@
+---
+title: "PBMCs preliminary"
+author: "Izaskun Mallona"
+output:
+  html_document:
+    keep_md: false
+    toc: true
+    toc_float: true
+    toc_depth: 4
+params:
+  seed: 11
+---
+
+
+@todo regress out mitochondrial contribution
+
+```{r}
+## stop('todo: get top quantiles for chipseq signals and run pagoda on these')
+
+```
+
+# Aim
+
+Exploratory analysis on Hubrecht plates Tina 
+
+Tip for transparency: `.Rprofile` with
+
+```{r}
+setHook(packageEvent("grDevices", "onLoad"),
+function(...) grDevices::X11.options(type='cairo'))
+options(device='x11')
+
+```
+# Preprocessing
+
+```{r settings, include = TRUE}
+
+library(knitr)
+library(Seurat)
+library(dplyr)
+library(scater)
+## library(data.table)
+## library(SingleCellExperiment)
+## library(scran)
+## library(org.Mm.eg.db)
+## suppressPackageStartupMessages(library(dplyr))
+## suppressPackageStartupMessages(library(DT))
+## library(pheatmap)
+## library(Cairo)
+## library(RColorBrewer)
+## library(corrplot)
+
+opts_chunk$set(fig.width = 8,
+               fig.height = 8,
+               cache = TRUE,
+               include = TRUE,
+               cache.lazy = FALSE,
+               warning = TRUE,
+               message = TRUE)
+
+
+options(bitmapType='cairo')
+getOption('bitmapType')
+```
+
+```{r functions}
+## add alpha
+ac <- function(col, alpha=1){
+  apply(sapply(col, col2rgb)/255, 2, 
+                     function(x) 
+                       rgb(x[1], x[2], x[3], alpha=alpha))  
+}
+
+```
+
+Data load. We'll focus on TranscriptCounts, but read them all just in case we needed to compare summarizing ratios.
+
+# Expression
+
+```{r}
+library(dplyr)
+library(Seurat)
+
+# this is wget http://cf.10xgenomics.com/samples/cell-exp/3.0.2/5k_pbmc_v3/5k_pbmc_v3_filtered_feature_bc_matrix.tar.gz
+pbmc.data <- Read10X(data.dir = "../data/filtered_feature_bc_matrix/")
+# Initialize the Seurat object with the raw (non-normalized data).
+pbmc <- CreateSeuratObject(counts = pbmc.data, project = "pbmc5k", min.cells = 3,
+                           min.features = 200)
+
+rm(pbmc.data)
+pbmc
+```
+
+```{r}
+plot2 <- FeatureScatter(pbmc, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot2
+```
+
+```{r}
+pbmc <- subset(pbmc, subset = nFeature_RNA > 200 & nFeature_RNA < 2500)
+```
+
+```{r}
+pbmc <- FindVariableFeatures(pbmc, selection.method = "vst", nfeatures = 2000)
+
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(pbmc), 10)
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(pbmc)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+CombinePlots(plots = list(plot1, plot2))
+```
+
+```{r}
+pbmc <- ScaleData(pbmc)
+```
+
+```{r}
+pbmc <- RunPCA(pbmc, features = VariableFeatures(object = pbmc))
+```
+
+```{r}
+DimPlot(pbmc, reduction = "pca")
+```
+
+```{r}
+ElbowPlot(pbmc)
+```
+
+```{r}
+pbmc <- FindNeighbors(pbmc, dims = 1:16)
+pbmc <- FindClusters(pbmc, resolution = 0.5)
+```
+
+```{r}
+pbmc <- RunUMAP(pbmc, dims = 1:16)
+                
+DimPlot(pbmc, reduction = "umap")
+```
+
+
+```{r}
+pbmc <- RunTSNE(pbmc, dims = 1:16)
+                
+DimPlot(pbmc, reduction = "tsne")
+```
+
+```{r}
+# find markers for every cluster compared to all remaining cells, report only the positive ones
+pbmc.markers <- FindAllMarkers(pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+pbmc.markers %>% group_by(cluster) %>% top_n(n = 2, wt = avg_logFC)
+```
+
+```{r}
+top10 <- pbmc.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+DoHeatmap(pbmc, features = top10$gene) + NoLegend()
+```
+
+```
+0	IL7R, CCR7	Naive CD4+ T
+1	IL7R, S100A4	Memory CD4+
+2	CD14, LYZ	CD14+ Mono
+3	MS4A1	B
+4	CD8A	CD8+ T
+5	FCGR3A, MS4A7	FCGR3A+ Mono
+6	GNLY, NKG7	NK
+7	FCER1A, CST3	DC
+8	PPBP	Platelet
+```
+
+```{r}
+DoHeatmap(pbmc, features = c('IL7R', 'CCR7', 'S100A4', 'CD14', 'LYZ',
+                             'MS4A1', 'CD8A', 'FCGR3A', 'MS4A7',
+                             'GNLY', 'NKG7',
+                             'FCER1A', 'CST3',
+                             'PPBP')) + NoLegend()
+```
+# Timestamp
+
+```{r sessionInfo, cache = FALSE}
+date()
+sessionInfo()
+devtools::session_info()
+
+```
