@@ -36,5 +36,36 @@ cd "$WD"/data
 
 #bamtools split -in $PBMCS -tag CB
 # crashes due to https://github.com/pezmaster31/bamtools/issues/135
-samtools view $PBMCS | python split_script.py
+samtools view $PBMCS | /usr/bin/python3 bam_cb_split.py 
 
+# mkdir -p bamtools
+# cd $_
+# ln -s ../data/5*bam
+
+# ulimit -n 200000
+# bamtools split -in $PBMCS -tag CB
+
+
+# trying differently
+# https://github.com/crazyhottommy/scATACutils/blob/master/python/split_scATAC_bam_by_cell.py
+
+# requires a virtenv with pysam
+
+cd ~/virtenvs
+virtualenv -p python3 split_bam
+# cd $_
+ # cd split_bam
+source bin/activate
+pip -V
+pip install pysam
+# pip install csv
+
+cd $WD/data
+
+ulimit -n 50000
+python3 split_bam_by_cell.py -prefix foo -outdir . $PBMCS
+
+deactivate
+
+# then samtobam and featurecounts
+# # @todo implement
