@@ -176,6 +176,40 @@ DoHeatmap(pbmc, features = c('IL7R', 'CCR7', 'S100A4', 'CD14', 'LYZ',
                              'FCER1A', 'CST3',
                              'PPBP')) + NoLegend()
 ```
+
+# Repeats
+
+@todo fix this is untested, indicate the path
+
+```{r}
+fns <- list.files('*.counts$', recursive = TRUE)
+
+d <- list()
+for (fn in fns) {
+    d[[gsub('_counts.txt', '', basename(fn))]] <- read.table(
+        file.path(WD, fn),
+        header = TRUE,
+        sep = "\t",
+        colClasses = c(rep("NULL", 6), "integer"),
+        skip = 1)
+}
+
+
+
+str(d)
+
+annot <-  read.table( fn,
+                     header = TRUE,
+                     sep = "\t",
+                     skip = 1)[,1:6]
+
+
+d_bak <- d
+d <- cbind(annot, d)
+rownames(d) <- d$Geneid
+str(d)
+
+```
 # Timestamp
 
 ```{r sessionInfo, cache = FALSE}
