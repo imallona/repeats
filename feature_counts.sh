@@ -36,7 +36,7 @@ cd "$WD"/data
 
 #bamtools split -in $PBMCS -tag CB
 # crashes due to https://github.com/pezmaster31/bamtools/issues/135
-samtools view $PBMCS | /usr/bin/python3 bam_cb_split.py 
+# samtools view $PBMCS | /usr/bin/python3 bam_cb_split.py 
 
 # mkdir -p bamtools
 # cd $_
@@ -62,10 +62,23 @@ pip install pysam
 
 cd $WD/data
 
-ulimit -n 50000
+# ulimit -n 50000
 python3 split_bam_by_cell.py -prefix foo -outdir . $PBMCS
 
 deactivate
 
-# then samtobam and featurecounts
-# # @todo implement
+# then featurecounting
+for fn in $(find . -name "foo*bam")
+do
+    mkdir -p featurecounts/$(basename $fn .bam)
+    $FEATURECOUNTS \
+        -T "$NTHREADS" \
+        -t exon \
+        -g gene_id \
+        -a "$GTF" \
+        -o  featurecounts/$(basename $fn .bam)/$(basename $fn .bam).counts \
+        "$fn"  2>&1 |tee > featurecounts/$(basename $fn .bam)/$(basename $fn .bam).log 
+    
+done
+
+# genes counting will download from 10x

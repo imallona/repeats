@@ -48,13 +48,16 @@ for read in fin:
         if args.prefix:
             fout_name = args.prefix + "_" + cell_barcode + ".bam"
         else:
-            fout_name = cell_barcode + ".bam"    
-        if cell_barcode not in fouts_dict and len(fouts_dict) < NUMBEROFCELLS_MAX:
+            fout_name = cell_barcode + ".bam"
+        # print(len(fouts_dict))
+        # file handle generated only if below
+        if cell_barcode not in fouts_dict and len(fouts_dict) < NUMBEROFCELLS_MAX :
             if args.outdir:
                 fouts_dict[cell_barcode] = pysam.AlignmentFile(os.path.join(args.outdir,fout_name), "wb", template = fin)
             else:
                 fouts_dict[cell_barcode] = pysam.AlignmentFile(fout_name, "wb", template = fin)
-        fouts_dict[cell_barcode].write(read)
+        if cell_barcode in fouts_dict:
+            fouts_dict[cell_barcode].write(read)
     else: 
         continue
     
