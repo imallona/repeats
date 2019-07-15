@@ -50,6 +50,7 @@ library(dplyr)
 ## library(Cairo)
 ## library(RColorBrewer)
 ## library(corrplot)
+library(ggplot2)
 
 opts_chunk$set(fig.width = 8,
                fig.height = 8,
@@ -214,18 +215,28 @@ if (!file.exists(file.path('data', 'repeats_counts_01.RData'))) {
     str(d)
 
     ## last item, to get the annotation
-    annot <-  read.table( fn,
-                         header = TRUE,
-                         sep = "\t",
-                         skip = 1)[,1:6]
+    ## annot <-  read.table(file.path(COUNTS_PATH, fn),
+    ##                      header = TRUE,
+    ##                      sep = "\t",
+    ##                      skip = 1)[,1]
+
+    annot <-read.table(
+            pipe(sprintf('cut -f1 %s', file.path(COUNTS_PATH, fn))),            
+            header = TRUE,
+            sep = "\t",
+            skip = 1)
 
 
     d_bak <- d
-    d <- cbind(annot, d)
-    rownames(d) <- d$Geneid
+    ## d <- cbind(annot, d)
+    d <- do.call(cbind.data.frame, d)
+    rownames(d) <- annot[,1]
     str(d)
+    colnames(d) <- gsub('.1.bam', '', colnames(d))
+    colnames(d) <- gsub('..foo_', '', colnames(d))
+    
 } else {
-    d <- load(file.path('data', 'repeats_counts_01.RData'))
+    load(file.path('data', 'repeats_counts_01.RData'))
 }
 ```
 
@@ -236,6 +247,49 @@ if (!file.exists(file.path('data', 'repeats_counts_01.RData'))){
 }
     
 ```
+
+## Repeats basic stats
+
+
+Highlighting the repeats expression of the RNAseq clusters? Maybe adding the features as metadata?
+
+```{r}
+print('todo')
+```
+
+Overall expression rates of some repeat families
+
+How many repeat families are detected? Which percentage is it?
+```{r}
+
+detected <- sum(apply(d, 1, function(x) sum(x) > 1))
+detected/nrow(d) * 100
+
+```
+
+<!-- 33.20062 -->
+
+
+Getting the top most variable repeat instances, which is their variation range?
+
+```{r}
+vars <- apply(d, 1, var)
+names(vars) <- rownames(d)
+
+selected <- names(vars[vars > quantile(vars, 0.999)])
+
+apply(d[selected,], 1, mean)
+apply(d[selected,], 1, var)
+
+## ggplot(ToothGrowth, aes(x=dose, y=len)) + 
+##   geom_jitter()
+
+```
+
+
+## Repeats Seurat
+
+
 
 
 ```{r}
@@ -285,8 +339,148 @@ DimPlot(reps, reduction = "pca")
 ElbowPlot(reps)
 ```
 
-Highlighting the repeats expression of the RNAseq clusters?
+```{r}
+reps <- FindNeighbors(reps, dims = 1:10)
+reps <- FindClusters(reps, resolution = 0.5)
+```
 
+```{r}
+reps <- RunUMAP(reps, dims = 1:10)
+                
+DimPlot(reps, reduction = "umap")
+```
+
+
+```{r}
+reps <- RunTSNE(reps, dims = 1:10)
+                
+DimPlot(reps, reduction = "tsne")
+```
+
+```{r}
+# find markers for every cluster compared to all remaining cells, report only the positive ones
+reps.markers <- FindAllMarkers(reps, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+reps.markers %>% group_by(cluster) %>% top_n(n = 2, wt = avg_logFC)
+```
+
+```{r}
+top10 <- reps.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+DoHeatmap(reps, features = top10$gene) + NoLegend()
+```
+
+## Integrative
+
+
+Repeats in accordance to the gene-coding rnaseq clustering
+
+These we cannot explore much due to the abundance of NAs
+
+
+```{r}
+## from_rna_meta <- na.omit(pbmc@meta.data[colnames(reps),])
+## nrow(na.omit(from_rna))
+
+tmp <- as.data.frame(log10(t(d) +1))
+## tmp$cell <- rownames(tmp)
+
+tmp <- merge(pbmc@meta.data, tmp, by.x='row.names', by.y = 'row.names', all.x = TRUE)
+## colnames(tmp)[1:5]  <- sprintf('genes_%s', colnames(tmp)[1:5])
+pbmc@meta.data <- tmp
+rownames(pbmc@meta.data) <- tmp$Row.names
+
+rm(tmp)
+
+```
+
+Getting the top variable repeats
+```{r, fig.height = 6, fig.width = 6}
+## summary(pbmc@meta.data[selected,])
+
+for (feature in selected){
+    p <- FeaturePlot(pbmc, features = feature, reduction = 'tsne',
+                     shape.by = 'RNA_snn_res.0.5',
+                     pt.size = 2)
+    print(p + ggtitle(sprintf('log10(x + 1) %s counts', feature)))
+}
+```
+
+Log10 raw repeat counts by RNA (genes) clustering
+
+```{r}
+library(reshape2)
+
+target <- pbmc@meta.data[,c('RNA_snn_res.0.5', selected)]
+
+foo <- melt(target, id.vars='RNA_snn_res.0.5')
+colnames(foo) <- c('genes_clust', 'repfamily', 'log10_counts')
+ggplot(foo,
+       aes(x=genes_clust, y=log10_counts)) + 
+    geom_boxplot(outlier.size=1) +
+    facet_wrap(~ repfamily, ncol = 3) +
+    theme(axis.text.x = element_text(angle = 90))
+
+
+ggplot(foo,
+       aes(x= repfamily, y=log10_counts)) + 
+    geom_boxplot(outlier.size=1) +
+    facet_wrap(~genes_clust, ncol = 3) +
+    theme(axis.text.x = element_text(angle = 90))
+
+```
+
+Quality checks i.e. num genes/library size vs number repeats
+
+```{r}
+for (feature in selected) {
+    par(mfrow = c(1,2), pty = 's')
+    plot(y = pbmc@meta.data[,feature],
+         x = pbmc@meta.data$nFeature_RNA,
+         main = feature,
+         pch =19,
+         xlab = 'number of features (genes)',
+         ylab = 'number of repeats [log10(x+1)]',
+         col = ac('black', 0.5))
+    
+     plot(y = pbmc@meta.data[,feature],
+          x = pbmc@meta.data$nCount_RNA,
+          main = feature,
+          xlab = 'number of reads (genes)',
+         ylab = 'number of repeats [log10(x+1)]',
+         pch =19,
+         col = ac('black', 0.5))
+}
+```
+
+Quality checks i.e. num genes/library size vs number repeats
+
+```{r}
+for (feature in selected) {
+    par(mfrow = c(1,3), pty = 's')
+    plot(y = pbmc@meta.data[,feature],
+         x = pbmc@meta.data$nFeature_RNA,
+         main = feature,
+         pch =19,
+         xlab = 'number of features (genes)',
+         ylab = 'number of repeats [log10(x+1)]',
+         col = ac(as.numeric(pbmc@meta.data$RNA_snn_res.0.5), 0.5))
+    
+     plot(y = pbmc@meta.data[,feature],
+          x = pbmc@meta.data$nCount_RNA,
+          main = feature,
+          xlab = 'number of reads (genes)',
+         ylab = 'number of repeats [log10(x+1)]',
+         pch =19,
+         col = ac(as.numeric(pbmc@meta.data$RNA_snn_res.0.5), 0.5))
+
+    
+    plot.new()
+    legend('topright',
+           legend= levels(pbmc@meta.data$RNA_snn_res.0.5),
+           pch = 19,
+           col = 1: max(as.numeric(pbmc@meta.data$RNA_snn_res.0.5)),
+           title = 'genes-based clustering (SNN)')
+}
+```
 
 
 # Timestamp
