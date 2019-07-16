@@ -14,6 +14,8 @@ params:
 
 @todo regress out mitochondrial contribution
 
+similar to https://satijalab.org/seurat/v3.0/pbmc3k_tutorial.html
+
 ```{r}
 ## stop('todo: get top quantiles for chipseq signals and run pagoda on these')
 
@@ -51,6 +53,8 @@ library(dplyr)
 ## library(RColorBrewer)
 ## library(corrplot)
 library(ggplot2)
+library(reshape2)
+library(xtable)
 
 opts_chunk$set(fig.width = 8,
                fig.height = 8,
@@ -164,13 +168,13 @@ DoHeatmap(pbmc, features = top10$gene) + NoLegend()
 
 ```
 0	IL7R, CCR7	Naive CD4+ T
-1	IL7R, S100A4	Memory CD4+
-2	CD14, LYZ	CD14+ Mono
-3	MS4A1	B
-4	CD8A	CD8+ T
-5	FCGR3A, MS4A7	FCGR3A+ Mono
-6	GNLY, NKG7	NK
-7	FCER1A, CST3	DC
+1	IL7R, S100A4	Memory CD4+ + CD8+
+2   IL7R, CCR7, S100A4 T cells?  	
+3	GNLY, NKG7	NK
+4	MS4A1	B
+5   FCER1A, CST3	DC
+6   MS4A1  B
+7   CD8 CD8?
 8	PPBP	Platelet
 ```
 
@@ -181,6 +185,18 @@ DoHeatmap(pbmc, features = c('IL7R', 'CCR7', 'S100A4', 'CD14', 'LYZ',
                              'FCER1A', 'CST3',
                              'PPBP')) + NoLegend()
 ```
+
+Adding new labels
+
+```{r}
+new.cluster.ids <- c("Naive CD4 T", "Memory CD4 T + CD8", "T CD8", "NK", "B", "DC", 
+    "B", "T CD8", "Platelet")
+names(new.cluster.ids) <- levels(pbmc)
+pbmc <- RenameIdents(pbmc, new.cluster.ids)
+DimPlot(pbmc, reduction = "tsne", label = TRUE, pt.size = 0.5) + NoLegend()
+
+```
+
 
 # Repeats
 
@@ -265,6 +281,8 @@ How many repeat families are detected? Which percentage is it?
 detected <- sum(apply(d, 1, function(x) sum(x) > 1))
 detected/nrow(d) * 100
 
+nrow(d)
+
 ```
 
 <!-- 33.20062 -->
@@ -281,8 +299,6 @@ selected <- names(vars[vars > quantile(vars, 0.999)])
 apply(d[selected,], 1, mean)
 apply(d[selected,], 1, var)
 
-## ggplot(ToothGrowth, aes(x=dose, y=len)) + 
-##   geom_jitter()
 
 ```
 
@@ -368,13 +384,18 @@ top10 <- reps.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
 DoHeatmap(reps, features = top10$gene) + NoLegend()
 ```
 
-## Integrative
+## Integrative (according to markers)
 
 
 Repeats in accordance to the gene-coding rnaseq clustering
 
 These we cannot explore much due to the abundance of NAs
 
+
+```{r}
+reps_markers_char <- as.data.frame(reps.markers %>% group_by(cluster) %>%
+                                   top_n(n = 2, wt = avg_logFC))$gene
+```
 
 ```{r}
 ## from_rna_meta <- na.omit(pbmc@meta.data[colnames(reps),])
@@ -396,7 +417,7 @@ Getting the top variable repeats
 ```{r, fig.height = 6, fig.width = 6}
 ## summary(pbmc@meta.data[selected,])
 
-for (feature in selected){
+for (feature in reps_markers_char){
     p <- FeaturePlot(pbmc, features = feature, reduction = 'tsne',
                      shape.by = 'RNA_snn_res.0.5',
                      pt.size = 2)
@@ -407,9 +428,8 @@ for (feature in selected){
 Log10 raw repeat counts by RNA (genes) clustering
 
 ```{r}
-library(reshape2)
 
-target <- pbmc@meta.data[,c('RNA_snn_res.0.5', selected)]
+target <- pbmc@meta.data[,c('RNA_snn_res.0.5', reps_markers_char)]
 
 foo <- melt(target, id.vars='RNA_snn_res.0.5')
 colnames(foo) <- c('genes_clust', 'repfamily', 'log10_counts')
@@ -430,7 +450,97 @@ ggplot(foo,
 
 Quality checks i.e. num genes/library size vs number repeats
 
+```{r, eval = FALSE}
+for (feature in reps_markers_char) {
+    par(mfrow = c(1,2), pty = 's')
+    plot(y = pbmc@meta.data[,feature],
+         x = pbmc@meta.data$nFeature_RNA,
+         main = feature,
+         pch =19,
+         xlab = 'number of features (genes)',
+         ylab = 'number of repeats [log10(x+1)]',
+         col = ac('black', 0.5))
+    
+     plot(y = pbmc@meta.data[,feature],
+          x = pbmc@meta.data$nCount_RNA,
+          main = feature,
+          xlab = 'number of reads (genes)',
+         ylab = 'number of repeats [log10(x+1)]',
+         pch =19,
+         col = ac('black', 0.5))
+}
+```
+
+Quality checks i.e. num genes/library size vs number repeats
+
 ```{r}
+for (feature in reps_markers_char) {
+    par(mfrow = c(1,3), pty = 's')
+    plot(y = pbmc@meta.data[,feature],
+         x = pbmc@meta.data$nFeature_RNA,
+         main = feature,
+         pch =19,
+         xlab = 'number of features (genes)',
+         ylab = 'number of repeats [log10(x+1)]',
+         col = ac(as.numeric(pbmc@meta.data$RNA_snn_res.0.5), 0.5))
+    
+     plot(y = pbmc@meta.data[,feature],
+          x = pbmc@meta.data$nCount_RNA,
+          main = feature,
+          xlab = 'number of reads (genes)',
+         ylab = 'number of repeats [log10(x+1)]',
+         pch =19,
+         col = ac(as.numeric(pbmc@meta.data$RNA_snn_res.0.5), 0.5))
+
+    
+    plot.new()
+    legend('topleft',
+           legend= levels(pbmc@meta.data$RNA_snn_res.0.5),
+           pch = 19,
+           col = 1: max(as.numeric(pbmc@meta.data$RNA_snn_res.0.5)),
+           title = 'genes-based clustering (SNN)')
+}
+```
+
+## Integrative (according to variance)
+
+
+
+```{r}
+vars <- apply(d, 1, var)
+names(vars) <- rownames(d)
+
+selected <- names(vars[vars > quantile(vars, 0.999)])
+
+apply(d[selected,], 1, mean)
+apply(d[selected,], 1, var)
+
+
+```
+
+
+```{r}
+
+target <- pbmc@meta.data[,c('RNA_snn_res.0.5', selected)]
+
+foo <- melt(target, id.vars='RNA_snn_res.0.5')
+colnames(foo) <- c('genes_clust', 'repfamily', 'log10_counts')
+
+ggplot(foo,
+       aes(x=genes_clust, y=log10_counts)) + 
+    geom_boxplot(outlier.size=1) +
+    facet_wrap(~ repfamily, ncol = 3) +
+    theme(axis.text.x = element_text(angle = 90))
+
+
+ggplot(foo,
+       aes(x= repfamily, y=log10_counts)) + 
+    geom_boxplot(outlier.size=1) +
+    facet_wrap(~genes_clust, ncol = 3) +
+    theme(axis.text.x = element_text(angle = 90))
+```
+
+```{r, eval = FALSE}
 for (feature in selected) {
     par(mfrow = c(1,2), pty = 's')
     plot(y = pbmc@meta.data[,feature],
@@ -474,7 +584,7 @@ for (feature in selected) {
 
     
     plot.new()
-    legend('topright',
+    legend('topleft',
            legend= levels(pbmc@meta.data$RNA_snn_res.0.5),
            pch = 19,
            col = 1: max(as.numeric(pbmc@meta.data$RNA_snn_res.0.5)),
@@ -482,6 +592,150 @@ for (feature in selected) {
 }
 ```
 
+# Overlap gene clusters and repeat clusters
+
+```{r}
+foo <- data.frame(genes = pbmc@meta.data[,'RNA_snn_res.0.5'],
+                 cell = row.names(pbmc@meta.data))
+
+bar <- data.frame(repeats = reps@meta.data[,'RNA_snn_res.0.5'],
+                  cell = row.names(reps@meta.data))
+
+tmp <- merge(foo, bar, by = 'cell')
+
+table(tmp$genes, tmp$repeats)
+
+
+```
+
+# Repeats and gene markers
+
+
+```{r}
+
+vars <- apply(d, 1, var)
+names(vars) <- rownames(d)
+
+selected <- names(vars[vars > quantile(vars, 0.999)])
+
+apply(d[selected,], 1, mean)
+
+avgs <- data.frame('repeat' = as.character(selected),
+                   mean = as.character(round(apply(d[selected,], 1, mean),2)),
+                   sd = as.character(round(apply(d[selected,], 1, sd),2)))
+print.xtable(xtable(avgs, include.rownames = FALSE))
+## print(avgs)
+```
+
+
+AluSq and (GCCCC)n
+
+```
+0	IL7R, CCR7	Naive CD4+ T
+1	IL7R, S100A4	Memory CD4+ + CD8+
+2   IL7R, CCR7, S100A4 T cells?  	
+3	GNLY, NKG7	NK
+4	MS4A1	B
+5   FCER1A, CST3	DC
+6   MS4A1  B
+7   CD8 CD8?
+8	PPBP	Platelet
+```
+
+```{r wrong1, eval =FALSE}
+
+pbmc@meta.data$literate <- 
+for (feature in c('AluY', '(GGCCAC)n')) {
+    par(mfrow = c(2,2), pty = 's')
+    plot(y = pbmc@meta.data[,feature],
+         x = pbmc@meta.data$nFeature_RNA,
+         main = feature,
+         pch =19,
+         xlab = 'number of features (genes)',
+         ylab = 'number of repeats [log10(x+1)]',
+         col = ac(as.numeric(pbmc@meta.data$RNA_snn_res.0.5), 0.5))
+    
+    plot(y = pbmc@meta.data[,feature],
+         x = pbmc@meta.data$nCount_RNA,
+         main = feature,
+         xlab = 'number of reads (genes)',
+         ylab = 'number of repeats [log10(x+1)]',
+         pch =19,
+         col = ac(as.numeric(pbmc@meta.data$RNA_snn_res.0.5), 0.5))
+
+    foo <- na.omit(data.frame(repfam = pbmc@meta.data[,feature],
+                              gene = FetchData(pbmc, 'IL7R',
+                                               cells = rownames(pbmc@meta.data[,feature]),
+                                               slot = "data")))
+    
+    plot(foo,
+         main = feature,
+         xlab = 'PPBP (normalized expression)',
+         ylab = 'number of repeats [log10(x+1)]',
+         pch =19,
+         col = ac(as.numeric(pbmc@meta.data$RNA_snn_res.0.5), 0.5))
+    
+   foo <- na.omit(data.frame(repfam = pbmc@meta.data[,feature],
+                              gene = FetchData(pbmc, 'CCR7',
+                                               cells = rownames(pbmc@meta.data[,feature]),
+                                               slot = "data")))
+
+    plot(foo,
+         main = feature,
+         xlab = 'FCER1A (normalized expression)',
+         ylab = 'number of repeats [log10(x+1)]',
+         pch =19,
+         col = ac(as.numeric(pbmc@meta.data$RNA_snn_res.0.5), 0.5))
+    
+    ## plot.new()
+    ## legend('topleft',
+    ##        legend= levels(pbmc@meta.data$RNA_snn_res.0.5),
+    ##        pch = 19,
+    ##        col = 1: max(as.numeric(pbmc@meta.data$RNA_snn_res.0.5)),
+    ##        title = 'genes-based clustering (SNN)')
+}
+
+
+```
+
+```{r}
+selected <- c('AluY', 'MER49', '(GGCCAC)n', 'MIR', 'L2b')
+target <- pbmc@meta.data[, selected]
+
+target$literate_ids <- Idents(pbmc, cells = rownames(target))
+
+foo <- melt(target, id.vars='literate_ids')
+colnames(foo) <- c('genes_clust', 'repfamily', 'log10_counts')
+
+ggplot(foo,
+       aes(x=genes_clust, y=log10_counts)) + 
+    geom_boxplot(outlier.size=1) +
+    facet_wrap(~ repfamily, ncol = 5) +
+    theme(axis.text.x = element_text(angle = 90))
+
+
+cell_type_features <- c('IL7R', 'CCR7', 'S100A4', 'GNLY', 'PPBP', 'MS4A1', 'CD8A')
+
+
+target <- FetchData(pbmc, cell_type_features)
+
+target$literate_ids <- Idents(pbmc, cells = rownames(target))
+
+foo <- melt(target, id.vars='literate_ids')
+colnames(foo) <- c('genes_clust', 'repfamily', 'log10_counts')
+
+ggplot(foo,
+       aes(x=genes_clust, y=log10_counts)) + 
+    geom_boxplot(outlier.size=1) +
+    facet_wrap(~ repfamily, ncol = 5) +
+    theme(axis.text.x = element_text(angle = 90))
+
+
+
+
+
+
+```
 
 # Timestamp
 
