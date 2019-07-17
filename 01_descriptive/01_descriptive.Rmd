@@ -773,6 +773,81 @@ ggplot(rep_based,
 
 ```
 
+CPM-based plot
+
+```{r, fig.width = 12, fig.height = 4}
+reps <- NormalizeData(reps, normalization.method = "RC", scale.factor = 1e6)
+head(rowSums(as.data.frame(reps@assays$RNA@data)))
+
+tmp <- as.data.frame(FetchData(reps, vars = selected, slot = 'data'))
+tmp$cell <- rownames(tmp)
+
+## tmp$cell <- rownames(tmp)
+
+pbmc@meta.data$cell <- row.names(pbmc@meta.data)
+
+tmp <- merge(pbmc@meta.data[, c('RNA_snn_res.0.15', 'cell',
+                                'nCount_RNA', 'nFeature_RNA') ], tmp, by = 'cell', all.x = TRUE)
+rownames(tmp) <- tmp$cell
+pbmc@meta.data <- tmp
+## now renaming identities
+
+
+new.cluster.ids <- c("Naive CD4 T", "Memory CD4 T",
+                     "B",  'NK', 'CD14 Mono',
+                     'DC', 'Platelet')
+
+names(new.cluster.ids) <- levels(pbmc)
+pbmc <- RenameIdents(pbmc, new.cluster.ids)
+
+selected <- c('AluY', 'AluSx', 'MER49', '(GGCCAC)n', 'MIR', 'L2a', 'L2b', 'L1PA11')
+target <- pbmc@meta.data[, selected]
+
+target$literate_ids <- Idents(pbmc, cells = rownames(target))
+
+rep_based <- melt(target, id.vars='literate_ids')
+rep_based$value <- log10(rep_based$value + 1)
+colnames(rep_based) <- c('genes_clust', 'repfamily', 'log10_cpm')
+```
+
+```{r, fig.width = 12, fig.height = 4}
+cpmboxplot <- ggplot(rep_based,
+              aes(x=genes_clust, y=log10_cpm)) + 
+    geom_boxplot(outlier.size=1) +
+    facet_wrap(~ repfamily, ncol = 4) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    ylab('expression [log10(CPM + 1)]') +
+    xlab('cell types (based in protein-coding clustering)') +
+    theme(axis.text=element_text(size=12),
+          axis.title=element_text(size=12))
+
+tsne <- DimPlot(pbmc, reduction = "tsne")
+
+rm(tmp)
+
+foo <- grid.arrange(tsne, cpmboxplot, ncol=2)
+
+```
+
+
+```{r, fig.width = 12, fig.height = 4}
+cpmboxplot <- ggplot(rep_based,
+              aes(x=repfamily, y=log10_cpm)) + 
+    geom_boxplot(outlier.size=1) +
+    facet_wrap(~ genes_clust, ncol = 4) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    ylab('expression [log10(CPM + 1)]') +
+    xlab('repeat family') +
+    theme(axis.text=element_text(size=12),
+          axis.title=element_text(size=12))
+
+tsne <- DimPlot(pbmc, reduction = "tsne")
+
+rm(tmp)
+
+foo <- grid.arrange(tsne, cpmboxplot, ncol=2)
+
+```
 
 
 
