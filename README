@@ -1,8 +1,0 @@
-by exec order
-
-get_10x_pbmcs.sh    gets 10x pbmc dataset
-get_gtf.sh          gets grh38 rmsk table
-feature_counts.sh   counts rmsk instances from 10x pbmc table
-
-
-Thu Jul 11 14:21:11 CEST 2019

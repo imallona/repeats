@@ -42,6 +42,7 @@ fin = pysam.AlignmentFile(args.bam, "rb")
 fouts_dict = {}
 
 for read in fin:
+    i = 1
     tags = read.tags
     CB_list = [ x for x in tags if x[0] == "CB"]
     if CB_list:
@@ -65,7 +66,10 @@ for read in fin:
             # close a random filehandle that is not the one in use            
             fouts_dict[random.choice([x for x in fouts_dict if x not in cell_barcode])].close()
             # and write the record
-            fouts_dict[cell_barcode].write(read) 
+            fouts_dict[cell_barcode].write(read)
+        i = i +1
+        if i %% 1000 == 0:
+            print(i) + 'processed'
     else: 
         continue
     
