@@ -5,6 +5,26 @@
 ##
 ## 18 Nov 2010
 ## Izaskun Mallona
+##
+## Update after file inspection: beware of Kumar's short reads (8 barcode, 26 transcript)
+# [imallona@imlstaupo data]$ zcat kumar_cancer/SRR8165390_1.fastq.gz | head -8
+# @SRR8165390.1.1 SN363:1065:HTWVWBCXX:1:1101:1095:2087 length=8
+# GGTTTACT
+# +SRR8165390.1.1 SN363:1065:HTWVWBCXX:1:1101:1095:2087 length=8
+# DDDDDIII
+# @SRR8165390.2.1 SN363:1065:HTWVWBCXX:1:1101:1464:2090 length=8
+# GGTTTACT
+# +SRR8165390.2.1 SN363:1065:HTWVWBCXX:1:1101:1464:2090 length=8
+# @@B@D1G1
+# [imallona@imlstaupo data]$ zcat kumar_cancer/SRR8165390_2.fastq.gz | head -8
+# @SRR8165390.1.2 SN363:1065:HTWVWBCXX:1:1101:1095:2087 length=26
+# GCAGCCAGTCCGAACCTGAGTAGTGT
+# +SRR8165390.1.2 SN363:1065:HTWVWBCXX:1:1101:1095:2087 length=26
+# DADD@HHHIGIHIH<CFEHIHIIIII
+# @SRR8165390.2.2 SN363:1065:HTWVWBCXX:1:1101:1464:2090 length=26
+# TCAGGATCAATGCCATATTGTGTAGA
+# +SRR8165390.2.2 SN363:1065:HTWVWBCXX:1:1101:1464:2090 length=26
+
 
 WD=/home/Shared_s3it/imallona/repeats_sc/data
 NTHREADS=8
@@ -114,8 +134,21 @@ SRR5380581,ChIP-Seq,36,PRJNA380639,SAMN06645344,cardiac progenitor cells (CPCs),
 SRR5380566,ChIP-Seq,36,PRJNA380639,SAMN06645350,cardiogenic mesoderm (C-ECs),GEO,public,sra,"gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX2675792,Illumina HiSeq 2000,SINGLE,ChIP,GENOMIC,377,250,Homo sapiens,ILLUMINA,2017-08-16T00:00:00Z,SRS2074552,GSM2551192,cardiogenic mesoderm (C-ECs),SRP102528,GSM2551192,H3K27me3 (Cat # 07-449; Millipore)
 EOF
 
+
+echo Friedman cardiac single cell
+
+wget https://www.ebi.ac.uk/arrayexpress/files/E-MTAB-6268/E-MTAB-6268.sdrf.txt -O friedman_single_cell.sdrf
+
+mkdir friedman_single_cell
+cd $_
+
+cat ../friedman_single_cell.sdrf | tr "\t" "\n"  | grep -e "ftp.*gz" | xargs -L 1 -P $NTHREADS wget
+
+
 echo Neurons developmental series, Mayer
 # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6052457/ this maybe?
+
+
 
 
 for fn in $(find . -name "*conf")
