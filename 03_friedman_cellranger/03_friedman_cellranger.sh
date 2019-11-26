@@ -12,11 +12,11 @@
 TAG="friedman_single_cell"
 HOME=/home/imallona
 DATA="/home/imallona/repeats_sc/data/""$TAG"
-NTHREADS=20
+NTHREADS=30
 MEM_GB=200
 CELLRANGER="$HOME"/"soft/cellranger/cellranger-3.1.0/cellranger"
 WD="$HOME"/"repeats_sc/data/friedman_single_cell"
-MM10=$HOME"/indices/cellranger/refdata-cellranger-mm10-3.0.0"
+GRCh38=$HOME"/indices/cellranger/refdata-cellranger-GRCh38-3.0.0"
 
 mkdir -p $WD
 cd $_
@@ -35,13 +35,15 @@ do
     ln -s "$item"_R1.fastq.gz "$item"_S1_L001_R1_001.fastq.gz
     ln -s "$item"_R2.fastq.gz "$item"_S1_L001_R2_001.fastq.gz
     ln -s "$item"_R3.fastq.gz "$item"_S1_L001_R3_001.fastq.gz
+
+    # mkdir -p "$item"_cellranger
     
     "$CELLRANGER" count --id="$item"_cellranger \
                   --fastqs="$DATA" \
-                  --transcriptome="$MM10" \
+                  --transcriptome="$GRCh38" \
                   --jobmode=local \
                   --localcores=$NTHREADS \
                   --sample="$item" \
-                   --localmem="$MEM_GB"
+                   --localmem="$MEM_GB" | tee "$item"_cellranger/run.log
 
-done
+done 
