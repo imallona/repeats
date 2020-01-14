@@ -1,0 +1,161 @@
+#!/usr/bin/env snakemake -s
+## 
+## Started 14th Jan 2020
+##
+## Izaskun Mallona
+## GPLv3
+
+
+import os.path as op
+from glob import glob
+
+from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
+HTTP = HTTPRemoteProvider()
+
+# - config
+# - indices
+# -- repeats_transcriptome
+# -- genes_transcriptome
+# -- repeatome
+# - conda
+# - runs
+# -- run_name
+# --- fastq
+# --- align
+# --- counts
+
+#@FIXME to be moved to config
+BASE = op.join('/home', 'imallona', 'repeats_sc_run')
+NTHREADS = 4
+
+## @FIXME to be moved to config
+GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
+GTF_URL =  'ftp://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz'
+REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
+DFAM_EMBL_URL = 'https://www.dfam.org/releases/current/families/Dfam.embl.gz'
+
+## @FIXME to be moved to config
+
+## EMBOSS:6.6.0.0
+SEQRET = '/usr/bin/seqret'
+
+# ./bowtie-build --version
+# bowtie-build version 1.2.3
+# 64-bit
+# Built on imlsportmacquarie
+# Tue Jan 14 15:41:37 CET 2020
+# Compiler: gcc version 5.4.0 20160609 (Ubuntu 5.4.0-6ubuntu1~16.04.12) 
+# Options: -O3 -m64  -Wl,--hash-style=both -DWITH_TBB -DPOPCNT_CAPABILITY  
+# Sizeof {int, long, long long, void*, size_t, off_t}: {4, 8, 8, 8, 8, 8}
+BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
+
+##pigz 2.3.1
+PIGZ = '/usr/bin/pigz'
+
+rule all:
+    input:
+        op.join(BASE, 'indices', 'repeatome')
+
+## star
+# rule index_genes_transcriptome:
+   # todo
+
+## star
+# rule index_repeats_transcriptome:
+    # todo
+
+## bowtie
+rule bowtie_index_repeatome:
+    input:
+        fa =  op.join(BASE, 'indices', op.splitext(op.basename(DFAM_EMBL_URL))[0] + '.fa.gz')
+    threads: NTHREADS
+    # params:
+    #     label = str(op.splitext(op.basename(DFAM_EMBL_URL))[0])
+    output:
+        directory(op.join(BASE, 'indices', 'repeatome'))
+    shell:
+        """
+        mkdir -p {output}
+        {PIGZ} --decompress --to-stdout {input.fa} -p {threads} | \
+           bowtie-build - {output} --threads {threads}
+        """
+
+rule compress_repeatome_fasta:
+    input:
+        op.join(BASE, 'indices', op.splitext(op.basename(DFAM_EMBL_URL))[0] + '.fa')
+    output:
+        op.join(BASE, 'indices', op.splitext(op.basename(DFAM_EMBL_URL))[0] + '.fa.gz')
+    threads: NTHREADS
+    shell:
+        """
+        {PIGZ} -p {threads} {input}
+        """
+    
+rule get_repeatome_fasta:
+    input:
+        # op.join(BASE, 'indices', op.basename(DFAM_EMBL_URL))
+        # HTTP.remote(DFAM_EMBL_URL, keep_local=True)
+        op.join(BASE, 'indices', op.splitext(op.basename(DFAM_EMBL_URL))[0])
+    output:
+        temp(op.join(BASE, 'indices', op.splitext(op.basename(DFAM_EMBL_URL))[0] + '.fa'))
+    shell:
+        """
+        {SEQRET} -sequence {input} -firstonly N -outseq {output}
+        """
+
+rule uncompress_repeatome:
+    input:
+        op.join(BASE, 'indices', op.basename(DFAM_EMBL_URL))
+    output:
+        temp(op.join(BASE, 'indices', op.splitext(op.basename(DFAM_EMBL_URL))[0]))
+    threads: NTHREADS
+    shell:
+        """
+        {PIGZ} --decompress -p {threads} {input}
+        """
+    
+rule get_repeatome_embl:
+    # or also from dfam
+    # requires hmmer to transform from hmm to fasta % https://www.biostars.org/p/305173/
+    # hmmemit -c DF0000558.hmm > DF0000558.consensus.fasta
+    # input:
+    #     # remote.HTTP(DFAM_EMBL_URL)
+    #     # HTTP.remote(DFAM_EMBL_URL)
+    params:
+        url = DFAM_EMBL_URL
+    output:
+        temp(op.join(BASE, 'indices', op.basename(DFAM_EMBL_URL)))
+    shell:
+        """
+        curl -L -C - {params.url} -o {output}
+        """
+        
+rule get_genome_fasta:
+    params:
+        url = GENOME_URL
+    output:
+        op.join(BASE, 'indices', op.basename(GENOME_URL))
+    shell:
+        """        
+        curl -L -C - {params.url} -o {output}       
+        """
+
+rule get_repeats_gtf:
+    params:
+        url = REP_GTF_URL
+    output:
+        op.join(BASE, 'indices', op.basename(REP_GTF_URL))
+    shell:
+        """        
+        curl -L -C - {params.url} -o {output}
+        """
+        
+rule get_genes_gtf:
+    params:
+        url = GTF_URL
+    output:
+        op.join(BASE, 'indices', op.basename(GTF_URL))
+    shell:
+        """        
+        curl -L -C - {params.url} -o {output}
+        """

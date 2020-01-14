@@ -35,6 +35,11 @@ No-fast-forward `develop` to `master` (with `hotfix`) branching strategy
 - github	https://github.com/imallona/repeats_sc.git (fetch)
 - github	https://github.com/imallona/repeats_sc.git (push)
 
+# For benchmark
+
+- TEToolkit http://hammelllab.labsites.cshl.edu/software/
+- RepeatScout http://bix.ucsd.edu/repeatscout/
+
 # Dates
 
 - Started Thu Jul 11 14:21:11 CEST 2019
