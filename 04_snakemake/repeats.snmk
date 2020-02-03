@@ -9,8 +9,8 @@
 import os.path as op
 from glob import glob
 
-from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
-HTTP = HTTPRemoteProvider()
+# from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
+# HTTP = HTTPRemoteProvider()
 
 # - config
 # - indices
@@ -24,7 +24,7 @@ HTTP = HTTPRemoteProvider()
 # --- align
 # --- counts
 
-#@FIXME to be moved to config
+#@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
 NTHREADS = 2
 
@@ -36,8 +36,8 @@ DFAM_EMBL_URL = 'https://www.dfam.org/releases/current/families/Dfam.embl.gz'
 
 ## @FIXME to be moved to config
 
-## EMBOSS:6.6.0.0
-SEQRET = '/usr/bin/seqret'
+# ## EMBOSS:6.6.0.0
+# SEQRET = '/usr/bin/seqret'
 
 # ./bowtie-build --version
 # bowtie-build version 1.2.3
@@ -52,7 +52,7 @@ BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
 ##pigz 2.3.1
 PIGZ = '/usr/bin/pigz'
 BIOPYTHON_CONVERT='biopython.convert'
-STAR = '~/soft/star/STAR-2.7.3a/source/bin/STAR'
+STAR = '~/soft/star/STAR-2.7.3a/source/STAR'
 
 try:
    if not op.exists(op.dirname(op.join(BASE, 'indices', 'repeatome'))):
@@ -78,11 +78,17 @@ rule all:
         op.join(BASE, 'indices', 'genome', op.basename(GENES_GTF_URL)),
         'foo'
 
+
+
+# rule index_repeats_genome:
+
+    
 ## star
-rule index_genes_transcriptome:
-    input:
-        fa = op.join(BASE, 'indices', 'genome', op.basename(GENOME_URL)),
+rule index_genes_genome:
+    params:
         genome_dir = op.join(BASE, 'indices', 'genome'),
+    input:
+        fa = op.join(BASE, 'indices', 'genome', op.splitext(op.basename(GENOME_URL))[0]),
         gtf = op.join(BASE, 'indices', 'genome', op.basename(GENES_GTF_URL))
     output:
         'foo'    
@@ -91,10 +97,22 @@ rule index_genes_transcriptome:
         --runMode genomeGenerate \
         --runThreadN {threads} \
         --sjdbGTFfile {input.gtf} \
-        --genomeDir {input.genome_dir} \
+        --genomeDir {params.genome_dir} \
         --genomeFastaFiles {input.fa}
         """
 
+rule uncompress_genome:
+    params:
+        genome_dir = op.join(BASE, 'indices', 'genome'),
+    input:
+        fagz = op.join(BASE, 'indices', 'genome', op.basename(GENOME_URL))
+    output:
+        temp(op.join(BASE, 'indices', 'genome', op.splitext(op.basename(GENOME_URL))[0]))
+    shell:
+        """
+        {PIGZ} --decompress -p {threads}  {input.fagz}
+        """
+        
 
 ## star
 # rule index_repeats_transcriptome:
@@ -176,7 +194,7 @@ rule get_repeatome_embl:
         temp(op.join(BASE, 'indices', 'repeatome', op.basename(DFAM_EMBL_URL)))
     shell:
         """
-        curl -L -C - {params.url} -o {output}
+        curl -s -L -C - {params.url} -o {output}
         """
         
 
@@ -188,7 +206,7 @@ rule get_genome_fasta:
         url = GENOME_URL
     shell:
         """
-        curl -L -C - {params.url} -o {output}
+        curl -s -L -C - {params.url} -o {output}
         """
 
         
@@ -200,7 +218,7 @@ rule get_repeats_gtf:
         op.join(BASE, 'indices', 'genome', op.basename(REP_GTF_URL))
     shell:
         """        
-        curl -L -C - {params.url} -o {output}
+        curl -s -L -C - {params.url} -o {output}
         """
         
 rule get_genes_gtf:
@@ -210,7 +228,7 @@ rule get_genes_gtf:
         gtf = op.join(BASE, 'indices', 'genome',  op.basename(GENES_GTF_URL))
     shell:
         """    
-        curl -L -C - {params.url} -o {output.gtf}
+        curl -s -L -C - {params.url} -o {output.gtf}
         """
 
 
