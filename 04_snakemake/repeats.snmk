@@ -25,12 +25,12 @@ HTTP = HTTPRemoteProvider()
 # --- counts
 
 #@FIXME to be moved to config
-BASE = op.join('/home', 'imallona', 'repeats_sc_run')
-NTHREADS = 4
+BASE = op.join('/home', 'imallona', 'repeats_sc')
+NTHREADS = 2
 
 ## @FIXME to be moved to config
 GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
-GTF_URL =  'ftp://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz'
+GENES_GTF_URL =  'ftp://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz'
 REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
 DFAM_EMBL_URL = 'https://www.dfam.org/releases/current/families/Dfam.embl.gz'
 
@@ -51,14 +51,50 @@ BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
 
 ##pigz 2.3.1
 PIGZ = '/usr/bin/pigz'
+BIOPYTHON_CONVERT='biopython.convert'
+STAR = '~/soft/star/STAR-2.7.3a/source/bin/STAR'
 
+try:
+   if not op.exists(op.dirname(op.join(BASE, 'indices', 'repeatome'))):
+       os.makedirs(op.join(BASE, 'indices', 'repeatome'))
+except OSError as err:
+   print(err)
+
+try:
+   if not op.exists(op.dirname(op.join(BASE, 'indices', 'genome'))):
+       os.makedirs(op.join(BASE, 'indices', 'repeatome'))
+except OSError as err:
+   print(err)
+   
+
+
+# workdir: BASE
+         
 rule all:
     input:
-        op.join(BASE, 'indices', 'repeatome')
+        op.join(BASE, 'indices', 'repeatome',
+                op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.1.ebwt',
+        op.join(BASE, 'indices', 'genome', op.basename(GENOME_URL)),
+        op.join(BASE, 'indices', 'genome', op.basename(GENES_GTF_URL)),
+        'foo'
 
 ## star
-# rule index_genes_transcriptome:
-   # todo
+rule index_genes_transcriptome:
+    input:
+        fa = op.join(BASE, 'indices', 'genome', op.basename(GENOME_URL)),
+        genome_dir = op.join(BASE, 'indices', 'genome'),
+        gtf = op.join(BASE, 'indices', 'genome', op.basename(GENES_GTF_URL))
+    output:
+        'foo'    
+    shell:
+        """{STAR}  \
+        --runMode genomeGenerate \
+        --runThreadN {threads} \
+        --sjdbGTFfile {input.gtf} \
+        --genomeDir {input.genome_dir} \
+        --genomeFastaFiles {input.fa}
+        """
+
 
 ## star
 # rule index_repeats_transcriptome:
@@ -67,24 +103,38 @@ rule all:
 ## bowtie
 rule bowtie_index_repeatome:
     input:
-        fa =  op.join(BASE, 'indices', op.splitext(op.basename(DFAM_EMBL_URL))[0] + '.fa.gz')
+        fa =  op.join(BASE, 'indices', 'repeatome',
+                      op.splitext(op.basename(DFAM_EMBL_URL))[0] + '.fa.gz')
     threads: NTHREADS
-    # params:
-    #     label = str(op.splitext(op.basename(DFAM_EMBL_URL))[0])
+    params:
+        label = op.join(BASE, 'indices', 'repeatome',
+                        op.splitext(op.basename(DFAM_EMBL_URL))[0])
     output:
-        directory(op.join(BASE, 'indices', 'repeatome'))
+        o1 = op.join(BASE, 'indices', 'repeatome',
+                     op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.1.ebwt',
+        o2 = op.join(BASE, 'indices', 'repeatome',
+                     op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.2.ebwt',
+        o3 = op.join(BASE, 'indices', 'repeatome',
+                     op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.3.ebwt',
+        o4 = op.join(BASE, 'indices', 'repeatome',
+                     op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.4.ebwt',
+        o1rev = op.join(BASE, 'indices', 'repeatome',
+                        op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.rev.1.ebwt',
+        o2rev = op.join(BASE, 'indices', 'repeatome',
+                        op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.rev.2.ebwt'
     shell:
         """
-        mkdir -p {output}
-        {PIGZ} --decompress --to-stdout {input.fa} -p {threads} | \
-           bowtie-build - {output} --threads {threads}
+        ## mkdir -p {output}
+        ## {PIGZ} --decompress --to-stdout {input.fa} -p {threads} | \
+
+        {BOWTIE_BUILD} {input.fa} {params.label} --threads {threads}
         """
 
 rule compress_repeatome_fasta:
     input:
-        op.join(BASE, 'indices', op.splitext(op.basename(DFAM_EMBL_URL))[0] + '.fa')
+        op.join(BASE, 'indices', 'repeatome', op.splitext(op.basename(DFAM_EMBL_URL))[0] + '.fa')
     output:
-        op.join(BASE, 'indices', op.splitext(op.basename(DFAM_EMBL_URL))[0] + '.fa.gz')
+        op.join(BASE, 'indices', 'repeatome', op.splitext(op.basename(DFAM_EMBL_URL))[0] + '.fa.gz')
     threads: NTHREADS
     shell:
         """
@@ -95,19 +145,23 @@ rule get_repeatome_fasta:
     input:
         # op.join(BASE, 'indices', op.basename(DFAM_EMBL_URL))
         # HTTP.remote(DFAM_EMBL_URL, keep_local=True)
-        op.join(BASE, 'indices', op.splitext(op.basename(DFAM_EMBL_URL))[0])
+        op.join(BASE, 'indices', 'repeatome', op.splitext(op.basename(DFAM_EMBL_URL))[0])
     output:
-        temp(op.join(BASE, 'indices', op.splitext(op.basename(DFAM_EMBL_URL))[0] + '.fa'))
+        temp(op.join(BASE, 'indices', 'repeatome',
+                     op.splitext(op.basename(DFAM_EMBL_URL))[0] + '.fa'))
+    # conda:
+    #     "envs/repeats_env.yaml"
     shell:
         """
-        {SEQRET} -sequence {input} -firstonly N -outseq {output}
+        # {SEQRET} -sequence {input} -firstonly N -outseq {output}
+        {BIOPYTHON_CONVERT} {input} embl {output} fasta
         """
 
 rule uncompress_repeatome:
     input:
-        op.join(BASE, 'indices', op.basename(DFAM_EMBL_URL))
+        op.join(BASE, 'indices', 'repeatome', op.basename(DFAM_EMBL_URL))
     output:
-        temp(op.join(BASE, 'indices', op.splitext(op.basename(DFAM_EMBL_URL))[0]))
+        temp(op.join(BASE, 'indices', 'repeatome', op.splitext(op.basename(DFAM_EMBL_URL))[0]))
     threads: NTHREADS
     shell:
         """
@@ -115,36 +169,35 @@ rule uncompress_repeatome:
         """
     
 rule get_repeatome_embl:
-    # or also from dfam
-    # requires hmmer to transform from hmm to fasta % https://www.biostars.org/p/305173/
-    # hmmemit -c DF0000558.hmm > DF0000558.consensus.fasta
-    # input:
-    #     # remote.HTTP(DFAM_EMBL_URL)
-    #     # HTTP.remote(DFAM_EMBL_URL)
     params:
-        url = DFAM_EMBL_URL
+        url = DFAM_EMBL_URL,
+        repeatome_path = op.join(BASE, 'indices', 'repeatome')
     output:
-        temp(op.join(BASE, 'indices', op.basename(DFAM_EMBL_URL)))
+        temp(op.join(BASE, 'indices', 'repeatome', op.basename(DFAM_EMBL_URL)))
     shell:
         """
         curl -L -C - {params.url} -o {output}
         """
         
+
+## hg38 hardcoded
 rule get_genome_fasta:
+    output:
+        op.join(BASE, 'indices', 'genome', op.basename(GENOME_URL))
     params:
         url = GENOME_URL
-    output:
-        op.join(BASE, 'indices', op.basename(GENOME_URL))
     shell:
-        """        
-        curl -L -C - {params.url} -o {output}       
+        """
+        curl -L -C - {params.url} -o {output}
         """
 
+        
 rule get_repeats_gtf:
     params:
-        url = REP_GTF_URL
+        url = REP_GTF_URL,
+        genome_path = op.join(BASE, 'indices', 'genome')
     output:
-        op.join(BASE, 'indices', op.basename(REP_GTF_URL))
+        op.join(BASE, 'indices', 'genome', op.basename(REP_GTF_URL))
     shell:
         """        
         curl -L -C - {params.url} -o {output}
@@ -152,10 +205,20 @@ rule get_repeats_gtf:
         
 rule get_genes_gtf:
     params:
-        url = GTF_URL
+        url = GENES_GTF_URL
     output:
-        op.join(BASE, 'indices', op.basename(GTF_URL))
+        gtf = op.join(BASE, 'indices', 'genome',  op.basename(GENES_GTF_URL))
     shell:
-        """        
-        curl -L -C - {params.url} -o {output}
+        """    
+        curl -L -C - {params.url} -o {output.gtf}
         """
+
+
+# rule structure_outputs:
+#     output:
+#         repeatome = directory(op.join(BASE, 'indices', 'repeatome')),
+#         genome = directory(op.join(BASE, 'indices', 'genome'))
+#     shell:
+#         """
+#         mkdir -p {output.genome} {output.repeatome}
+#         """
