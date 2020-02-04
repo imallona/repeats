@@ -54,3 +54,19 @@ make STAR
 source ~/virtenvs/snakemake/bin/activate
 pip install biopython.convert
 deactivate
+
+
+mkdir -p ~/soft/subread
+cd $_
+wget https://sourceforge.net/projects/subread/files/subread-2.0.0/subread-2.0.0-source.tar.gz
+tar xzvf subread-2.0.0-source.tar.gz
+cd subread-2.0.0-source/src
+make -f Makefile.Linux
+
+
+# alevin (salmon): precompiled binaries
+mkdir -p ~/soft/salmon
+cd $_
+wget https://github.com/COMBINE-lab/salmon/releases/download/v1.1.0/salmon-1.1.0_linux_x86_64.tar.gz
+tar xzvf salmon-1.1.0_linux_x86_64.tar.gz
+mv salmon-latest_linux_x86_64 salmon-1.1.0_linux_x86_64
