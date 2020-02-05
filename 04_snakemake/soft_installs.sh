@@ -70,3 +70,10 @@ cd $_
 wget https://github.com/COMBINE-lab/salmon/releases/download/v1.1.0/salmon-1.1.0_linux_x86_64.tar.gz
 tar xzvf salmon-1.1.0_linux_x86_64.tar.gz
 mv salmon-latest_linux_x86_64 salmon-1.1.0_linux_x86_64
+
+
+# cellranger (precompiled) mind that registration/authentication is required
+mkdir -p ~/soft/cellranger
+cd $_
+curl -o cellranger-3.1.0.tar.gz "http://cf.10xgenomics.com/releases/cell-exp/cellranger-3.1.0.tar.gz?Expires=[snip]=[snip]&Key-Pair-Id=[snip]"
+tar xzvf cellranger-3.1.0.tar.gz

@@ -35,6 +35,8 @@ Folder structure
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
 NTHREADS = 2
+LOCAL_MEM_GB = 100
+
 
 ## @FIXME to be moved to config
 GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
@@ -64,7 +66,7 @@ BIOPYTHON_CONVERT='biopython.convert'
 STAR = '~/soft/star/STAR-2.7.3a/source/STAR'
 FEATURECOUNTS = '~/soft/subread/subread-2.0.0-source/bin/featureCounts'
 SALMON = '~/soft/salmon/salmon-1.1.0_linux_x86_64/bin/salmon'
-
+CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
 
 ## Folder structure start --------------------------------------------------------------------- ##
 
@@ -107,6 +109,7 @@ rule all:
         op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt')
 
 # remeber the readgroup thing!
+#@untested @todo
 rule featurecounts_repeats_genome:
     input:
         bam = 'a',
@@ -124,10 +127,91 @@ rule featurecounts_repeats_genome:
      {bam}  2>&1 > {log}
     """
 
-# rule cell_ranger:
+    
+## Mapping start ------------------------------------------------------------------------------ ##
 
+# rule map_star_naive:
+
+# rule map_alevin:
+
+#@untested @todo
+## fix to take into account the different indices to map agains
+rule map_star_se:
+    input:
+        index = 'todo',
+        fastq = 'todo'
+    output:
+        op.join(BASE, "run/{sample}/{sample}_Aligned.sortedByCoord.out.bam")
+    threads:
+        NTHREADS
+    log:
+        op.join(BASE, 'run/{sample}/{sample}_star.log')
+    benchmark:
+        op.join(BASE, 'run/{sample}/{sample}_star_benchmark.txt')
+    params:
+        path = op.join(BASE, 'run', "{sample}")
+    shell:
+        """
+        {STAR} --genomeDir {params.index} \
+        --readFilesIn {input.fastq} \
+        --runThreadN {threads} \
+        --outFileNamePrefix {params.path} \
+        --outSAMtype BAM SortedByCoordinate \
+        --readFilesCommand {PIGZ} -c"    
+        """
+
+#@untested @todo
+rule run_cell_ranger:
+    input:
+        'todo'
+    params:
+        transcriptome = 'todo',
+        local_mem_gb = LOCAL_MEM_GB
+    threads:
+        NTHREADS
+    shell:
+        """
+        {CELLRANGER} count --id = {sample}_cellranger_5000_cells_expected \
+        --fastqs = {params.sample_folder} \
+        --transcriptome = {params.transcriptome} \
+        --jobmode = local \
+        --localcores = {threads} \
+        --sample = {sample} \
+        --localmem = {params.local_mem_gb} \
+        --expect-cells = 5000 2> tee {log}
+        """
+        
+#@untested @todo
+# -l ISR for both Drop-seq and 10x-v2 chemistry
+# https://salmon.readthedocs.io/en/latest/alevin.html#description-of-important-options
+# tech is either --dropseq / --chromium / --chromiumV3
+rule run_salmon_chromium:
+    input:
+        cb_fastq = 'todo',
+        salmon_idx = 'todo',
+        tgmap = 'todo'
+    output:
+        'todo'
+    params:
+        'todo'
+    shell:
+        """
+        {SALMON} alevin \
+         -l ISR \
+         -1 {input.cb_fastq} \
+         -2 {input.reads_fastq} \
+         --chromium  \
+         -i {input.salmon_index} \
+         -p 10 -o {threads} \
+         --tgMap {input.tgmap}
+        """
+
+## Mapping end -------------------------------------------------------------------------------- ##
 
 ## Indexing start ----------------------------------------------------------------------------- ##
+
+# rule retrieve_pre_indexed_cell_ranger:
+#     #todo
 
 rule index_repeats_salmon_no_decoy:
     input:
@@ -180,7 +264,6 @@ rule index_genes_salmon_no_decoy:
            -t {input.transcripts} -i {params.path} -k {params.k})  2> {log}
 
         """
-    
 
 rule index_repeats_genome_star:
     params:
