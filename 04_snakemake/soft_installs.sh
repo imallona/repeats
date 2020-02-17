@@ -77,3 +77,16 @@ mkdir -p ~/soft/cellranger
 cd $_
 curl -o cellranger-3.1.0.tar.gz "http://cf.10xgenomics.com/releases/cell-exp/cellranger-3.1.0.tar.gz?Expires=[snip]=[snip]&Key-Pair-Id=[snip]"
 tar xzvf cellranger-3.1.0.tar.gz
+
+
+# bioawk for salmon
+mkdir -p ~/soft
+cd $_
+
+git clone git://github.com/lh3/bioawk.git
+cd bioawk
+
+sudo apt-get install bison flex
+
+make
+
