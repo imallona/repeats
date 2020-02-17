@@ -22,6 +22,7 @@ Folder structure
 .... salmon
 ...... transcriptome (salmon)
 ...... repeatome (salmon)
+.... cellranger
 .. conda
 .. runs
 .... run_name
@@ -34,7 +35,7 @@ Folder structure
 
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
-NTHREADS = 2
+NTHREADS = 20
 LOCAL_MEM_GB = 100
 
 
@@ -106,26 +107,27 @@ rule all:
         op.join(BASE, 'indices', 'salmon', 'genes_salmon', 'ref_k31_fixed.fa'),
         op.join(BASE, 'indices', 'salmon', 'repeats_salmon', 'ref_k31_fixed.fa'),
         op.join(BASE, 'indices', 'star', 'repeatome', 'chrName.txt'),
-        op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt')
+        op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt')#,
+        # op.join(BASE, 'runs', '5k_pbmc_v3_cellranger', 'outs', 'web_summary.html')
 
-# remeber the readgroup thing!
-#@untested @todo
-rule featurecounts_repeats_genome:
-    input:
-        bam = 'a',
-        gtf = 'b'
-    output:
-        counts  = 'c'
-    log : 'd'
-    shell: """
-    {FEATURECOUNTS} -T {threads} \
-     -t exon \
-     -g gene_id \
-     --byReadGroup \
-     -a "$GTF" \
-     -o  {output.counts}
-     {bam}  2>&1 > {log}
-    """
+# # remeber the readgroup thing!
+# #@untested @todo
+# rule featurecounts_repeats_genome:
+#     input:
+#         bam = 'todo',
+#         gtf = 'todo'
+#     output:
+#         counts  = 'todo'
+#     log : 'd'
+#     shell: """
+#     {FEATURECOUNTS} -T {threads} \
+#      -t exon \
+#      -g gene_id \
+#      --byReadGroup \
+#      -a "$GTF" \
+#      -o  {output.counts}
+#      {bam}  2>&1 > {log}
+#     """
 
     
 ## Mapping start ------------------------------------------------------------------------------ ##
@@ -134,79 +136,135 @@ rule featurecounts_repeats_genome:
 
 # rule map_alevin:
 
-#@untested @todo
-## fix to take into account the different indices to map agains
-rule map_star_se:
-    input:
-        index = 'todo',
-        fastq = 'todo'
-    output:
-        op.join(BASE, "run/{sample}/{sample}_Aligned.sortedByCoord.out.bam")
-    threads:
-        NTHREADS
-    log:
-        op.join(BASE, 'run/{sample}/{sample}_star.log')
-    benchmark:
-        op.join(BASE, 'run/{sample}/{sample}_star_benchmark.txt')
-    params:
-        path = op.join(BASE, 'run', "{sample}")
-    shell:
-        """
-        {STAR} --genomeDir {params.index} \
-        --readFilesIn {input.fastq} \
-        --runThreadN {threads} \
-        --outFileNamePrefix {params.path} \
-        --outSAMtype BAM SortedByCoordinate \
-        --readFilesCommand {PIGZ} -c"    
-        """
+# #@untested @todo
+# ## fix to take into account the different indices to map against
+# rule map_star_se:
+#     input:
+#         index = 'todo',
+#         fastq = 'todo'
+#     output:
+#         op.join(BASE, "run/{sample}/{sample}_Aligned.sortedByCoord.out.bam")
+#     threads:
+#         NTHREADS
+#     log:
+#         op.join(BASE, 'run/{sample}/{sample}_star.log')
+#     benchmark:
+#         op.join(BASE, 'run/{sample}/{sample}_star_benchmark.txt')
+#     params:
+#         path = op.join(BASE, 'run', "{sample}")
+#     shell:
+#         """
+#         {STAR} --genomeDir {params.index} \
+#         --readFilesIn {input.fastq} \
+#         --runThreadN {threads} \
+#         --outFileNamePrefix {params.path} \
+#         --outSAMtype BAM SortedByCoordinate \
+#         --readFilesCommand {PIGZ} -c"    
+#         """
 
 #@untested @todo
 rule run_cell_ranger:
     input:
-        'todo'
+        fastqs_path = op.join(BASE, 'data', 'pbmc_v3', '5k_pbmc_v3_fastqs'),
+        transcriptome = op.join(BASE, 'indices', 'cellranger',
+                                'refdata-cellranger-GRCh38-3.0.0')
     params:
-        transcriptome = 'todo',
-        local_mem_gb = LOCAL_MEM_GB
+        sample_name = '5k_pbmc_v3',
+        local_mem_gb = LOCAL_MEM_GB,
+        processing_path = op.join(BASE, 'runs')
+    output:
+        op.join(BASE, 'runs', '5k_pbmc_v3_cellranger', 'outs', 'web_summary.html')
     threads:
         NTHREADS
+    log:
+        op.join(BASE, 'runs', '5k_pbmc_v3_cellranger', 'run.log')
     shell:
         """
-        {CELLRANGER} count --id = {sample}_cellranger_5000_cells_expected \
-        --fastqs = {params.sample_folder} \
-        --transcriptome = {params.transcriptome} \
-        --jobmode = local \
-        --localcores = {threads} \
-        --sample = {sample} \
-        --localmem = {params.local_mem_gb} \
-        --expect-cells = 5000 2> tee {log}
+        mkdir -p {params.processing_path}
+        cd {params.processing_path}
+        
+        {CELLRANGER} count --id={params.sample_name}_cellranger \
+          --fastqs={input.fastqs_path} \
+          --transcriptome={input.transcriptome} \
+          --jobmode=local \
+          --localcores={threads} \
+          --sample={params.sample_name} \
+          --localmem={params.local_mem_gb} \
+          --expect-cells=5000
         """
         
-#@untested @todo
-# -l ISR for both Drop-seq and 10x-v2 chemistry
-# https://salmon.readthedocs.io/en/latest/alevin.html#description-of-important-options
-# tech is either --dropseq / --chromium / --chromiumV3
-rule run_salmon_chromium:
-    input:
-        cb_fastq = 'todo',
-        salmon_idx = 'todo',
-        tgmap = 'todo'
-    output:
-        'todo'
-    params:
-        'todo'
-    shell:
-        """
-        {SALMON} alevin \
-         -l ISR \
-         -1 {input.cb_fastq} \
-         -2 {input.reads_fastq} \
-         --chromium  \
-         -i {input.salmon_index} \
-         -p 10 -o {threads} \
-         --tgMap {input.tgmap}
-        """
+# #@untested @todo
+# # -l ISR for both Drop-seq and 10x-v2 chemistry
+# # https://salmon.readthedocs.io/en/latest/alevin.html#description-of-important-options
+# # tech is either --dropseq / --chromium / --chromiumV3
+# # beware of the -keepduplicates
+# rule run_salmon_chromium:
+#     input:
+#         cb_fastq = 'todo',
+#         salmon_idx = 'todo',
+#         tgmap = 'todo'
+#     output:
+#         'todo'
+#     params:
+#         'todo'
+#     shell:
+#         """
+#         {SALMON} alevin \
+#          -l ISR \
+#          -1 {input.cb_fastq} \
+#          -2 {input.reads_fastq} \
+#          --chromium  \
+#          -i {input.salmon_index} \
+#          -p 10 -o {threads} \
+#          --tgMap {input.tgmap}
+#         """
 
 ## Mapping end -------------------------------------------------------------------------------- ##
+
+
+## Data retrieval start ----------------------------------------------------------------------- ##
+
+## @todo move to indices retrieval
+rule get_cellranger_grch38_genome:
+    params:
+        url = 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-GRCh38-3.0.0.tar.gz'
+    output:
+        path = op.join(BASE, 'indices', 'cellranger'),
+        fn = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0.tar.gz'),
+        uncompressed = op.join(BASE, 'indices', 'cellranger',
+                               'refdata-cellranger-GRCh38-3.0.0', 'reference.json')
+    shell:
+        """    
+        mkdir -p {output.path}
+        cd {output.path}
+        curl -s -L -C - {params.url} -O {output.fn}
+        tar xzvf {output.fn}
+        """
+        
+## check if untar is needed @todo
+rule get_pbmc_v3:
+    params:
+        url = 'http://s3-us-west-2.amazonaws.com/10x.files/samples/cell-exp/3.0.2/5k_pbmc_v3/5k_pbmc_v3_fastqs.tar'
+    output:
+        path = op.join(BASE, 'data', 'pbmc_v3'),
+        fn = op.join(BASE, 'data', 'pbmc_v3', '5k_pbmc_v3_fastqs.tar'),
+        uncompressed =  op.join(BASE, 'data', 'pbmc_v3', '5k_pbmc_v3_fastqs',
+                                '5k_pbmc_v3_S1_L001_I1_001.fastq.gz')
+    shell:
+        """    
+        mkdir -p {output.path}
+        cd {output.path}
+        curl -s -L -C - {params.url} -O {output.fn}
+        tar xvf {output.fn}
+        """
+        
+
+
+## chromium example (from preliminary data)
+
+
+## Data retrieval end ------------------------------------------------------------------------- ##
+
 
 ## Indexing start ----------------------------------------------------------------------------- ##
 
