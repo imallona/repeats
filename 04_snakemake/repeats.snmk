@@ -105,12 +105,11 @@ rule all:
     input:
         op.join(BASE, 'indices', 'bowtie', 'repeatome',
                 op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.1.ebwt',
-        op.join(BASE, 'indices', 'salmon', 'genes_salmon', 'ref_k31_fixed.fa'),
-        op.join(BASE, 'indices', 'salmon', 'repeats_salmon', 'ref_k31_fixed.fa'),
         op.join(BASE, 'indices', 'star', 'repeatome', 'chrName.txt'),
         op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt'),
         op.join(BASE, 'runs', '5k_pbmc_v3_cellranger', 'outs', 'web_summary.html'),
-        op.join(BASE, 'runs', '5k_pbmc_v3_salmon', 'quants_mat.gz')
+        op.join(BASE, 'runs', '5k_pbmc_v3_salmon', 'quants_mat.gz'),
+        op.join(BASE, 'indices', 'salmon', 'genes_salmon', 'txp2gene.tsv')
 
 # # remeber the readgroup thing!
 # #@untested @todo
@@ -196,6 +195,8 @@ rule run_cell_ranger:
         """
 
 # from https://gist.github.com/k3yavi/c501705ed2d29b12b0d10cf78b3ed001
+## and https://github.com/COMBINE-lab/salmon/issues/336 to get the `attribute` instead of
+##   the group
 rule get_txp2gene_gene:
     input:
         genes_gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
@@ -203,11 +204,17 @@ rule get_txp2gene_gene:
         op.join(BASE, 'indices', 'salmon', 'genes_salmon', 'txp2gene.tsv')
     shell:
          """
-         {BIOAWK} -c gff \
-            '$feature=="transcript" {print $group}' \
-            <(gunzip -c {input.genes_gtf}) | \
-            awk -F ' ' '{print substr($4,2,length($4)-3) "\t" substr($2,2,length($2)-3)}' - \
-            > {output}
+         # {BIOAWK} -c gff \
+         #    '$feature=="transcript" {{print $group}}' \
+         #    <(gunzip -c {input.genes_gtf}) | \
+         #    awk -F ' ' '{{print substr($4,2,length($4)-3) "\t" substr($2,2,length($2)-3)}}' - \
+         #    > {output}
+
+
+         {BIOAWK} -c gff '$feature=="transcript" {{print $attribute}}' \
+         <(gunzip -c {input.genes_gtf}) | \
+         awk -F ' ' '{{print substr($6,2,length($6)-3)"." substr($8,2,length($8)-3)"\t" substr($2,2,length($2)-3)"." substr($4,2,length($4)-3)}}' - \
+         > {output}
          """
 
 
@@ -245,16 +252,16 @@ rule run_salmon_chromium_genes:
         op.join(BASE, 'runs', '5k_pbmc_v3_salmon', 'run_salmon_chromium.log')
     shell:
         """
-        mkdir -p {output.processing_path}
-        cd {output.processing_path}
+        mkdir -p {params.processing_path}
+        cd {params.processing_path}
 
         ({SALMON} alevin \
          -l ISR \
-         -1 {input.cb_fastq} \
-         -2 {input.reads_fastq} \
+         -1 {input.cb_fq1} {input.cb_fq2} {input.cb_fq3} {input.cb_fq4} \
+         -2 {input.r_fq1} {input.r_fq2} {input.r_fq3} {input.r_fq4} \
          --chromiumV3  \
          --expectCells 5000 \
-         -i {params.salmon_index} \
+         -i {params.salmon_idx} \
          -p 10 -o {threads} \
          --tgMap {input.tgmap} ) 2> {log}
 
@@ -319,7 +326,6 @@ rule index_repeats_salmon_no_decoy:
                           op.splitext(op.basename(DFAM_EMBL_URL))[0] + '.fa')
     output:
         op.join(BASE, 'indices', 'salmon', 'repeats_salmon', 'duplicate_clusters.tsv'),
-        op.join(BASE, 'indices', 'salmon', 'repeats_salmon', 'ref_k31_fixed.fa'),
         op.join(BASE, 'indices', 'salmon', 'repeats_salmon', 'complete_ref_lens.bin')
     params:
         path = op.join(BASE, 'indices', 'salmon', 'repeats_salmon'),
@@ -332,7 +338,7 @@ rule index_repeats_salmon_no_decoy:
         """
         mkdir -p {params.path}
         
-        ({SALMON} -p {threads} \
+        ({SALMON} index -p {threads} \
           index -t {input.repeats} -i {params.path} -k {params.k}) 2> {log}
         """
 
@@ -354,13 +360,12 @@ rule index_genes_salmon_no_decoy:
         NTHREADS
     output:
         op.join(BASE, 'indices', 'salmon', 'genes_salmon', 'duplicate_clusters.tsv'),
-        op.join(BASE, 'indices', 'salmon', 'genes_salmon', 'ref_k31_fixed.fa'),
         op.join(BASE, 'indices', 'salmon', 'genes_salmon', 'complete_ref_lens.bin')
     shell:        
         """
         mkdir -p {params.path}
         
-        ({SALMON} -p {threads} index \
+        ({SALMON} index -p {threads} index \
            -t {input.transcripts} -i {params.path} -k {params.k})  2> {log}
 
         touch -c {params.path}
@@ -380,15 +385,18 @@ rule index_repeats_genome_star:
     output:
         op.join(BASE, 'indices', 'star', 'repeatome', 'chrName.txt'),
         op.join(BASE, 'indices', 'star', 'repeatome', 'chrStart.txt'),
-        op.join(BASE, 'indices', 'star', 'repeatome', 'chrNameLength.txt')
+        op.join(BASE, 'indices', 'star', 'repeatome', 'chrNameLength.txt'),
+        gtf_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(REP_GTF_URL))[0]))
     shell:
         """
         mkdir -p {params.genome_dir}
+
+        {PIGZ} --decompress -p {threads} {input.gtf}
         
         ({STAR}  \
         --runMode genomeGenerate \
         --runThreadN {threads} \
-        --sjdbGTFfile {input.gtf} \
+        --sjdbGTFfile {output.gtf_decomp} \
         --genomeDir {params.genome_dir} \
         --genomeFastaFiles {input.fa}) 2> {log}
 
@@ -404,7 +412,9 @@ rule index_genes_genome_star:
     output:    
         op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt'),
         op.join(BASE, 'indices', 'star', 'transcriptome', 'chrStart.txt'),
-        op.join(BASE, 'indices', 'star', 'transcriptome', 'chrNameLength.txt')
+        op.join(BASE, 'indices', 'star', 'transcriptome', 'chrNameLength.txt'),
+        gtf_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENES_GTF_URL))[0]))
+
     log:
         op.join(BASE, 'indices', 'star', 'transcriptome', 'genes_star_index.log')
     threads:
@@ -413,10 +423,12 @@ rule index_genes_genome_star:
         """
         mkdir -p {params.genome_dir}
 
+        {PIGZ} --decompress -p {threads} {input.gtf}
+
         ({STAR}  \
         --runMode genomeGenerate \
         --runThreadN {threads} \
-        --sjdbGTFfile {input.gtf} \
+        --sjdbGTFfile {output.gtf_decomp} \
         --genomeDir {params.genome_dir} \
         --genomeFastaFiles {input.fa}) 2> {log}
 

@@ -52,7 +52,11 @@ make STAR
 
 
 source ~/virtenvs/snakemake/bin/activate
-pip install biopython.convert
+
+sudo apt-get install libsqlite3-dev
+pip3 install pysqlite3
+pip3 install biopython.convert
+biopython.convert -v
 deactivate
 
 
