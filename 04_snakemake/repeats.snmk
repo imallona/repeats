@@ -41,10 +41,14 @@ LOCAL_MEM_GB = 100
 
 ## @FIXME to be moved to config
 GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
-GENES_GTF_URL =  'ftp://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz'
+# GENES_GTF_URL =  'ftp://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz'
+GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
 REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
 DFAM_EMBL_URL = 'https://www.dfam.org/releases/current/families/Dfam.embl.gz'
-TRANSCRIPTOME_URL= 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh38.cdna.all.fa.gz'
+# TRANSCRIPTOME_URL= 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh38.cdna.all.fa.gz'
+TRANSCRIPTOME_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.pc_transcripts.fa.gz'
+
+CELLRANGER_HG38_URL = 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-GRCh38-3.0.0.tar.gz'
 
 ## @FIXME to be moved to config
 
@@ -211,10 +215,13 @@ rule get_txp2gene_gene:
          #    > {output}
 
 
-         {BIOAWK} -c gff '$feature=="transcript" {{print $attribute}}' \
-         <(gunzip -c {input.genes_gtf}) | \
-         awk -F ' ' '{{print substr($6,2,length($6)-3)"." substr($8,2,length($8)-3)"\t" substr($2,2,length($2)-3)"." substr($4,2,length($4)-3)}}' - \
-         > {output}
+         # {BIOAWK} -c gff '$feature=="transcript" {{print $attribute}}' \
+         # <(gunzip -c {input.genes_gtf}) | \
+         # awk -F ' ' '{{print substr($6,2,length($6)-3)"." substr($8,2,length($8)-3)"\t" substr($2,2,length($2)-3)"." substr($4,2,length($4)-3)}}' - \
+         # > {output}
+
+         {PIGZ} --decompress -p {threads} -c {input.genes_gtf} | grep transcript | awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+
          """
 
 
@@ -350,7 +357,7 @@ rule index_repeats_salmon_no_decoy:
 # **NOTE:** Salmon version [v1.0](https://github.com/COMBINE-lab/salmon/releases/tag/v1.0.0) can directly index the genome and transcriptome and doesn't mandates to run the `generateDecoyTranscriptome` script, however it's still backward compatible. Please checkout [this](https://combine-lab.github.io/alevin-tutorial/2019/selective-alignment/) tutorial on how to run salmon with full genome + transcriptome without the annotation.
 rule index_genes_salmon_no_decoy:
     input:
-        transcripts = op.join(BASE, 'annotations', op.basename(TRANSCRIPTOME_URL))
+        transcripts = op.join(BASE, 'annotation', op.basename(TRANSCRIPTOME_URL))
     params:
         k = 31,
         path = op.join(BASE, 'indices', 'salmon', 'genes_salmon')
@@ -499,12 +506,14 @@ rule get_transcriptome_cdna:
     params:
         url = TRANSCRIPTOME_URL
     output:
-        fa = op.join(BASE, 'annotations', op.basename(TRANSCRIPTOME_URL))
+        fa = op.join(BASE, 'annotation', op.basename(TRANSCRIPTOME_URL))
     shell:
         """    
         curl -s -L -C - {params.url} -o {output.fa}
         """   
 rule get_repeatome_fasta:
+    priority:
+        99
     input:
         # op.join(BASE, 'indices', op.basename(DFAM_EMBL_URL))
         # HTTP.remote(DFAM_EMBL_URL, keep_local=True)
@@ -531,6 +540,8 @@ rule uncompress_repeatome:
         """
     
 rule get_repeatome_embl:
+    priority:
+        100
     params:
         url = DFAM_EMBL_URL
     output:
@@ -542,6 +553,8 @@ rule get_repeatome_embl:
 
 ## hg38 hardcoded
 rule get_genome_fasta:
+    priority:
+        100
     output:
         op.join(BASE, 'annotation', op.basename(GENOME_URL))
     params:
@@ -552,6 +565,8 @@ rule get_genome_fasta:
         """
       
 rule get_repeats_gtf:
+    priority:
+        100
     params:
         url = REP_GTF_URL,
         genome_path = op.join(BASE, 'annotation')
@@ -563,6 +578,8 @@ rule get_repeats_gtf:
         """
         
 rule get_genes_gtf:
+    priority:
+        100
     params:
         url = GENES_GTF_URL
     output:
@@ -571,5 +588,23 @@ rule get_genes_gtf:
         """    
         curl -s -L -C - {params.url} -o {output.gtf}
         """
-      
+
+rule get_cell_ranger_data:
+    priority:
+        100
+    params:
+        url = CELLRANGER_HG38_URL,
+        path = op.join(BASE, 'indices', 'cellranger')
+    output:
+        cellranger_gz = op.join(BASE, 'indices', 'cellranger', op.basename(CELLRANGER_HG38_URL)),
+        uncomp = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0', 'reference.json')
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+
+        curl -s -L -C - {params.url} -o {output.gtf}
+        
+        tar xzvf {output.cellranger_gz}
+        """
 ## Genome, transcriptome and repeatome retrieval end   ---------------------------------------- ##
