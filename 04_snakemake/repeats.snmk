@@ -73,6 +73,7 @@ FEATURECOUNTS = '~/soft/subread/subread-2.0.0-source/bin/featureCounts'
 SALMON = '~/soft/salmon/salmon-1.1.0_linux_x86_64/bin/salmon'
 CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
 BIOAWK = '~/soft/bioawk/bioawk'
+BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
 
 ## Folder structure start --------------------------------------------------------------------- ##
 
@@ -107,15 +108,18 @@ for item in ['bowtie', 'star', 'salmon']:
          
 rule all:
     input:
-        op.join(BASE, 'indices', 'bowtie', 'repeatome',
-                op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.1.ebwt',
-        op.join(BASE, 'indices', 'star', 'repeatome', 'chrName.txt'),
-        op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt'),
-        op.join(BASE, 'runs', '5k_pbmc_v3_cellranger', 'outs', 'web_summary.html'),
-        op.join(BASE, 'runs', '5k_pbmc_v3_salmon_genes', 'quants_mat.gz'),
-        op.join(BASE, 'runs', '5k_pbmc_v3_salmon_repeats', 'quants_mat.gz'),                
-        op.join(BASE, 'indices', 'salmon', 'genes_salmon', 'txp2gene.tsv'),
-        op.join(BASE, 'indices', 'salmon', 'repeats_salmon', 'txp2gene.tsv')
+        # op.join(BASE, 'indices', 'bowtie', 'repeatome',
+        #         op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.1.ebwt',
+        # op.join(BASE, 'indices', 'star', 'repeatome', 'chrName.txt'),
+        # op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt'),
+        # # op.join(BASE, 'runs', '5k_pbmc_v3_cellranger', 'outs', 'web_summary.html'),
+        # op.join(BASE, 'runs', '5k_pbmc_v3_salmon_genes', 'quants_mat.gz'),
+        # op.join(BASE, 'runs', '5k_pbmc_v3_salmon_repeats', 'quants_mat.gz'),                
+        # op.join(BASE, 'indices', 'salmon', 'genes_salmon', 'txp2gene.tsv'),
+        # op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
+        # op.join(BASE, 'indices', 'salmon', 'repeats_salmon', 'txp2gene.tsv'),
+        # op.join(BASE, 'annotation', op.splitext(op.basename(DFAM_EMBL_URL))[0] + '.fa.gz'),
+        op.join(BASE, 'annotation', 'repeatome_from_' + op.basename(REP_GTF_URL))
 
 # # remeber the readgroup thing!
 # #@untested @todo
@@ -483,6 +487,8 @@ rule index_repeats_genome_star:
         --genomeDir {params.genome_dir} \
         --genomeFastaFiles {input.fa}) 2> {log}
 
+        {PIGZ} --compress -p {threads} {input.gtf}
+
         touch {output}
         """
 
@@ -514,6 +520,8 @@ rule index_genes_genome_star:
         --sjdbGTFfile {output.gtf_decomp} \
         --genomeDir {params.genome_dir} \
         --genomeFastaFiles {input.fa}) 2> {log}
+
+        {PIGZ} --compress -p {threads} {input.gtf}
 
         touch {output}
         """
@@ -622,9 +630,29 @@ rule get_repeatome_embl:
         url = DFAM_EMBL_URL
     output:
         temp(op.join(BASE, 'annotation', op.basename(DFAM_EMBL_URL)))
+
     shell:
         """
         curl -s -L -C - {params.url} -o {output}
+        """
+
+rule extract_repeatome_from_gtf:
+    priority: 100
+    input:
+        genome = op.join(BASE, 'annotation', op.basename(GENOME_URL)),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    output:
+        op.join(BASE, 'annotation', 'repeatome_from_' + op.basename(REP_GTF_URL))
+    threads:
+        NTHREADS
+    shell:
+        """
+        {PIGZ} --decompress -p {threads} {input.genome}
+
+        {BEDTOOLS} getfasta -s -fi {input.genome} -bed {input.gtf} -fo {output}
+
+        {PIGZ} --compress -p {threads} {input.genome}
+        
         """
 
 ## hg38 hardcoded
