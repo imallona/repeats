@@ -116,8 +116,8 @@ rule all:
         op.join(BASE, 'indices', 'star', 'repeatome', 'chrName.txt'),
         op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt'),
         # op.join(BASE, 'runs', '5k_pbmc_v3_cellranger', 'outs', 'web_summary.html'),
-        op.join(BASE, 'runs', '5k_pbmc_v3_salmon_genes', 'quants_mat.gz'),
-        op.join(BASE, 'runs', '5k_pbmc_v3_salmon_repeats', 'quants_mat.gz'),                
+        op.join(BASE, 'runs', '5k_pbmc_v3_salmon_genes', 'alevin', 'quants_mat.gz'),
+        op.join(BASE, 'runs', '5k_pbmc_v3_salmon_repeats', 'alevin', 'quants_mat.gz'),                
         op.join(BASE, 'indices', 'salmon', 'genes_salmon', 'txp2gene.tsv'),
         op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
         op.join(BASE, 'indices', 'salmon', 'repeats_salmon', 'txp2gene.tsv'),
@@ -277,7 +277,7 @@ rule run_salmon_chromium_genes:
         tgmap = op.join(BASE, 'indices', 'salmon', 'genes_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', 'genes_salmon', 'duplicate_clusters.tsv')
     output:
-        op.join(BASE, 'runs', '5k_pbmc_v3_salmon_genes', 'quants_mat.gz')
+        op.join(BASE, 'runs', '5k_pbmc_v3_salmon_genes', 'alevin', 'quants_mat.gz')
     threads:
         NTHREADS
     params:
@@ -330,7 +330,7 @@ rule run_salmon_chromium_repeats:
         tgmap = op.join(BASE, 'indices', 'salmon', 'repeats_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', 'repeats_salmon', 'duplicate_clusters.tsv')
     output:
-        op.join(BASE, 'runs', '5k_pbmc_v3_salmon_repeats', 'quants_mat.gz')
+        op.join(BASE, 'runs', '5k_pbmc_v3_salmon_repeats', 'alevin', 'quants_mat.gz')
     params:
         processing_path = op.join(BASE, 'runs', '5k_pbmc_v3_salmon_repeats'),
         salmon_idx = op.join(BASE, 'indices', 'salmon', 'repeats_salmon')
@@ -489,7 +489,7 @@ rule index_repeats_genome_star:
         --genomeDir {params.genome_dir} \
         --genomeFastaFiles {input.fa}) 2> {log}
 
-        {PIGZ} --compress -p {threads} {input.gtf}
+        {PIGZ} -p {threads} {input.gtf}
 
         touch {output}
         """
@@ -572,7 +572,7 @@ rule uncompress_genome:
         temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0]))
     shell:
         """
-        {PIGZ} --decompress -p {threads}  {input.fagz}
+        {PIGZ} -k --decompress -p {threads}  {input.fagz}
         """
         
 rule compress_repeatome_fasta:
@@ -641,7 +641,7 @@ rule get_repeatome_embl:
 rule extract_repeatome_from_gtf:
     priority: 100
     input:
-        genome = op.join(BASE, 'annotation', op.basename(GENOME_URL)),
+        genome = op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0]),
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))        
     output:
         fasta = op.join(BASE, 'annotation', 'repeatome_from_' + op.basename(REP_GTF_URL)),
@@ -652,7 +652,7 @@ rule extract_repeatome_from_gtf:
         NTHREADS
     shell:
         """
-        {PIGZ} --decompress -p {threads} {input.genome}
+        ## {PIGZ} --decompress -p {threads} {input.genome}
 
         ## faking the GTF to describe the instance and not the 'exon'
 
@@ -661,7 +661,7 @@ rule extract_repeatome_from_gtf:
         
         {BEDTOOLS} getfasta -s -fi {input.genome} -bed {output.gtftemp} -fo {output.fasta}
 
-        {PIGZ} --compress -p {threads} {input.genome}
+        {PIGZ} -p {threads} {input.genome}
         
         """
 
