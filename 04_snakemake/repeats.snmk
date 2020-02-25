@@ -9,6 +9,12 @@ import os.path as op
 from glob import glob
 
 print("""
+salmon/alevin on repeats generate very big directories with the 
+twopaco_tmp, please avoid running rules related to them
+
+""")
+
+print("""
 Folder structure
 
 .. config
@@ -111,16 +117,18 @@ for item in ['bowtie', 'star', 'salmon']:
          
 rule all:
     input:
+        # op.join(BASE, 'indices', 'bowtie', 'repeatome',
+        #         op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.1.ebwt',
         op.join(BASE, 'indices', 'bowtie', 'repeatome',
-                op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.1.ebwt',
+                op.splitext(op.basename(REP_GTF_URL))[0] + '.fa' + '.1.ebwt'),
         op.join(BASE, 'indices', 'star', 'repeatome', 'chrName.txt'),
         op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt'),
         # op.join(BASE, 'runs', '5k_pbmc_v3_cellranger', 'outs', 'web_summary.html'),
         op.join(BASE, 'runs', '5k_pbmc_v3_salmon_genes', 'alevin', 'quants_mat.gz'),
-        op.join(BASE, 'runs', '5k_pbmc_v3_salmon_repeats', 'alevin', 'quants_mat.gz'), 
+        # op.join(BASE, 'runs', '5k_pbmc_v3_salmon_repeats', 'alevin', 'quants_mat.gz'), 
         op.join(BASE, 'indices', 'salmon', 'genes_salmon', 'txp2gene.tsv'),
         op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
-        op.join(BASE, 'indices', 'salmon', 'repeats_salmon', 'txp2gene.tsv'),
+        # op.join(BASE, 'indices', 'salmon', 'repeats_salmon', 'txp2gene.tsv'),
         # op.join(BASE, 'annotation', op.splitext(op.basename(DFAM_EMBL_URL))[0] + '.fa.gz'),
         op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]
                 + '.fa.gz')
@@ -536,7 +544,7 @@ rule index_genes_genome_star:
 rule bowtie_index_repeatome_bowtie:
     input:
         fa = op.join(BASE, 'annotation', 'repeatome_from_' +
-                     op.splitext(op.basename(REP_GTF_URL))[0] + 'fa.gz')
+                     op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.gz')
     threads: NTHREADS
     params:
         label = op.join(BASE, 'indices', 'bowtie', 'repeatome',
@@ -546,7 +554,7 @@ rule bowtie_index_repeatome_bowtie:
         op.join(BASE, 'indices', 'bowtie', 'repeatome', 'bowtie_repeatome.log')
     output:
         fa_uncomp = temp(op.join(BASE, 'annotation', 'repeatome_from_' +
-                                 op.splitext(op.basename(REP_GTF_URL))[0] + 'fa')),
+                                 op.splitext(op.basename(REP_GTF_URL))[0] + '.fa')),
         o1 = op.join(BASE, 'indices', 'bowtie', 'repeatome',
                      op.splitext(op.basename(REP_GTF_URL))[0]
                      + '.fa' + '.1.ebwt') #,
@@ -691,7 +699,9 @@ rule extract_repeatome_from_gtf:
     output:
         fasta = temp(op.join(BASE, 'annotation', 'repeatome_from_' +
                              op.splitext(op.basename(REP_GTF_URL))[0]) + '.fa'),
-        gtftemp = temp(op.join(BASE, 'annotation', 'temp_' + op.basename(REP_GTF_URL))),
+        # tempfasta = temp(op.join(BASE, 'annotation', 'temp_repeatome_from_' +
+        #                          op.splitext(op.basename(REP_GTF_URL))[0]) + '.fa'),
+        gtftemp = op.join(BASE, 'annotation', 'temp_' + op.basename(REP_GTF_URL)),
         genometemp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])),
         fastagz = op.join(BASE, 'annotation', 'repeatome_from_' +
                              op.splitext(op.basename(REP_GTF_URL))[0]) + '.fa.gz'
@@ -710,9 +720,12 @@ rule extract_repeatome_from_gtf:
         {Rscript} {params.rscript} -g {input.gtf} | {PIGZ} -c -p {threads} > \
           {output.gtftemp}
         
-        {BEDTOOLS} getfasta -s -fi {output.genometemp} -bed {output.gtftemp} -fo {output.fasta}
+        {BEDTOOLS} getfasta -name -s -fi {output.genometemp} \
+          -bed {output.gtftemp} -fo {output.fasta}
 
-        {PIGZ} -p {threads} {output.fasta} -c > {output.fastagz}
+        ## remove the coordinates appended by bedtools!
+        sed 's/:/ /g' {output.fasta} | cut -f1 -d" " | \
+          {PIGZ}  -p {threads} -c > {output.fastagz}
         
         """
 
