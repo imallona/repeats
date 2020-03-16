@@ -120,7 +120,7 @@ rule all:
         # op.join(BASE, 'indices', 'bowtie', 'repeatome',
         #         op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.1.ebwt',
         op.join(BASE, 'indices', 'bowtie', 'repeatome',
-                op.splitext(op.basename(REP_GTF_URL))[0] + '.fa' + '.1.ebwt'),
+                op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt'),
         op.join(BASE, 'indices', 'star', 'repeatome', 'chrName.txt'),
         op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt'),
         # op.join(BASE, 'runs', '5k_pbmc_v3_cellranger', 'outs', 'web_summary.html'),
@@ -185,6 +185,25 @@ rule all:
 #         --readFilesCommand {PIGZ} -c"    
 #         """
 
+
+#@todo untested
+rule run_bowtie_repeatome:
+    input:
+        ''
+    output:
+        ''
+    threads :
+        NTHREADS
+    shell:
+        """
+        ( {PIGZ} {input.fastq} {BOWTIE} -q \
+          -v 2 \
+          -k 2 --best --strata \
+          --chunkmbs 128 - | {input.repeatome} {input}
+        """
+
+
+    
 #@untested @todo
 rule run_cell_ranger:
     input:
@@ -548,7 +567,7 @@ rule bowtie_index_repeatome_bowtie:
     threads: NTHREADS
     params:
         label = op.join(BASE, 'indices', 'bowtie', 'repeatome',
-                        op.splitext(op.basename(DFAM_EMBL_URL))[0]),
+                        op.splitext(op.basename(REP_GTF_URL))[0]),
         path =  op.join(BASE, 'indices', 'bowtie', 'repeatome')
     log:
         op.join(BASE, 'indices', 'bowtie', 'repeatome', 'bowtie_repeatome.log')
@@ -556,8 +575,7 @@ rule bowtie_index_repeatome_bowtie:
         fa_uncomp = temp(op.join(BASE, 'annotation', 'repeatome_from_' +
                                  op.splitext(op.basename(REP_GTF_URL))[0] + '.fa')),
         o1 = op.join(BASE, 'indices', 'bowtie', 'repeatome',
-                     op.splitext(op.basename(REP_GTF_URL))[0]
-                     + '.fa' + '.1.ebwt') #,
+                     op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt') #,
         # o1 = op.join(BASE, 'indices', 'bowtie', 'repeatome',
         #              op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.1.ebwt',
         # o2 = op.join(BASE, 'indices', 'bowtie', 'repeatome',
