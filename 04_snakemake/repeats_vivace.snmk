@@ -100,7 +100,29 @@ for item in ['bowtie', 'star', 'salmon']:
    except OSError as err:
       print(err)
 
+# rule all:
+# rule featurecounts_repeats_repeatome:
+# rule run_bowtie_repeatome:
+# rule run_cell_ranger:
+# rule get_txp2gene_gene:
+# rule get_txp2gene_repeat:
+# rule run_salmon_chromium_genes:
+# rule run_salmon_chromium_repeats:
+# rule get_cellranger_grch38_genome:
+# rule get_pbmc_v3:
+# rule index_repeats_salmon_no_decoy:
+# rule index_genes_salmon_no_decoy:
+# rule index_repeats_genome_star:
+# rule index_genes_genome_star:
+# rule bowtie_index_repeatome_bowtie:
+# rule get_transcriptome_cdna:
+# rule extract_repeatome_from_gtf:
+# rule get_genome_fasta:
+# rule get_repeats_gtf:
+# rule get_genes_gtf:
+# rule get_cell_ranger_data:
 
+    
 # op.join(BASE, 'indices', 'salmon', 'genes_salmon'),
 # op.join(BASE, 'indices', 'salmon', 'repeats_salmon'),
 # op.join(BASE, 'indices', 'star', 'transcriptome'),
@@ -118,8 +140,16 @@ KARA_FASTQS, = glob_wildcards(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a
 KARA_BAMS = expand(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14", "{sample}.bam"),
                            sample = KARA_FASTQS)
 
-KARA_COUNTS = expand(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14", "{sample}.counts"),
+KARA_COUNTS = expand(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14", "bowtie_repeatome", "{sample}.counts"),
                            sample = KARA_FASTQS)
+
+KARA_COUNTS_STAR_GENES = expand(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14",
+                                      "star_transcriptome", "{sample}_genes.counts"),
+                              sample = KARA_FASTQS)
+
+KARA_COUNTS_STAR_REPS = expand(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14",
+                                      "star_transcriptome", "{sample}_repeats.counts"),
+                              sample = KARA_FASTQS)
 
 rule all:
     input:
@@ -140,19 +170,20 @@ rule all:
                 + '.fa.gz'),
         # expand(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14", "{sample}.bam"),
         #                sample = KARA_FASTQS),
-        KARA_COUNTS
+        KARA_COUNTS,
+        KARA_COUNTS_STAR_GENES,
+        KARA_COUNTS_STAR_REPS
 
 
 # remeber the readgroup thing!
-#@untested @todo
 rule featurecounts_repeats_repeatome:
     input:
-        bam = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "{fastq}.bam"),
+        bam = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome", "{fastq}.bam"),
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
     output:
-        counts  = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "{fastq}.counts"),
+        counts  = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome", "{fastq}.counts"),
     log :
-        op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "{fastq}_featurecounts.log"),
+        op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome", "{fastq}_featurecounts.log"),
     threads:
         NTHREADS
     shell:
@@ -166,58 +197,106 @@ rule featurecounts_repeats_repeatome:
        {input.bam}  2>&1 > {log}
        """
 
-# rule featurecounts_repeats_transcriptome:
+rule featurecounts_repeats_transcriptome:
+    input:
+        bam = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    output:
+        counts  = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "star_transcriptome", "{fastq}_repeats.counts"),
+    log :
+        op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "star_transcriptome", "{fastq}_repeats_featurecounts.log"),
+    threads:
+        NTHREADS
+    shell:
+       """
+       {FEATURECOUNTS} -T {threads} \
+       -t exon \
+       -g gene_id \
+       --byReadGroup \
+       -a {input.gtf} \
+       -o  {output.counts} \
+       {input.bam}  2>&1 > {log}
+       """
+       
+rule featurecounts_genes_transcriptome:
+    input:
+        bam = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
+        gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
+    output:
+        counts  = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "star_transcriptome",
+                          "{fastq}_genes.counts"),
+    log :
+        op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "{fastq}_genes_featurecounts.log"),
+    threads:
+        NTHREADS
+    shell:
+       """
+       {FEATURECOUNTS} -T {threads} \
+       -t exon \
+       -g gene_id \
+       --byReadGroup \
+       -a {input.gtf} \
+       -o  {output.counts} \
+       {input.bam}  2>&1 > {log}
+       """
 
-# rule featurecounts_genes_transcriptome:
-    
 ## Mapping start ------------------------------------------------------------------------------ ##
 
 # rule map_star_naive:
 
 # rule map_alevin:
 
-# #@untested @todo
-# ## fix to take into account the different indices to map against
-# rule map_star_se:
-#     input:
-#         index = 'todo',
-#         fastq = 'todo'
-#     output:
-#         op.join(BASE, "run/{sample}/{sample}_Aligned.sortedByCoord.out.bam")
-#     threads:
-#         NTHREADS
-#     log:
-#         op.join(BASE, 'run/{sample}/{sample}_star.log')
-#     benchmark:
-#         op.join(BASE, 'run/{sample}/{sample}_star_benchmark.txt')
-#     params:
-#         path = op.join(BASE, 'run', "{sample}")
-#     shell:
-#         """
-#         {STAR} --genomeDir {params.index} \
-#         --readFilesIn {input.fastq} \
-#         --runThreadN {threads} \
-#         --outFileNamePrefix {params.path} \
-#         --outSAMtype BAM SortedByCoordinate \
-#         --readFilesCommand {PIGZ} -c"    
-#         """
+#@untested @todo @current
+## fix to take into account the different indices to map against
+## fix the cutadapt sickle thing
+rule map_star_transcriptome_se:
+    input:
+        star_index_flag = op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt'), 
+        fastq = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "{fastq}.fastq.gz")
+    params:
+        star_index = op.join(BASE, 'indices', 'star', 'transcriptome'),
+        path = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', 'star_transcriptome'),
+        prefix = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', 'star_transcriptome', "{fastq}_")
+    output:
+        op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam")
+    threads:
+        NTHREADS
+    log:
+        op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', 'star_transcriptome', "{fastq}_star.log")
+    # benchmark:
+    #     op.join(BASE, 'run/{sample}/{sample}_star_benchmark.txt')
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+        
+        {STAR} --genomeDir {params.star_index} \
+        --readFilesIn {input.fastq} \
+        --runThreadN {threads} \
+        --outFileNamePrefix {params.prefix} \
+        --outSAMtype BAM SortedByCoordinate \
+        --readFilesCommand zcat  
+        """
 
 
 rule run_bowtie_repeatome:
     params:
         repeatome = op.join(BASE, 'indices', 'bowtie', 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0]),
-        sample = 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14'
+        sample = 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14',
+        path = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome")
     input:
         fastq = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "{fastq}.fastq.gz"),
         repeatome_tag_file = op.join(BASE, 'indices', 'bowtie', 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt')
     output:
-        op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "{fastq}.bam")
+        op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome", "{fastq}.bam")
     log:
-        op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "{fastq}_bowtie_repeatome.log")
+        op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome", "{fastq}_bowtie_repeatome.log")
     threads :
         NTHREADS
     shell:
         """
+        mkdir -p {params.path}
+
         ( {PIGZ} --to-stdout --decompress {input.fastq} | {BOWTIE} -q \
         -v 2 \
         --threads {threads} \
