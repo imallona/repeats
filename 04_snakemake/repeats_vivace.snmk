@@ -140,15 +140,15 @@ KARA_FASTQS, = glob_wildcards(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a
 KARA_BAMS = expand(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14", "{sample}.bam"),
                            sample = KARA_FASTQS)
 
-KARA_COUNTS = expand(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14", "bowtie_repeatome", "{sample}.counts"),
+KARA_COUNTS = expand(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14", "bowtie_repeatome", "{sample}.counts.gz"),
                            sample = KARA_FASTQS)
 
 KARA_COUNTS_STAR_GENES = expand(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14",
-                                      "star_transcriptome", "{sample}_genes.counts"),
+                                      "star_transcriptome", "{sample}_genes.counts.gz"),
                               sample = KARA_FASTQS)
 
 KARA_COUNTS_STAR_REPS = expand(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14",
-                                      "star_transcriptome", "{sample}_repeats.counts"),
+                                      "star_transcriptome", "{sample}_repeats.counts.gz"),
                               sample = KARA_FASTQS)
 
 rule all:
@@ -174,14 +174,15 @@ rule all:
         KARA_COUNTS_STAR_GENES,
         KARA_COUNTS_STAR_REPS
 
-
+    
 # remeber the readgroup thing!
 rule featurecounts_repeats_repeatome:
     input:
         bam = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome", "{fastq}.bam"),
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
     output:
-        counts  = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome", "{fastq}.counts"),
+        counts  = temp(op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome", "{fastq}.counts")),
+        gz_counts = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome", "{fastq}.counts.gz")
     log :
         op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome", "{fastq}_featurecounts.log"),
     threads:
@@ -191,10 +192,11 @@ rule featurecounts_repeats_repeatome:
        {FEATURECOUNTS} -T {threads} \
        -t exon \
        -g gene_id \
-       --byReadGroup \
        -a {input.gtf} \
        -o  {output.counts} \
        {input.bam}  2>&1 > {log}
+
+       {PIGZ} --keep  -p {threads} {output.counts}
        """
 
 rule featurecounts_repeats_transcriptome:
@@ -202,7 +204,8 @@ rule featurecounts_repeats_transcriptome:
         bam = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
     output:
-        counts  = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "star_transcriptome", "{fastq}_repeats.counts"),
+        counts  = temp(op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "star_transcriptome", "{fastq}_repeats.counts")),
+        gz_counts = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "star_transcriptome", "{fastq}_repeats.counts.gz")
     log :
         op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "star_transcriptome", "{fastq}_repeats_featurecounts.log"),
     threads:
@@ -212,10 +215,11 @@ rule featurecounts_repeats_transcriptome:
        {FEATURECOUNTS} -T {threads} \
        -t exon \
        -g gene_id \
-       --byReadGroup \
        -a {input.gtf} \
        -o  {output.counts} \
        {input.bam}  2>&1 > {log}
+
+       {PIGZ} --keep -p {threads} {output.counts}
        """
        
 rule featurecounts_genes_transcriptome:
@@ -223,10 +227,12 @@ rule featurecounts_genes_transcriptome:
         bam = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
         gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
     output:
-        counts  = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "star_transcriptome",
-                          "{fastq}_genes.counts"),
+        counts  = temp(op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "star_transcriptome",
+                          "{fastq}_genes.counts")),
+        gz_counts = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "star_transcriptome",
+                          "{fastq}_genes.counts.gz")
     log :
-        op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "{fastq}_genes_featurecounts.log"),
+        op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', 'star_transcriptome', "{fastq}_genes_featurecounts.log"),
     threads:
         NTHREADS
     shell:
@@ -234,10 +240,11 @@ rule featurecounts_genes_transcriptome:
        {FEATURECOUNTS} -T {threads} \
        -t exon \
        -g gene_id \
-       --byReadGroup \
        -a {input.gtf} \
        -o  {output.counts} \
        {input.bam}  2>&1 > {log}
+
+       {PIGZ} --keep -p {threads} {output.counts}
        """
 
 ## Mapping start ------------------------------------------------------------------------------ ##
