@@ -115,17 +115,11 @@ for item in ['bowtie', 'star', 'salmon']:
 
 KARA_FASTQS, = glob_wildcards(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14", "{sample}.fastq.gz"))
 
-# KARA_BAMS, = expand(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14", "{sample}.bam"),
-#                     sample = KARA_FASTQS)
 KARA_BAMS = expand(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14", "{sample}.bam"),
                            sample = KARA_FASTQS)
-# workdir: BASE
 
-print(expand(op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "{fastq}.fastq.gz"), fastq = KARA_FASTQS))
-
-# print(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14"))
-# print(KARA_FASTQS)
-# print(KARA_BAMS)
+KARA_COUNTS = expand(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14", "{sample}.counts"),
+                           sample = KARA_FASTQS)
 
 rule all:
     input:
@@ -146,26 +140,35 @@ rule all:
                 + '.fa.gz'),
         # expand(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14", "{sample}.bam"),
         #                sample = KARA_FASTQS),
-        KARA_BAMS
-# # remeber the readgroup thing!
-# #@untested @todo
-# rule featurecounts_repeats_genome:
-#     input:
-#         bam = 'todo',
-#         gtf = 'todo'
-#     output:
-#         counts  = 'todo'
-#     log : 'd'
-#     shell: """
-#     {FEATURECOUNTS} -T {threads} \
-#      -t exon \
-#      -g gene_id \
-#      --byReadGroup \
-#      -a "$GTF" \
-#      -o  {output.counts}
-#      {bam}  2>&1 > {log}
-#     """
+        KARA_COUNTS
 
+
+# remeber the readgroup thing!
+#@untested @todo
+rule featurecounts_repeats_repeatome:
+    input:
+        bam = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "{fastq}.bam"),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    output:
+        counts  = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "{fastq}.counts"),
+    log :
+        op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "{fastq}_featurecounts.log"),
+    threads:
+        NTHREADS
+    shell:
+       """
+       {FEATURECOUNTS} -T {threads} \
+       -t exon \
+       -g gene_id \
+       --byReadGroup \
+       -a {input.gtf} \
+       -o  {output.counts} \
+       {input.bam}  2>&1 > {log}
+       """
+
+# rule featurecounts_repeats_transcriptome:
+
+# rule featurecounts_genes_transcriptome:
     
 ## Mapping start ------------------------------------------------------------------------------ ##
 
