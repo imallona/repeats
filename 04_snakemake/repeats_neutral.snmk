@@ -85,10 +85,15 @@ CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
 BIOAWK = '~/soft/bioawk/bioawk'
 BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
 Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
+FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
+
+GSE144357_srr = ['SRR10974769', 'SRR10974768']
+
 
 ## Folder structure start --------------------------------------------------------------------- ##
 
 try:
+   
    if not op.exists(op.dirname(op.join(BASE, 'annotation'))):
       os.makedirs(op.join(BASE, 'annotation'))
 except OSError as err:
@@ -99,6 +104,7 @@ for item in ['bowtie', 'star', 'salmon']:
       if not op.exists(op.dirname(op.join(BASE, 'indices', item))):
          os.makedirs(op.join(BASE, 'indices', item))
    except OSError as err:
+      
       print(err)
 
 # rule all:
@@ -151,6 +157,7 @@ KARA_COUNTS_STAR_GENES = expand(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt
 KARA_COUNTS_STAR_REPS = expand(op.join(BASE, "runs", "P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14",
                                       "star_transcriptome", "{sample}_repeats.counts.gz"),
                               sample = KARA_FASTQS)
+COLON = expand(op.join(BASE, 'runs', 'colon_cancer_lines_GSE144357', '{srr}_1.fastq.gz'), srr = GSE144357_srr)
 
 rule all:
     input:
@@ -173,7 +180,8 @@ rule all:
         #                sample = KARA_FASTQS),
         KARA_COUNTS,
         KARA_COUNTS_STAR_GENES,
-        KARA_COUNTS_STAR_REPS
+        KARA_COUNTS_STAR_REPS,
+        COLON
 
     
 # remeber the readgroup thing!
@@ -469,6 +477,43 @@ rule run_salmon_chromium_repeats:
 
 
 ## Data retrieval start ----------------------------------------------------------------------- ##
+
+
+## colon cancer lines
+# rather
+# ## PRJNA603489	SAMN13934090	SRS6069782	SRX7639818	SRR10974768	9606	Homo sapiens	NextSeq 500	PAIRED	
+
+# wget ftp.sra.ebi.ac.uk/vol1/fastq/SRR109/068/SRR10974768/SRR10974768_1.fastq.gz &
+# wget ftp.sra.ebi.ac.uk/vol1/fastq/SRR109/068/SRR10974768/SRR10974768_2.fastq.gz	&
+# wget ftp.sra.ebi.ac.uk/vol1/fastq/SRR109/068/SRR10974768/SRR10974768_3.fastq.gz  &
+
+
+# ## PRJNA603489	SAMN13934088	SRS6069783	SRX7639819	SRR10974769	9606	Homo sapiens	NextSeq 500	PAIRED	
+
+# wget ftp.sra.ebi.ac.uk/vol1/fastq/SRR109/069/SRR10974769/SRR10974769_1.fastq.gz &
+# wget ftp.sra.ebi.ac.uk/vol1/fastq/SRR109/069/SRR10974769/SRR10974769_2.fastq.gz &
+# wget ftp.sra.ebi.ac.uk/vol1/fastq/SRR109/069/SRR10974769/SRR10974769_3.fastq.gz
+
+# neither, because the _3 are missing, what about getting the sra?
+# wget ftp://ftp.sra.ebi.ac.uk/vol1/srr/SRR109/069/SRR10974769
+# wget ftp://ftp.sra.ebi.ac.uk/vol1/srr/SRR109/068/SRR10974768
+
+# and then converting
+# ~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate SRR10974769 && ~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump -I --gzip --split-files SRR10974769 ;
+# ~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate SRR10974768 && ~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump -I --gzip --split-files SRR10974768 ;
+
+
+rule get_colon_cancer_lines_GSE144357:    
+    params:
+        path = op.join(BASE, 'runs', 'colon_cancer_lines_GSE144357')
+    output:
+        op.join(BASE, 'runs', 'colon_cancer_lines_GSE144357', '{srr}_1.fastq.gz')
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+        {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
+        """
 
 ## @todo move to indices retrieval
 rule get_cellranger_grch38_genome:
