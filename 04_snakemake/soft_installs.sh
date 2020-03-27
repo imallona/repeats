@@ -94,3 +94,14 @@ sudo apt-get install bison flex
 
 make
 
+## fastq-dump
+
+mkdir ~/soft/sra-toools
+
+cd $_
+wget http://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/2.10.4/sratoolkit.2.10.4-ubuntu64.tar.gz
+
+tar xzvf sratoolkit.2.10.4-ubuntu64.tar.gz
+cd sratoolkit.2.10.4-ubuntu64/bin
+
+./vdb-config --interactive
