@@ -1,12 +1,13 @@
 #!/usr/bin/env snakemake -s
 ## 
-## Started 14th Jan 2020
+## Started 30 March 2020
 ##
 ## Izaskun Mallona
 ## GPLv3
 
 import os.path as op
 from glob import glob
+import re
 
 print("""
 Folder structure
@@ -32,27 +33,27 @@ Folder structure
 """)
 
 
-
+print('This is mouse')
 
 ## Folder structure start --------------------------------------------------------------------- ##
 
 
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
-NTHREADS = 30
+NTHREADS = 20
 LOCAL_MEM_GB = 100
 
 ## @FIXME to be moved to config
-GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
-# GENES_GTF_URL =  'ftp://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz'
-GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
-REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
-# REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/mm10_rmsk_TE.gtf.gz'
-DFAM_EMBL_URL = 'https://www.dfam.org/releases/current/families/Dfam.embl.gz'
-# TRANSCRIPTOME_URL= 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh38.cdna.all.fa.gz'
-TRANSCRIPTOME_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.pc_transcripts.fa.gz'
+GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-99/fasta/mus_musculus/dna/Mus_musculus.GRCm38.dna.primary_assembly.fa.gz'
 
-CELLRANGER_HG38_URL = 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-GRCh38-3.0.0.tar.gz'
+GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M24/gencode.vM24.annotation.gtf.gz'
+REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/mm10_rmsk_TE.gtf.gz'
+# REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/mm10_rmsk_TE.gtf.gz'
+# DFAM_EMBL_URL = 'https://www.dfam.org/releases/current/families/Dfam.embl.gz'
+# TRANSCRIPTOME_URL= 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh38.cdna.all.fa.gz'
+# TRANSCRIPTOME_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.pc_transcripts.fa.gz'
+
+CELLRANGER_REF_URL = 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-mm10-3.0.0.tar.gz'
 
 ## @FIXME to be moved to config
 
@@ -73,8 +74,6 @@ BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
 Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
 FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
 
-GSE144357_srr = ['SRR10974769', 'SRR10974768']
-
 ## config file start ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # configfile: "config.yaml"
@@ -82,18 +81,14 @@ GSE144357_srr = ['SRR10974769', 'SRR10974768']
 
 # samples = pd.read_csv(config["samples"], sep = '\t').set_index("id", drop=False)
 
-RUN_NAME  = 'SRR10974769'
-RUN_TECH = 'chromium'
+RUN_NAME  = 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14'
+RUN_TECH = 'smartseq2'
+GENOME = 'mm10'
+
+FASTQS, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}.fastq.gz"))
 
 
-# print(op.join(BASE, 'data', RUN_NAME))
-
-# samples_R2, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_1.fastq.gz"))
-# samples_R1, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_2.fastq.gz"))
-# samples_I3, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_3.fastq.gz"))
-
-# ## 
-# this is needed to be hardcoded/config file
+## this is needed to be hardcoded/config file
 
 try:
    if not op.exists(op.dirname(op.join(BASE, 'annotation'))):
@@ -112,210 +107,208 @@ for item in ['bowtie', 'star', 'salmon']:
 
 rule all:
     input:
-        # op.join(BASE, 'indices', 'bowtie', 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt'),
-        # op.join(BASE, 'indices', 'star', 'repeatome', 'chrName.txt'),
-        # op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt'),
-        # op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]+ '.fa.gz'),
-        op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'Log.out'),
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html')
+        op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt'),
+        op.join(BASE, 'indices', 'star', GENOME, 'repeatome', 'chrName.txt'),
+        op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrName.txt'),
+        op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]+ '.fa.gz'),
+        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.counts.gz"), fastq = FASTQS),
+        expand(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", "{fastq}_repeats.counts.gz"), fastq = FASTQS),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", "{fastq}_genes.counts.gz"), fastq = FASTQS)
+
         
 
-# # remeber the readgroup thing!
-# rule featurecounts_repeats_repeatome:
-#     input:
-#         bam = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome", "{fastq}.bam"),
-#         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
-#     output:
-#         counts  = temp(op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome", "{fastq}.counts")),
-#         gz_counts = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome", "{fastq}.counts.gz")
-#     log :
-#         op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome", "{fastq}_featurecounts.log"),
-#     threads:
-#         NTHREADS
-#     shell:
-#        """
-#        {FEATURECOUNTS} -T {threads} \
-#        -t exon \
-#        -g gene_id \
-#        -a {input.gtf} \
-#        -o  {output.counts} \
-#        {input.bam}  2>&1 > {log}
+# remeber the readgroup thing!
+rule featurecounts_repeats_repeatome:
+    input:
+        bam = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam"),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.counts.gz")
+    log :
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}_featurecounts.log"),
+    threads:
+        NTHREADS
+    shell:
+       """
+       {FEATURECOUNTS} -T {threads} \
+       -t exon \
+       -g gene_id \
+       -a {input.gtf} \
+       -o  {output.counts} \
+       {input.bam}  2>&1 > {log}
 
-#        {PIGZ} --keep  -p {threads} {output.counts}
-#        """
+       {PIGZ} --keep  -p {threads} {output.counts}
+       """
 
-# rule featurecounts_repeats_transcriptome:
-#     input:
-#         bam = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
-#         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
-#     output:
-#         counts  = temp(op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "star_transcriptome", "{fastq}_repeats.counts")),
-#         gz_counts = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "star_transcriptome", "{fastq}_repeats.counts.gz")
-#     log :
-#         op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "star_transcriptome", "{fastq}_repeats_featurecounts.log"),
-#     threads:
-#         NTHREADS
-#     shell:
-#        """
-#        {FEATURECOUNTS} -T {threads} \
-#        -t exon \
-#        -g gene_id \
-#        -a {input.gtf} \
-#        -o  {output.counts} \
-#        {input.bam}  2>&1 > {log}
+rule featurecounts_repeats_transcriptome:
+    input:
+        bam = op.join(BASE, "runs",RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    output:
+        counts  = temp(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", "{fastq}_repeats.counts")),
+        gz_counts = op.join(BASE, "runs",RUN_NAME, "star_transcriptome", "{fastq}_repeats.counts.gz")
+    log :
+        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", "{fastq}_repeats_featurecounts.log"),
+    threads:
+        NTHREADS
+    shell:
+       """
+       {FEATURECOUNTS} -T {threads} \
+       -t exon \
+       -g gene_id \
+       -a {input.gtf} \
+       -o  {output.counts} \
+       {input.bam}  2>&1 > {log}
 
-#        {PIGZ} --keep -p {threads} {output.counts}
-#        """
+       {PIGZ} --keep -p {threads} {output.counts}
+       """
        
-# rule featurecounts_genes_transcriptome:
-#     input:
-#         bam = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
-#         gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
-#     output:
-#         counts  = temp(op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "star_transcriptome",
-#                           "{fastq}_genes.counts")),
-#         gz_counts = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "star_transcriptome",
-#                           "{fastq}_genes.counts.gz")
-#     log :
-#         op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', 'star_transcriptome', "{fastq}_genes_featurecounts.log"),
-#     threads:
-#         NTHREADS
-#     shell:
-#        """
-#        {FEATURECOUNTS} -T {threads} \
-#        -t exon \
-#        -g gene_id \
-#        -a {input.gtf} \
-#        -o  {output.counts} \
-#        {input.bam}  2>&1 > {log}
+rule featurecounts_genes_transcriptome:
+    input:
+        bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
+        gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "star_transcriptome",
+                          "{fastq}_genes.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "star_transcriptome",
+                          "{fastq}_genes.counts.gz")
+    log :
+        op.join(BASE, "runs",RUN_NAME, 'star_transcriptome', "{fastq}_genes_featurecounts.log"),
+    threads:
+        NTHREADS
+    shell:
+       """
+       {FEATURECOUNTS} -T {threads} \
+       -t exon \
+       -g gene_id \
+       -a {input.gtf} \
+       -o  {output.counts} \
+       {input.bam}  2>&1 > {log}
 
-#        {PIGZ} --keep -p {threads} {output.counts}
-#        """
+       {PIGZ} --keep -p {threads} {output.counts}
+       """
 
 ## Mapping start ------------------------------------------------------------------------------ ##
-
-# rule map_star_naive:
 
 # rule map_alevin:
 
 # #@untested @todo @current
 # ## fix to take into account the different indices to map against
 # ## fix the cutadapt sickle thing
-# rule map_star_transcriptome_se:
+rule map_star_transcriptome_se:
+    input:
+        star_index_flag = op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt'), 
+        fastq = op.join(BASE, "data",RUN_NAME, "{fastq}.fastq.gz")
+    params:
+        star_index = op.join(BASE, 'indices', 'star', 'transcriptome'),
+        path = op.join(BASE, "runs",RUN_NAME, 'star_transcriptome'),
+        prefix = op.join(BASE, "runs",RUN_NAME, 'star_transcriptome', "{fastq}_")
+    output:
+        op.join(BASE, "runs",RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam")
+    threads:
+        NTHREADS
+    log:
+        op.join(BASE, "runs",RUN_NAME, 'star_transcriptome', "{fastq}_star.log")
+    # benchmark:
+    #     op.join(BASE, 'run/{sample}/{sample}_star_benchmark.txt')
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+        
+        {STAR} --genomeDir {params.star_index} \
+        --readFilesIn {input.fastq} \
+        --runThreadN {threads} \
+        --outFileNamePrefix {params.prefix} \
+        --outSAMtype BAM SortedByCoordinate \
+        --readFilesCommand zcat  
+        """
+
+
+rule run_bowtie_repeatome:
+    params:
+        repeatome = op.join(BASE, 'indices', 'bowtie', 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0]),
+        sample =RUN_NAME,
+        path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome")
+    input:
+        fastq = op.join(BASE, "data", RUN_NAME, "{fastq}.fastq.gz"),
+        repeatome_tag_file = op.join(BASE, 'indices', 'bowtie', 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt')
+    output:
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam")
+    log:
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}_bowtie_repeatome.log")
+    threads :
+        NTHREADS
+    shell:
+        """
+        mkdir -p {params.path}
+
+        ( {PIGZ} --to-stdout --decompress {input.fastq} | {BOWTIE} -q \
+        -v 2 \
+        --threads {threads} \
+        -k 2 --best --strata \
+        --sam \
+        --chunkmbs 128 {params.repeatome} - |  samtools view -@ {threads} -bS - > {output} ) 2> {log}
+        """
+
+
+# rule run_cellranger_repeats:
 #     input:
-#         star_index_flag = op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt'), 
-#         fastq = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "{fastq}.fastq.gz")
+#         fastqs_path = op.join(BASE, 'data', RUN_NAME),
+#         transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
 #     params:
-#         star_index = op.join(BASE, 'indices', 'star', 'transcriptome'),
-#         path = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', 'star_transcriptome'),
-#         prefix = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', 'star_transcriptome', "{fastq}_")
+#         sample_name = RUN_NAME,
+#         local_mem_gb = LOCAL_MEM_GB,
+#         processing_path = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats')
 #     output:
-#         op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam")
+#         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html')
 #     threads:
 #         NTHREADS
 #     log:
-#         op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', 'star_transcriptome', "{fastq}_star.log")
-#     # benchmark:
-#     #     op.join(BASE, 'run/{sample}/{sample}_star_benchmark.txt')
+#         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'run.log')
 #     shell:
 #         """
-#         mkdir -p {params.path}
-#         cd {params.path}
+#         mkdir -p {params.processing_path}
+#         cd {params.processing_path}
         
-#         {STAR} --genomeDir {params.star_index} \
-#         --readFilesIn {input.fastq} \
-#         --runThreadN {threads} \
-#         --outFileNamePrefix {params.prefix} \
-#         --outSAMtype BAM SortedByCoordinate \
-#         --readFilesCommand zcat  
+#         {CELLRANGER} count --id={params.sample_name} \
+#           --fastqs={input.fastqs_path} \
+#           --transcriptome={input.transcriptome} \
+#           --jobmode=local \
+#           --localcores={threads} \
+#           --sample={params.sample_name} \
+#           --localmem={params.local_mem_gb}
 #         """
-
-
-# rule run_bowtie_repeatome:
-#     params:
-#         repeatome = op.join(BASE, 'indices', 'bowtie', 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0]),
-#         sample = 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14',
-#         path = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome")
+        
+# rule run_cellranger_standard:
 #     input:
-#         fastq = op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "{fastq}.fastq.gz"),
-#         repeatome_tag_file = op.join(BASE, 'indices', 'bowtie', 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt')
+#         fastqs_path = op.join(BASE, 'data', RUN_NAME),
+#         transcriptome = op.join(BASE, 'indices', 'cellranger',
+#                                 'refdata-cellranger-GRCh38-3.0.0')
+#     params:
+#         sample_name = RUN_NAME,
+#         local_mem_gb = LOCAL_MEM_GB,
+#         processing_path = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard')
 #     output:
-#         op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome", "{fastq}.bam")
-#     log:
-#         op.join(BASE, "runs", 'P6_Dbx1_1-8_Np73_9-16_Wnt3a_17-24_CrexAi14', "bowtie_repeatome", "{fastq}_bowtie_repeatome.log")
-#     threads :
+#         op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html')
+#     threads:
 #         NTHREADS
+#     log:
+#         op.join(BASE, 'runs',  RUN_NAME, 'cellranger_standard', 'run.log')
 #     shell:
 #         """
-#         mkdir -p {params.path}
-
-#         ( {PIGZ} --to-stdout --decompress {input.fastq} | {BOWTIE} -q \
-#         -v 2 \
-#         --threads {threads} \
-#         -k 2 --best --strata \
-#         --sam \
-#         --chunkmbs 128 {params.repeatome} - |  samtools view -@ {threads} -bS - > {output} ) 2> {log}
-#         """
-
-
-rule run_cellranger_repeats:
-    input:
-        fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
-    params:
-        sample_name = RUN_NAME,
-        local_mem_gb = LOCAL_MEM_GB,
-        processing_path = op.join(BASE, 'runs', RUN_NAME)
-    output:
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html')
-    threads:
-        NTHREADS
-    log:
-        op.join(BASE, 'runs', RUN_NAME, 'run_cellranger_repeats.log')
-    shell:
-        """
-        mkdir -p {params.processing_path}
-        cd {params.processing_path}
-        rm -rf cellranger_repeats
-
-        {CELLRANGER} count --id=cellranger_repeats \
-          --fastqs={input.fastqs_path} \
-          --transcriptome={input.transcriptome} \
-          --jobmode=local \
-          --localcores={threads} \
-          --sample={params.sample_name} \
-          --localmem={params.local_mem_gb}
-        """
+#         mkdir -p {params.processing_path}
+#         cd {params.processing_path}
         
-rule run_cellranger_standard:
-    input:
-        fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        transcriptome = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0')
-    params:
-        sample_name = RUN_NAME,
-        local_mem_gb = LOCAL_MEM_GB,
-        processing_path = op.join(BASE, 'runs', RUN_NAME)
-    output:
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html')
-    threads:
-        NTHREADS
-    log:
-        op.join(BASE, 'runs',  RUN_NAME, 'run_cellranger_standard.log')
-    shell:
-        """
-        mkdir -p {params.processing_path}
-        cd {params.processing_path}
-        rm -rf cellranger_standard
-
-        {CELLRANGER} count --id=cellranger_standard \
-          --fastqs={input.fastqs_path} \
-          --transcriptome={input.transcriptome} \
-          --jobmode=local \
-          --localcores={threads} \
-          --sample={params.sample_name} \
-          --localmem={params.local_mem_gb}
-        """
+#         {CELLRANGER} count --id={params.sample_name} \
+#           --fastqs={input.fastqs_path} \
+#           --transcriptome={input.transcriptome} \
+#           --jobmode=local \
+#           --localcores={threads} \
+#           --sample={params.sample_name} \
+#           --localmem={params.local_mem_gb}
+#         """
 
 # # from https://gist.github.com/k3yavi/c501705ed2d29b12b0d10cf78b3ed001
 # ## and https://github.com/COMBINE-lab/salmon/issues/336 to get the `attribute` instead of
@@ -467,33 +460,33 @@ rule run_cellranger_standard:
 # ~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate SRR10974768 && ~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump -I --gzip --split-files SRR10974768 ;
 
 
-rule get_colon_cancer_lines_GSE144357:    
-    params:
-        path = op.join(BASE, 'runs', 'colon_cancer_lines_GSE144357'),
-        path_data = op.join(BASE, 'data', 'SRR10974769')
-    output:
-        op.join(BASE, 'runs', 'colon_cancer_lines_GSE144357', '{srr}_1.fastq.gz')
-    shell:
-        """
-        mkdir -p {params.path}
-        cd {params.path}
-        {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
+# rule get_colon_cancer_lines_GSE144357:    
+#     params:
+#         path = op.join(BASE, 'runs', 'colon_cancer_lines_GSE144357'),
+#         path_data = op.join(BASE, 'data', 'SRR10974769')
+#     output:
+#         op.join(BASE, 'runs', 'colon_cancer_lines_GSE144357', '{srr}_1.fastq.gz')
+#     shell:
+#         """
+#         mkdir -p {params.path}
+#         cd {params.path}
+#         {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
 
-        cd {params.path_data}
-        ln -s SRR10974769_1.fastq.gz SRR10974769_S1_L001_R2_001.fastq.gz
-        ln -s SRR10974769_2.fastq.gz SRR10974769_S1_L001_R1_001.fastq.gz
-        ln -s SRR10974769_3.fastq.gz SRR10974769_S1_L001_I1_001.fastq.gz
+#         cd {params.path_data}
+#         ln -s SRR10974769_1.fastq.gz SRR10974769_S1_L001_R2_001.fastq.gz
+#         ln -s SRR10974769_2.fastq.gz SRR10974769_S1_L001_R1_001.fastq.gz
+#         ln -s SRR10974769_3.fastq.gz SRR10974769_S1_L001_I1_001.fastq.gz
 
-        """
+#         """
 
 ## @todo move to indices retrieval
-rule get_cellranger_grch38_genome:
+rule get_cellranger_index:
     params:
-        url = 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-GRCh38-3.0.0.tar.gz'
+        url = CELLRANGER_REF_URL
     output:
         path = op.join(BASE, 'indices', 'cellranger'),
-        fn = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0.tar.gz'),
-        uncompressed = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0', 'reference.json')
+        fn = op.join(BASE, 'indices', 'cellranger', op.basename(CELLRANGER_REF_URL)),
+        uncompressed = op.join(BASE, 'indices', 'cellranger', re.compile(r'^(.*).tar.gz$').match(op.basename(CELLRANGER_REF_URL)).group(1), 'reference.json')
     shell:
         """    
         mkdir -p {output.path}
@@ -525,60 +518,60 @@ rule get_cellranger_grch38_genome:
 ## Indexing start ----------------------------------------------------------------------------- ##
 
 
-rule index_cellranger_repeats:
-    input:
-       compressed_fa = op.join(BASE, 'annotation', op.basename(GENOME_URL)),
-       compressed_gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
-    params:
-       local_mem_gb = LOCAL_MEM_GB,
-       path =  op.join(BASE, 'indices', 'cellranger', 'repeats_hg38'),
-       genome = 'repeats_hg38'
-    threads:
-        NTHREADS
-    output:
-        uncompressed_gtf = temp(op.join(BASE, 'annotation', op.splitext(op.basename(REP_GTF_URL))[0])),
-        flag = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'Log.out'),
-        uncompressed_fa = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0]))
-    shell:
-       """ 
-       mkdir -p {params.path}
-       cd {params.path}
+# rule index_cellranger_repeats:
+#     input:
+#        compressed_fa = op.join(BASE, 'annotation', op.basename(GENOME_URL)),
+#        compressed_gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+#     params:
+#        local_mem_gb = LOCAL_MEM_GB,
+#        path =  op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME),
+#        genome = 'repeats_' + GENOME
+#     threads:
+#         NTHREADS
+#     output:
+#         uncompressed_gtf = temp(op.join(BASE, 'annotation', op.splitext(op.basename(REP_GTF_URL))[0])),
+#         flag = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME, 'Log.out'),
+#         uncompressed_fa = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0]))
+#     shell:
+#        """ 
+#        mkdir -p {params.path}
+#        cd {params.path}
  
-       {PIGZ} --decompress  -p {threads} --keep -c {input.compressed_fa} > \
-        {output.uncompressed_fa}
+#        {PIGZ} --decompress  -p {threads} --keep -c {input.compressed_fa} > \
+#         {output.uncompressed_fa}
 
-       {PIGZ} --decompress  -p {threads} --keep -c {input.compressed_gtf} > \
-         {output.uncompressed_gtf}
+#        {PIGZ} --decompress  -p {threads} --keep -c {input.compressed_gtf} > \
+#          {output.uncompressed_gtf}
        
-       {CELLRANGER} mkref --genome {params.genome} \
-       --fasta {output.uncompressed_fa} \
-       --genes {output.uncompressed_gtf} \
-       --nthreads {threads} \
-       --memgb {params.local_mem_gb} 
+#        {CELLRANGER} mkref --genome {params.genome} \
+#        --fasta {output.uncompressed_fa} \
+#        --genes {output.uncompressed_gtf} \
+#        --nthreads {threads} \
+#        --memgb {params.local_mem_gb} 
 
-       touch {output.flag}
-       """
+#        touch {output.flag}
+#        """
                                                 
-rule index_repeats_salmon_no_decoy:
-    input:
-        repeats = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.gz')
-    output:
-        op.join(BASE, 'indices', 'salmon', 'repeats_salmon', 'duplicate_clusters.tsv'),
-        op.join(BASE, 'indices', 'salmon', 'repeats_salmon', 'complete_ref_lens.bin')
-    params:
-        path = op.join(BASE, 'indices', 'salmon', 'repeats_salmon'),
-        k = 31
-    threads:
-        NTHREADS
-    log:
-        op.join(BASE, 'indices', 'salmon', 'repeats_salmon_index.log')
-    shell:
-        """
-        mkdir -p {params.path}
+# rule index_repeats_salmon_no_decoy:
+#     input:
+#         repeats = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.gz')
+#     output:
+#         op.join(BASE, 'indices', 'salmon', 'repeats_salmon', 'duplicate_clusters.tsv'),
+#         op.join(BASE, 'indices', 'salmon', 'repeats_salmon', 'complete_ref_lens.bin')
+#     params:
+#         path = op.join(BASE, 'indices', 'salmon', 'repeats_salmon'),
+#         k = 31
+#     threads:
+#         NTHREADS
+#     log:
+#         op.join(BASE, 'indices', 'salmon', 'repeats_salmon_index.log')
+#     shell:
+#         """
+#         mkdir -p {params.path}
         
-        ({SALMON} index -p {threads} \
-          index -t {input.repeats} -i {params.path} -k {params.k}) 2> {log}
-        """
+#         ({SALMON} index -p {threads} \
+#           index -t {input.repeats} -i {params.path} -k {params.k}) 2> {log}
+#         """
 
 
 # # https://salmon.readthedocs.io/en/latest/alevin.html
@@ -610,106 +603,106 @@ rule index_repeats_salmon_no_decoy:
 
 #         """
 
-# rule index_repeats_genome_star:
-#     params:
-#         genome_dir = op.join(BASE, 'indices', 'star', 'repeatome'),
-#     input:
-#         fa = op.join(BASE, 'annotation', op.basename(GENOME_URL)),
-#         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
-#     log:
-#         op.join(BASE, 'indices', 'star', 'repeatome', 'repeats_star_index.log')
-#     threads:
-#         NTHREADS
-#     output:
-#         op.join(BASE, 'indices', 'star', 'repeatome', 'chrName.txt'),
-#         op.join(BASE, 'indices', 'star', 'repeatome', 'chrStart.txt'),
-#         op.join(BASE, 'indices', 'star', 'repeatome', 'chrNameLength.txt'),
-#         fa_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])),
-#         gtf_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(REP_GTF_URL))[0]))
-#     shell:
-#         """
-#         mkdir -p {params.genome_dir}
+rule index_repeats_genome_star:
+    params:
+        genome_dir = op.join(BASE, 'indices', 'star', GENOME, 'repeatome'),
+    input:
+        fa = op.join(BASE, 'annotation', op.basename(GENOME_URL)),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    log:
+        op.join(BASE, 'indices', 'star', GENOME, 'repeatome', 'repeats_star_index.log')
+    threads:
+        NTHREADS
+    output:
+        op.join(BASE, 'indices', 'star', GENOME, 'repeatome', 'chrName.txt'),
+        op.join(BASE, 'indices', 'star', GENOME, 'repeatome', 'chrStart.txt'),
+        op.join(BASE, 'indices', 'star', GENOME, 'repeatome', 'chrNameLength.txt'),
+        fa_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])),
+        gtf_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(REP_GTF_URL))[0]))
+    shell:
+        """
+        mkdir -p {params.genome_dir}
 
-#         {PIGZ} -k --decompress -p {threads} {input.gtf}
-#         {PIGZ} -k --decompress -p {threads} {input.fa}
+        {PIGZ} -k --decompress -p {threads} {input.gtf}
+        {PIGZ} -k --decompress -p {threads} {input.fa}
 
-#         ({STAR}  \
-#         --runMode genomeGenerate \
-#         --runThreadN {threads} \
-#         --sjdbGTFfile {output.gtf_decomp} \
-#         --genomeDir {params.genome_dir} \
-#         --genomeFastaFiles {output.fa_decomp}) 2> {log}
+        ({STAR}  \
+        --runMode genomeGenerate \
+        --runThreadN {threads} \
+        --sjdbGTFfile {output.gtf_decomp} \
+        --genomeDir {params.genome_dir} \
+        --genomeFastaFiles {output.fa_decomp}) 2> {log}
 
-#         touch {output}
-#         """
+        touch {output}
+        """
 
-# rule index_genes_genome_star:
-#     params:
-#         genome_dir = op.join(BASE, 'indices', 'star', 'transcriptome'),
-#     input:
-#         fa = op.join(BASE, 'annotation', op.basename(GENOME_URL)),
-#         gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
-#     output:    
-#         op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt'),
-#         op.join(BASE, 'indices', 'star', 'transcriptome', 'chrStart.txt'),
-#         op.join(BASE, 'indices', 'star', 'transcriptome', 'chrNameLength.txt'),
-#         fa_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])),
-#         gtf_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENES_GTF_URL))[0]))
+rule index_genes_genome_star:
+    params:
+        genome_dir = op.join(BASE, 'indices', 'star', GENOME, 'transcriptome'),
+    input:
+        fa = op.join(BASE, 'annotation', op.basename(GENOME_URL)),
+        gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
+    output:    
+        op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrName.txt'),
+        op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrStart.txt'),
+        op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrNameLength.txt'),
+        fa_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])),
+        gtf_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENES_GTF_URL))[0]))
 
-#     log:
-#         op.join(BASE, 'indices', 'star', 'transcriptome', 'genes_star_index.log')
-#     threads:
-#         NTHREADS
-#     shell:
-#         """
-#         mkdir -p {params.genome_dir}
+    log:
+        op.join(BASE, 'indices', 'star', 'transcriptome', 'genes_star_index.log')
+    threads:
+        NTHREADS
+    shell:
+        """
+        mkdir -p {params.genome_dir}
 
-#         {PIGZ} -k --decompress -p {threads} {input.gtf}
+        {PIGZ} -k --decompress -p {threads} {input.gtf}
         
-#         {PIGZ} -k --decompress -p {threads} {input.fa}
+        {PIGZ} -k --decompress -p {threads} {input.fa}
 
-#         ({STAR}  \
-#         --runMode genomeGenerate \
-#         --runThreadN {threads} \
-#         --sjdbGTFfile {output.gtf_decomp} \
-#         --genomeDir {params.genome_dir} \
-#         --genomeFastaFiles {output.fa_decomp}) 2> {log}
+        ({STAR}  \
+        --runMode genomeGenerate \
+        --runThreadN {threads} \
+        --sjdbGTFfile {output.gtf_decomp} \
+        --genomeDir {params.genome_dir} \
+        --genomeFastaFiles {output.fa_decomp}) 2> {log}
 
-#         touch {output}
-#         """
+        touch {output}
+        """
 
         
-# rule bowtie_index_repeatome_bowtie:
-#     input:
-#         fa = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.gz')
-#     threads: NTHREADS
-#     params:
-#         label = op.join(BASE, 'indices', 'bowtie', 'repeatome',  op.splitext(op.basename(REP_GTF_URL))[0]),
-#         path =  op.join(BASE, 'indices', 'bowtie', 'repeatome')
-#     log:
-#         op.join(BASE, 'indices', 'bowtie', 'repeatome', 'bowtie_repeatome.log')
-#     output:
-#         fa_uncomp = temp(op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa')),
-#         o1 = op.join(BASE, 'indices', 'bowtie', 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt') #,
-#         # o1 = op.join(BASE, 'indices', 'bowtie', 'repeatome', op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.1.ebwt',
-#         # o2 = op.join(BASE, 'indices', 'bowtie', 'repeatome',
-#         #              op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.2.ebwt',
-#         # o3 = op.join(BASE, 'indices', 'bowtie', 'repeatome',
-#         #              op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.3.ebwt',
-#         # o4 = op.join(BASE, 'indices', 'bowtie', 'repeatome',
-#         #              op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.4.ebwt',
-#         # o1rev = op.join(BASE, 'indices', 'bowtie', 'repeatome',
-#         #                 op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.rev.1.ebwt',
-#         # o2rev = op.join(BASE, 'indices', 'bowtie', 'repeatome',
-#         #                 op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.rev.2.ebwt'
-#     shell:
-#         """
-#         mkdir -p {params.path}
+rule bowtie_index_repeatome_bowtie:
+    input:
+        fa = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.gz')
+    threads: NTHREADS
+    params:
+        label = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome',  op.splitext(op.basename(REP_GTF_URL))[0]),
+        path =  op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome')
+    log:
+        op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', 'bowtie_repeatome.log')
+    output:
+        fa_uncomp = temp(op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa')),
+        o1 = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt') #,
+        # o1 = op.join(BASE, 'indices', 'bowtie', 'repeatome', op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.1.ebwt',
+        # o2 = op.join(BASE, 'indices', 'bowtie', 'repeatome',
+        #              op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.2.ebwt',
+        # o3 = op.join(BASE, 'indices', 'bowtie', 'repeatome',
+        #              op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.3.ebwt',
+        # o4 = op.join(BASE, 'indices', 'bowtie', 'repeatome',
+        #              op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.4.ebwt',
+        # o1rev = op.join(BASE, 'indices', 'bowtie', 'repeatome',
+        #                 op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.rev.1.ebwt',
+        # o2rev = op.join(BASE, 'indices', 'bowtie', 'repeatome',
+        #                 op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.rev.2.ebwt'
+    shell:
+        """
+        mkdir -p {params.path}
         
-#         {PIGZ} -k --decompress -p {threads} {input.fa}
+        {PIGZ} -k --decompress -p {threads} {input.fa}
         
-#         ({BOWTIE_BUILD} {output.fa_uncomp} {params.label} --threads {threads}) 2> {log}
-#         """
+        ({BOWTIE_BUILD} {output.fa_uncomp} {params.label} --threads {threads}) 2> {log}
+        """
 
 
 # rule bowtie_index_repeatome_bowtie_old_embl:
@@ -748,17 +741,17 @@ rule index_repeats_salmon_no_decoy:
 
 ## Genome, transcriptome and repeatome retrieval start ---------------------------------------- ##
 
-# rule uncompress_genome:
-#     params:
-#         genome_dir = op.join(BASE, 'annotation'),
-#     input:
-#         fagz = op.join(BASE, 'annotation', op.basename(GENOME_URL))
-#     output:
-#         temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0]))
-#     shell:
-#         """
-#         {PIGZ} -k --decompress -p {threads}  {input.fagz}
-#         """
+rule uncompress_genome:
+    params:
+        genome_dir = op.join(BASE, 'annotation'),
+    input:
+        fagz = op.join(BASE, 'annotation', op.basename(GENOME_URL))
+    output:
+        temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0]))
+    shell:
+        """
+        {PIGZ} -k --decompress -p {threads}  {input.fagz}
+        """
         
 # rule compress_repeatome_fasta:
 #     input:
@@ -898,23 +891,23 @@ rule get_genes_gtf:
         curl -s -L -C - {params.url} -o {output.gtf}
         """
 
-rule get_cellranger_data:
-    priority:
-        100
-    params:
-        url = CELLRANGER_HG38_URL,
-        path = op.join(BASE, 'indices', 'cellranger')
-    output:
-        cellranger_gz = op.join(BASE, 'indices', 'cellranger', op.basename(CELLRANGER_HG38_URL)),
-        uncomp = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0', 'reference.json')
-    shell:
-        """
-        mkdir -p {params.path}
-        cd {params.path}
+# rule get_cellranger_data:
+#     priority:
+#         100
+#     params:
+#         url = CELLRANGER_HG38_URL,
+#         path = op.join(BASE, 'indices', 'cellranger')
+#     output:
+#         cellranger_gz = op.join(BASE, 'indices', 'cellranger', op.basename(CELLRANGER_HG38_URL)),
+#         uncomp = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0', 'reference.json')
+#     shell:
+#         """
+#         mkdir -p {params.path}
+#         cd {params.path}
 
-        curl -s -L -C - {params.url} -o {output.gtf}
+#         curl -s -L -C - {params.url} -o {output.gtf}
         
-        tar xzvf {output.cellranger_gz}
-        """
+#         tar xzvf {output.cellranger_gz}
+#         """
 
 ## Genome, transcriptome and repeatome retrieval end   ---------------------------------------- ##

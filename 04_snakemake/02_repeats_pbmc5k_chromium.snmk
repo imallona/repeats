@@ -82,15 +82,13 @@ GSE144357_srr = ['SRR10974769', 'SRR10974768']
 
 # samples = pd.read_csv(config["samples"], sep = '\t').set_index("id", drop=False)
 
-RUN_NAME  = 'SRR10974769'
+RUN_NAME  = '5k_pbmc_v3'
 RUN_TECH = 'chromium'
 
 
-print(op.join(BASE, 'data', RUN_NAME))
-
-samples_R2, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_1.fastq.gz"))
-samples_R1, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_2.fastq.gz"))
-samples_I3, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_3.fastq.gz"))
+# samples_R2, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_1.fastq.gz"))
+# samples_R1, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_2.fastq.gz"))
+# samples_I3, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_3.fastq.gz"))
 
 ## this is needed to be hardcoded/config file
 
@@ -117,7 +115,7 @@ rule all:
         # op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]+ '.fa.gz'),
         op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'Log.out'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'run.log'),
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs',  'web_summary.html'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html')
         
 
