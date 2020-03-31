@@ -264,7 +264,7 @@ rule run_cellranger_repeats:
     params:
         sample_name = RUN_NAME,
         local_mem_gb = LOCAL_MEM_GB,
-        processing_path = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats')
+        processing_path = op.join(BASE, 'runs', RUN_NAME)
     output:
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html')
     threads:
@@ -275,8 +275,9 @@ rule run_cellranger_repeats:
         """
         mkdir -p {params.processing_path}
         cd {params.processing_path}
+        rm -rf cellranger_repeats
         
-        {CELLRANGER} count --id={params.sample_name} \
+        {CELLRANGER} count --id=cellranger_repeats \
           --fastqs={input.fastqs_path} \
           --transcriptome={input.transcriptome} \
           --jobmode=local \
@@ -293,7 +294,7 @@ rule run_cellranger_standard:
     params:
         sample_name = RUN_NAME,
         local_mem_gb = LOCAL_MEM_GB,
-        processing_path = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard')
+        processing_path = op.join(BASE, 'runs', RUN_NAME)
     output:
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html')
     threads:
@@ -304,8 +305,9 @@ rule run_cellranger_standard:
         """
         mkdir -p {params.processing_path}
         cd {params.processing_path}
-        
-        {CELLRANGER} count --id={params.sample_name} \
+        rm -rf cellranger_standard
+
+        {CELLRANGER} count --id=cellranger_standard \
           --fastqs={input.fastqs_path} \
           --transcriptome={input.transcriptome} \
           --jobmode=local \

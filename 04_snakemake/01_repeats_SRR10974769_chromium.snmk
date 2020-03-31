@@ -83,7 +83,8 @@ GSE144357_srr = ['SRR10974769', 'SRR10974768']
 # samples = pd.read_csv(config["samples"], sep = '\t').set_index("id", drop=False)
 
 RUN_NAME  = 'SRR10974769'
-RUN_TECH = 'chromium'
+ # 3' v2 according to https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM4286760
+CHEMISTRY = 'SC3Pv2'
 
 
 # print(op.join(BASE, 'data', RUN_NAME))
@@ -266,7 +267,8 @@ rule run_cellranger_repeats:
     params:
         sample_name = RUN_NAME,
         local_mem_gb = LOCAL_MEM_GB,
-        processing_path = op.join(BASE, 'runs', RUN_NAME)
+        processing_path = op.join(BASE, 'runs', RUN_NAME),
+        chemistry = CHEMISTRY
     output:
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html')
     threads:
@@ -285,7 +287,8 @@ rule run_cellranger_repeats:
           --jobmode=local \
           --localcores={threads} \
           --sample={params.sample_name} \
-          --localmem={params.local_mem_gb}
+          --localmem={params.local_mem_gb} \
+          --chemistry={params.chemistry}
         """
         
 rule run_cellranger_standard:
@@ -295,7 +298,8 @@ rule run_cellranger_standard:
     params:
         sample_name = RUN_NAME,
         local_mem_gb = LOCAL_MEM_GB,
-        processing_path = op.join(BASE, 'runs', RUN_NAME)
+        processing_path = op.join(BASE, 'runs', RUN_NAME),
+        chemistry = CHEMISTRY
     output:
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html')
     threads:
@@ -314,7 +318,8 @@ rule run_cellranger_standard:
           --jobmode=local \
           --localcores={threads} \
           --sample={params.sample_name} \
-          --localmem={params.local_mem_gb}
+          --localmem={params.local_mem_gb} \
+          --chemistry={params.chemistry}
         """
 
 # # from https://gist.github.com/k3yavi/c501705ed2d29b12b0d10cf78b3ed001
