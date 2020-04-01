@@ -71,7 +71,9 @@ CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
 BIOAWK = '~/soft/bioawk/bioawk'
 BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
 Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
-FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
+FASTQ_DUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
+VDB_VALIDATE = '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate'
+
 
 GSE144357_srr = ['SRR10974769', 'SRR10974768']
 
@@ -116,7 +118,8 @@ rule all:
         op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'Log.out'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'run.log'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs',  'web_summary.html'),
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html')
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
+        op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz")
         
 
 # # remeber the readgroup thing!
@@ -255,6 +258,39 @@ rule all:
 #         --sam \
 #         --chunkmbs 128 {params.repeatome} - |  samtools view -@ {threads} -bS - > {output} ) 2> {log}
 #         """
+
+
+## being tested 1st Apr
+rule featurecounts_repeats_on_cellranger_standard:
+    input:
+        bam = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'possorted_genome_bam.bam'),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard')
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard',
+                               RUN_NAME + "_repeats.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard',
+                               RUN_NAME + "_repeats.counts.gz")
+    log :
+        op.join(BASE, "runs",  RUN_NAME, 'count_repeats_on_cellranger_standard', "repeats_counts.log")
+    threads:
+        NTHREADS
+    shell:
+       """
+
+       mkdir -p {params.path}
+       cd $_
+
+       {FEATURECOUNTS} -T {threads} \
+       -t exon \
+       -g gene_id \
+       -a {input.gtf} \
+       -o  {output.counts} \
+       {input.bam}  2>&1 > {log}
+
+       {PIGZ} --keep -p {threads} {output.counts}
+       """
 
 
 rule run_cellranger_repeats:

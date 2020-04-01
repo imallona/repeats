@@ -8,33 +8,17 @@
 import os.path as op
 from glob import glob
 
-print("""
-Folder structure
 
-.. config
-.. annotation
-.. indices
-.... bowtie
-...... repeatome (bowtie)
-.... star
-...... repeatome (star)
-...... transcriptome
-.... salmon
-...... transcriptome (salmon)
-...... repeatome (salmon)
-.... cellranger
-.. conda
-.. runs
-.... run_name
-...... fastq
-...... align
-...... counts
-""")
+# From http://cf.10xgenomics.com/samples/cell-exp/1.1.0/frozen_pbmc_donor_a/frozen_pbmc_donor_a_web_summary.html
+# ~2,900 cells detected
+# Sequenced on Illumina NextSeq 500 High Output with ~25,000 reads per cell
+# 98bp read1 (transcript), 8bp I5 sample barcode, 14bp I7 GemCode barcode and 5bp read2 (UMI)
+# Analysis run with --cells=3000
 
+RUN_NAME  = 'frozen_pbmc_donor_a'
 
+CHEMISTRY = 'SC3Pv1'
 
-
-## Folder structure start --------------------------------------------------------------------- ##
 
 
 #@FIXME to be moved to config, not hardcoded!
@@ -73,20 +57,6 @@ BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
 Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
 FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
 
-GSE144357_srr = ['SRR10974769', 'SRR10974768']
-
-## config file start ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-# configfile: "config.yaml"
-# validate(config, "schemas/config.schema.yaml")
-
-# samples = pd.read_csv(config["samples"], sep = '\t').set_index("id", drop=False)
-
-RUN_NAME  = 'SRR10974769'
- # 3' v2 according to https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM4286760
-CHEMISTRY = 'SC3Pv2'
-
-
 # print(op.join(BASE, 'data', RUN_NAME))
 
 # samples_R2, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_1.fastq.gz"))
@@ -113,11 +83,7 @@ for item in ['bowtie', 'star', 'salmon']:
 
 rule all:
     input:
-        # op.join(BASE, 'indices', 'bowtie', 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt'),
-        # op.join(BASE, 'indices', 'star', 'repeatome', 'chrName.txt'),
-        # op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt'),
-        # op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]+ '.fa.gz'),
-        op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'Log.out'),
+        op.join(BASE, 'data', RUN_NAME, 'read-RA_si-TATTGGTG_lane-004-chunk-002.fastq.gz'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
         op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz")
@@ -261,7 +227,30 @@ rule all:
 #         """
 
 
-## being tested 1st Apr
+rule get_data:
+    output:
+        temp = temp(op.join(BASE, 'data', RUN_NAME, 'frozen_pbmc_donor_a_fastqs.tar')),
+        flag_fastq = op.join(BASE, 'data', RUN_NAME, 'read-RA_si-TATTGGTG_lane-004-chunk-002.fastq.gz')                    
+    params:
+        path = op.join(BASE, 'data', RUN_NAME),
+        url = 'http://cf.10xgenomics.com/samples/cell-exp/1.1.0/frozen_pbmc_donor_a/frozen_pbmc_donor_a_fastqs.tar'
+        
+    log:
+        op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_retrieval.log')
+    shell:
+        """
+        mkdir -p {params.path}
+        cd $_
+        wget {params.url} &> {log}
+
+        tar xvf {output.temp}
+        mv {params.path}/fastqs/flowcell1/*fastq.gz {params.path}
+
+        rmdir {params.path}/fastqs/flowcell1
+        rmdir {params.path}/fastqs/
+        """
+
+        
 rule featurecounts_repeats_on_cellranger_standard:
     input:
         flag = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
@@ -294,11 +283,13 @@ rule featurecounts_repeats_on_cellranger_standard:
        {PIGZ} --keep -p {threads} {output.counts}
        """
 
+       
 rule run_cellranger_repeats:
     input:
-        fastqs_path = op.join(BASE, 'data', RUN_NAME),
+        flag_fastq = op.join(BASE, 'data', RUN_NAME, 'read-RA_si-TATTGGTG_lane-004-chunk-002.fastq.gz'),      
         transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
     params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME),
         sample_name = RUN_NAME,
         local_mem_gb = LOCAL_MEM_GB,
         processing_path = op.join(BASE, 'runs', RUN_NAME),
@@ -316,20 +307,21 @@ rule run_cellranger_repeats:
         rm -rf cellranger_repeats
 
         {CELLRANGER} count --id=cellranger_repeats \
-          --fastqs={input.fastqs_path} \
+          --fastqs={params.fastqs_path} \
           --transcriptome={input.transcriptome} \
           --jobmode=local \
           --localcores={threads} \
-          --sample={params.sample_name} \
           --localmem={params.local_mem_gb} \
-          --chemistry={params.chemistry}
+          --chemistry={params.chemistry} \
+          --expect-cells 3000
         """
         
 rule run_cellranger_standard:
     input:
-        fastqs_path = op.join(BASE, 'data', RUN_NAME),
+        flag_fastq = op.join(BASE, 'data', RUN_NAME, 'read-RA_si-TATTGGTG_lane-004-chunk-002.fastq.gz'),
         transcriptome = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0')
     params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME),
         sample_name = RUN_NAME,
         local_mem_gb = LOCAL_MEM_GB,
         processing_path = op.join(BASE, 'runs', RUN_NAME),
@@ -348,13 +340,13 @@ rule run_cellranger_standard:
         rm -rf cellranger_standard
 
         {CELLRANGER} count --id=cellranger_standard \
-          --fastqs={input.fastqs_path} \
+          --fastqs={params.fastqs_path} \
           --transcriptome={input.transcriptome} \
           --jobmode=local \
           --localcores={threads} \
-          --sample={params.sample_name} \
           --localmem={params.local_mem_gb} \
-          --chemistry={params.chemistry}
+          --chemistry={params.chemistry} \
+          --expect-cells 3000
         """
 
 # # from https://gist.github.com/k3yavi/c501705ed2d29b12b0d10cf78b3ed001
