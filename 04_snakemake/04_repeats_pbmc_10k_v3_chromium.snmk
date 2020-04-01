@@ -5,6 +5,8 @@
 ## Izaskun Mallona
 ## GPLv3
 
+import os.path as op
+from glob import glob
 
 RUN_NAME  = 'pbmc_10k_v3'
 CHEMISTRY = 'SC3Pv3'
@@ -82,7 +84,7 @@ rule all:
     input:
         op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'Log.out'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
-        # op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
         # op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_3.fastq.gz')
         op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz")
 
@@ -224,13 +226,12 @@ rule all:
 #         """
 
 
-
-## @todo make the tar temporary
 rule get_data:
     output:
-        temp = op.join(BASE, 'data', RUN_NAME, 'frozen_pbmc_donor_a_fastqs.tar'),
-        flag_fastq = op.join(BASE, 'data', RUN_NAME, 'read-RA_si-TATTGGTG_lane-004-chunk-002.fastq.gz')                    
+        temp = temp(op.join(BASE, 'data', RUN_NAME, 'pbmc_10k_v3_fastqs.tar')),
+        flag_fastq = op.join(BASE, 'data', RUN_NAME, 'pbmc_10k_v3_S1_L002_I1_001.fastq.gz')
     params:
+        run_name =  RUN_NAME,
         path = op.join(BASE, 'data', RUN_NAME),
         url = 'http://s3-us-west-2.amazonaws.com/10x.files/samples/cell-exp/3.0.0/pbmc_10k_v3/pbmc_10k_v3_fastqs.tar'
         
@@ -243,10 +244,9 @@ rule get_data:
         wget {params.url} &> {log}
 
         tar xvf {output.temp}
-        mv {params.path}/fastqs/flowcell1/*fastq.gz {params.path}
+        mv {params.path}/{params.run_name}/*fastq.gz {params.path}
 
-        rmdir {params.path}/fastqs/flowcell1
-        rmdir {params.path}/fastqs/
+        rmdir {params.path}/{params.run_name}
         """
 
 
@@ -285,9 +285,7 @@ rule featurecounts_repeats_on_cellranger_standard:
         
 rule run_cellranger_repeats:
     input:
-        r1 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
-        r2 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
-        i1 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_I1_001.fastq.gz'),       
+        flag = op.join(BASE, 'data', RUN_NAME, 'pbmc_10k_v3_S1_L002_I1_001.fastq.gz'),
         transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
@@ -319,9 +317,7 @@ rule run_cellranger_repeats:
         
 rule run_cellranger_standard:
     input:
-        r1 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
-        r2 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
-        i1 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_I1_001.fastq.gz'),  
+        op.join(BASE, 'data', RUN_NAME, 'pbmc_10k_v3_S1_L002_I1_001.fastq.gz'),
         transcriptome = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0')
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
