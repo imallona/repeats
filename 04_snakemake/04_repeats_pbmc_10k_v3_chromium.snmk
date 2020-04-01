@@ -5,17 +5,16 @@
 ## Izaskun Mallona
 ## GPLv3
 
-import os.path as op
-from glob import glob
 
-# Single-cell RNA-sequencing of skin, fresh blood, and cultured peripheral blood mononuclear cells
-#   from a patient with drug-induced hypersensitivity syndrome and healthy volunteers
-  
-RUN_NAME  = 'SRR9307700'
-# Samples were prepared using 10X Genomics Chromium 5 kit and 3 kit (v2).
-# https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM3892572
-CHEMISTRY = 'SC3Pv2'
+RUN_NAME  = 'pbmc_10k_v3'
+CHEMISTRY = 'SC3Pv3'
 
+# Peripheral blood mononuclear cells (PBMCs) from a healthy donor (the same cells were used to generate pbmc_1k_v2, pbmc_10k_v3). PBMCs are primary cells with relatively small amounts of RNA (~1pg RNA/cell).
+
+# 11,769 cells detected
+# Sequenced on Illumina NovaSeq with approximately 54,000 reads per cell
+# 28bp read1 (16bp Chromium barcode and 12bp UMI), 91bp read2 (transcript), and 8bp I7 sample barcode
+# run with --expect-cells=10000
 
 
 #@FIXME to be moved to config, not hardcoded!
@@ -226,71 +225,14 @@ rule all:
 
 
 
-
-
-rule rename_data:
-    input:
-        a1 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_1.fastq.gz'),
-        a2 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_2.fastq.gz'),
-        a3 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_3.fastq.gz')
-    params:
-        path = op.join(BASE, 'data', RUN_NAME),
-        run_name = RUN_NAME   
-    output:
-        r1 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
-        r2 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
-        i1 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_I1_001.fastq.gz')
-    shell:
-        """
-        cd {params.path}
-        ln -s {input.a1} {output.r1}
-        ln -s {input.a2} {output.r2}
-        ln -s {input.a3} {output.i1}
-        """
-    
-rule split_data:
-    input:
-        op.join(BASE, 'data', RUN_NAME, RUN_NAME + '.fastq.gz')
-    params:
-        path = op.join(BASE, 'data', RUN_NAME),
-        run_name = RUN_NAME
-    threads:
-        NTHREADS
-    output:
-        op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_1.fastq.gz'),
-        op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_2.fastq.gz'),
-        op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_3.fastq.gz')
-    log:
-        op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_split.log')
-    shell:
-        """
-        cd {params.path}
-        
-        ## {VDB_VALIDATE} {params.run_name}
-        ## {FASTQ_DUMP} -I --gzip --split-files {params.run_name}
-
-        ## very dirty approach, should rather use awk and read the file once, not three times
-
-       # {PIGZ} -p {threads} --to-stdout --decompress {input}  | \
-       #  tee >( grep -A 3 "/3$" | {PIGZ} -p {threads} --to-stdout  > {params.run_name}_3.fastq.gz ) \
-       #  | tee >( grep -A 3 "/2$" | {PIGZ} -p {threads} --to-stdout  > {params.run_name}_2.fastq.gz ) \
-       #  | tee >(  grep -A 3 "/1$" | {PIGZ} -p {threads} --to-stdout  > {params.run_name}_1.fastq.gz ) &> /dev/null
-
-        {PIGZ} -p {threads} --to-stdout --decompress {input} | grep -A 3 "/3$" | {PIGZ} -p {threads} --to-stdout > {params.run_name}_3.fastq.gz
-
-        {PIGZ} -p {threads} --to-stdout --decompress {input} | grep -A 3 "/2$" | {PIGZ} -p {threads} --to-stdout > {params.run_name}_2.fastq.gz
-
-        {PIGZ} -p {threads} --to-stdout --decompress {input} | grep -A 3 "/1$" | {PIGZ} -p {threads} --to-stdout > {params.run_name}_1.fastq.gz
-
-
-        """
-    
+## @todo make the tar temporary
 rule get_data:
     output:
-        temp(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '.fastq.gz'))
+        temp = op.join(BASE, 'data', RUN_NAME, 'frozen_pbmc_donor_a_fastqs.tar'),
+        flag_fastq = op.join(BASE, 'data', RUN_NAME, 'read-RA_si-TATTGGTG_lane-004-chunk-002.fastq.gz')                    
     params:
         path = op.join(BASE, 'data', RUN_NAME),
-        url = 'ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR930/000/SRR9307700/SRR9307700.fastq.gz'
+        url = 'http://s3-us-west-2.amazonaws.com/10x.files/samples/cell-exp/3.0.0/pbmc_10k_v3/pbmc_10k_v3_fastqs.tar'
         
     log:
         op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_retrieval.log')
@@ -299,7 +241,14 @@ rule get_data:
         mkdir -p {params.path}
         cd $_
         wget {params.url} &> {log}
+
+        tar xvf {output.temp}
+        mv {params.path}/fastqs/flowcell1/*fastq.gz {params.path}
+
+        rmdir {params.path}/fastqs/flowcell1
+        rmdir {params.path}/fastqs/
         """
+
 
 rule featurecounts_repeats_on_cellranger_standard:
     input:
