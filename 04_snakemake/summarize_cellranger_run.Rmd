@@ -8,8 +8,8 @@ output:
     toc_float: true
     toc_depth: 4
 params:
-  seed: 11
-  path: ""
+  genes_gz: ""
+  repeats_gz: ""
 ---
 
 Rather, try to read snakemake params
@@ -25,11 +25,7 @@ print(params)
 ```
 
 ```{r}
-expects 1 genes barcode fns
-expects 2 repeats barcode fns
-
-
-print(str(snakemake@input))
+print(sessionInfo())
 ```
 
 # Config
@@ -40,7 +36,7 @@ library(Matrix)
 library(knitr)
 library(Seurat)
 library(dplyr)
-library(scater)
+## library(scater)
 library(dplyr)
 ## library(data.table)
 ## library(SingleCellExperiment)
@@ -54,7 +50,9 @@ library(dplyr)
 ## library(corrplot)
 library(ggplot2)
 library(reshape2)
-library(xtable)
+## library(xtable)
+library(mclust)
+library(pheatmap)
 ```
 
 ```{r}
@@ -117,10 +115,10 @@ print(dim(d$genes))
 
 
 ```{r}
-barcodes_fn <- snakemake@input[[1]] ## should end with `barcodes.tsv.gz`
+barcodes_fn <- params$genes_gz ## should end with `barcodes.tsv.gz`
 path <- dirname(barcodes_fn)
 
-d$genes <- CreateSeuratObject(counts = Read10X(data.dir = path)
+d$genes <- CreateSeuratObject(counts = Read10X(data.dir = path),
                                 project = 'seurat',
                                 min.cells = 1,
                                 min.features = 10)
@@ -131,7 +129,7 @@ Repeats data read
 
 ```{r repeats, eval = FALSE}
 
-barcodes_fn <- snakemake@input[[2]] ## should end with `barcodes.tsv.gz`
+barcodes_fn <- params$repeats_gz ## should end with `barcodes.tsv.gz`
 path <- dirname(barcodes_fn)
 
 features_fn <- file.path(path, "features.tsv.gz")
@@ -152,7 +150,7 @@ print(dim(d$repeats))
 
 
 ```{r}
-barcodes_fn <- params@input[[2]] ## should end with `barcodes.tsv.gz`
+barcodes_fn <- params$repeats_gz ## should end with `barcodes.tsv.gz`
 path <- dirname(barcodes_fn)
 
 d$repeats <- CreateSeuratObject(counts = Read10X(data.dir = path),
@@ -164,7 +162,7 @@ d$repeats <- CreateSeuratObject(counts = Read10X(data.dir = path),
 
 # Basic Seurat processing
 
-```{r}
+```{r, message = FALSE}
 for (item in names(d)) {
 
     d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst", nfeatures = 2000)
@@ -175,12 +173,12 @@ for (item in names(d)) {
                                         # plot variable features with and without labels
     plot1 <- VariableFeaturePlot(d[[item]])
     plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
-    CombinePlots(plots = list(plot1, plot2))
+    print(CombinePlots(plots = list(plot1, plot2)))
     
 }
 ```
 
-```{r}
+```{r, message = FALSE}
 NUM_PCS <- 1:20
 for (item in names(d)) {
 
@@ -193,22 +191,71 @@ for (item in names(d)) {
     ElbowPlot(d[[item]])
 
     d[[item]] <- FindNeighbors(d[[item]], dims = NUM_PCS)
-    d[[item]] <- FindClusters(d[[item]], resolution = 0.3)
+    for (res in seq(0.2, 2, by = 0.2)) {
+        d[[item]] <- FindClusters(d[[item]], resolution = res)
 
-    d[[item]] <- RunUMAP(d[[item]], dims = 1:16)
-    
-    DimPlot(d[[item]], reduction = "umap")
+    }
 
-    d[[item]] <- RunTSNE(d[[item]], dims = 1:16)
-    
-    DimPlot(d[[item]], reduction = "tsne")
+    d[[item]] <- RunUMAP(d[[item]], dims = NUM_PCS)
+        
+    p1 <- DimPlot(d[[item]], reduction = "umap")
+        
+    d[[item]] <- RunTSNE(d[[item]], dims = NUM_PCS)
+        
+    p2 <- DimPlot(d[[item]], reduction = "tsne")
+
+    print(CombinePlots(plots = list(p1, p2)))
 
 }
+
+
 ```
 
 # Confusion matrix clusters
 
 At a given resolution, compare both clusterings
+
+ARIs versus literate identity as annotated by Olivia.
+
+This comparison is not really fair because some integrations have less data than others. Color scale depicts Rand Index.
+
+```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
+aris <- list()
+i <- 1
+for (genes_res in seq(0.2, 2, 0.2)) {
+    genes_res <- sprintf('RNA_snn_res.%s', genes_res)
+    
+    for (repeats_res in seq(0.2, 2, 0.2)) {
+        repeats_res <- sprintf('RNA_snn_res.%s', repeats_res)
+
+        cells <- intersect(rownames(d$genes@meta.data), rownames(d$repeats@meta.data))
+        
+   
+
+        aris[[i]] <- c(sprintf('genes_%s', genes_res),
+                       sprintf('repeats_%s', repeats_res),
+                       adjustedRandIndex(d$genes@meta.data[cells,genes_res],
+                                         d$repeats@meta.data[cells,repeats_res]))
+        i <- i +1
+    }    
+}
+
+aris <- do.call(rbind.data.frame, aris)
+colnames(aris) <- c('genes_res', 'repeats_res', 'ari')
+aris$ari <- as.numeric(as.character(aris$ari))
+```
+
+
+```{r}
+aris_wide <- reshape2::dcast(aris, genes_res~repeats_res, value.var="ari")
+
+rownames(aris_wide)<- aris_wide$genes_res
+aris_wide <- aris_wide[,-1]
+
+pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
+         color = colorRampPalette(c("white","blue"))(20))
+```
+
 
 
 # Timestamp
