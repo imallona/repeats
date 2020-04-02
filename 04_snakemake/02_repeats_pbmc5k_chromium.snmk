@@ -119,7 +119,8 @@ rule all:
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'run.log'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs',  'web_summary.html'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
-        op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz")
+        op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz"),
+        op.join(BASE, 'runs', RUN_NAME, 'test.html')
         
 
 # # remeber the readgroup thing!
@@ -260,6 +261,39 @@ rule all:
 #         """
 
 
+rule knit_report:
+    input:
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+    output:
+        op.join(BASE, 'runs', RUN_NAME, 'test.html')
+    script:
+        op.join("summarize_cellranger_run.Rmd")
+        
+rule get_data:
+    output:
+        temp = temp(op.join(BASE, 'data', RUN_NAME, 'frozen_pbmc_donor_a_fastqs.tar')),
+        flag_fastq = op.join(BASE, 'data', RUN_NAME, 'read-RA_si-TATTGGTG_lane-004-chunk-002.fastq.gz')                    
+    params:
+        path = op.join(BASE, 'data', RUN_NAME),
+        url = 'http://cf.10xgenomics.com/samples/cell-exp/1.1.0/frozen_pbmc_donor_a/frozen_pbmc_donor_a_fastqs.tar'
+        
+    log:
+        op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_retrieval.log')
+    shell:
+        """
+        mkdir -p {params.path}
+        cd $_
+        wget {params.url} &> {log}
+
+        tar xvf {output.temp}
+        mv {params.path}/fastqs/flowcell1/*fastq.gz {params.path}
+
+        rmdir {params.path}/fastqs/flowcell1
+        rmdir {params.path}/fastqs/
+        """
+
+
 ## being tested 1st Apr
 rule featurecounts_repeats_on_cellranger_standard:
     input:
@@ -302,7 +336,8 @@ rule run_cellranger_repeats:
         local_mem_gb = LOCAL_MEM_GB,
         processing_path = op.join(BASE, 'runs', RUN_NAME)
     output:
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html')
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
     threads:
         NTHREADS
     log:
@@ -332,7 +367,9 @@ rule run_cellranger_standard:
         local_mem_gb = LOCAL_MEM_GB,
         processing_path = op.join(BASE, 'runs', RUN_NAME)
     output:
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html')
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'possorted_genome_bam.bam')
     threads:
         NTHREADS
     log:

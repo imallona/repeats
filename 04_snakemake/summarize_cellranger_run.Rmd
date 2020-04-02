@@ -1,0 +1,222 @@
+---
+title: "test"
+author: "Izaskun Mallona"
+output:
+  html_document:
+    keep_md: false
+    toc: true
+    toc_float: true
+    toc_depth: 4
+params:
+  seed: 11
+  path: ""
+---
+
+Rather, try to read snakemake params
+
+Render with rmarkdown::render("summarize_cellranger_run.Rmd")
+
+, params = list(myName = "here"))
+
+
+
+```{r}
+print(params)
+```
+
+```{r}
+expects 1 genes barcode fns
+expects 2 repeats barcode fns
+
+
+print(str(snakemake@input))
+```
+
+# Config
+
+```{r}
+library(Matrix)
+
+library(knitr)
+library(Seurat)
+library(dplyr)
+library(scater)
+library(dplyr)
+## library(data.table)
+## library(SingleCellExperiment)
+## library(scran)
+## library(org.Mm.eg.db)
+## suppressPackageStartupMessages(library(dplyr))
+## suppressPackageStartupMessages(library(DT))
+## library(pheatmap)
+## library(Cairo)
+## library(RColorBrewer)
+## library(corrplot)
+library(ggplot2)
+library(reshape2)
+library(xtable)
+```
+
+```{r}
+opts_chunk$set(fig.width = 8,
+               fig.height = 8,
+               cache = TRUE,
+               include = TRUE,
+               cache.lazy = FALSE,
+               warning = TRUE,
+               message = TRUE)
+
+
+options(bitmapType='cairo')
+getOption('bitmapType')
+```
+
+
+## Functions
+
+```{r functions}
+## add alpha
+ac <- function(col, alpha=1){
+  apply(sapply(col, col2rgb)/255, 2, 
+                     function(x) 
+                       rgb(x[1], x[2], x[3], alpha=alpha))  
+}
+
+```
+
+# Data load
+
+
+```{r}
+d <- list()
+```
+
+Genes data read
+
+```{r genes, eval = FALSE}
+
+barcodes_fn <- snakemake@input[[1]] ## should end with `barcodes.tsv.gz`
+path <- dirname(barcodes_fn)
+
+features_fn <- file.path(path, "features.tsv.gz")
+matrix_fn <- file.path(path, "matrix.mtx.gz")
+
+d$genes <- readMM(file = matrix_fn)
+
+colnames(d$genes) = read.delim(barcodes_fn, 
+                           header = FALSE,
+                           stringsAsFactors = FALSE)$V1
+
+rownames(d$genes) = read.delim(features_fn, 
+                           header = FALSE,
+                           stringsAsFactors = FALSE)$V1
+
+print(dim(d$genes))
+
+```
+
+
+```{r}
+barcodes_fn <- snakemake@input[[1]] ## should end with `barcodes.tsv.gz`
+path <- dirname(barcodes_fn)
+
+d$genes <- CreateSeuratObject(counts = Read10X(data.dir = path)
+                                project = 'seurat',
+                                min.cells = 1,
+                                min.features = 10)
+```
+
+
+Repeats data read
+
+```{r repeats, eval = FALSE}
+
+barcodes_fn <- snakemake@input[[2]] ## should end with `barcodes.tsv.gz`
+path <- dirname(barcodes_fn)
+
+features_fn <- file.path(path, "features.tsv.gz")
+matrix_fn <- file.path(path, "matrix.mtx.gz")
+
+d$repeats <- readMM(file = matrix_fn)
+
+colnames(d$repeats) = read.delim(barcodes_fn, 
+                           header = FALSE,
+                           stringsAsFactors = FALSE)$V1
+
+rownames(d$repeats) = read.delim(features_fn, 
+                           header = FALSE,
+                           stringsAsFactors = FALSE)$V1
+
+print(dim(d$repeats))
+```
+
+
+```{r}
+barcodes_fn <- params@input[[2]] ## should end with `barcodes.tsv.gz`
+path <- dirname(barcodes_fn)
+
+d$repeats <- CreateSeuratObject(counts = Read10X(data.dir = path),
+                                project = 'seurat',
+                                min.cells = 1,
+                                min.features = 10)
+
+```
+
+# Basic Seurat processing
+
+```{r}
+for (item in names(d)) {
+
+    d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst", nfeatures = 2000)
+
+                                        # Identify the 10 most highly variable genes
+    top10 <- head(VariableFeatures(d[[item]]), 10)
+
+                                        # plot variable features with and without labels
+    plot1 <- VariableFeaturePlot(d[[item]])
+    plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+    CombinePlots(plots = list(plot1, plot2))
+    
+}
+```
+
+```{r}
+NUM_PCS <- 1:20
+for (item in names(d)) {
+
+    d[[item]] <- ScaleData(d[[item]])
+
+    d[[item]] <- RunPCA(d[[item]], features = VariableFeatures(object = d[[item]]))
+
+    DimPlot(d[[item]], reduction = "pca")
+
+    ElbowPlot(d[[item]])
+
+    d[[item]] <- FindNeighbors(d[[item]], dims = NUM_PCS)
+    d[[item]] <- FindClusters(d[[item]], resolution = 0.3)
+
+    d[[item]] <- RunUMAP(d[[item]], dims = 1:16)
+    
+    DimPlot(d[[item]], reduction = "umap")
+
+    d[[item]] <- RunTSNE(d[[item]], dims = 1:16)
+    
+    DimPlot(d[[item]], reduction = "tsne")
+
+}
+```
+
+# Confusion matrix clusters
+
+At a given resolution, compare both clusterings
+
+
+# Timestamp
+
+```{r sessionInfo, cache = FALSE}
+date()
+sessionInfo()
+devtools::session_info()
+
+```
+

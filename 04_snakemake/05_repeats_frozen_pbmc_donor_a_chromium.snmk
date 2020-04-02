@@ -86,7 +86,8 @@ rule all:
         op.join(BASE, 'data', RUN_NAME, 'read-RA_si-TATTGGTG_lane-004-chunk-002.fastq.gz'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
-        op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz")
+        op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz"),
+        op.join(BASE, 'runs', RUN_NAME, 'test.html')
         
 
 # # remeber the readgroup thing!
@@ -227,6 +228,15 @@ rule all:
 #         """
 
 
+rule knit_report:
+    input:
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+    output:
+        op.join(BASE, 'runs', RUN_NAME, 'test.html')
+    script:
+        op.join("summarize_cellranger_run.Rmd")
+        
 rule get_data:
     output:
         temp = temp(op.join(BASE, 'data', RUN_NAME, 'frozen_pbmc_donor_a_fastqs.tar')),
@@ -295,7 +305,8 @@ rule run_cellranger_repeats:
         processing_path = op.join(BASE, 'runs', RUN_NAME),
         chemistry = CHEMISTRY
     output:
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html')
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
     threads:
         NTHREADS
     log:
@@ -328,7 +339,8 @@ rule run_cellranger_standard:
         chemistry = CHEMISTRY
     output:
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'possorted_genome_bam.bam')
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'possorted_genome_bam.bam'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
     threads:
         NTHREADS
     log:
