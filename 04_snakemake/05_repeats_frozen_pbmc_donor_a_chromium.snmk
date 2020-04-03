@@ -23,7 +23,7 @@ CHEMISTRY = 'SC3Pv1'
 
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
-NTHREADS = 30
+NTHREADS = 60
 LOCAL_MEM_GB = 100
 
 ## @FIXME to be moved to config
@@ -234,7 +234,7 @@ rule spawn_cellranger_bam_file_by_cell:
     output:
         rgs = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'rgs.txt')),
         header = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'header.txt')),
-        body = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'body.txt')),
+        body = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'body.txt.gz')),
         shortened_bam = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'shortened.bam')),
         flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split', 'done.flag')
     threads:
@@ -247,16 +247,17 @@ rule spawn_cellranger_bam_file_by_cell:
         """
         python3 {params.barcodes_script} {input.bam} > {output.rgs}
 
-        samtools view --threads {threads} -H {input.bam} > {output.header}
+        samtools view -@ {threads} -H {input.bam} > {output.header}
 
-        samtools view --threads {threads} {input.bam} | cut -f 1-15 | paste - {output.rgs} | \
-          sed 's/\t$//' | sort -k16 > {output.body}
+        ## buffer size in sort due to https://superuser.com/questions/938558/sort-parallel-isnt-parallelizing
+        samtools view -@ {threads} {input.bam} | cut -f 1-15 | paste - {output.rgs} | \
+          sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --stdout > {output.body}
         
-        cat {output.header} {output.body} | samtools view --threads {threads} -Sb - > {output.shortened_bam}
+        {PIGZ} --decompress -p {threads} --keep --stdout {output.body} | cat {output.header} - | samtools view -@ {threads} -Sb - > {output.shortened_bam}
         
         python3 split_by_cell_barcode_in_sorted_bam.py {output.shortened_bam} -outdir {params.split_path}
 
-        touch {flag}
+        touch {output.flag}
 
         """
 

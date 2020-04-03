@@ -8,17 +8,13 @@ output:
     toc_float: true
     toc_depth: 4
 params:
-  genes_gz: ""
-  repeats_gz: ""
+  genes_cellranger: ""
+  repeats_cellranger: ""
 ---
 
 Rather, try to read snakemake params
 
 Render with rmarkdown::render("summarize_cellranger_run.Rmd")
-
-, params = list(myName = "here"))
-
-
 
 ```{r}
 print(params)
@@ -31,6 +27,7 @@ print(sessionInfo())
 # Config
 
 ```{r}
+suppressPackageStartupMessages({
 library(Matrix)
 
 library(knitr)
@@ -53,6 +50,7 @@ library(reshape2)
 ## library(xtable)
 library(mclust)
 library(pheatmap)
+})
 ```
 
 ```{r}
@@ -115,7 +113,7 @@ print(dim(d$genes))
 
 
 ```{r}
-barcodes_fn <- params$genes_gz ## should end with `barcodes.tsv.gz`
+barcodes_fn <- params$genes_cellranger ## should end with `barcodes.tsv.gz`
 path <- dirname(barcodes_fn)
 
 d$genes <- CreateSeuratObject(counts = Read10X(data.dir = path),
@@ -129,7 +127,7 @@ Repeats data read
 
 ```{r repeats, eval = FALSE}
 
-barcodes_fn <- params$repeats_gz ## should end with `barcodes.tsv.gz`
+barcodes_fn <- params$repeats_cellranger ## should end with `barcodes.tsv.gz`
 path <- dirname(barcodes_fn)
 
 features_fn <- file.path(path, "features.tsv.gz")
@@ -150,7 +148,7 @@ print(dim(d$repeats))
 
 
 ```{r}
-barcodes_fn <- params$repeats_gz ## should end with `barcodes.tsv.gz`
+barcodes_fn <- params$repeats_cellranger ## should end with `barcodes.tsv.gz`
 path <- dirname(barcodes_fn)
 
 d$repeats <- CreateSeuratObject(counts = Read10X(data.dir = path),
@@ -173,7 +171,7 @@ for (item in names(d)) {
                                         # plot variable features with and without labels
     plot1 <- VariableFeaturePlot(d[[item]])
     plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
-    print(CombinePlots(plots = list(plot1, plot2)))
+    print(plot2 + ggtitle(item))
     
 }
 ```
@@ -188,8 +186,12 @@ for (item in names(d)) {
 
     DimPlot(d[[item]], reduction = "pca")
 
-    ElbowPlot(d[[item]])
+    print(ElbowPlot(d[[item]]) + ggtitle(item))
+}
+```
 
+```{r, message = FALSE}
+for (item in names(d)) {
     d[[item]] <- FindNeighbors(d[[item]], dims = NUM_PCS)
     for (res in seq(0.2, 2, by = 0.2)) {
         d[[item]] <- FindClusters(d[[item]], resolution = res)
@@ -204,7 +206,7 @@ for (item in names(d)) {
         
     p2 <- DimPlot(d[[item]], reduction = "tsne")
 
-    print(CombinePlots(plots = list(p1, p2)))
+    print(CombinePlots(plots = list(p1, p2)) + ggtitle(item))
 
 }
 
@@ -232,8 +234,10 @@ for (genes_res in seq(0.2, 2, 0.2)) {
         
    
 
-        aris[[i]] <- c(sprintf('genes_%s', genes_res),
-                       sprintf('repeats_%s', repeats_res),
+        aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
+                               length(unique(d$genes@meta.data[cells, genes_res]))),
+                       sprintf('repeats_%s (n=%s)', repeats_res,
+                               length(unique(d$repeats@meta.data[cells, repeats_res]))),
                        adjustedRandIndex(d$genes@meta.data[cells,genes_res],
                                          d$repeats@meta.data[cells,repeats_res]))
         i <- i +1
@@ -254,6 +258,14 @@ aris_wide <- aris_wide[,-1]
 
 pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
          color = colorRampPalette(c("white","blue"))(20))
+```
+
+# Add other layers or repeats quantification
+
+
+```{r}
+## if (params@
+print('pending')
 ```
 
 
