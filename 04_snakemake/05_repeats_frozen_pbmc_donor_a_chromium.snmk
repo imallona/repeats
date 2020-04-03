@@ -87,7 +87,8 @@ rule all:
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
         op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz"),
-        op.join(BASE, 'runs', RUN_NAME, 'test.html')
+        op.join(BASE, 'runs', RUN_NAME, 'test.html'),
+        op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split', 'done.flag')
         
 
 # # remeber the readgroup thing!
@@ -227,11 +228,44 @@ rule all:
 #         --chunkmbs 128 {params.repeatome} - |  samtools view -@ {threads} -bS - > {output} ) 2> {log}
 #         """
 
+rule spawn_cellranger_bam_file_by_cell:
+    input:
+        bam = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'possorted_genome_bam.bam')
+    output:
+        rgs = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'rgs.txt')),
+        header = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'header.txt')),
+        body = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'body.txt')),
+        shortened_bam = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'shortened.bam')),
+        flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split', 'done.flag')
+    threads:
+        NTHREADS
+    params:
+        barcodes_script = 'get_cell_barcodes.py',
+        split_script = 'split_by_cell_barcode_in_sorted_bam.py',
+        split_path = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split')
+    shell:
+        """
+        python3 {params.barcodes_script} {input.bam} > {output.rgs}
+
+        samtools view --threads {threads} -H {input.bam} > {output.header}
+
+        samtools view --threads {threads} {input.bam} | cut -f 1-15 | paste - {output.rgs} | \
+          sed 's/\t$//' | sort -k16 > {output.body}
+        
+        cat {output.header} {output.body} | samtools view --threads {threads} -Sb - > {output.shortened_bam}
+        
+        python3 split_by_cell_barcode_in_sorted_bam.py {output.shortened_bam} -outdir {params.split_path}
+
+        touch {flag}
+
+        """
 
 rule knit_report:
     input:
         genes = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
-        repeats = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+        repeats = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz') #,
+        # featurecounts = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard',
+        #                        RUN_NAME + "_repeats.counts.gz")
     params:
         rmd = 'summarize_cellranger_run.Rmd'
     output:
@@ -240,7 +274,7 @@ rule knit_report:
         op.join(BASE, 'runs', RUN_NAME, 'knit_report.log')
     shell:
         """
-        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output}\", params = list(genes_gz = \"{input.genes}\", repeats_gz = \"{input.repeats}\"))' &> {log}
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output}\", params = list(genes_cellranger = \"{input.genes}\", repeats_cellranger = \"{input.repeats}\"))' &> {log}
         """
         
 rule get_data:
@@ -294,6 +328,7 @@ rule featurecounts_repeats_on_cellranger_standard:
        -g gene_id \
        -a {input.gtf} \
        -o  {output.counts} \
+       --byReadGroup \
        {input.bam}  2>&1 > {log}
 
        {PIGZ} --keep -p {threads} {output.counts}

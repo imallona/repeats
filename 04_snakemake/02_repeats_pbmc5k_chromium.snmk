@@ -261,15 +261,22 @@ rule all:
 #         """
 
 
+
 rule knit_report:
     input:
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+        genes = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+        repeats = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+    params:
+        rmd = 'summarize_cellranger_run.Rmd'
     output:
         op.join(BASE, 'runs', RUN_NAME, 'test.html')
-    script:
-        op.join("summarize_cellranger_run.Rmd")
-        
+    log:
+        op.join(BASE, 'runs', RUN_NAME, 'knit_report.log')
+    shell:
+        """
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output}\", params = list(genes_gz = \"{input.genes}\", repeats_gz = \"{input.repeats}\"))' &> {log}
+        """
+
 rule get_data:
     output:
         temp = temp(op.join(BASE, 'data', RUN_NAME, 'frozen_pbmc_donor_a_fastqs.tar')),
@@ -321,6 +328,8 @@ rule featurecounts_repeats_on_cellranger_standard:
        -g gene_id \
        -a {input.gtf} \
        -o  {output.counts} \
+       --read
+       --rg CB \
        {input.bam}  2>&1 > {log}
 
        {PIGZ} --keep -p {threads} {output.counts}
