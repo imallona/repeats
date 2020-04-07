@@ -33,15 +33,19 @@ else:
 # read only accepted barcodes barcodes
 if len(args.barcodes) > 0:
     keep = set()
-    with gzip.open(args.barcodes, 'rb') as f:
+    with gzip.open(args.barcodes, 'rt') as f:
         i = 0
         for line in f:
-            current = line.strip()
+            current = 'cellranger_standard:0:1:cb:' + line.strip()
             keep.add(current)
             i += 1
-        if i % 1000 == 0:
+        if i % 100 == 0:
             print('Read %s cells' % i)
-            
+
+print('Found %s accepted barcodes, processing' % len(keep))
+
+## dict with keys are barcode, values are outbam
+fouts_dict = {}
 
 prev_cell_barcode = 'empty'
 accepted = True
@@ -50,7 +54,7 @@ for read in fin:
     RG_list = [ x for x in tags if x[0] == "RG"]
     if RG_list:
         cell_barcode = RG_list[0][1]
-
+        
         if len(args.barcodes) > 0:
             if cell_barcode in keep:
                 accepted = True
@@ -58,26 +62,26 @@ for read in fin:
                 accepted = False
         else:
             accepted = True
-        
-        if accepted and prev_cell_barcode is 'empty':
+
+        if accepted and cell_barcode not in fouts_dict:
+            print('writing %s bamfile' % cell_barcode)
             fout_name = cell_barcode + ".bam"
-            fout_name = os.path.join(args.outdir, fout_name)
-            
-            fout = pysam.AlignmentFile(fout_name, "wb", template = fin)            
-        elif accepted and cell_barcode == prev_cell_barcode:
-            fout.write(read)
-        elif accepted and cell_barcode != prev_cell_barcode:
-            print(cell_barcode)
-            prev_fout.close()
-            fout_name = cell_barcode + ".bam"
-            fout_name = os.path.join(args.outdir, fout_name)
-            fout = pysam.AlignmentFile(fout_name, "wb", template = fin)            
-            fout.write(read)
+            fouts_dict[cell_barcode] = pysam.AlignmentFile(os.path.join(args.outdir,fout_name), "wb", template = fin)
+            prev_cell_barcode = cell_barcode
+        if accepted and cell_barcode in fouts_dict:
+            fouts_dict[cell_barcode].write(read)
+
+        ## assumes records are sorted by barcode, so if the current one is different from
+        ## the previous one, better close the filehandle
+        if accepted and (prev_cell_barcode is not cell_barcode) and (prev_cell_barcode is not 'empty'):
+            fouts_dict[prev_cell_barcode].close()
+            # print(fouts_dict[prev_cell_barcode].closed)
+            prev_cell_barcode = cell_barcode
         
-        prev_fout = fout
-        prev_cell_barcode = cell_barcode
     else: 
         continue
     
 fin.close()
-fout.close()
+# fout.close()
+for fout in fouts_dict.values():
+    fout.close()

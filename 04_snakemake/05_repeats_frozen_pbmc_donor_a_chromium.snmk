@@ -318,7 +318,7 @@ rule run_feature_counts_spawned_bams:
         gz_counts = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard',
                             RUN_NAME + "_repeats.counts.gz")
     log :
-        op.join(BASE, "runs",  RUN_NAME, 'count_repeats_on_cellranger_standard','feature_counts.log'),
+        log = op.join(BASE, "runs",  RUN_NAME, 'count_repeats_on_cellranger_standard','feature_counts.log'),
     threads:
         NTHREADS
     shell: """
@@ -355,7 +355,8 @@ rule spawn_cellranger_bam_file_by_cell:
         split_script = 'split_by_cell_barcode_in_sorted_bam.py',
         split_path = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split')
     log:
-        op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split', 'split.log')
+        log1 = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split_add_rg.log'),
+        log2 = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split_pick.log'),
     shell:
         """
         mkdir -p {output.path}
@@ -369,11 +370,11 @@ rule spawn_cellranger_bam_file_by_cell:
         ## buffer size in sort due to https://superuser.com/questions/938558/sort-parallel-isnt-parallelizing
         ( samtools view -@ {threads} {input.bam} | cut -f 1-15 | \
         paste - {output.rgs} | \
-          sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log}
+          sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
         
         {PIGZ} --decompress -p {threads} --keep --stdout {output.body} | cat {output.header} - | samtools view -@ {threads} -Sb - > {output.shortened_bam}
         
-        python3 split_by_cell_barcode_in_sorted_bam.py {output.shortened_bam} -outdir {params.split_path} -barcodes {input.barcodes} &> {log}
+        python3 split_by_cell_barcode_in_sorted_bam.py {output.shortened_bam} -outdir {params.split_path} -barcodes {input.barcodes} &> {log.log2}
 
         touch {output.flag}
 
