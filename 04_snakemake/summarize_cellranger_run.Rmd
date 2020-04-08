@@ -10,6 +10,7 @@ output:
 params:
   genes_cellranger: ""
   repeats_cellranger: ""
+  repeats_featurecounts: ""
 ---
 
 Rather, try to read snakemake params
@@ -35,7 +36,7 @@ library(Seurat)
 library(dplyr)
 ## library(scater)
 library(dplyr)
-## library(data.table)
+library(data.table)
 ## library(SingleCellExperiment)
 ## library(scran)
 ## library(org.Mm.eg.db)
@@ -82,6 +83,19 @@ ac <- function(col, alpha=1){
 
 # Data load
 
+```{r, eval = FALSE}
+## setClass("Snakemake",
+##          representation(input = 'list'))
+
+## snakemake <- new('Snakemake', input = list(genes_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                                           repeats_cellranger= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                                           repeats_featurecounts= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz"))\
+
+params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+               repeats_cellranger= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+               repeats_featurecounts= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz")
+```
+
 
 ```{r}
 d <- list()
@@ -118,8 +132,8 @@ path <- dirname(barcodes_fn)
 
 d$genes <- CreateSeuratObject(counts = Read10X(data.dir = path),
                                 project = 'seurat',
-                                min.cells = 1,
-                                min.features = 10)
+                                min.cells = 0,
+                                min.features = 00)
 ```
 
 
@@ -154,9 +168,39 @@ path <- dirname(barcodes_fn)
 d$repeats <- CreateSeuratObject(counts = Read10X(data.dir = path),
                                 project = 'seurat',
                                 min.cells = 1,
-                                min.features = 10)
+                                min.features = 0)
 
 ```
+
+Featurecounts-based repeats
+
+```{r}
+
+tmp <- data.table::fread(params$repeats_featurecounts, sep = '\t', header = TRUE,
+                         drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+rownames(tmp) <- tmp$Geneid ## here
+
+colnames(tmp) <- gsub(".*([A-Z]{14})-1.bam","\\1", colnames(tmp))
+## tmp <- tmp[,7:ncol(tmp)]
+
+tmp <- as.data.frame(tmp)
+rownames(tmp) <- tmp$Geneid
+tmp <- tmp[,-1]
+
+d$featurecounts <- CreateSeuratObject(
+    tmp,
+    project = "seurat",
+    assay = "RNA",
+    min.cells = 0,
+    min.features = 0,
+    names.field = 1,
+    names.delim = "_",
+    meta.data = NULL)
+
+rm(tmp)
+
+```
+
 
 # Basic Seurat processing
 
@@ -213,6 +257,56 @@ for (item in names(d)) {
 
 ```
 
+# Correlation values distribution
+
+Repeats by cellranger vs repeats by featurecounts on cellranger-standard bams.
+
+Correlations per cell
+
+```{r}
+ccell <- list()
+
+## GetAssay(d$repeats, 'RNA')[1:10,1:10]
+
+for (cell in intersect( colnames(GetAssay(d$repeats, 'RNA')),
+                       colnames(GetAssay(d$featurecounts, 'RNA')))) {
+    reps <- intersect(rownames(d$repeats), rownames(d$featurecounts))
+    
+    ccell[[cell]] <- cor(as.numeric(GetAssay(d$repeats, 'RNA')[reps,cell]),
+                         as.numeric(GetAssay(d$featurecounts, 'RNA')[reps,cell]),
+                         method = 'spearman')
+}
+```
+
+```{r}
+hist(unlist(ccell), main = "correlation across cells")
+## lines(density(unlist(ccell)))
+
+```
+
+Correlations per repeat
+
+```{r}
+crepeat <- list()
+
+## GetAssay(d$repeats, 'RNA')[1:10,1:10]
+
+for (re in intersect( rownames(GetAssay(d$repeats, 'RNA')),
+                     rownames(GetAssay(d$featurecounts, 'RNA')))) {
+
+    cells <-  intersect(colnames(d$repeats), colnames(d$featurecounts))
+    crepeat[[re]] <- cor(as.numeric(GetAssay(d$repeats, 'RNA')[re,cells]),
+                         as.numeric(GetAssay(d$featurecounts, 'RNA')[re, cells]),
+                         method = 'spearman')
+}
+```
+
+```{r}
+hist(unlist(crepeat), main = "correlation across repeats")
+## lines(density(unlist(ccell)))
+
+```
+
 # Confusion matrix clusters
 
 At a given resolution, compare both clusterings
@@ -220,6 +314,8 @@ At a given resolution, compare both clusterings
 ARIs versus literate identity as annotated by Olivia.
 
 This comparison is not really fair because some integrations have less data than others. Color scale depicts Rand Index.
+
+## Genes vs repeats (cellranger)
 
 ```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
 aris <- list()
@@ -260,12 +356,56 @@ pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
          color = colorRampPalette(c("white","blue"))(20))
 ```
 
+## Repeats vs repeats
+
+```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
+aris <- list()
+i <- 1
+for (featurecounts_res in seq(0.2, 2, 0.2)) {
+    featurecounts_res <- sprintf('RNA_snn_res.%s', featurecounts_res)
+    
+    for (repeats_res in seq(0.2, 2, 0.2)) {
+        repeats_res <- sprintf('RNA_snn_res.%s', repeats_res)
+
+        cells <- intersect(rownames(d$featurecounts@meta.data), rownames(d$repeats@meta.data))
+        
+   
+
+        aris[[i]] <- c(sprintf('featurecounts_%s (n=%s)', featurecounts_res,
+                               length(unique(d$featurecounts@meta.data[cells, featurecounts_res]))),
+                       sprintf('repeats_%s (n=%s)', repeats_res,
+                               length(unique(d$repeats@meta.data[cells, repeats_res]))),
+                       adjustedRandIndex(d$featurecounts@meta.data[cells,featurecounts_res],
+                                         d$repeats@meta.data[cells,repeats_res]))
+        i <- i +1
+    }    
+}
+
+aris <- do.call(rbind.data.frame, aris)
+colnames(aris) <- c('featurecounts_res', 'repeats_res', 'ari')
+aris$ari <- as.numeric(as.character(aris$ari))
+```
+
+
+```{r}
+aris_wide <- reshape2::dcast(aris, featurecounts_res~repeats_res, value.var="ari")
+
+rownames(aris_wide)<- aris_wide$featurecounts_res
+aris_wide <- aris_wide[,-1]
+
+pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
+         color = colorRampPalette(c("white","blue"))(20))
+```
+
+
+
 # Add other layers or repeats quantification
 
 
 ```{r}
 ## if (params@
 print('pending')
+
 ```
 
 
