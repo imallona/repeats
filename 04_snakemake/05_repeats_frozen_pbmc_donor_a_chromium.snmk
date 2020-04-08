@@ -329,7 +329,6 @@ rule run_feature_counts_spawned_bams:
     -g gene_id \
     -a {input.gtf} \
     -o  {output.counts} \
-    --byReadGroup \
     {params.path}/*bam  2>&1 > {log}
 
     {PIGZ} --keep -p {threads} {output.counts}

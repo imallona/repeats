@@ -62,21 +62,25 @@ for read in fin:
                 accepted = False
         else:
             accepted = True
-
+ 
         if accepted and cell_barcode not in fouts_dict:
+            for fout in fouts_dict.values():
+                fout.close()
             print('writing %s bamfile' % cell_barcode)
             fout_name = cell_barcode + ".bam"
             fouts_dict[cell_barcode] = pysam.AlignmentFile(os.path.join(args.outdir,fout_name), "wb", template = fin)
-            prev_cell_barcode = cell_barcode
-        if accepted and cell_barcode in fouts_dict:
             fouts_dict[cell_barcode].write(read)
-
+        elif accepted and cell_barcode in fouts_dict:
+            fouts_dict[cell_barcode].write(read)    
         ## assumes records are sorted by barcode, so if the current one is different from
         ## the previous one, better close the filehandle
-        if accepted and (prev_cell_barcode is not cell_barcode) and (prev_cell_barcode is not 'empty'):
+
+        if accepted and (prev_cell_barcode != cell_barcode) \
+           and (prev_cell_barcode in fouts_dict) \
+           and (prev_cell_barcode != 'empty'):             
             fouts_dict[prev_cell_barcode].close()
-            # print(fouts_dict[prev_cell_barcode].closed)
-            prev_cell_barcode = cell_barcode
+
+        prev_cell_barcode = cell_barcode
         
     else: 
         continue

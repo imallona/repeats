@@ -249,39 +249,78 @@ rule get_data:
         rmdir {params.path}/{params.run_name}
         """
 
-
-rule featurecounts_repeats_on_cellranger_standard:
+rule run_feature_counts_spawned_bams:
     input:
-        flag = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
-        bam = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'possorted_genome_bam.bam'),
-        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+        flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split.flag'),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
+        path = directory(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split'))
     params:
-        path = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard')
+        path = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split')
     output:
         counts  = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard',
                                RUN_NAME + "_repeats.counts")),
         gz_counts = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard',
-                               RUN_NAME + "_repeats.counts.gz")
+                            RUN_NAME + "_repeats.counts.gz")
     log :
-        op.join(BASE, "runs",  RUN_NAME, 'count_repeats_on_cellranger_standard', "repeats_counts.log")
+        log = op.join(BASE, "runs",  RUN_NAME, 'count_repeats_on_cellranger_standard','feature_counts.log'),
     threads:
         NTHREADS
+    shell: """
+    cd {input.path}
+
+    {FEATURECOUNTS} -T {threads} \
+    -t exon \
+    -g gene_id \
+    -a {input.gtf} \
+    -o  {output.counts} \
+    {params.path}/*bam  2>&1 > {log}
+
+    {PIGZ} --keep -p {threads} {output.counts}
+    """
+
+
+rule spawn_cellranger_bam_file_by_cell:
+    input:
+        bam = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'possorted_genome_bam.bam'),
+        barcodes = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix/barcodes.tsv.gz')
+    output:
+        rgs = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'rgs.txt')),
+        header = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'header.txt')),
+        body = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'body.txt.gz')),
+        shortened_bam = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'shortened.bam')),
+        flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split.flag'),
+        path = directory(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split'))
+    threads:
+        NTHREADS
+    params:
+        barcodes_script = 'get_cell_barcodes.py',
+        split_script = 'split_by_cell_barcode_in_sorted_bam.py',
+        split_path = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split')
+    log:
+        log1 = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split_add_rg.log'),
+        log2 = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split_pick.log'),
     shell:
-       """
+        """
+        mkdir -p {output.path}
+        
+        # python3 {params.barcodes_script} {input.bam} | {PIGZ} -p {threads} > {output.rgs}
 
-       mkdir -p {params.path}
-       cd $_
+        python3 {params.barcodes_script} {input.bam}  > {output.rgs}
 
-       {FEATURECOUNTS} -T {threads} \
-       -t exon \
-       -g gene_id \
-       -a {input.gtf} \
-       -o  {output.counts} \
-       {input.bam}  2>&1 > {log}
+        samtools view -@ {threads} -H {input.bam} > {output.header}
 
-       {PIGZ} --keep -p {threads} {output.counts}
-       """
+        ## buffer size in sort due to https://superuser.com/questions/938558/sort-parallel-isnt-parallelizing
+        ( samtools view -@ {threads} {input.bam} | cut -f 1-15 | \
+        paste - {output.rgs} | \
+          sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
+        
+        {PIGZ} --decompress -p {threads} --keep --stdout {output.body} | cat {output.header} - | samtools view -@ {threads} -Sb - > {output.shortened_bam}
+        
+        python3 split_by_cell_barcode_in_sorted_bam.py {output.shortened_bam} -outdir {params.split_path} -barcodes {input.barcodes} &> {log.log2}
 
+        touch {output.flag}
+
+        """
         
 rule run_cellranger_repeats:
     input:
