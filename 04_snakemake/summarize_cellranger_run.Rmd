@@ -1,6 +1,7 @@
 ---
-title: "test"
-author: "Izaskun Mallona"
+title: "Within sample report"
+author: "Izaskun Mallona at Robinsonlab"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
   html_document:
     keep_md: false
@@ -8,23 +9,17 @@ output:
     toc_float: true
     toc_depth: 4
 params:
+  identifier: ""   
   genes_cellranger: ""
   repeats_cellranger: ""
   repeats_featurecounts: ""
 ---
 
-Rather, try to read snakemake params
-
-Render with rmarkdown::render("summarize_cellranger_run.Rmd")
+Rendered for sample:
 
 ```{r}
 print(params)
 ```
-
-```{r}
-print(sessionInfo())
-```
-
 # Config
 
 ```{r}
@@ -55,9 +50,9 @@ library(pheatmap)
 ```
 
 ```{r}
-opts_chunk$set(fig.width = 8,
-               fig.height = 8,
-               cache = TRUE,
+opts_chunk$set(fig.width = 5,
+               fig.height = 5,
+               cache = FALSE,
                include = TRUE,
                cache.lazy = FALSE,
                warning = TRUE,
@@ -83,17 +78,16 @@ ac <- function(col, alpha=1){
 
 # Data load
 
-```{r, eval = FALSE}
-## setClass("Snakemake",
-##          representation(input = 'list'))
+```{r justfordebugging, eval = FALSE}
+## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_cellranger= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz")
 
-## snakemake <- new('Snakemake', input = list(genes_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-##                                           repeats_cellranger= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-##                                           repeats_featurecounts= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz"))\
+## SRR10974769
 
-params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-               repeats_cellranger= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-               repeats_featurecounts= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz")
+params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/SRR10974769/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+               repeats_cellranger= "/home/imallona/repeats_sc/runs/SRR10974769/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+               repeats_featurecounts= "/home/imallona/repeats_sc/runs/SRR10974769/count_repeats_on_cellranger_standard/SRR10974769_repeats.counts.gz")
 ```
 
 
@@ -102,28 +96,6 @@ d <- list()
 ```
 
 Genes data read
-
-```{r genes, eval = FALSE}
-
-barcodes_fn <- snakemake@input[[1]] ## should end with `barcodes.tsv.gz`
-path <- dirname(barcodes_fn)
-
-features_fn <- file.path(path, "features.tsv.gz")
-matrix_fn <- file.path(path, "matrix.mtx.gz")
-
-d$genes <- readMM(file = matrix_fn)
-
-colnames(d$genes) = read.delim(barcodes_fn, 
-                           header = FALSE,
-                           stringsAsFactors = FALSE)$V1
-
-rownames(d$genes) = read.delim(features_fn, 
-                           header = FALSE,
-                           stringsAsFactors = FALSE)$V1
-
-print(dim(d$genes))
-
-```
 
 
 ```{r}
@@ -138,27 +110,6 @@ d$genes <- CreateSeuratObject(counts = Read10X(data.dir = path),
 
 
 Repeats data read
-
-```{r repeats, eval = FALSE}
-
-barcodes_fn <- params$repeats_cellranger ## should end with `barcodes.tsv.gz`
-path <- dirname(barcodes_fn)
-
-features_fn <- file.path(path, "features.tsv.gz")
-matrix_fn <- file.path(path, "matrix.mtx.gz")
-
-d$repeats <- readMM(file = matrix_fn)
-
-colnames(d$repeats) = read.delim(barcodes_fn, 
-                           header = FALSE,
-                           stringsAsFactors = FALSE)$V1
-
-rownames(d$repeats) = read.delim(features_fn, 
-                           header = FALSE,
-                           stringsAsFactors = FALSE)$V1
-
-print(dim(d$repeats))
-```
 
 
 ```{r}
@@ -180,7 +131,7 @@ tmp <- data.table::fread(params$repeats_featurecounts, sep = '\t', header = TRUE
                          drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
 rownames(tmp) <- tmp$Geneid ## here
 
-colnames(tmp) <- gsub(".*([A-Z]{14})-1.bam","\\1", colnames(tmp))
+colnames(tmp) <- gsub(".*:([A-Z]+)-1.bam","\\1", colnames(tmp))
 ## tmp <- tmp[,7:ncol(tmp)]
 
 tmp <- as.data.frame(tmp)
@@ -204,7 +155,7 @@ rm(tmp)
 
 # Basic Seurat processing
 
-```{r, message = FALSE}
+```{r, message = FALSE, fig.width =8, fig.height = 8}
 for (item in names(d)) {
 
     d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst", nfeatures = 2000)
@@ -244,17 +195,20 @@ for (item in names(d)) {
 
     d[[item]] <- RunUMAP(d[[item]], dims = NUM_PCS)
         
+    d[[item]] <- RunTSNE(d[[item]], dims = NUM_PCS, check_duplicates = FALSE )
+}
+
+```
+
+```{r fig.width =8, fig.height = 8}
+for (item in names(d)) {
+
     p1 <- DimPlot(d[[item]], reduction = "umap")
-        
-    d[[item]] <- RunTSNE(d[[item]], dims = NUM_PCS)
-        
     p2 <- DimPlot(d[[item]], reduction = "tsne")
 
     print(CombinePlots(plots = list(p1, p2)) + ggtitle(item))
 
 }
-
-
 ```
 
 # Correlation values distribution
@@ -268,6 +222,9 @@ ccell <- list()
 
 ## GetAssay(d$repeats, 'RNA')[1:10,1:10]
 
+head(colnames(GetAssay(d$repeats, 'RNA')))
+head( colnames(GetAssay(d$featurecounts, 'RNA')))
+     
 for (cell in intersect( colnames(GetAssay(d$repeats, 'RNA')),
                        colnames(GetAssay(d$featurecounts, 'RNA')))) {
     reps <- intersect(rownames(d$repeats), rownames(d$featurecounts))
@@ -279,7 +236,8 @@ for (cell in intersect( colnames(GetAssay(d$repeats, 'RNA')),
 ```
 
 ```{r}
-hist(unlist(ccell), main = "correlation across cells")
+hist(unlist(ccell),
+     main = "correlation across cells\nrepeats cellranger vs repeats (featurecounts)")
 ## lines(density(unlist(ccell)))
 
 ```
@@ -302,10 +260,48 @@ for (re in intersect( rownames(GetAssay(d$repeats, 'RNA')),
 ```
 
 ```{r}
-hist(unlist(crepeat), main = "correlation across repeats")
+hist(unlist(crepeat), main = "correlation across repeats\nrepeats cellranger vs repeats (featurecounts)")
 ## lines(density(unlist(ccell)))
 
 ```
+
+Show correlation values per family etc
+
+```{r}
+merged <- na.omit(data.frame(repfamily = names(crepeat),
+                          rho = as.numeric(crepeat)))
+
+means <-  apply(GetAssayData(object = d$repeats, slot = "counts"), 1, mean)
+means <- data.frame(repfamily = names(means),
+                    mean = as.numeric(means),
+                    stringsAsFactors = FALSE)
+
+sds <-  apply(GetAssayData(object = d$repeats, slot = "counts"), 1, sd)
+sds <- data.frame(repfamily = names(sds),
+                    sd = as.numeric(sds))
+
+merged <- merge(merged, sds, by = 'repfamily', all.x = TRUE)
+merged <- merge(merged, means, by = 'repfamily', all.x = TRUE)
+merged$log10mean <- log10(merged$mean + 1) 
+
+idx <- as.character(merged[order(merged$rho, decreasing = TRUE), 'repfamily'])
+
+## wide to long
+merged <- melt(merged, id.vars=c("repfamily"))
+
+## merged <- merged[order(merged$value, merged$variable),]
+
+merged$repfamily <- factor(merged$repfamily, levels = idx)
+```
+
+```{r, fig.width = 40, fig.height = 10}
+ggplot(merged, aes(x=repfamily, y=value)) +
+    geom_point() +
+    facet_grid(vars(variable), scales ='free') +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
 
 # Confusion matrix clusters
 
@@ -346,7 +342,7 @@ aris$ari <- as.numeric(as.character(aris$ari))
 ```
 
 
-```{r}
+```{r, fig.width = 8, fig.height = 8}
 aris_wide <- reshape2::dcast(aris, genes_res~repeats_res, value.var="ari")
 
 rownames(aris_wide)<- aris_wide$genes_res
@@ -387,7 +383,7 @@ aris$ari <- as.numeric(as.character(aris$ari))
 ```
 
 
-```{r}
+```{r, fig.width = 8, fig.height = 8}
 aris_wide <- reshape2::dcast(aris, featurecounts_res~repeats_res, value.var="ari")
 
 rownames(aris_wide)<- aris_wide$featurecounts_res
@@ -396,19 +392,6 @@ aris_wide <- aris_wide[,-1]
 pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
          color = colorRampPalette(c("white","blue"))(20))
 ```
-
-
-
-# Add other layers or repeats quantification
-
-
-```{r}
-## if (params@
-print('pending')
-
-```
-
-
 
 # Timestamp
 

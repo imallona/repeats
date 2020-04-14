@@ -120,7 +120,7 @@ rule all:
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs',  'web_summary.html'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
         op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz"),
-        op.join(BASE, 'runs', RUN_NAME, 'test.html')
+        op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html')
         
 
 # # remeber the readgroup thing!
@@ -260,22 +260,25 @@ rule all:
 #         --chunkmbs 128 {params.repeatome} - |  samtools view -@ {threads} -bS - > {output} ) 2> {log}
 #         """
 
-
-
 rule knit_report:
     input:
         genes = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
-        repeats = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+        repeats = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+        featurecounts = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard',
+                                RUN_NAME + "_repeats.counts.gz")
     params:
-        rmd = 'summarize_cellranger_run.Rmd'
+        rmd = 'summarize_cellranger_run.Rmd',
+        run_name = RUN_NAME
     output:
-        op.join(BASE, 'runs', RUN_NAME, 'test.html')
+        op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html')
     log:
         op.join(BASE, 'runs', RUN_NAME, 'knit_report.log')
     shell:
         """
-        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output}\", params = list(genes_gz = \"{input.genes}\", repeats_gz = \"{input.repeats}\"))' &> {log}
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output}\", params = list(identifier = \"{params.run_name}\", genes_cellranger = \"{input.genes}\", repeats_cellranger = \"{input.repeats}\", repeats_featurecounts = \"{input.featurecounts}\"))' &> {log}
         """
+
+
 
 rule get_data:
     output:
