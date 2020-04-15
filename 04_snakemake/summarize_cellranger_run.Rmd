@@ -13,6 +13,7 @@ params:
   genes_cellranger: ""
   repeats_cellranger: ""
   repeats_featurecounts: ""
+  rds_output: ""
 ---
 
 Rendered for sample:
@@ -103,7 +104,8 @@ barcodes_fn <- params$genes_cellranger ## should end with `barcodes.tsv.gz`
 path <- dirname(barcodes_fn)
 
 d$genes <- CreateSeuratObject(counts = Read10X(data.dir = path),
-                                project = 'seurat',
+                              project = sprintf('%s_%s', params$identifier,
+                                                'genes_cellranger'),
                                 min.cells = 0,
                                 min.features = 00)
 ```
@@ -117,8 +119,9 @@ barcodes_fn <- params$repeats_cellranger ## should end with `barcodes.tsv.gz`
 path <- dirname(barcodes_fn)
 
 d$repeats <- CreateSeuratObject(counts = Read10X(data.dir = path),
-                                project = 'seurat',
-                                min.cells = 1,
+                                project =  sprintf('%s_%s', params$identifier,
+                                                   'repeats_cellranger'),
+                                min.cells = 0,
                                 min.features = 0)
 
 ```
@@ -140,7 +143,7 @@ tmp <- tmp[,-1]
 
 d$featurecounts <- CreateSeuratObject(
     tmp,
-    project = "seurat",
+    project =  sprintf('%s_%s', params$identifier, 'repeats_featurecounts'),
     assay = "RNA",
     min.cells = 0,
     min.features = 0,
@@ -160,10 +163,10 @@ for (item in names(d)) {
 
     d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst", nfeatures = 2000)
 
-                                        # Identify the 10 most highly variable genes
+    ## Identify the 10 most highly variable genes
     top10 <- head(VariableFeatures(d[[item]]), 10)
 
-                                        # plot variable features with and without labels
+    ## plot variable features with and without labels
     plot1 <- VariableFeaturePlot(d[[item]])
     plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
     print(plot2 + ggtitle(item))
@@ -391,6 +394,13 @@ aris_wide <- aris_wide[,-1]
 
 pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
          color = colorRampPalette(c("white","blue"))(20))
+```
+
+# Export objects
+
+List of seurat objects
+```{r}
+saveRDS(object = d, file = params$rds_output)
 ```
 
 # Timestamp
