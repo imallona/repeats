@@ -74,6 +74,12 @@ for item in ['bowtie', 'star', 'salmon']:
 
 include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow.snmk"
 
+onsuccess:
+    shell("mailx -A gmail -s "'snakemake 04 success'" izaskun.mallona@gmail.com  < {log}")
+
+onerror:
+    shell("mailx -A gmail -s "'snakemake 04 error'" izaskun.mallona@gmail.com  < {log}")
+    
 rule all:
     input:
         op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html')
@@ -113,8 +119,8 @@ rule run_cellranger_repeats:
         processing_path = op.join(BASE, 'runs', RUN_NAME),
         chemistry = CHEMISTRY
     output:
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+        reports = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
+        barcodes = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
     threads:
         NTHREADS
     log:
@@ -148,7 +154,7 @@ rule run_cellranger_standard:
     output:
         html = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
         bam = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'possorted_genome_bam.bam'),
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+        barcodes = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
     threads:
         NTHREADS
     log:

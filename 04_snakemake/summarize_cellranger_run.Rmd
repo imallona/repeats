@@ -134,7 +134,7 @@ d$repeats <- CreateSeuratObject(counts = Read10X(data.dir = path),
                                 project =  sprintf('%s_%s', params$identifier,
                                                    'repeats_cellranger'),
                                 min.cells = 0,
-                                min.features = 100)
+                                min.features = 0)
 
 ```
 
@@ -169,11 +169,11 @@ rm(tmp)
 
 # Basic Seurat processing
 
-## QC
+## QC before filtering {.tabset}
 
 ```{r, results = 'asis'}
 for (item in names(d)) {
-    cat("### ", item, " {.tabset}\n\n")
+    cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
     if (item == 'genes') {
         d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
@@ -186,8 +186,11 @@ for (item in names(d)) {
     
     }
     print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+    cat('\n\n')
 }
 ```
+
+## QC after filtering {.tabset}
 
 Filtering out cells according to the repeats expression, and forwarding the selection to other layers
 
@@ -203,7 +206,7 @@ for (item in names(d)) {
 
 ```{r, results = 'asis'}
 for (item in names(d)) {
-    cat("### ", item, " {.tabset}\n\n")
+    cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
     if (item == 'genes') {
         d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
@@ -216,13 +219,15 @@ for (item in names(d)) {
     
     }
     print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+    cat('\n\n')
 }
 ```
 
+## Variable features {.tabset}
 
 ```{r, message = FALSE, fig.width =8, fig.height = 8, results= 'asis'}
 for (item in names(d)) {
-    cat("### ", item, " {.tabset}\n\n")
+    cat("### ", item, "\n\n")
     d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst", nfeatures = 2000)
 
     ## Identify the 10 most highly variable genes
@@ -236,9 +241,13 @@ for (item in names(d)) {
 }
 ```
 
-```{r, message = FALSE}
+## Dimred PCA {.tabset}
+
+```{r, message = FALSE, results ='asis'}
 NUM_PCS <- 1:20
 for (item in names(d)) {
+    cat("### ", item, "\n\n")
+
     tryCatch({
         d[[item]] <- ScaleData(d[[item]])
         
@@ -248,11 +257,16 @@ for (item in names(d)) {
         
         print(ElbowPlot(d[[item]]) + ggtitle(item))
     }, error = function(x) print(x))
+
+    cat('\n\n')
 }
 ```
 
-```{r, message = FALSE}
+## Dimred UMAP and tSNE
+
+```{r, message = FALSE, results = 'asis'}
 for (item in names(d)) {
+
     d[[item]] <- FindNeighbors(d[[item]], dims = NUM_PCS)
     for (res in seq(0.2, 2, by = 0.2)) {
         d[[item]] <- FindClusters(d[[item]], resolution = res)
@@ -268,7 +282,7 @@ for (item in names(d)) {
 
 ```{r fig.width =8, fig.height = 8, results = 'asis'}
 for (item in names(d)) {
-    cat("### ", item, " {.tabset}\n\n")
+    cat("### ", item, "\n\n")
     p1 <- DimPlot(d[[item]], reduction = "umap")
     p2 <- DimPlot(d[[item]], reduction = "tsne")
 
