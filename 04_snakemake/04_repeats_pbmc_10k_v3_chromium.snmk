@@ -101,3 +101,70 @@ rule get_data:
 
         rmdir {params.path}/{params.run_name}
         """
+
+rule run_cellranger_repeats:
+    input:
+        flag = op.join(BASE, 'data', RUN_NAME, 'pbmc_10k_v3_S1_L002_I1_001.fastq.gz'),
+        transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME),
+        sample_name = RUN_NAME,
+        local_mem_gb = LOCAL_MEM_GB,
+        processing_path = op.join(BASE, 'runs', RUN_NAME),
+        chemistry = CHEMISTRY
+    output:
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+    threads:
+        NTHREADS
+    log:
+        op.join(BASE, 'runs', RUN_NAME, 'run_cellranger_repeats.log')
+    shell:
+        """
+        mkdir -p {params.processing_path}
+        cd {params.processing_path}
+        rm -rf cellranger_repeats
+
+        {CELLRANGER} count --id=cellranger_repeats \
+          --fastqs={params.fastqs_path} \
+          --transcriptome={input.transcriptome} \
+          --jobmode=local \
+          --localcores={threads} \
+          --sample={params.sample_name} \
+          --localmem={params.local_mem_gb} \
+          --chemistry={params.chemistry}
+        """
+        
+rule run_cellranger_standard:
+    input:
+        op.join(BASE, 'data', RUN_NAME, 'pbmc_10k_v3_S1_L002_I1_001.fastq.gz'),
+        transcriptome = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0')
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME),
+        sample_name = RUN_NAME,
+        local_mem_gb = LOCAL_MEM_GB,
+        processing_path = op.join(BASE, 'runs', RUN_NAME),
+        chemistry = CHEMISTRY
+    output:
+        html = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
+        bam = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'possorted_genome_bam.bam'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+    threads:
+        NTHREADS
+    log:
+        op.join(BASE, 'runs',  RUN_NAME, 'run_cellranger_standard.log')
+    shell:
+        """
+        mkdir -p {params.processing_path}
+        cd {params.processing_path}
+        rm -rf cellranger_standard
+
+        {CELLRANGER} count --id=cellranger_standard \
+          --fastqs={params.fastqs_path} \
+          --transcriptome={input.transcriptome} \
+          --jobmode=local \
+          --localcores={threads} \
+          --sample={params.sample_name} \
+          --localmem={params.local_mem_gb} \
+          --chemistry={params.chemistry}
+        """

@@ -98,26 +98,109 @@ rule all:
         op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html')
         
 
-rule get_pbmc5k_data:
-    output:
-        temp = temp(op.join(BASE, 'data', RUN_NAME, 'frozen_pbmc_donor_a_fastqs.tar')),
-        flag_fastq = op.join(BASE, 'data', RUN_NAME, 'read-RA_si-TATTGGTG_lane-004-chunk-002.fastq.gz')                    
+
+rule get_pbmc_v3:
     params:
+        url = 'http://s3-us-west-2.amazonaws.com/10x.files/samples/cell-exp/3.0.2/5k_pbmc_v3/5k_pbmc_v3_fastqs.tar',
         path = op.join(BASE, 'data', RUN_NAME),
-        url = 'http://cf.10xgenomics.com/samples/cell-exp/1.1.0/frozen_pbmc_donor_a/frozen_pbmc_donor_a_fastqs.tar'
+    output:
+        fn = op.join(BASE, 'data', RUN_NAME, '5k_pbmc_v3_fastqs.tar'),
+        uncompressed =  op.join(BASE, 'data', RUN_NAME, '5k_pbmc_v3_fastqs',
+                                '5k_pbmc_v3_S1_L001_I1_001.fastq.gz')
+    shell:
+        """    
+        mkdir -p {params.path}
+        cd {params.path}
+        curl -s -L -C - {params.url} -O {output.fn}
+        tar xvf {output.fn}
+        """
+
+
+    # output:
+    #     temp = temp(op.join(BASE, 'data', RUN_NAME, 'frozen_pbmc_donor_a_fastqs.tar')),
+    #     flag_fastq = op.join(BASE, 'data', RUN_NAME, 'read-RA_si-TATTGGTG_lane-004-chunk-002.fastq.gz')                    
+    # params:
+    #     path = op.join(BASE, 'data', RUN_NAME),
+    #     url = 'http://cf.10xgenomics.com/samples/cell-exp/1.1.0/frozen_pbmc_donor_a/frozen_pbmc_donor_a_fastqs.tar'
         
+    # log:
+    #     op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_retrieval.log')
+    # shell:
+    #     """
+    #     mkdir -p {params.path}
+    #     cd $_
+    #     wget {params.url} &> {log}
+
+    #     tar xvf {output.temp}
+    #     mv {params.path}/fastqs/flowcell1/*fastq.gz {params.path}
+
+    #     rmdir {params.path}/fastqs/flowcell1
+    #     rmdir {params.path}/fastqs/
+    #     """
+
+        
+rule run_cellranger_repeats:
+    input:
+        flag = op.join(BASE, 'data', RUN_NAME, '5k_pbmc_v3_fastqs',
+                                '5k_pbmc_v3_S1_L001_I1_001.fastq.gz'),
+        transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME),
+        sample_name = RUN_NAME,
+        local_mem_gb = LOCAL_MEM_GB,
+        processing_path = op.join(BASE, 'runs', RUN_NAME)
+    output:
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+    threads:
+        NTHREADS
     log:
-        op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_retrieval.log')
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'run.log')
     shell:
         """
-        mkdir -p {params.path}
-        cd $_
-        wget {params.url} &> {log}
-
-        tar xvf {output.temp}
-        mv {params.path}/fastqs/flowcell1/*fastq.gz {params.path}
-
-        rmdir {params.path}/fastqs/flowcell1
-        rmdir {params.path}/fastqs/
+        mkdir -p {params.processing_path}
+        cd {params.processing_path}
+        rm -rf cellranger_repeats
+        
+        {CELLRANGER} count --id=cellranger_repeats \
+          --fastqs={params.fastqs_path} \
+          --transcriptome={input.transcriptome} \
+          --jobmode=local \
+          --localcores={threads} \
+          --sample={params.sample_name} \
+          --localmem={params.local_mem_gb}
         """
+        
+rule run_cellranger_standard:
+    input:
+        flag = op.join(BASE, 'data', RUN_NAME, '5k_pbmc_v3_fastqs',
+                                '5k_pbmc_v3_S1_L001_I1_001.fastq.gz'),
+        transcriptome = op.join(BASE, 'indices', 'cellranger',
+                                'refdata-cellranger-GRCh38-3.0.0')
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME),
+        sample_name = RUN_NAME,
+        local_mem_gb = LOCAL_MEM_GB,
+        processing_path = op.join(BASE, 'runs', RUN_NAME)
+    output:
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'possorted_genome_bam.bam')
+    threads:
+        NTHREADS
+    log:
+        op.join(BASE, 'runs',  RUN_NAME, 'cellranger_standard', 'run.log')
+    shell:
+        """
+        mkdir -p {params.processing_path}
+        cd {params.processing_path}
+        rm -rf cellranger_standard
 
+        {CELLRANGER} count --id=cellranger_standard \
+          --fastqs={params.fastqs_path} \
+          --transcriptome={input.transcriptome} \
+          --jobmode=local \
+          --localcores={threads} \
+          --sample={params.sample_name} \
+          --localmem={params.local_mem_gb}
+        """

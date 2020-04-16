@@ -93,102 +93,102 @@ rule spawn_cellranger_bam_file_by_cell:
         """
 
 
-rule run_cellranger_standard:
-    input:
-        flag_fastq = op.join(BASE, 'data', RUN_NAME, 'read-RA_si-TATTGGTG_lane-004-chunk-002.fastq.gz'),
-        transcriptome = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0')
-    params:
-        fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        sample_name = RUN_NAME,
-        local_mem_gb = LOCAL_MEM_GB,
-        processing_path = op.join(BASE, 'runs', RUN_NAME),
-        chemistry = CHEMISTRY
-    output:
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'possorted_genome_bam.bam'),
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
-    threads:
-        NTHREADS
-    log:
-        op.join(BASE, 'runs',  RUN_NAME, 'run_cellranger_standard.log')
-    run:
-        if DEMUX:
-            shell("""
-            mkdir -p {params.processing_path}
-            cd {params.processing_path}
-            rm -rf cellranger_standard
+# rule run_cellranger_standard:
+#     input:
+#         flag_fastq = op.join(BASE, 'data', RUN_NAME, 'read-RA_si-TATTGGTG_lane-004-chunk-002.fastq.gz'),
+#         transcriptome = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0')
+#     params:
+#         fastqs_path = op.join(BASE, 'data', RUN_NAME),
+#         sample_name = RUN_NAME,
+#         local_mem_gb = LOCAL_MEM_GB,
+#         processing_path = op.join(BASE, 'runs', RUN_NAME),
+#         chemistry = CHEMISTRY
+#     output:
+#         op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
+#         op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'possorted_genome_bam.bam'),
+#         op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+#     threads:
+#         NTHREADS
+#     log:
+#         op.join(BASE, 'runs',  RUN_NAME, 'run_cellranger_standard.log')
+#     run:
+#         if DEMUX:
+#             shell("""
+#             mkdir -p {params.processing_path}
+#             cd {params.processing_path}
+#             rm -rf cellranger_standard
 
-            {CELLRANGER} count --id=cellranger_standard \
-            --fastqs={params.fastqs_path} \
-            --transcriptome={input.transcriptome} \
-            --jobmode=local \
-            --localcores={threads} \
-            --localmem={params.local_mem_gb} \
-            --chemistry={params.chemistry}
-            """)
-        else:
-            shell("""
-            mkdir -p {params.processing_path}
-            cd {params.processing_path}
-            rm -rf cellranger_standard
+#             {CELLRANGER} count --id=cellranger_standard \
+#             --fastqs={params.fastqs_path} \
+#             --transcriptome={input.transcriptome} \
+#             --jobmode=local \
+#             --localcores={threads} \
+#             --localmem={params.local_mem_gb} \
+#             --chemistry={params.chemistry}
+#             """)
+#         else:
+#             shell("""
+#             mkdir -p {params.processing_path}
+#             cd {params.processing_path}
+#             rm -rf cellranger_standard
 
-            {CELLRANGER} count --id=cellranger_standard \
-            --fastqs={params.fastqs_path} \
-            --transcriptome={input.transcriptome} \
-            --jobmode=local \
-            --localcores={threads} \
-            --sample={params.sample_name} \
-            --localmem={params.local_mem_gb} \
-            --chemistry={params.chemistry}
-            """)
+#             {CELLRANGER} count --id=cellranger_standard \
+#             --fastqs={params.fastqs_path} \
+#             --transcriptome={input.transcriptome} \
+#             --jobmode=local \
+#             --localcores={threads} \
+#             --sample={params.sample_name} \
+#             --localmem={params.local_mem_gb} \
+#             --chemistry={params.chemistry}
+#             """)
             
 
-rule run_cellranger_repeats:
-    input:
-        transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
-    params:
-        fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        sample_name = RUN_NAME,
-        local_mem_gb = LOCAL_MEM_GB,
-        processing_path = op.join(BASE, 'runs', RUN_NAME),
-        chemistry = CHEMISTRY
-    output:
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
-    threads:
-        NTHREADS
-    log:
-        op.join(BASE, 'runs', RUN_NAME, 'run_cellranger_repeats.log')
-    run:
-        if DEMUX:
-            shell("""
-        mkdir -p {params.processing_path}
-        cd {params.processing_path}
-        rm -rf cellranger_repeats
+# rule run_cellranger_repeats:
+#     input:
+#         transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
+#     params:
+#         fastqs_path = op.join(BASE, 'data', RUN_NAME),
+#         sample_name = RUN_NAME,
+#         local_mem_gb = LOCAL_MEM_GB,
+#         processing_path = op.join(BASE, 'runs', RUN_NAME),
+#         chemistry = CHEMISTRY
+#     output:
+#         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
+#         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+#     threads:
+#         NTHREADS
+#     log:
+#         op.join(BASE, 'runs', RUN_NAME, 'run_cellranger_repeats.log')
+#     run:
+#         if DEMUX:
+#             shell("""
+#         mkdir -p {params.processing_path}
+#         cd {params.processing_path}
+#         rm -rf cellranger_repeats
 
-        {CELLRANGER} count --id=cellranger_repeats \
-          --fastqs={params.fastqs_path} \
-          --transcriptome={input.transcriptome} \
-          --jobmode=local \
-          --localcores={threads} \
-          --localmem={params.local_mem_gb} \
-          --chemistry={params.chemistry} \
-            """)
-        else:
-            shell("""
-        mkdir -p {params.processing_path}
-        cd {params.processing_path}
-        rm -rf cellranger_repeats
+#         {CELLRANGER} count --id=cellranger_repeats \
+#           --fastqs={params.fastqs_path} \
+#           --transcriptome={input.transcriptome} \
+#           --jobmode=local \
+#           --localcores={threads} \
+#           --localmem={params.local_mem_gb} \
+#           --chemistry={params.chemistry} \
+#             """)
+#         else:
+#             shell("""
+#         mkdir -p {params.processing_path}
+#         cd {params.processing_path}
+#         rm -rf cellranger_repeats
 
-        {CELLRANGER} count --id=cellranger_repeats \
-          --fastqs={params.fastqs_path} \
-          --transcriptome={input.transcriptome} \
-          --jobmode=local \
-          --localcores={threads} \
-          --sample={params.sample_name} \
-          --localmem={params.local_mem_gb} \
-          --chemistry={params.chemistry}
-        """)
+#         {CELLRANGER} count --id=cellranger_repeats \
+#           --fastqs={params.fastqs_path} \
+#           --transcriptome={input.transcriptome} \
+#           --jobmode=local \
+#           --localcores={threads} \
+#           --sample={params.sample_name} \
+#           --localmem={params.local_mem_gb} \
+#           --chemistry={params.chemistry}
+#         """)
         
 
 ## Indexing start ----------------------------------------------------------------------------- ##        

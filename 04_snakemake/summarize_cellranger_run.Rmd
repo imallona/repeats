@@ -2,12 +2,15 @@
 title: "Within sample report"
 author: "Izaskun Mallona at Robinsonlab"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
-output:
+output: 
   html_document:
-    keep_md: false
     toc: true
     toc_float: true
-    toc_depth: 4
+    code_folding: hide
+    code_download: true
+    number_sections: true
+    df_print: kable
+    theme: lumen
 params:
   identifier: ""   
   genes_cellranger: ""
@@ -57,7 +60,8 @@ opts_chunk$set(fig.width = 5,
                include = TRUE,
                cache.lazy = FALSE,
                warning = TRUE,
-               message = TRUE)
+               echo = TRUE,
+               message = FALSE)
 
 
 options(bitmapType='cairo')
@@ -86,9 +90,17 @@ ac <- function(col, alpha=1){
 
 ## SRR10974769
 
-params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/SRR10974769/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-               repeats_cellranger= "/home/imallona/repeats_sc/runs/SRR10974769/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-               repeats_featurecounts= "/home/imallona/repeats_sc/runs/SRR10974769/count_repeats_on_cellranger_standard/SRR10974769_repeats.counts.gz")
+## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/SRR10974769/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_cellranger= "/home/imallona/repeats_sc/runs/SRR10974769/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/SRR10974769/count_repeats_on_cellranger_standard/SRR10974769_repeats.counts.gz",
+##                identifier = 'test')
+
+params <- list(identifier = "",
+               genes_cellranger = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
+               repeats_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+               repeats_featurecounts = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz",
+               rds_output = "/home/imallona/tmp/test.rds")
+
 ```
 
 
@@ -107,7 +119,7 @@ d$genes <- CreateSeuratObject(counts = Read10X(data.dir = path),
                               project = sprintf('%s_%s', params$identifier,
                                                 'genes_cellranger'),
                                 min.cells = 0,
-                                min.features = 00)
+                                min.features = 0)
 ```
 
 
@@ -122,7 +134,7 @@ d$repeats <- CreateSeuratObject(counts = Read10X(data.dir = path),
                                 project =  sprintf('%s_%s', params$identifier,
                                                    'repeats_cellranger'),
                                 min.cells = 0,
-                                min.features = 0)
+                                min.features = 100)
 
 ```
 
@@ -155,12 +167,62 @@ rm(tmp)
 
 ```
 
-
 # Basic Seurat processing
 
-```{r, message = FALSE, fig.width =8, fig.height = 8}
-for (item in names(d)) {
+## QC
 
+```{r, results = 'asis'}
+for (item in names(d)) {
+    cat("### ", item, " {.tabset}\n\n")
+    ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
+    if (item == 'genes') {
+        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
+        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
+        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+                      ncol = 3))
+
+    } else {
+        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2))
+    
+    }
+    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+}
+```
+
+Filtering out cells according to the repeats expression, and forwarding the selection to other layers
+
+```{r}
+d$genes <- subset(d$genes, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & (percent.mt < 10 | is.na(percent.mt)))
+selected_cells <- colnames(d$genes)
+
+for (item in names(d)) {
+    d[[item]] <- subset(d[[item]], cells = selected_cells)
+}
+
+```
+
+```{r, results = 'asis'}
+for (item in names(d)) {
+    cat("### ", item, " {.tabset}\n\n")
+    ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
+    if (item == 'genes') {
+        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
+        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
+        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+                      ncol = 3))
+
+    } else {
+        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2))
+    
+    }
+    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+}
+```
+
+
+```{r, message = FALSE, fig.width =8, fig.height = 8, results= 'asis'}
+for (item in names(d)) {
+    cat("### ", item, " {.tabset}\n\n")
     d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst", nfeatures = 2000)
 
     ## Identify the 10 most highly variable genes
@@ -170,21 +232,22 @@ for (item in names(d)) {
     plot1 <- VariableFeaturePlot(d[[item]])
     plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
     print(plot2 + ggtitle(item))
-    
+    cat('\n\n')
 }
 ```
 
 ```{r, message = FALSE}
 NUM_PCS <- 1:20
 for (item in names(d)) {
-
-    d[[item]] <- ScaleData(d[[item]])
-
-    d[[item]] <- RunPCA(d[[item]], features = VariableFeatures(object = d[[item]]))
-
-    DimPlot(d[[item]], reduction = "pca")
-
-    print(ElbowPlot(d[[item]]) + ggtitle(item))
+    tryCatch({
+        d[[item]] <- ScaleData(d[[item]])
+        
+        d[[item]] <- RunPCA(d[[item]], features = VariableFeatures(object = d[[item]]))
+        
+        DimPlot(d[[item]], reduction = "pca")
+        
+        print(ElbowPlot(d[[item]]) + ggtitle(item))
+    }, error = function(x) print(x))
 }
 ```
 
@@ -203,13 +266,14 @@ for (item in names(d)) {
 
 ```
 
-```{r fig.width =8, fig.height = 8}
+```{r fig.width =8, fig.height = 8, results = 'asis'}
 for (item in names(d)) {
-
+    cat("### ", item, " {.tabset}\n\n")
     p1 <- DimPlot(d[[item]], reduction = "umap")
     p2 <- DimPlot(d[[item]], reduction = "tsne")
 
     print(CombinePlots(plots = list(p1, p2)) + ggtitle(item))
+    cat('\n\nn')
 
 }
 ```

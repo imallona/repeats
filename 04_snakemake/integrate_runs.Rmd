@@ -2,12 +2,16 @@
 title: "Across samples report"
 author: "Izaskun Mallona at Robinsonlab"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
-output:
+output: 
   html_document:
-    keep_md: false
     toc: true
     toc_float: true
-    toc_depth: 4
+    code_folding: hide
+    code_download: true
+    number_sections: true
+    df_print: kable
+    theme: lumen
+always_allow_html: yes
 ---
 
 params:
@@ -41,7 +45,7 @@ library(data.table)
 ## library(org.Mm.eg.db)
 ## suppressPackageStartupMessages(library(dplyr))
 ## suppressPackageStartupMessages(library(DT))
-## library(pheatmap)
+library(pheatmap)
 ## library(Cairo)
 ## library(RColorBrewer)
 ## library(corrplot)
@@ -49,7 +53,7 @@ library(ggplot2)
 library(reshape2)
 ## library(xtable)
 ## library(mclust)
-## library(pheatmap)
+library(viridis)
 })
 ```
 
@@ -60,11 +64,13 @@ BASE <- file.path('/home', 'imallona', 'repeats_sc')
 ```{r}
 opts_chunk$set(fig.width = 5,
                fig.height = 5,
-               cache = FALSE,
+               cache = TRUE,
+               echo = TRUE,
                include = TRUE,
                cache.lazy = FALSE,
                warning = TRUE,
-               message = TRUE)
+               error = TRUE,
+               message = FALSE)
 
 
 options(bitmapType='cairo')
@@ -179,7 +185,7 @@ for (rds in params) {
 }
 ```
 
-# Assign cell identities by markers (largely manual)
+# PBMC markers
 
 As in https://satijalab.org/seurat/v3.1/pbmc3k_tutorial.html
 
@@ -202,9 +208,12 @@ CST3,dc
 PPBP,platelet', sep = ',', header = TRUE, stringsAsFactors = FALSE)
 ```
 
-```{r, fig.height = 4, fig.width = 8}
+
+
+```{r, fig.height = 4, fig.width = 8, results="asis", message = FALSE} 
 for (run in names(d)) {
-    print(run)
+    cat("## ", run, " {.tabset}\n\n")
+    ## print(run)
     ## for (marker in ids$marker) {    
     ## for (res in grep('RNA_snn', colnames(d[[run]]$genes@meta.data), value = TRUE)) {
     res <- 'RNA_snn_res.0.2'
@@ -220,19 +229,23 @@ for (run in names(d)) {
     ## }
 
     for (type in unique(ids$type)) {
-        print(paste(run, type, res))
+        cat("### ", type, " {.tabset}\n\n")
+        ## print(paste(run, type, res))
         print(RidgePlot(object = d[[run]]$genes,
-                        features = ids[ids$type == type, 'marker'],
-                        sort = FALSE,
-                        assay = NULL,
-                        group.by = res,
-                        y.max = NULL,
-                        same.y.lims = FALSE ,
-                        log = FALSE,
-                        ncol = NULL,
-                        slot = "data",
-                        combine = TRUE))
+                  features = ids[ids$type == type, 'marker'],
+                  sort = FALSE,
+                  assay = NULL,
+                  group.by = res,
+                  y.max = NULL,
+                  same.y.lims = FALSE ,
+                  log = FALSE,
+                  ncol = NULL,
+                  slot = "data",
+                  combine = FALSE))
+
+        cat("\n\n")
     }
+    cat("\n\n")
 }
 ```
 
@@ -316,7 +329,46 @@ for (run in names(d)) {
 
 ```
 
-# Correlation across identities?
+# Pheatmaps
+
+Note the cell sampling
+
+```{r, results = 'asis', fig.width = 20, fig.height = 20}
+NCELLS <- 1000
+NFEATURES <- 1000
+
+## stop()
+for (run in names(d)) {
+    cat("## ", run, " {.tabset}\n\n")
+
+    for (item in names(d[[run]])) {
+        cat("### ", run, item, " {.tabset}\n\n")
+        set.seed(4)
+        idx_feat <- sample(rownames(GetAssayData(d[[run]][[item]])), NCELLS, replace = FALSE)
+        idx_cell <- sample(colnames(GetAssayData(d[[run]][[item]])), NFEATURES, replace = FALSE)
+
+        
+        
+        print(pheatmap(GetAssayData(object = subset(d[[run]][[item]], features = idx_feat,
+                                                    cells = idx_cell)),
+                       color = viridis(100),
+                       cluster_rows = TRUE,
+                       cluster_cols = TRUE,
+                       show_rownames = FALSE,
+                       show_colnames = FALSE,
+                       clustering_distance_cols = "euclidean",
+                       clustering_method = "ward.D2",
+                       clustering_distance_rows = "euclidean",
+                       fontsize_row = 12,
+                       annotation_col = as.data.frame(d[[run]]$genes@meta.data[idx_cell, c(res),
+                                                                               drop = FALSE]),
+                       scale = "none"))
+        cat('\n\n')
+    }
+    cat('\n\n')    
+}
+```
+
 
 # Timestamp
 
