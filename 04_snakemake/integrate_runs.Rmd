@@ -1,0 +1,381 @@
+---
+title: "Across samples report"
+author: "Izaskun Mallona at Robinsonlab"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    code_download: true
+    number_sections: true
+    df_print: kable
+    theme: lumen
+always_allow_html: yes
+---
+
+params:
+  run1: ""   
+  run2: ""
+  run3: ""
+  run4: ""
+  
+```{r}
+print('@todo mind that qc is missing!')
+```
+
+Rendered for samples:
+
+```{r}
+## print(params)
+```
+# Config
+
+```{r}
+suppressPackageStartupMessages({
+library(Matrix)
+
+library(knitr)
+library(Seurat)
+## library(dplyr)
+## library(scater)
+library(data.table)
+## library(SingleCellExperiment)
+## library(scran)
+## library(org.Mm.eg.db)
+## suppressPackageStartupMessages(library(dplyr))
+## suppressPackageStartupMessages(library(DT))
+library(pheatmap)
+## library(Cairo)
+## library(RColorBrewer)
+## library(corrplot)
+library(ggplot2)
+library(reshape2)
+## library(xtable)
+## library(mclust)
+library(viridis)
+})
+```
+
+```{r}
+BASE <- file.path('/home', 'imallona', 'repeats_sc')
+```
+
+```{r}
+opts_chunk$set(fig.width = 5,
+               fig.height = 5,
+               cache = TRUE,
+               echo = TRUE,
+               include = TRUE,
+               cache.lazy = FALSE,
+               warning = TRUE,
+               error = TRUE,
+               message = FALSE)
+
+
+options(bitmapType='cairo')
+getOption('bitmapType')
+```
+
+
+## Functions
+
+```{r functions}
+## add alpha
+ac <- function(col, alpha=1){
+  apply(sapply(col, col2rgb)/255, 2, 
+                     function(x) 
+                       rgb(x[1], x[2], x[3], alpha=alpha))  
+}
+
+load_standard_cellranger_genes <- function(run_name) {
+    ## barcodes_fn <- params$genes_cellranger ## should end with `barcodes.tsv.gz`
+    barcodes_fn <- file.path(BASE, 'runs', run_name, 'cellranger_standard', 'outs',
+                             'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+    
+    path <- dirname(barcodes_fn)
+
+    genes <- CreateSeuratObject(counts = Read10X(data.dir = path),
+                                project = 'cellranger_standard',
+                                min.cells = 0,
+                                min.features = 0)
+    return(genes)
+}
+
+load_cellranger_repeats <-  function(run_name) {
+    barcodes_fn <- file.path(BASE, 'runs', run_name, 'cellranger_repeats', 'outs',
+                             'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+
+    path <- dirname(barcodes_fn)
+
+    repeats <- CreateSeuratObject(counts = Read10X(data.dir = path),
+                                project = 'cellranger_repeats',
+                                min.cells = 0,
+                                min.features = 0)
+    return(repeats)
+}
+
+load_featurecounts_repeats <-  function(run_name) {
+
+    repeats <- file.path(BASE, "runs", run_name, 'count_repeats_on_cellranger_standard',
+                                paste0(run_name, "_repeats.counts.gz"))
+
+    tmp <- data.table::fread(repeats, sep = '\t', header = TRUE,
+                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+    rownames(tmp) <- tmp$Geneid ## here
+
+    colnames(tmp) <- gsub(".*:([A-Z]+)-1.bam","\\1", colnames(tmp))
+
+    tmp <- as.data.frame(tmp)
+    rownames(tmp) <- tmp$Geneid
+    tmp <- tmp[,-1]
+
+    featurecounts <- CreateSeuratObject(
+        tmp,
+        project = "seurat",
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
+
+    return(featurecounts)
+}
+
+coef_var <- function(x){
+        (sd(x)/mean(x))*100
+}
+
+
+```
+
+# Data load
+
+```{r justfordebugging, eval = TRUE}
+## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_cellranger= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz")
+
+## SRR10974769
+
+params <- list(run1 = '/home/imallona/repeats_sc/runs/SRR10974769/summarize_cellranger_run.rds',
+               run2 = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/summarize_cellranger_run.rds',
+               run3 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/summarize_cellranger_run.rds')
+```
+
+
+```{r}
+d <- list()
+```
+
+Data read
+
+```{r}
+## cr cellranger
+## fc featurecounts
+for (rds in params) {
+    
+    ## d[[run]] <- list()
+    ## d[[run]]$genes_cr <- load_standard_cellranger_genes(run_name = run)
+    ## d[[run]]$reps_cr <- load_cellranger_repeats(run_name = run)
+    ## d[[run]]$reps_fc <- load_featurecounts_repeats(run_name = run)
+    d[[sapply(strsplit(dirname(rds), .Platform$file.sep),
+               function(x) return(x[6]))]] <- readRDS(file = rds)
+}
+```
+
+# PBMC markers
+
+As in https://satijalab.org/seurat/v3.1/pbmc3k_tutorial.html
+
+```{r}
+ids <- read.table(text='marker,type
+IL7R,naive_t_cd4
+CCR7,naivet_t_cd4
+IL7R,memory_t_cd4
+S100A4,memory_t_cd4
+CD14,mono
+LYZ,mono
+MS4A1,b
+CD8A,t_cd8
+FCGR3A,mono_fcgr3a
+MS4A7,mono_fcgr3a
+GNLY,nk
+NKG7,nk
+FCER1A,dc
+CST3,dc
+PPBP,platelet', sep = ',', header = TRUE, stringsAsFactors = FALSE)
+```
+
+
+
+```{r, fig.height = 4, fig.width = 8, results="asis", message = FALSE} 
+for (run in names(d)) {
+    cat("## ", run, " {.tabset}\n\n")
+    ## print(run)
+    ## for (marker in ids$marker) {    
+    ## for (res in grep('RNA_snn', colnames(d[[run]]$genes@meta.data), value = TRUE)) {
+    res <- 'RNA_snn_res.0.2'
+    ## print(FeaturePlot(object = d[[run]]$genes,
+    ##                   features = ids$marker,
+    ##                   cols = c("green", "blue"), 
+    ##                   combine = TRUE,
+    ##                   pt.size = 1,
+    ##                   shape.by = res,
+    ##                   reduction = 'umap',
+    ##                   label = TRUE)) ## + ggtitle(paste(run, marker, res)))
+        ## }
+    ## }
+
+    for (type in unique(ids$type)) {
+        cat("### ", type, " {.tabset}\n\n")
+        ## print(paste(run, type, res))
+        print(RidgePlot(object = d[[run]]$genes,
+                  features = ids[ids$type == type, 'marker'],
+                  sort = FALSE,
+                  assay = NULL,
+                  group.by = res,
+                  y.max = NULL,
+                  same.y.lims = FALSE ,
+                  log = FALSE,
+                  ncol = NULL,
+                  slot = "data",
+                  combine = FALSE))
+
+        cat("\n\n")
+    }
+    cat("\n\n")
+}
+```
+
+Similarly for repeats expression (avg +- sd of repeats CPM by gene expression cluster?)
+
+What's the point here?
+
+```{r}
+## normalize CPMs
+for (run in names(d)) {
+    d[[run]]$repeats <- NormalizeData(d[[run]]$repeats,
+                                      normalization.method = "RC", scale.factor = 1e6)
+    d[[run]]$featurecounts <- NormalizeData(d[[run]]$featurecounts,
+                                            normalization.method = "RC", scale.factor = 1e6)
+}
+```
+
+```{r, fig.height = 5, fig.width = 15}
+## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11')
+selected <- c(names(head(sort(apply(GetAssayData(d[[run]]$repeats),1, coef_var), decreasing = TRUE),
+                       5)), c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a'))
+
+for (run in names(d)) {
+    
+    repeats <- as.data.frame(FetchData(d[[run]]$repeats, vars = selected, slot = 'data'))
+    repeats$cell <- rownames(repeats)
+
+    d[[run]]$genes@meta.data$cell <- rownames(d[[run]]$genes@meta.data)
+    repeats <- merge(d[[run]]$genes@meta.data[, c(res, 'cell') ],
+                     repeats, by = 'cell', all.x = TRUE)
+    
+    rownames(repeats) <- repeats$cell
+    
+    repeats <- melt(repeats, id.vars = c('cell', res))
+    
+    colnames(repeats) <- c('cell', res, 'repfamily', 'CPM')
+
+    print(ggplot(repeats,
+           aes(x = get(res), y = CPM)) + 
+          geom_boxplot(outlier.size=1) +
+          scale_y_continuous(trans='log10') +
+        scale_fill_discrete(drop=FALSE) +
+        facet_wrap(~ factor(repfamily), ncol = 10) +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+        ylab('repeat expression [CPM]') +
+        xlab('gene-based clustering') + ggtitle(sprintf('%s %s\n%s', run, 'repeats', res)))
+}
+
+```
+
+Same for featurecounts-based repeats
+
+```{r, fig.height = 5, fig.width = 15}
+## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11')
+
+for (run in names(d)) {
+    
+    featurecounts <- as.data.frame(FetchData(d[[run]]$featurecounts, vars = selected, slot = 'data'))
+    featurecounts$cell <- rownames(featurecounts)
+
+    d[[run]]$genes@meta.data$cell <- rownames(d[[run]]$genes@meta.data)
+    featurecounts <- merge(d[[run]]$genes@meta.data[, c(res, 'cell') ],
+                     featurecounts, by = 'cell', all.x = TRUE)
+    
+    rownames(featurecounts) <- featurecounts$cell
+    
+    featurecounts <- melt(featurecounts, id.vars = c('cell', res))
+    
+    colnames(featurecounts) <- c('cell', res, 'repfamily', 'CPM')
+
+    print(ggplot(featurecounts,
+           aes(x = get(res), y = CPM)) + 
+          geom_boxplot(outlier.size=1) +
+          scale_y_continuous(trans='log10') +
+        scale_fill_discrete(drop=FALSE) +
+        facet_wrap(~ factor(repfamily), ncol = 10) +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+        ylab('repeat expression [CPM]') +
+        xlab('gene-based clustering') + ggtitle(sprintf('%s %s\n%s', run, 'repeats', res)))
+}
+
+```
+
+# Pheatmaps
+
+Note the cell sampling
+
+```{r, results = 'asis', fig.width = 20, fig.height = 20}
+NCELLS <- 1000
+NFEATURES <- 1000
+
+## stop()
+for (run in names(d)) {
+    cat("## ", run, " {.tabset}\n\n")
+
+    for (item in names(d[[run]])) {
+        cat("### ", run, item, " {.tabset}\n\n")
+        set.seed(4)
+        idx_feat <- sample(rownames(GetAssayData(d[[run]][[item]])), NCELLS, replace = FALSE)
+        idx_cell <- sample(colnames(GetAssayData(d[[run]][[item]])), NFEATURES, replace = FALSE)
+
+        
+        
+        print(pheatmap(GetAssayData(object = subset(d[[run]][[item]], features = idx_feat,
+                                                    cells = idx_cell)),
+                       color = viridis(100),
+                       cluster_rows = TRUE,
+                       cluster_cols = TRUE,
+                       show_rownames = FALSE,
+                       show_colnames = FALSE,
+                       clustering_distance_cols = "euclidean",
+                       clustering_method = "ward.D2",
+                       clustering_distance_rows = "euclidean",
+                       fontsize_row = 12,
+                       annotation_col = as.data.frame(d[[run]]$genes@meta.data[idx_cell, c(res),
+                                                                               drop = FALSE]),
+                       scale = "none"))
+        cat('\n\n')
+    }
+    cat('\n\n')    
+}
+```
+
+
+# Timestamp
+
+```{r sessionInfo, cache = FALSE}
+date()
+sessionInfo()
+devtools::session_info()
+
+```
+

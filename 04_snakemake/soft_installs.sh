@@ -52,7 +52,11 @@ make STAR
 
 
 source ~/virtenvs/snakemake/bin/activate
-pip install biopython.convert
+
+sudo apt-get install libsqlite3-dev
+pip3 install pysqlite3
+pip3 install biopython.convert
+biopython.convert -v
 deactivate
 
 
@@ -77,3 +81,27 @@ mkdir -p ~/soft/cellranger
 cd $_
 curl -o cellranger-3.1.0.tar.gz "http://cf.10xgenomics.com/releases/cell-exp/cellranger-3.1.0.tar.gz?Expires=[snip]=[snip]&Key-Pair-Id=[snip]"
 tar xzvf cellranger-3.1.0.tar.gz
+
+
+# bioawk for salmon
+mkdir -p ~/soft
+cd $_
+
+git clone git://github.com/lh3/bioawk.git
+cd bioawk
+
+sudo apt-get install bison flex
+
+make
+
+## fastq-dump
+
+mkdir ~/soft/sra-toools
+
+cd $_
+wget http://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/2.10.4/sratoolkit.2.10.4-ubuntu64.tar.gz
+
+tar xzvf sratoolkit.2.10.4-ubuntu64.tar.gz
+cd sratoolkit.2.10.4-ubuntu64/bin
+
+./vdb-config --interactive

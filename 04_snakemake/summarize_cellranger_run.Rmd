@@ -1,0 +1,478 @@
+---
+title: "Within sample report"
+author: "Izaskun Mallona at Robinsonlab"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    code_download: true
+    number_sections: true
+    df_print: kable
+    theme: lumen
+params:
+  identifier: ""   
+  genes_cellranger: ""
+  repeats_cellranger: ""
+  repeats_featurecounts: ""
+  rds_output: ""
+---
+
+Rendered for sample:
+
+```{r}
+print(params)
+```
+# Config
+
+```{r}
+suppressPackageStartupMessages({
+library(Matrix)
+
+library(knitr)
+library(Seurat)
+library(dplyr)
+## library(scater)
+library(dplyr)
+library(data.table)
+## library(SingleCellExperiment)
+## library(scran)
+## library(org.Mm.eg.db)
+## suppressPackageStartupMessages(library(dplyr))
+## suppressPackageStartupMessages(library(DT))
+## library(pheatmap)
+## library(Cairo)
+## library(RColorBrewer)
+## library(corrplot)
+library(ggplot2)
+library(reshape2)
+## library(xtable)
+library(mclust)
+library(pheatmap)
+})
+```
+
+```{r}
+opts_chunk$set(fig.width = 5,
+               fig.height = 5,
+               cache = FALSE,
+               include = TRUE,
+               cache.lazy = FALSE,
+               warning = TRUE,
+               echo = TRUE,
+               message = FALSE)
+
+
+options(bitmapType='cairo')
+getOption('bitmapType')
+```
+
+
+## Functions
+
+```{r functions}
+## add alpha
+ac <- function(col, alpha=1){
+  apply(sapply(col, col2rgb)/255, 2, 
+                     function(x) 
+                       rgb(x[1], x[2], x[3], alpha=alpha))  
+}
+
+```
+
+# Data load
+
+```{r justfordebugging, eval = FALSE}
+## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_cellranger= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz")
+
+## SRR10974769
+
+## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/SRR10974769/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_cellranger= "/home/imallona/repeats_sc/runs/SRR10974769/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/SRR10974769/count_repeats_on_cellranger_standard/SRR10974769_repeats.counts.gz",
+##                identifier = 'test')
+
+params <- list(identifier = "",
+               genes_cellranger = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
+               repeats_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+               repeats_featurecounts = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz",
+               rds_output = "/home/imallona/tmp/test.rds")
+
+```
+
+
+```{r}
+d <- list()
+```
+
+Genes data read
+
+
+```{r}
+barcodes_fn <- params$genes_cellranger ## should end with `barcodes.tsv.gz`
+path <- dirname(barcodes_fn)
+
+d$genes <- CreateSeuratObject(counts = Read10X(data.dir = path),
+                              project = sprintf('%s_%s', params$identifier,
+                                                'genes_cellranger'),
+                                min.cells = 0,
+                                min.features = 0)
+```
+
+
+Repeats data read
+
+
+```{r}
+barcodes_fn <- params$repeats_cellranger ## should end with `barcodes.tsv.gz`
+path <- dirname(barcodes_fn)
+
+d$repeats <- CreateSeuratObject(counts = Read10X(data.dir = path),
+                                project =  sprintf('%s_%s', params$identifier,
+                                                   'repeats_cellranger'),
+                                min.cells = 0,
+                                min.features = 100)
+
+```
+
+Featurecounts-based repeats
+
+```{r}
+
+tmp <- data.table::fread(params$repeats_featurecounts, sep = '\t', header = TRUE,
+                         drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+rownames(tmp) <- tmp$Geneid ## here
+
+colnames(tmp) <- gsub(".*:([A-Z]+)-1.bam","\\1", colnames(tmp))
+## tmp <- tmp[,7:ncol(tmp)]
+
+tmp <- as.data.frame(tmp)
+rownames(tmp) <- tmp$Geneid
+tmp <- tmp[,-1]
+
+d$featurecounts <- CreateSeuratObject(
+    tmp,
+    project =  sprintf('%s_%s', params$identifier, 'repeats_featurecounts'),
+    assay = "RNA",
+    min.cells = 0,
+    min.features = 0,
+    names.field = 1,
+    names.delim = "_",
+    meta.data = NULL)
+
+rm(tmp)
+
+```
+
+# Basic Seurat processing
+
+## QC
+
+```{r, results = 'asis'}
+for (item in names(d)) {
+    cat("### ", item, " {.tabset}\n\n")
+    ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
+    if (item == 'genes') {
+        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
+        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
+        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+                      ncol = 3))
+
+    } else {
+        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2))
+    
+    }
+    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+}
+```
+
+Filtering out cells according to the repeats expression, and forwarding the selection to other layers
+
+```{r}
+d$genes <- subset(d$genes, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & (percent.mt < 10 | is.na(percent.mt)))
+selected_cells <- colnames(d$genes)
+
+for (item in names(d)) {
+    d[[item]] <- subset(d[[item]], cells = selected_cells)
+}
+
+```
+
+```{r, results = 'asis'}
+for (item in names(d)) {
+    cat("### ", item, " {.tabset}\n\n")
+    ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
+    if (item == 'genes') {
+        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
+        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
+        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+                      ncol = 3))
+
+    } else {
+        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2))
+    
+    }
+    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+}
+```
+
+
+```{r, message = FALSE, fig.width =8, fig.height = 8, results= 'asis'}
+for (item in names(d)) {
+    cat("### ", item, " {.tabset}\n\n")
+    d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst", nfeatures = 2000)
+
+    ## Identify the 10 most highly variable genes
+    top10 <- head(VariableFeatures(d[[item]]), 10)
+
+    ## plot variable features with and without labels
+    plot1 <- VariableFeaturePlot(d[[item]])
+    plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+    print(plot2 + ggtitle(item))
+    cat('\n\n')
+}
+```
+
+```{r, message = FALSE}
+NUM_PCS <- 1:20
+for (item in names(d)) {
+    tryCatch({
+        d[[item]] <- ScaleData(d[[item]])
+        
+        d[[item]] <- RunPCA(d[[item]], features = VariableFeatures(object = d[[item]]))
+        
+        DimPlot(d[[item]], reduction = "pca")
+        
+        print(ElbowPlot(d[[item]]) + ggtitle(item))
+    }, error = function(x) print(x))
+}
+```
+
+```{r, message = FALSE}
+for (item in names(d)) {
+    d[[item]] <- FindNeighbors(d[[item]], dims = NUM_PCS)
+    for (res in seq(0.2, 2, by = 0.2)) {
+        d[[item]] <- FindClusters(d[[item]], resolution = res)
+
+    }
+
+    d[[item]] <- RunUMAP(d[[item]], dims = NUM_PCS)
+        
+    d[[item]] <- RunTSNE(d[[item]], dims = NUM_PCS, check_duplicates = FALSE )
+}
+
+```
+
+```{r fig.width =8, fig.height = 8, results = 'asis'}
+for (item in names(d)) {
+    cat("### ", item, " {.tabset}\n\n")
+    p1 <- DimPlot(d[[item]], reduction = "umap")
+    p2 <- DimPlot(d[[item]], reduction = "tsne")
+
+    print(CombinePlots(plots = list(p1, p2)) + ggtitle(item))
+    cat('\n\nn')
+
+}
+```
+
+# Correlation values distribution
+
+Repeats by cellranger vs repeats by featurecounts on cellranger-standard bams.
+
+Correlations per cell
+
+```{r}
+ccell <- list()
+
+## GetAssay(d$repeats, 'RNA')[1:10,1:10]
+
+head(colnames(GetAssay(d$repeats, 'RNA')))
+head( colnames(GetAssay(d$featurecounts, 'RNA')))
+     
+for (cell in intersect( colnames(GetAssay(d$repeats, 'RNA')),
+                       colnames(GetAssay(d$featurecounts, 'RNA')))) {
+    reps <- intersect(rownames(d$repeats), rownames(d$featurecounts))
+    
+    ccell[[cell]] <- cor(as.numeric(GetAssay(d$repeats, 'RNA')[reps,cell]),
+                         as.numeric(GetAssay(d$featurecounts, 'RNA')[reps,cell]),
+                         method = 'spearman')
+}
+```
+
+```{r}
+hist(unlist(ccell),
+     main = "correlation across cells\nrepeats cellranger vs repeats (featurecounts)")
+## lines(density(unlist(ccell)))
+
+```
+
+Correlations per repeat
+
+```{r}
+crepeat <- list()
+
+## GetAssay(d$repeats, 'RNA')[1:10,1:10]
+
+for (re in intersect( rownames(GetAssay(d$repeats, 'RNA')),
+                     rownames(GetAssay(d$featurecounts, 'RNA')))) {
+
+    cells <-  intersect(colnames(d$repeats), colnames(d$featurecounts))
+    crepeat[[re]] <- cor(as.numeric(GetAssay(d$repeats, 'RNA')[re,cells]),
+                         as.numeric(GetAssay(d$featurecounts, 'RNA')[re, cells]),
+                         method = 'spearman')
+}
+```
+
+```{r}
+hist(unlist(crepeat), main = "correlation across repeats\nrepeats cellranger vs repeats (featurecounts)")
+## lines(density(unlist(ccell)))
+
+```
+
+Show correlation values per family etc
+
+```{r}
+merged <- na.omit(data.frame(repfamily = names(crepeat),
+                          rho = as.numeric(crepeat)))
+
+means <-  apply(GetAssayData(object = d$repeats, slot = "counts"), 1, mean)
+means <- data.frame(repfamily = names(means),
+                    mean = as.numeric(means),
+                    stringsAsFactors = FALSE)
+
+sds <-  apply(GetAssayData(object = d$repeats, slot = "counts"), 1, sd)
+sds <- data.frame(repfamily = names(sds),
+                    sd = as.numeric(sds))
+
+merged <- merge(merged, sds, by = 'repfamily', all.x = TRUE)
+merged <- merge(merged, means, by = 'repfamily', all.x = TRUE)
+merged$log10mean <- log10(merged$mean + 1) 
+
+idx <- as.character(merged[order(merged$rho, decreasing = TRUE), 'repfamily'])
+
+## wide to long
+merged <- melt(merged, id.vars=c("repfamily"))
+
+## merged <- merged[order(merged$value, merged$variable),]
+
+merged$repfamily <- factor(merged$repfamily, levels = idx)
+```
+
+```{r, fig.width = 40, fig.height = 10}
+ggplot(merged, aes(x=repfamily, y=value)) +
+    geom_point() +
+    facet_grid(vars(variable), scales ='free') +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
+# Confusion matrix clusters
+
+At a given resolution, compare both clusterings
+
+ARIs versus literate identity as annotated by Olivia.
+
+This comparison is not really fair because some integrations have less data than others. Color scale depicts Rand Index.
+
+## Genes vs repeats (cellranger)
+
+```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
+aris <- list()
+i <- 1
+for (genes_res in seq(0.2, 2, 0.2)) {
+    genes_res <- sprintf('RNA_snn_res.%s', genes_res)
+    
+    for (repeats_res in seq(0.2, 2, 0.2)) {
+        repeats_res <- sprintf('RNA_snn_res.%s', repeats_res)
+
+        cells <- intersect(rownames(d$genes@meta.data), rownames(d$repeats@meta.data))
+        
+   
+
+        aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
+                               length(unique(d$genes@meta.data[cells, genes_res]))),
+                       sprintf('repeats_%s (n=%s)', repeats_res,
+                               length(unique(d$repeats@meta.data[cells, repeats_res]))),
+                       adjustedRandIndex(d$genes@meta.data[cells,genes_res],
+                                         d$repeats@meta.data[cells,repeats_res]))
+        i <- i +1
+    }    
+}
+
+aris <- do.call(rbind.data.frame, aris)
+colnames(aris) <- c('genes_res', 'repeats_res', 'ari')
+aris$ari <- as.numeric(as.character(aris$ari))
+```
+
+
+```{r, fig.width = 8, fig.height = 8}
+aris_wide <- reshape2::dcast(aris, genes_res~repeats_res, value.var="ari")
+
+rownames(aris_wide)<- aris_wide$genes_res
+aris_wide <- aris_wide[,-1]
+
+pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
+         color = colorRampPalette(c("white","blue"))(20))
+```
+
+## Repeats vs repeats
+
+```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
+aris <- list()
+i <- 1
+for (featurecounts_res in seq(0.2, 2, 0.2)) {
+    featurecounts_res <- sprintf('RNA_snn_res.%s', featurecounts_res)
+    
+    for (repeats_res in seq(0.2, 2, 0.2)) {
+        repeats_res <- sprintf('RNA_snn_res.%s', repeats_res)
+
+        cells <- intersect(rownames(d$featurecounts@meta.data), rownames(d$repeats@meta.data))
+        
+   
+
+        aris[[i]] <- c(sprintf('featurecounts_%s (n=%s)', featurecounts_res,
+                               length(unique(d$featurecounts@meta.data[cells, featurecounts_res]))),
+                       sprintf('repeats_%s (n=%s)', repeats_res,
+                               length(unique(d$repeats@meta.data[cells, repeats_res]))),
+                       adjustedRandIndex(d$featurecounts@meta.data[cells,featurecounts_res],
+                                         d$repeats@meta.data[cells,repeats_res]))
+        i <- i +1
+    }    
+}
+
+aris <- do.call(rbind.data.frame, aris)
+colnames(aris) <- c('featurecounts_res', 'repeats_res', 'ari')
+aris$ari <- as.numeric(as.character(aris$ari))
+```
+
+
+```{r, fig.width = 8, fig.height = 8}
+aris_wide <- reshape2::dcast(aris, featurecounts_res~repeats_res, value.var="ari")
+
+rownames(aris_wide)<- aris_wide$featurecounts_res
+aris_wide <- aris_wide[,-1]
+
+pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
+         color = colorRampPalette(c("white","blue"))(20))
+```
+
+# Export objects
+
+List of seurat objects
+```{r}
+saveRDS(object = d, file = params$rds_output)
+```
+
+# Timestamp
+
+```{r sessionInfo, cache = FALSE}
+date()
+sessionInfo()
+devtools::session_info()
+
+```
+
