@@ -333,9 +333,9 @@ for (run in names(d)) {
 
 Note the cell sampling: same cells in all plots; `annotation_col` comes from genes' clustering.
 
-```{r, results = 'asis', dpi=50, fig.width = 15, fig.height = 5}
-NCELLS <- 300
-NFEATURES <- 300
+```{r, results = 'asis', dpi=50, fig.width = 15, fig.height = 15}
+NCELLS <- 1000
+NFEATURES <- 500
 
 ## stop()
 for (run in names(d)) {

@@ -224,6 +224,9 @@ for (item in names(d)) {
 }
 ```
 
+
+
+
 ## Variable features {.tabset}
 
 ```{r, message = FALSE, fig.width =8, fig.height = 4, results= 'asis'}
@@ -297,6 +300,37 @@ for (item in names(d)) {
 
 }
 ```
+
+# Descriptive {.tabset}
+
+
+```{r, results = 'asis', fig.width =8, fig.height = 8}
+common_cells <- intersect(intersect(colnames(d$genes), colnames(d$repeats)),
+                                    colnames(d$featurecounts))
+
+
+merged <- data.frame(cell = rownames(d$genes@meta.data),
+                     percent.mt = d$genes@meta.data$percent.mt,
+                     RNA_snn_res.0.2 = d$genes@meta.data$RNA_snn_res.0.2)
+
+for (item in names(d)) {
+    d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
+
+    merged <- merge(merged,
+                    d[[item]]@meta.data[c('cell', 'nCount_RNA', 'nFeature_RNA')],
+                    by = 'cell',
+                    all.x = TRUE,
+                    suffixes = c('', sprintf('_%s', item)))
+
+    ## cat("### ", item, "\n\n")
+
+}
+rownames(merged) <- merged$cell
+merged <- merged[,-1]
+colnames(merged) <- gsub('_RNA_', '_', colnames(merged))
+plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(merged$RNA_snn_res.0.2), 0.1))
+```
+
 
 # Correlation values distribution
 
