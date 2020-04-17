@@ -90,10 +90,10 @@ include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow.snmk"
 
 
 onsuccess:
-    shell("mailx -A gmail -s "'snakemake 02 pbmcs success'" izaskun.mallona@gmail.com < echo -e 'error'")
+    shell("mailx -A gmail -s "'snakemake_02_pbmcs_success'" izaskun.mallona@gmail.com < {log}")
 
 onerror:
-    shell("mailx -A gmail -s "'snakemake 02 pbmcs error'" izaskun.mallona@gmail.com  < {log}")
+    shell("mailx -A gmail -s "'snakemake_02_pbmcs_error'" izaskun.mallona@gmail.com  < {log}")
 
     
 rule all:

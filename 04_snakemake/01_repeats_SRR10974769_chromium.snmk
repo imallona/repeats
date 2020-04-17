@@ -96,7 +96,7 @@ rule all:
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
         op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz"),
-        op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html')
+        op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html')        
         
 
 

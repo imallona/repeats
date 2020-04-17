@@ -11,18 +11,14 @@ output:
     number_sections: true
     df_print: kable
     theme: lumen
-always_allow_html: yes
----
-
+    always_allow_html: yes
 params:
   run1: ""   
   run2: ""
   run3: ""
-  run4: ""
-  
-```{r}
-print('@todo mind that qc is missing!')
-```
+  run4: ""    
+---
+
 
 Rendered for samples:
 
@@ -64,6 +60,7 @@ BASE <- file.path('/home', 'imallona', 'repeats_sc')
 ```{r}
 opts_chunk$set(fig.width = 5,
                fig.height = 5,
+               dev = 'png',
                cache = TRUE,
                echo = TRUE,
                include = TRUE,
@@ -74,11 +71,9 @@ opts_chunk$set(fig.width = 5,
 
 
 options(bitmapType='cairo')
-getOption('bitmapType')
+## getOption('bitmapType')
 ```
 
-
-## Functions
 
 ```{r functions}
 ## add alpha
@@ -152,7 +147,7 @@ coef_var <- function(x){
 
 # Data load
 
-```{r justfordebugging, eval = TRUE}
+```{r justfordebugging, eval = FALSE}
 ## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
 ##                repeats_cellranger= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
 ##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz")
@@ -168,8 +163,6 @@ params <- list(run1 = '/home/imallona/repeats_sc/runs/SRR10974769/summarize_cell
 ```{r}
 d <- list()
 ```
-
-Data read
 
 ```{r}
 ## cr cellranger
@@ -210,7 +203,7 @@ PPBP,platelet', sep = ',', header = TRUE, stringsAsFactors = FALSE)
 
 
 
-```{r, fig.height = 4, fig.width = 8, results="asis", message = FALSE} 
+```{r, fig.height = 3, fig.width = 6, dpi = 50, results="asis", message = FALSE} 
 for (run in names(d)) {
     cat("## ", run, " {.tabset}\n\n")
     ## print(run)
@@ -249,6 +242,8 @@ for (run in names(d)) {
 }
 ```
 
+# Most variable repeats cellranger {.tabset}
+
 Similarly for repeats expression (avg +- sd of repeats CPM by gene expression cluster?)
 
 What's the point here?
@@ -263,13 +258,13 @@ for (run in names(d)) {
 }
 ```
 
-```{r, fig.height = 5, fig.width = 15}
+```{r, fig.height = 5, fig.width = 15, results = 'asis'}
 ## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11')
 selected <- c(names(head(sort(apply(GetAssayData(d[[run]]$repeats),1, coef_var), decreasing = TRUE),
                        5)), c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a'))
 
 for (run in names(d)) {
-    
+    cat("## ", run, "\n\n")
     repeats <- as.data.frame(FetchData(d[[run]]$repeats, vars = selected, slot = 'data'))
     repeats$cell <- rownames(repeats)
 
@@ -292,17 +287,20 @@ for (run in names(d)) {
         theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
         ylab('repeat expression [CPM]') +
         xlab('gene-based clustering') + ggtitle(sprintf('%s %s\n%s', run, 'repeats', res)))
+    cat('\n\n')
 }
 
 ```
 
+# Most variable repeats featurecounts {.tabset}
+
 Same for featurecounts-based repeats
 
-```{r, fig.height = 5, fig.width = 15}
+```{r, fig.height = 5, fig.width = 15, results = 'asis'}
 ## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11')
 
 for (run in names(d)) {
-    
+    cat("## ", run, "\n\n")
     featurecounts <- as.data.frame(FetchData(d[[run]]$featurecounts, vars = selected, slot = 'data'))
     featurecounts$cell <- rownames(featurecounts)
 
@@ -325,50 +323,57 @@ for (run in names(d)) {
         theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
         ylab('repeat expression [CPM]') +
         xlab('gene-based clustering') + ggtitle(sprintf('%s %s\n%s', run, 'repeats', res)))
+
+    cat('\n\n')
 }
 
 ```
 
 # Pheatmaps
 
-Note the cell sampling
+Note the cell sampling: same cells in all plots; `annotation_col` comes from genes' clustering.
 
-```{r, results = 'asis', fig.width = 20, fig.height = 20}
-NCELLS <- 1000
-NFEATURES <- 1000
+```{r, results = 'asis', dpi=50, fig.width = 15, fig.height = 5}
+NCELLS <- 300
+NFEATURES <- 300
 
 ## stop()
 for (run in names(d)) {
-    cat("## ", run, " {.tabset}\n\n")
-
+    cat("## ", run, "{.tabset}\n\n")
+    
+    set.seed(654)
+    idx_cell <- sample(colnames(GetAssayData(d[[run]]$genes)), NCELLS, replace = FALSE)
+    
     for (item in names(d[[run]])) {
-        cat("### ", run, item, " {.tabset}\n\n")
-        set.seed(4)
-        idx_feat <- sample(rownames(GetAssayData(d[[run]][[item]])), NCELLS, replace = FALSE)
-        idx_cell <- sample(colnames(GetAssayData(d[[run]][[item]])), NFEATURES, replace = FALSE)
+        cat("### ", item, "{.tabset}\n\n")
 
+        set.seed(464)
+        idx_feat <- sample(VariableFeatures(d[[run]][[item]]), NFEATURES, replace = FALSE)
         
-        
-        print(pheatmap(GetAssayData(object = subset(d[[run]][[item]], features = idx_feat,
-                                                    cells = idx_cell)),
-                       color = viridis(100),
-                       cluster_rows = TRUE,
-                       cluster_cols = TRUE,
-                       show_rownames = FALSE,
-                       show_colnames = FALSE,
-                       clustering_distance_cols = "euclidean",
-                       clustering_method = "ward.D2",
-                       clustering_distance_rows = "euclidean",
-                       fontsize_row = 12,
-                       annotation_col = as.data.frame(d[[run]]$genes@meta.data[idx_cell, c(res),
-                                                                               drop = FALSE]),
-                       scale = "none"))
+        print(pheatmap(GetAssayData(
+            object = subset(d[[run]][[item]],
+                            features = idx_feat,
+                            cells = intersect(idx_cell, colnames(GetAssayData(d[[run]][[item]])))),
+                            slot = 'scale.data'),
+            color = viridis(100),
+            cluster_rows = TRUE,
+            cluster_cols = TRUE,
+            show_rownames = FALSE,
+            show_colnames = FALSE,
+            clustering_distance_cols = "euclidean",
+            clustering_method = "ward.D2",
+            clustering_distance_rows = "euclidean",
+            fontsize_row = 12,
+            annotation_col = as.data.frame(d[[run]]$genes@meta.data[idx_cell, c(res),
+                                                                    drop = FALSE]),
+            scale = "none"))
         cat('\n\n')
     }
-    cat('\n\n')    
+    cat('\n\n')
 }
 ```
 
+Maybe add the markers of some celltypes on top?
 
 # Timestamp
 

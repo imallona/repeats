@@ -83,8 +83,29 @@ include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow.snmk"
 
 rule all:
     input:
-        op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html')# ,
-      
+        op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html'),
+        op.join(BASE, 'runs', 'pbmc_integration_test.html')
+
+## srrwhatever is  not a pbmc!
+# @todo this comes from other reports, fix!
+rule integration_pbmcs:
+    input:
+        run1 = op.join(BASE, 'runs/frozen_pbmc_donor_a/summarize_cellranger_run.rds'),
+        run2 = op.join(BASE, 'runs/5k_pbmc_v3/summarize_cellranger_run.rds'),
+        run3 = op.join(BASE, 'runs/SRR10974769/summarize_cellranger_run.rds'),
+        run4 = op.join(BASE, 'runs/pbmc_10k_v3/summarize_cellranger_run.rds')
+    params:
+        rmd = 'integrate_runs.Rmd'
+    output:
+        html = op.join(BASE, 'runs', 'pbmc_integration_test.html')
+    log:
+        op.join(BASE, 'runs', 'pbmc_integration_test.log')
+    shell:
+        """
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output.html}\", params = list(run1 = \"{input.run1}\", run2= \"{input.run2}\", run3 = \"{input.run3}\", run4 = \"{input.run4}\"))' &> {log}
+        """
+
+    
 rule get_frozen_pbmc_data:
     output:
         temp = temp(op.join(BASE, 'data', RUN_NAME, 'frozen_pbmc_donor_a_fastqs.tar')),

@@ -22,8 +22,7 @@ rule knit_report_chromium:
 rule run_feature_counts_spawned_bams:
     input:
         flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split.flag'),
-        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
-        path = directory(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split'))
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
     params:
         path = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split')
     output:
@@ -36,7 +35,7 @@ rule run_feature_counts_spawned_bams:
     threads:
         NTHREADS
     shell: """
-    cd {input.path}
+    cd {params.path}
 
     {FEATURECOUNTS} -T {threads} \
     -t exon \

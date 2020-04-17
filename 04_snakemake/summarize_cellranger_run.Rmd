@@ -56,6 +56,7 @@ library(pheatmap)
 ```{r}
 opts_chunk$set(fig.width = 5,
                fig.height = 5,
+               dev = 'png',
                cache = FALSE,
                include = TRUE,
                cache.lazy = FALSE,
@@ -171,7 +172,7 @@ rm(tmp)
 
 ## QC before filtering {.tabset}
 
-```{r, results = 'asis'}
+```{r, results = 'asis', fig.width = 8, fig.height = 4}
 for (item in names(d)) {
     cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
@@ -204,7 +205,7 @@ for (item in names(d)) {
 
 ```
 
-```{r, results = 'asis'}
+```{r, results = 'asis', fig.width = 8, fig.height = 4}
 for (item in names(d)) {
     cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
@@ -225,9 +226,14 @@ for (item in names(d)) {
 
 ## Variable features {.tabset}
 
-```{r, message = FALSE, fig.width =8, fig.height = 8, results= 'asis'}
+```{r, message = FALSE, fig.width =8, fig.height = 4, results= 'asis'}
 for (item in names(d)) {
     cat("### ", item, "\n\n")
+
+    d[[item]] <- NormalizeData(object = d[[item]],
+                               normalization.method = "LogNormalize",
+                               scale.factor = 10000)
+    
     d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst", nfeatures = 2000)
 
     ## Identify the 10 most highly variable genes
@@ -262,14 +268,14 @@ for (item in names(d)) {
 }
 ```
 
-## Dimred UMAP and tSNE
+## Dimred UMAP and tSNE {.tabset}
 
 ```{r, message = FALSE, results = 'asis'}
 for (item in names(d)) {
 
     d[[item]] <- FindNeighbors(d[[item]], dims = NUM_PCS)
     for (res in seq(0.2, 2, by = 0.2)) {
-        d[[item]] <- FindClusters(d[[item]], resolution = res)
+        d[[item]] <- FindClusters(d[[item]], resolution = res, verbose = FALSE)
 
     }
 
@@ -280,14 +286,14 @@ for (item in names(d)) {
 
 ```
 
-```{r fig.width =8, fig.height = 8, results = 'asis'}
+```{r fig.width = 8, fig.height = 5, results = 'asis'}
 for (item in names(d)) {
     cat("### ", item, "\n\n")
     p1 <- DimPlot(d[[item]], reduction = "umap")
     p2 <- DimPlot(d[[item]], reduction = "tsne")
 
     print(CombinePlots(plots = list(p1, p2)) + ggtitle(item))
-    cat('\n\nn')
+    cat('\n\n')
 
 }
 ```
@@ -300,11 +306,6 @@ Correlations per cell
 
 ```{r}
 ccell <- list()
-
-## GetAssay(d$repeats, 'RNA')[1:10,1:10]
-
-head(colnames(GetAssay(d$repeats, 'RNA')))
-head( colnames(GetAssay(d$featurecounts, 'RNA')))
      
 for (cell in intersect( colnames(GetAssay(d$repeats, 'RNA')),
                        colnames(GetAssay(d$featurecounts, 'RNA')))) {
@@ -375,7 +376,7 @@ merged <- melt(merged, id.vars=c("repfamily"))
 merged$repfamily <- factor(merged$repfamily, levels = idx)
 ```
 
-```{r, fig.width = 40, fig.height = 10}
+```{r, fig.width = 20, fig.height = 10}
 ggplot(merged, aes(x=repfamily, y=value)) +
     geom_point() +
     facet_grid(vars(variable), scales ='free') +

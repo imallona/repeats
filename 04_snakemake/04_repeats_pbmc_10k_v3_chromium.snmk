@@ -75,10 +75,10 @@ for item in ['bowtie', 'star', 'salmon']:
 include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow.snmk"
 
 onsuccess:
-    shell("mailx -A gmail -s "'snakemake 04 success'" izaskun.mallona@gmail.com  < {log}")
+    shell("mailx -A gmail -s "'snakemake_04_success'" izaskun.mallona@gmail.com  < {log}")
 
 onerror:
-    shell("mailx -A gmail -s "'snakemake 04 error'" izaskun.mallona@gmail.com  < {log}")
+    shell("mailx -A gmail -s "'snakemake_04_error'" izaskun.mallona@gmail.com  < {log}")
     
 rule all:
     input:
