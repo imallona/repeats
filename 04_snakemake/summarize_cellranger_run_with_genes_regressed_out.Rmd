@@ -1,5 +1,5 @@
 ---
-title: "Within sample report"
+title: "Within sample report (genes regressed out for repeats)"
 author: "Izaskun Mallona at Robinsonlab"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
@@ -28,28 +28,28 @@ print(params)
 
 ```{r}
 suppressPackageStartupMessages({
-library(Matrix)
+    library(Matrix)
 
-library(knitr)
-library(Seurat)
-library(dplyr)
-## library(scater)
-library(dplyr)
-library(data.table)
-## library(SingleCellExperiment)
-## library(scran)
-## library(org.Mm.eg.db)
-## suppressPackageStartupMessages(library(dplyr))
-## suppressPackageStartupMessages(library(DT))
-## library(pheatmap)
-## library(Cairo)
-## library(RColorBrewer)
-## library(corrplot)
-library(ggplot2)
-library(reshape2)
-## library(xtable)
-library(mclust)
-library(pheatmap)
+    library(knitr)
+    library(Seurat)
+    library(dplyr)
+    ## library(scater)
+    library(dplyr)
+    library(data.table)
+    ## library(SingleCellExperiment)
+    ## library(scran)
+    ## library(org.Mm.eg.db)
+    ## suppressPackageStartupMessages(library(dplyr))
+    ## suppressPackageStartupMessages(library(DT))
+    ## library(pheatmap)
+    ## library(Cairo)
+    ## library(RColorBrewer)
+    ## library(corrplot)
+    library(ggplot2)
+    library(reshape2)
+    ## library(xtable)
+    library(mclust)
+    library(pheatmap)
 })
 ```
 
@@ -252,20 +252,40 @@ for (item in names(d)) {
 
 ## Dimred PCA {.tabset}
 
+
+
+Please note the genes library size is regressed out during the `ScaleData` step for repeats.
+
+
 ```{r, message = FALSE, results ='asis'}
 NUM_PCS <- 1:20
 for (item in names(d)) {
     cat("### ", item, "\n\n")
 
-    tryCatch({
+    ## tryCatch({
+    if (item == 'genes') {
         d[[item]] <- ScaleData(d[[item]])
-        
-        d[[item]] <- RunPCA(d[[item]], features = VariableFeatures(object = d[[item]]))
-        
-        DimPlot(d[[item]], reduction = "pca")
-        
-        print(ElbowPlot(d[[item]]) + ggtitle(item))
-    }, error = function(x) print(x))
+    } else {
+        ## get feature ncount and nnreads for genes, and regress them out from repeats
+        tmp <- d$genes@meta.data
+        tmp$cell <- rownames(tmp)
+        d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
+        d[[item]]@meta.data <- merge(d[[item]]@meta.data, tmp, by = 'cell',
+                                     suffixes = c('', '_genes'))
+        rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
+
+        d[[item]] <- ScaleData(d[[item]],
+                               vars.to.regress = c('nCount_RNA_genes', 'nFeature_RNA_genes'))
+        rm(tmp)
+
+    }
+    
+    d[[item]] <- RunPCA(d[[item]], features = VariableFeatures(object = d[[item]]))
+    
+    DimPlot(d[[item]], reduction = "pca")
+    
+    print(ElbowPlot(d[[item]]) + ggtitle(item))
+    ## }, error = function(x) print(x))
 
     cat('\n\n')
 }
@@ -304,6 +324,8 @@ for (item in names(d)) {
 # Descriptive {.tabset}
 
 Tabset: coloring according to the clustering results.
+
+
 
 ```{r descriptive, results = 'asis', fig.width =8, fig.height = 8}
 
@@ -344,6 +366,36 @@ rm(res)
 rm(merged)
 ```
 
+<!-- # Descriptive {.tabset} -->
+
+
+<!-- ```{r, results = 'asis', fig.width =8, fig.height = 8} -->
+<!-- common_cells <- intersect(intersect(colnames(d$genes), colnames(d$repeats)), -->
+<!--                                     colnames(d$featurecounts)) -->
+
+
+<!-- merged <- data.frame(cell = rownames(d$genes@meta.data), -->
+<!--                      percent.mt = d$genes@meta.data$percent.mt, -->
+<!--                      RNA_snn_res.0.2 = d$genes@meta.data$RNA_snn_res.0.2) -->
+
+<!-- for (item in names(d)) { -->
+<!--     d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data) -->
+
+<!--     merged <- merge(merged, -->
+<!--                     d[[item]]@meta.data[c('cell', 'nCount_RNA', 'nFeature_RNA')], -->
+<!--                     by = 'cell', -->
+<!--                     all.x = TRUE, -->
+<!--                     suffixes = c('', sprintf('_%s', item))) -->
+
+<!--     ## cat("### ", item, "\n\n") -->
+
+<!-- } -->
+<!-- rownames(merged) <- merged$cell -->
+<!-- merged <- merged[,-1] -->
+<!-- colnames(merged) <- gsub('_RNA_', '_', colnames(merged)) -->
+<!-- plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(merged$RNA_snn_res.0.2), 0.1)) -->
+<!-- ``` -->
+
 
 # Correlation values distribution
 
@@ -351,7 +403,7 @@ Repeats by cellranger vs repeats by featurecounts on cellranger-standard bams.
 
 Correlations per cell
 
-```{r correl_first}
+```{r}
 ccell <- list()
      
 for (cell in intersect( colnames(GetAssay(d$repeats, 'RNA')),
@@ -434,9 +486,11 @@ ggplot(merged, aes(x=repfamily, y=value)) +
 
 # Confusion matrix clusters
 
-At a given resolution, compare both clusterings.
+At a given resolution, compare both clusterings
 
 Color scale depicts Rand Index.
+
+
 
 ## Genes vs repeats (cellranger)
 
@@ -520,46 +574,8 @@ pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
          color = colorRampPalette(c("white","blue"))(20))
 ```
 
-## Repeats vs repeats
-
-```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
-aris <- list()
-i <- 1
-for (featurecounts_res in seq(0.2, 2, 0.2)) {
-    featurecounts_res <- sprintf('RNA_snn_res.%s', featurecounts_res)
-    
-    for (repeats_res in seq(0.2, 2, 0.2)) {
-        repeats_res <- sprintf('RNA_snn_res.%s', repeats_res)
-
-        cells <- intersect(rownames(d$featurecounts@meta.data), rownames(d$repeats@meta.data))
-        
-   
-
-        aris[[i]] <- c(sprintf('featurecounts_%s (n=%s)', featurecounts_res,
-                               length(unique(d$featurecounts@meta.data[cells, featurecounts_res]))),
-                       sprintf('repeats_%s (n=%s)', repeats_res,
-                               length(unique(d$repeats@meta.data[cells, repeats_res]))),
-                       adjustedRandIndex(d$featurecounts@meta.data[cells,featurecounts_res],
-                                         d$repeats@meta.data[cells,repeats_res]))
-        i <- i +1
-    }    
-}
-
-aris <- do.call(rbind.data.frame, aris)
-colnames(aris) <- c('featurecounts_res', 'repeats_res', 'ari')
-aris$ari <- as.numeric(as.character(aris$ari))
-```
 
 
-```{r, fig.width = 6, fig.height = 6}
-aris_wide <- reshape2::dcast(aris, featurecounts_res~repeats_res, value.var="ari")
-
-rownames(aris_wide)<- aris_wide$featurecounts_res
-aris_wide <- aris_wide[,-1]
-
-pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
-         color = colorRampPalette(c("white","blue"))(20))
-```
 
 # Export objects
 

@@ -84,6 +84,7 @@ include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow.snmk"
 rule all:
     input:
         op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report_genes_regressed_out.html'),
         op.join(BASE, 'runs', 'pbmc_integration_test.html')
 
 ## srrwhatever is  not a pbmc!
