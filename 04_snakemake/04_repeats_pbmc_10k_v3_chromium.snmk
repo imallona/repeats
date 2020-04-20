@@ -82,8 +82,9 @@ onerror:
     
 rule all:
     input:
-        op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html'),
-        op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report_genes_regressed_out.html')
+        expand(op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
+                       regress_nfeature = ['TRUE', 'FALSE'])#,
+        # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report_genes_regressed_out.html')
 
 
 rule get_data:

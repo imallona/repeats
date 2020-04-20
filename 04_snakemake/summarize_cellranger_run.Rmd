@@ -16,7 +16,10 @@ params:
   genes_cellranger: ""
   repeats_cellranger: ""
   repeats_featurecounts: ""
-  rds_output: ""
+  seurat_output: ""
+  aris_output: ""
+  regress_genes_nCount: ""
+  regress_genes_nFeature: ""
 ---
 
 Rendered for sample:
@@ -100,7 +103,7 @@ params <- list(identifier = "",
                genes_cellranger = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
                repeats_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
                repeats_featurecounts = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz",
-               rds_output = "/home/imallona/tmp/test.rds")
+               seurat_output = "/home/imallona/tmp/test.rds")
 
 ```
 
@@ -257,15 +260,40 @@ NUM_PCS <- 1:20
 for (item in names(d)) {
     cat("### ", item, "\n\n")
 
-    tryCatch({
-        d[[item]] <- ScaleData(d[[item]])
+    to_regress <- NULL
+    if (as.logical(params$regress_genes_nCount)) {
+        to_regress <- c(to_regress, 'nCount_RNA')
+    }
+    if (as.logical(params$regress_genes_nFeature)) {
+        to_regress <- c(to_regress, 'nFeature_RNA')
         
-        d[[item]] <- RunPCA(d[[item]], features = VariableFeatures(object = d[[item]]))
+    }
+    
+    if (item == 'genes') {
+        d[[item]] <- ScaleData(d[[item]], vars.to.regress = to_regress)
+    } else {
+        ## in this case, the variables to regress come from the genes!
+        ## e.g. is the genes library size the one to normalize the repets'
+        tmp <- d$genes@meta.data
+        tmp$cell <- rownames(tmp)
+        d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
+        d[[item]]@meta.data <- merge(d[[item]]@meta.data, tmp, by = 'cell',
+                                     suffixes = c('', '_genes'))
+        rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
+
+
+        d[[item]] <- ScaleData(d[[item]],
+                               vars.to.regress = if(is.null(to_regress)) NULL else paste0(to_regress, '_genes'))
         
-        DimPlot(d[[item]], reduction = "pca")
-        
-        print(ElbowPlot(d[[item]]) + ggtitle(item))
-    }, error = function(x) print(x))
+        rm(tmp) 
+    }
+    
+    d[[item]] <- RunPCA(d[[item]], features = VariableFeatures(object = d[[item]]))
+    
+    DimPlot(d[[item]], reduction = "pca")
+    
+    print(ElbowPlot(d[[item]]) + ggtitle(item))
+
 
     cat('\n\n')
 }
@@ -464,19 +492,24 @@ for (genes_res in seq(0.2, 2, 0.2)) {
 }
 
 aris <- do.call(rbind.data.frame, aris)
-colnames(aris) <- c('genes_res', 'repeats_res', 'ari')
+colnames(aris) <- c('genes_res', 'repeats_cr_res', 'ari')
 aris$ari <- as.numeric(as.character(aris$ari))
 ```
 
 
 ```{r, fig.width = 6, fig.height = 6}
-aris_wide <- reshape2::dcast(aris, genes_res~repeats_res, value.var="ari")
+aris_wide <- reshape2::dcast(aris, genes_res~repeats_cr_res, value.var="ari")
 
 rownames(aris_wide)<- aris_wide$genes_res
 aris_wide <- aris_wide[,-1]
 
 pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
          color = colorRampPalette(c("white","blue"))(20))
+```
+
+```{r store_aris}
+aris_stored <- list()
+aris_stored[['genes__repeats_cr']] <- aris
 ```
 
 ## Genes vs repeats (featurecounts)
@@ -520,6 +553,11 @@ pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
          color = colorRampPalette(c("white","blue"))(20))
 ```
 
+```{r}
+aris_stored[['genes__repeats_fc']] <- aris
+```
+
+
 ## Repeats vs repeats
 
 ```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
@@ -561,11 +599,18 @@ pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
          color = colorRampPalette(c("white","blue"))(20))
 ```
 
+```{r}
+aris_stored[['repeats_cr__repeats_fc']] <- aris
+
+```
+
+
 # Export objects
 
 List of seurat objects
 ```{r}
-saveRDS(object = d, file = params$rds_output)
+saveRDS(object = d, file = params$seurat_output)
+saveRDS(object = aris_stored, file = params$aris_output)
 ```
 
 # Timestamp

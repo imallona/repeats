@@ -83,9 +83,11 @@ include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow.snmk"
 
 rule all:
     input:
-        op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html'),
-        op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report_genes_regressed_out.html'),
-        op.join(BASE, 'runs', 'pbmc_integration_test.html')
+        # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html'),
+        # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report_genes_regressed_out.html'),
+        op.join(BASE, 'runs', 'pbmc_integration_test.html'),
+        expand(op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
+               regress_nfeature = ['TRUE', 'FALSE'])#,
 
 ## srrwhatever is  not a pbmc!
 # @todo this comes from other reports, fix!

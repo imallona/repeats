@@ -8,33 +8,35 @@ rule knit_report_chromium:
         rmd = 'summarize_cellranger_run.Rmd',
         run_name = RUN_NAME
     output:
-        html = op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html'),
-        rds = op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run.rds'),
+        html = op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        rds = op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        aris = op.join(BASE, 'runs', RUN_NAME, 'aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
     log:
-        op.join(BASE, 'runs', RUN_NAME, 'knit_report.log')
+        op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
     shell:
         """
-        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output.html}\", params = list(identifier = \"{params.run_name}\", genes_cellranger = \"{input.genes}\", repeats_cellranger = \"{input.repeats}\", repeats_featurecounts = \"{input.featurecounts}\", rds_output = \"{output.rds}\"))' &> {log}
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output.html}\", params = list(identifier = \"{params.run_name}\", genes_cellranger = \"{input.genes}\", repeats_cellranger = \"{input.repeats}\", repeats_featurecounts = \"{input.featurecounts}\", seurat_output = \"{output.rds}\", aris_output = \"{output.aris}\", regress_genes_nCount = \"{wildcards.regress_ncount}\", regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}
         """
 
-rule knit_report_chromium_genes_regressed_out:
-    input:
-        genes = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
-        repeats = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
-        featurecounts = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard',
-                                RUN_NAME + "_repeats.counts.gz")
-    params:
-        rmd = 'summarize_cellranger_run_with_genes_regressed_out.Rmd',
-        run_name = RUN_NAME
-    output:
-        html = op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report_genes_regressed_out.html'),
-        rds = op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_genes_regressed_out.rds'),
-    log:
-        op.join(BASE, 'runs', RUN_NAME, 'knit_report_genes_regressed_out.log')
-    shell:
-        """
-        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output.html}\", params = list(identifier = \"{params.run_name}\", genes_cellranger = \"{input.genes}\", repeats_cellranger = \"{input.repeats}\", repeats_featurecounts = \"{input.featurecounts}\", rds_output = \"{output.rds}\"))' &> {log}
-        """
+# rule knit_report_chromium_genes_regressed_out:
+#     input:
+#         genes = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+#         repeats = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+#         featurecounts = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard',
+#                                 RUN_NAME + "_repeats.counts.gz")
+#     params:
+#         rmd = 'summarize_cellranger_run_with_genes_regressed_out.Rmd',
+#         run_name = RUN_NAME
+#     output:
+#         html = op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report_genes_regressed_out.html'),
+#         rds = op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_genes_regressed_out.rds'),
+#         aris = op.join(BASE, 'runs', RUN_NAME, 'aris.rds')
+#     log:
+#         op.join(BASE, 'runs', RUN_NAME, 'knit_report_genes_regressed_out.log')
+#     shell:
+#         """
+#         {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output.html}\", params = list(identifier = \"{params.run_name}\", genes_cellranger = \"{input.genes}\", repeats_cellranger = \"{input.repeats}\", repeats_featurecounts = \"{input.featurecounts}\", seurat_output = \"{output.rds}\", aris_output = \"{output.aris}\"))' &> {log}
+#         """
         
 
 rule run_feature_counts_spawned_bams:
