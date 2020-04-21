@@ -61,7 +61,7 @@ BASE <- file.path('/home', 'imallona', 'repeats_sc')
 opts_chunk$set(fig.width = 5,
                fig.height = 5,
                dev = 'png',
-               cache = TRUE,
+               cache = FALSE,
                echo = TRUE,
                include = TRUE,
                cache.lazy = FALSE,
@@ -145,7 +145,7 @@ coef_var <- function(x){
 
 ```
 
-# Data load
+# Data load Seurat objects
 
 ```{r justfordebugging, eval = FALSE}
 ## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
@@ -154,9 +154,10 @@ coef_var <- function(x){
 
 ## SRR10974769
 
-params <- list(run1 = '/home/imallona/repeats_sc/runs/SRR10974769/summarize_cellranger_run.rds',
-               run2 = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/summarize_cellranger_run.rds',
-               run3 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/summarize_cellranger_run.rds')
+params <- list(run1 = '/home/imallona/repeats_sc/runs/SRR10974769/summarize_cellranger_run_regress_nCount_FALSE_nFeature_FALSE.rds',
+               run2 = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/summarize_cellranger_run_regress_nCount_FALSE_nFeature_FALSE.rds',
+               run3 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/summarize_cellranger_run_regress_nCount_FALSE_nFeature_FALSE.rds',
+               run4 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/summarize_cellranger_run_regress_nCount_FALSE_nFeature_FALSE.rds')
 ```
 
 
@@ -374,6 +375,170 @@ for (run in names(d)) {
 ```
 
 Maybe add the markers of some celltypes on top?
+
+
+# ARIS
+
+## Data load
+
+```{r}
+
+aris_df <- NULL
+
+for (rds in params) {
+    ## the params are RDS objects from Seurat
+    ## aris[[sapply(strsplit(dirname(rds), .Platform$file.sep),
+    ##       function(x) return(x[6]))]] <- list()
+    fns <- list.files(dirname(rds), pattern = 'aris.*rds')
+    for (fn in fns) {
+        curr_nest <- readRDS(file.path(dirname(rds), fn))
+        ## curr <- do.call(function(x) rbind.data.frame(x, setNames = c('cat1' , 'cat2', 'ari')),
+        ##                 curr_nest)
+        ## aris_df <- NULL
+        for (item in names(curr_nest)) {
+            curr <- curr_nest[[item]]
+            colnames(curr) <- c('set1', 'set2', 'ari')
+            curr$origin <- item
+
+            parsed <- strcapture(
+                pattern = "aris_regress_nCount_(.*)_nFeature_(.*).rds",
+                x = fn,
+                proto = list(ncount = logical(), nfeature = logical()))
+            
+            curr$ncount_scaling <- parsed$ncount
+            curr$nfeature_scaling <- parsed$nfeature
+            
+            curr$sample <- sapply(strsplit(dirname(rds), .Platform$file.sep),
+                                  function(x) return(x[6]))
+            aris_df <- rbind(aris_df, curr)
+
+        }
+
+        ## aris[[sapply(strsplit(dirname(rds), .Platform$file.sep),
+        ##              function(x) return(x[6]))]][[basename(fn)]] <- curr_nest
+    }
+}
+
+summary(aris_df)
+rm(parsed, curr)
+```
+
+Extract resolutions and n
+
+```{r}
+parsed <- strcapture(
+    pattern = "(.*)_RNA_snn_res.(.*) \\(n=(.*)\\)",
+    x = aris_df$set1,
+    proto = list(id1 = character(),
+                 res1 = numeric(),
+                 size1 = numeric()))
+
+aris_df <- cbind(aris_df, parsed)
+rm(parsed)
+
+parsed <- strcapture(
+    pattern = "(.*)_RNA_snn_res.(.*) \\(n=(.*)\\)",
+    x = aris_df$set2,
+    proto = list(id2 = character(),
+                 res2 = numeric(),
+                 size2 = numeric()))
+
+aris_df <- cbind(aris_df, parsed)
+rm(parsed)
+
+## head(aris_df)
+```
+
+## ARIs comparison {.tabset}
+
+Plot ARIs decay with resolution, scaling etc
+
+```{r, fig.width=12, fig.height=8, results = 'asis'}
+
+aris_df$regressed_out <- 'none'
+
+aris_df$regressed_out[aris_df$ncount_scaling & aris_df$nfeature_scaling] <- 'both'
+aris_df$regressed_out[aris_df$ncount_scaling & !aris_df$nfeature_scaling] <- 'genes_ncount'
+aris_df$regressed_out[!aris_df$ncount_scaling & aris_df$nfeature_scaling] <- 'genes_nfeature'
+
+aris_df$regressed_out <- factor(aris_df$regressed_out,
+                                   levels = c('none', 'genes_ncount', 'genes_nfeature', 'both'))
+
+```
+
+```{r}
+
+aris_df$label1 <- sprintf('res%s_(n=%s)', aris_df$res1, aris_df$size1)
+aris_df$label2 <- sprintf('res%s_(n=%s)', aris_df$res2, aris_df$size2)
+
+cat('### genes vs repeats cr\n\n')
+
+print(ggplot(aris_df[aris_df$id1 == 'genes' & aris_df$id2 == 'repeats_cr',],
+             aes(x = res1, y = ari, col = as.factor(regressed_out))) +
+      geom_point() +
+      labs(title = "genes cellranger vs repeats cellranger (from repeats bam)",
+           subtitle = "by repeats resolution", y = "ARI", x = "genes resolution",
+           color = 'regressed out') +
+      facet_grid(sample~paste0('repeats res.\n', res2)) +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+
+cat('\n\n')
+
+cat('### genes vs repeats fc\n\n')
+
+print(ggplot(aris_df[aris_df$id1 == 'genes' & aris_df$id2 == 'repeats_fc',],
+             aes(x = res1, y = ari, col = as.factor(regressed_out))) +
+      geom_point() +
+      labs(title = "genes cellranger vs repeats featurecounts (from genes bam)",
+           subtitle = "by repeats resolution", y = "ARI", x = "genes resolution",
+           color = 'regressed out') +
+      facet_grid(sample~paste0('repeats res.\n', res2)) +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+
+cat('\n\n')
+
+cat('### repeats fc vs repeats cr\n\n')
+
+print(ggplot(aris_df[aris_df$id1 == 'repeats_fc' & aris_df$id2 == 'repeats_cr',],
+             aes(x = res1, y = ari, col = as.factor(regressed_out))) +
+      geom_point() +
+      labs(title = "repeats featurecounts (from genes bam) vs repeats cellranger (repeats bam)",
+           subtitle = "by repeats cellranger resolution", y = "ARI", x = "repeats fc resolution",
+           color = 'regressed out') +
+      facet_grid(sample~paste0('repeats cr res.\n', res2)) +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+
+cat('\n\n')
+```
+
+
+Maybe add the number of clusters? as a size param?
+
+
+Rather, plot both size and res
+
+```{r, eval = TRUE}
+## print(ggplot(aris_df[aris_df$id1 == 'repeats_fc' & aris_df$id2 == 'repeats_cr',],
+##              aes(x = res1, y = ari, col = as.factor(regressed_out))) +
+##       geom_point() +
+##       labs(title = "repeats featurecounts (from genes bam) vs repeats cellranger (repeats bam)",
+##            subtitle = "by repeats cellranger resolution", y = "ARI", x = "repeats fc resolution",
+##            color = 'regressed out') +
+##       facet_grid(sample~paste0('repeats cr res.\n', res2)) +
+##       theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+
+print(ggplot(aris_df,
+             aes(x = res1, y = size1, col = as.factor(regressed_out))) +
+      geom_point() +
+      facet_grid(sample~id1) +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+
+print(ggplot(aris_df,
+             aes(x = res2, y = size2, col = as.factor(regressed_out))) +
+      geom_point() +
+      facet_grid(sample~id2) +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+```
 
 
 # Timestamp

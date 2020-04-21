@@ -483,7 +483,7 @@ for (genes_res in seq(0.2, 2, 0.2)) {
 
         aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
                                length(unique(d$genes@meta.data[cells, genes_res]))),
-                       sprintf('repeats_%s (n=%s)', repeats_res,
+                       sprintf('repeats_cr_%s (n=%s)', repeats_res,
                                length(unique(d$repeats@meta.data[cells, repeats_res]))),
                        adjustedRandIndex(d$genes@meta.data[cells,genes_res],
                                          d$repeats@meta.data[cells,repeats_res]))
@@ -530,10 +530,10 @@ for (genes_res in seq(0.2, 2, 0.2)) {
 
         aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
                                length(unique(d$genes@meta.data[cells, genes_res]))),
-                       sprintf('repeats_%s (n=%s)', repeats_res,
-                               length(unique(d$repeats@meta.data[cells, repeats_res]))),
+                       sprintf('repeats_fc_%s (n=%s)', repeats_res,
+                               length(unique(d$featurecounts@meta.data[cells, repeats_res]))),
                        adjustedRandIndex(d$genes@meta.data[cells,genes_res],
-                                         d$repeats@meta.data[cells,repeats_res]))
+                                         d$featurecounts@meta.data[cells,repeats_res]))
         i <- i +1
     }    
 }
@@ -573,9 +573,9 @@ for (featurecounts_res in seq(0.2, 2, 0.2)) {
         
    
 
-        aris[[i]] <- c(sprintf('featurecounts_%s (n=%s)', featurecounts_res,
+        aris[[i]] <- c(sprintf('repeats_fc_%s (n=%s)', featurecounts_res,
                                length(unique(d$featurecounts@meta.data[cells, featurecounts_res]))),
-                       sprintf('repeats_%s (n=%s)', repeats_res,
+                       sprintf('repeats_cr_%s (n=%s)', repeats_res,
                                length(unique(d$repeats@meta.data[cells, repeats_res]))),
                        adjustedRandIndex(d$featurecounts@meta.data[cells,featurecounts_res],
                                          d$repeats@meta.data[cells,repeats_res]))

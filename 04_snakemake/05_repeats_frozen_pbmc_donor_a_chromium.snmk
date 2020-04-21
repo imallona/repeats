@@ -93,10 +93,10 @@ rule all:
 # @todo this comes from other reports, fix!
 rule integration_pbmcs:
     input:
-        run1 = op.join(BASE, 'runs/frozen_pbmc_donor_a/summarize_cellranger_run.rds'),
-        run2 = op.join(BASE, 'runs/5k_pbmc_v3/summarize_cellranger_run.rds'),
-        run3 = op.join(BASE, 'runs/SRR10974769/summarize_cellranger_run.rds'),
-        run4 = op.join(BASE, 'runs/pbmc_10k_v3/summarize_cellranger_run.rds')
+        run1 = op.join(BASE, 'runs/frozen_pbmc_donor_a/summarize_cellranger_run_regress_nCount_FALSE_nFeature_FALSE.rds'),
+        run2 = op.join(BASE, 'runs/5k_pbmc_v3/summarize_cellranger_run_regress_nCount_FALSE_nFeature_FALSE.rds'),
+        run3 = op.join(BASE, 'runs/SRR10974769/summarize_cellranger_run_regress_nCount_FALSE_nFeature_FALSE.rds'),
+        run4 = op.join(BASE, 'runs/pbmc_10k_v3/summarize_cellranger_run_regress_nCount_FALSE_nFeature_FALSE.rds')
     params:
         rmd = 'integrate_runs.Rmd'
     output:
