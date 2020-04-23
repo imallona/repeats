@@ -11,6 +11,8 @@ import re
 # import pandas as pd
 
 print('This is human')
+print('check featurecounts pairedend')
+print('this comes from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE132044')
 
 ## Folder structure start --------------------------------------------------------------------- ##
 
@@ -36,6 +38,7 @@ GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release
 REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
 
 
+GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/gtf_parser.R'
 BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
 BOWTIE = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'
 
@@ -49,7 +52,7 @@ CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
 BIOAWK = '~/soft/bioawk/bioawk'
 BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
 Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
-FASTQ_DUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
+FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
 VDB_VALIDATE = '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate'
 
 ## FASTQS, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}.fastq.gz"))
@@ -81,18 +84,18 @@ def get_samples(fn):
 
 rule all:
     input:
-        expand(op.join(BASE, "runs", RUN_NAME, "data", "{srr}_1.fastq.gz"),
-               srr = get_samples(op.join(BASE, "runs",
-                                              RUN_NAME, 'data', 'pbmc_smartseq2_male.conf'))),
-        expand(op.join(BASE, "runs", RUN_NAME, "data", "{srr}_1.fastq.gz"),
-               srr = get_samples(op.join(BASE, "runs",
-                                              RUN_NAME, 'data', 'pbmc_smartseq2_female.conf'))),
-        expand(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', "{fastq}_repeats.counts.gz"),
-               fastq = get_samples(op.join(BASE, "runs",
-                                           RUN_NAME, 'data', 'pbmc_smartseq2_male.conf'))),
+        expand(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
+               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_male.conf'))),
+        expand(op.join(BASE,  "data", RUN_NAME, "{srr}_2.fastq.gz"),
+               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_female.conf'))),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{fastq}_repeats.counts.gz"),
+               fastq = get_samples(op.join(BASE, "data", RUN_NAME, 'pbmc_smartseq2_male.conf'))),
         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{fastq}_genes.counts.gz"),
-               fastq = get_samples(op.join(BASE, "runs",
-                                           RUN_NAME, 'data', 'pbmc_smartseq2_male.conf')))
+               fastq = get_samples(op.join(BASE, "data", RUN_NAME, 'pbmc_smartseq2_male.conf'))),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{fastq}_repeats.counts.gz"),
+               fastq = get_samples(op.join(BASE, "data", RUN_NAME, 'pbmc_smartseq2_female.conf'))),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{fastq}_genes.counts.gz"),
+               fastq = get_samples(op.join(BASE, "data", RUN_NAME, 'pbmc_smartseq2_female.conf')))#,
         
 # print(get_samples(op.join(BASE, "runs",
 #                                 RUN_NAME, 'data', 'pbmc_smartseq2_male.conf')))
@@ -109,8 +112,119 @@ rule all:
 
 
 
-# remeber the readgroup thing!
-rule featurecounts_repeats_repeatome:
+
+# # remeber the readgroup thing!
+# rule featurecounts_repeats_repeatome_se:
+#     input:
+#         bam = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam"),
+#         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+#     output:
+#         counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.counts")),
+#         gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.counts.gz")
+#     log :
+#         op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}_featurecounts.log"),
+#     threads:
+#         NTHREADS
+#     shell:
+#        """
+#        ## note multimappers are counted
+#        {FEATURECOUNTS} -T {threads} \
+#        -t exon \
+#        -g gene_id \
+#        -a {input.gtf} \
+#        -o  {output.counts} \
+#        -M \
+#        {input.bam}  &> {log}
+
+#        {PIGZ} --keep  -p {threads} {output.counts}
+#        """
+
+# rule featurecounts_repeats_transcriptome_se:
+#     input:
+#         bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
+#         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+#     output:
+#         counts  = temp(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', "{fastq}_repeats.counts")),
+#         gz_counts = op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', "{fastq}_repeats.counts.gz")
+#     log :
+#         op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{fastq}_repeats_featurecounts.log"),
+#     threads:
+#         NTHREADS
+#     shell:
+#        """
+#        {FEATURECOUNTS} -T {threads} \
+#        -t exon \
+#        -g gene_id \
+#        -a {input.gtf} \
+#        -o  {output.counts} \
+#        {input.bam}  &> {log}
+
+#        {PIGZ} --keep -p {threads} {output.counts}
+#        """
+       
+# rule featurecounts_genes_transcriptome_se:
+#     input:
+#         bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
+#         gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
+#     output:
+#         counts  = temp(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{fastq}_genes.counts")),
+#         gz_counts = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{fastq}_genes.counts.gz")
+#     log :
+#         op.join(BASE, "runs",RUN_NAME, 'star_transcriptome', 'genes', "{fastq}_genes_featurecounts.log"),
+#     threads:
+#         NTHREADS
+#     shell:
+#        """
+#        {FEATURECOUNTS} -T {threads} \
+#        -t exon \
+#        -g gene_id \
+#        -a {input.gtf} \
+#        -o  {output.counts} \
+#        {input.bam}  &> {log}
+
+#        {PIGZ} --keep -p {threads} {output.counts}
+#        """
+       
+# # #@untested @todo @current
+# # ## fix to take into account the different indices to map against
+# # ## fix the cutadapt sickle thing
+# rule map_star_transcriptome_se:
+#     input:
+#         star_index_flag = op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrName.txt'), 
+#         fastq1 = op.join(BASE, "data", RUN_NAME, "{fastq}_1.fastq.gz"),
+#         fastq2 = op.join(BASE, "data", RUN_NAME,  "{fastq}_2.fastq.gz"),
+#     params:
+#         star_index = op.join(BASE, 'indices', 'star', GENOME, 'transcriptome'),
+#         path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome'),
+#         prefix = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_")
+#     output:
+#         bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
+#         star_tmp = temp(directory(op.join(BASE, 'runs', 'star_transcriptome', "{fastq}_STARtmp")))
+#     threads:
+#         NTHREADS
+#     log:
+#         op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_star.log")
+#     # benchmark:
+#     #     op.join(BASE, 'run/{sample}/{sample}_star_benchmark.txt')
+#     shell:
+#         """
+#         mkdir -p {params.path}
+#         cd {params.path}
+        
+#         {STAR} --genomeDir {params.star_index} \
+#         --readFilesIn {input.fastq1} \
+#         --runThreadN {threads} \
+#         --outFileNamePrefix {params.prefix} \
+#         --outSAMtype BAM SortedByCoordinate \
+#         --readFilesCommand zcat  2> {log}
+
+#         ## in case STAR managed to delete its own folder (doesn't always happen)
+#         mkdir -p {output.star_tmp}
+#         """
+
+        
+# @todo NOTE THE MULTIMAPPING ALLOWED!
+rule featurecounts_repeats_repeatome_pe:
     input:
         bam = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam"),
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
@@ -125,6 +239,7 @@ rule featurecounts_repeats_repeatome:
        """
        ## note multimappers are counted
        {FEATURECOUNTS} -T {threads} \
+       -p \
        -t exon \
        -g gene_id \
        -a {input.gtf} \
@@ -135,9 +250,9 @@ rule featurecounts_repeats_repeatome:
        {PIGZ} --keep  -p {threads} {output.counts}
        """
 
-rule featurecounts_repeats_transcriptome:
+rule featurecounts_repeats_transcriptome_pe:
     input:
-        bam = op.join(BASE, "runs",RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
+        bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
     output:
         counts  = temp(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', "{fastq}_repeats.counts")),
@@ -149,6 +264,7 @@ rule featurecounts_repeats_transcriptome:
     shell:
        """
        {FEATURECOUNTS} -T {threads} \
+       -p \
        -t exon \
        -g gene_id \
        -a {input.gtf} \
@@ -158,7 +274,7 @@ rule featurecounts_repeats_transcriptome:
        {PIGZ} --keep -p {threads} {output.counts}
        """
        
-rule featurecounts_genes_transcriptome:
+rule featurecounts_genes_transcriptome_pe:
     input:
         bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
         gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
@@ -172,6 +288,7 @@ rule featurecounts_genes_transcriptome:
     shell:
        """
        {FEATURECOUNTS} -T {threads} \
+       -p \
        -t exon \
        -g gene_id \
        -a {input.gtf} \
@@ -188,7 +305,7 @@ rule map_star_transcriptome_pe:
     input:
         star_index_flag = op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrName.txt'), 
         fastq1 = op.join(BASE, "data", RUN_NAME, "{fastq}_1.fastq.gz"),
-        fastq2 = op.join(BASE, "data", RUN_NAME, "{fastq}_2.fastq.gz"),
+        fastq2 = op.join(BASE, "data", RUN_NAME,  "{fastq}_2.fastq.gz"),
     params:
         star_index = op.join(BASE, 'indices', 'star', GENOME, 'transcriptome'),
         path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome'),
@@ -292,12 +409,12 @@ rule uncompress_genome:
         genome_dir = op.join(BASE, 'annotation'),
     input:
         fagz = op.join(BASE, 'annotation', op.basename(GENOME_URL))
-   output:
-       temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0]))
+    output:
+        temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0]))
     shell:
-    """
-    {PIGZ} -k --decompress -p {threads}  {input.fagz}
-    """
+        """
+        {PIGZ} -k --decompress -p {threads}  {input.fagz}
+        """
 
     
 rule extract_repeatome_from_gtf:
@@ -395,15 +512,15 @@ rule get_genes_gtf:
         
 rule get_data:
     input:
-        male = op.join(BASE, "runs", RUN_NAME, 'data', 'pbmc_smartseq2_male.conf'),
-        female = op.join(BASE, "runs", RUN_NAME, 'data', 'pbmc_smartseq2_female.conf'),
+        male = op.join(BASE, "data", RUN_NAME, 'pbmc_smartseq2_male.conf'),
+        female = op.join(BASE, "data", RUN_NAME, 'pbmc_smartseq2_female.conf'),
     output:
-        r1 = op.join(BASE, "runs", RUN_NAME, 'data', "{srr}_1.fastq.gz"),
-        r2 = op.join(BASE, "runs", RUN_NAME, 'data', "{srr}_2.fastq.gz"),
-        r3 = temp(op.join(BASE, "runs", RUN_NAME, 'data', "{srr}_3.fastq.gz")),
-        r4 = temp(op.join(BASE, "runs", RUN_NAME, 'data', "{srr}_4.fastq.gz"))
+        r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
+        r2 = op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq.gz"),
+        r3 = temp(op.join(BASE, "data", RUN_NAME, "{srr}_3.fastq.gz")),
+        r4 = temp(op.join(BASE, "data", RUN_NAME, "{srr}_4.fastq.gz"))
     params:
-        path = op.join(BASE, "runs", RUN_NAME, 'data')
+        path = op.join(BASE, "data", RUN_NAME)
     shell:
         """
         mkdir -p {params.path}
@@ -414,10 +531,10 @@ rule get_data:
     
 rule get_srr_identifiers:
     output:
-        male = op.join(BASE, "runs", RUN_NAME, 'data', 'pbmc_smartseq2_male.conf'),
-        female = op.join(BASE, "runs", RUN_NAME, 'data', 'pbmc_smartseq2_female.conf')
+        male = op.join(BASE, "data", RUN_NAME, 'pbmc_smartseq2_male.conf'),
+        female = op.join(BASE, "data", RUN_NAME, 'pbmc_smartseq2_female.conf')
     params:
-        path = op.join(BASE, "runs", RUN_NAME, 'data')
+        path = op.join(BASE, "data", RUN_NAME)
     shell:
         """
         ## from https://www.ncbi.nlm.nih.gov/Traces/study/?acc=PRJNA545730&o=acc_s%3Aa
