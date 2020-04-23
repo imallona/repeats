@@ -224,7 +224,7 @@ rule map_bowtie_repeatome:
         """
         mkdir -p {params.path}
 
-        ( {PIGZ} --to-stdout --decompress {input.fastq} | {BOWTIE} -q \
+        ( {PIGZ} --keep --processes {threads} --to-stdout --decompress {input.fastq} | {BOWTIE} -q \
         -v 2 \
         --threads {threads} \
         -k 2 --best --strata \

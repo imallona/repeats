@@ -54,6 +54,7 @@ library(reshape2)
 library(mclust)
 library(pheatmap)
 library(SCINA)
+library(DT)
 })
 ```
 
@@ -658,27 +659,201 @@ markers <- list(
 
 ```
 
+Also, markers from supplementary table s10 from https://www.biorxiv.org/content/10.1101/632216v1.supplementary-material?versioned=true
+that is https://static-content.springer.com/esm/art%3A10.1038%2Fs41587-020-0465-8/MediaObjects/41587_2020_465_MOESM3_ESM.xlsx
+
+
+```{r}
+markers2 <- read.table(text = 'cell_type	gene	sign
+CD4+_T_cell	CD3D	+
+CD4+_T_cell	CD3E	+
+CD4+_T_cell	CD3G	+
+CD4+_T_cell	TRAC	+
+CD4+_T_cell	CD4	+
+CD4+_T_cell	TCF7	+
+CD4+_T_cell	CD27	+
+CD4+_T_cell	IL7R	+
+CD4+_T_cell	CD8A	-
+CD4+_T_cell	CD8B	-
+CD4+_T_cell	GNLY	-
+CD4+_T_cell	NKG7	-
+CD4+_T_cell	CST7	-
+Cytotoxic_T_cell	CD3D	+
+Cytotoxic_T_cell	CD3E	+
+Cytotoxic_T_cell	CD3G	+
+Cytotoxic_T_cell	TRAC	+
+Cytotoxic_T_cell	CD8A	+
+Cytotoxic_T_cell	CD8B	+
+Cytotoxic_T_cell	GZMK	+
+Cytotoxic_T_cell	CCL5	+
+Cytotoxic_T_cell	NKG7	+
+Cytotoxic_T_cell	CD4	-
+Cytotoxic_T_cell	FCER1G	-
+B_cell	CD19	+
+B_cell	MS4A1	+
+B_cell	CD79A	+
+B_cell	CD79B	+
+B_cell	MZB1	+
+B_cell	IGHD	+
+B_cell	IGHM	+
+Natural_killer_cell	NCAM1	+
+Natural_killer_cell	NKG7	+
+Natural_killer_cell	KLRB1	+
+Natural_killer_cell	KLRD1	+
+Natural_killer_cell	KLRF1	+
+Natural_killer_cell	KLRC1	+
+Natural_killer_cell	KLRC2	+
+Natural_killer_cell	KLRC3	+
+Natural_killer_cell	KLRC4	+
+Natural_killer_cell	CD3D	-
+Natural_killer_cell	CD3E	-
+Natural_killer_cell	CD3G	-
+Natural_killer_cell	CD14	-
+Natural_killer_cell	FCGR3A	+
+Natural_killer_cell	FCGR3B	+
+Natural_killer_cell	ITGAL	+
+Natural_killer_cell	ITGAM	+
+Natural_killer_cell	FCER1G	+
+Natural_killer_cell	TRAC	-
+CD14+_monocyte	VCAN	+
+CD14+_monocyte	FCN1	+
+CD14+_monocyte	S100A8	+
+CD14+_monocyte	S100A9	+
+CD14+_monocyte	CD14	+
+CD14+_monocyte	ITGAL	+
+CD14+_monocyte	ITGAM	+
+CD14+_monocyte	CSF3R	+
+CD14+_monocyte	CSF1R	+
+CD14+_monocyte	CX3CR1	+
+CD14+_monocyte	FCGR3A	-
+CD14+_monocyte	FCGR3B	-
+CD14+_monocyte	TYROBP	+
+CD14+_monocyte	LYZ	+
+CD14+_monocyte	S100A12	+
+CD14+_monocyte	CD3D	-
+CD14+_monocyte	CD3E	-
+CD14+_monocyte	CD3G	-
+CD14+_monocyte	TRAC	-
+CD14+_monocyte	NKG7	-
+CD14+_monocyte	KLRB1	-
+CD14+_monocyte	KLRD1	-
+CD16+_monocyte	FCN1	+
+CD16+_monocyte	FCGR3A	+
+CD16+_monocyte	FCGR3B	+
+CD16+_monocyte	ITGAL	+
+CD16+_monocyte	ITGAM	+
+CD16+_monocyte	CSF3R	+
+CD16+_monocyte	CSF1R	+
+CD16+_monocyte	CX3CR1	+
+CD16+_monocyte	CDKN1C	+
+CD16+_monocyte	MS4A7	+
+CD16+_monocyte	S100A8	-
+CD16+_monocyte	S100A9	-
+CD16+_monocyte	S100A12	-
+CD16+_monocyte	CD14	-
+CD16+_monocyte	CD3D	-
+CD16+_monocyte	CD3E	-
+CD16+_monocyte	CD3G	-
+CD16+_monocyte	TRAC	-
+CD16+_monocyte	NKG7	-
+CD16+_monocyte	KLRB1	-
+CD16+_monocyte	KLRD1	-
+Dendritic_cell	HLA-DPB1	+
+Dendritic_cell	HLA-DPA1	+
+Dendritic_cell	HLA-DQA1	+
+Dendritic_cell	ITGAX	+
+Dendritic_cell	CD3D	-
+Dendritic_cell	CD3E	-
+Dendritic_cell	CD3G	-
+Dendritic_cell	NCAM1	-
+Dendritic_cell	CD19	-
+Dendritic_cell	CD14	-
+Dendritic_cell	CD1C	+
+Dendritic_cell	CD1E	+
+Dendritic_cell	FCER1A	+
+Dendritic_cell	CLEC10A	+
+Dendritic_cell	FCGR2B	+
+Dendritic_cell	MS4A1	-
+Dendritic_cell	CD79A	-
+Dendritic_cell	CD79B	-
+Plasmacytoid_dendritic_cell	IL3RA	+
+Plasmacytoid_dendritic_cell	GZMB	+
+Plasmacytoid_dendritic_cell	JCHAIN	+
+Plasmacytoid_dendritic_cell	IRF7	+
+Plasmacytoid_dendritic_cell	TCF4	+
+Plasmacytoid_dendritic_cell	LILRA4	+
+Plasmacytoid_dendritic_cell	CLEC4C	+
+Plasmacytoid_dendritic_cell	ITGAX	-
+Plasmacytoid_dendritic_cell	CD3D	-
+Plasmacytoid_dendritic_cell	CD3E	-
+Plasmacytoid_dendritic_cell	CD3G	-
+Plasmacytoid_dendritic_cell	NCAM1	-
+Plasmacytoid_dendritic_cell	CD19	-
+Plasmacytoid_dendritic_cell	CD14	-
+Plasmacytoid_dendritic_cell	MS4A1	-
+Plasmacytoid_dendritic_cell	CD79A	-
+Plasmacytoid_dendritic_cell	CD79B	-
+Plasma_cell	CD38	+
+Plasma_cell	XBP1	+
+Plasma_cell	CD27	+
+Plasma_cell	SLAMF7	+
+Plasma_cell	CD19	-
+Plasma_cell	MS4A1	-
+Plasma_cell	CD3D	-
+Plasma_cell	CD3E	-
+Plasma_cell	CD3G	-
+Plasma_cell	IGHA1	+
+Plasma_cell	IGHA2	+
+Plasma_cell	IGHG1	+
+Plasma_cell	IGHG2	+
+Plasma_cell	IGHG3	+
+Plasma_cell	IGHG4	+
+Platelet	PF4	+
+Platelet	PPBP	+
+Platelet	GP5	+
+Platelet	ITGA2B	+
+Platelet	NRGN	+
+Platelet	TUBB1	+
+Platelet	SPARC	+
+Platelet	RGS18	+
+Platelet	MYL9	+
+Platelet	GNG11	+', header = TRUE, sep = '\t', stringsAsFactors = FALSE)
+```
+
+```{r}
+pos_markers2_tmp <- markers2[markers2$sign == '+',]
+pos_markers2 <-  list()
+
+for (ct in unique(pos_markers2_tmp$cell_type)) {
+    pos_markers2[[ct]] <- pos_markers2_tmp[pos_markers2_tmp$cell_type ==ct, 'gene']
+}
+
+```
 SCINA test on PBMCs
 
 ```{r}
 pos_markers <- sapply(markers,  function(x) grep ('+', x, value = TRUE))
 pos_markers <- sapply(pos_markers, function(x) gsub('\\+', '', x))
 
-## make sure data is normalized!
-GetAssayData(d$genes, slot = 'data')[20:50, 1:10]
+## ## make sure data is normalized!
+## GetAssayData(d$genes, slot = 'data')[20:50, 1:10]
+```
 
+```{r, fig.width = 14, fig.height = 7}
 named <-  SCINA(GetAssayData(d$genes, slot = 'data'),
-                signatures = pos_markers,
+                signatures = pos_markers2,
                 max_iter = 200,
                 convergence_n = 20, 
                 convergence_rate = 0.999, sensitivity_cutoff = 0.9)
 
 table(named$cell_labels)
+plotheat.SCINA(exp = GetAssayData(d$genes, slot = 'data'),
+                signatures = pos_markers2, results = named)
 ```
 
-Confusion matrices with clustering results
+# Confusion matrices with clustering results {.tabset}
 
-```{r}
+```{r, results = 'asis'}
 tmp <- data.frame(cell = colnames(d$genes),
                   scina = named$cell_labels)
 
@@ -688,7 +863,25 @@ d$genes@meta.data <- merge(d$genes@meta.data, tmp, by = 'cell')
 
 for (res in grep('RNA_snn', colnames(d$genes@meta.data), value = TRUE)) {
     cat('## res', res, '\n\n')
-    print(table(d$genes@meta.data[,res], d$genes@meta.data$scina))
+    ## DT::datatable(markers %>% as.data.frame() %>% 
+    ##           dplyr::mutate_if(is.numeric, funs(round(., 2))), 
+    ##           extensions = c("Buttons", "FixedColumns"),
+    ##           rownames = FALSE, 
+    ##           options = list(dom = "Bfrtip",
+    ##                          scrollX = TRUE, 
+    ##                          fixedColumns = list(leftColumns = 1),
+    ##                          buttons = c("csv", "excel")))
+
+    ## DT::datatable(as.data.frame.matrix(table(d$genes@meta.data[,res], d$genes@meta.data$scina)) %>% as.data.frame() %>% 
+    ##           dplyr::mutate_if(is.numeric, funs(round(., 2))), 
+    ##           extensions = c("Buttons", "FixedColumns"),
+    ##           rownames = FALSE, 
+    ##           options = list(dom = "Bfrtip",
+    ##                          scrollX = TRUE, 
+    ##                          fixedColumns = list(leftColumns = 1),
+    ##                          buttons = c("csv", "excel")))
+
+    print(as.data.frame.matrix(table(d$genes@meta.data[,res], d$genes@meta.data$scina)))
     cat('\n\n')
 }
 ```
