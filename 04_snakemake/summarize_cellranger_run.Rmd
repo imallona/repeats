@@ -9,7 +9,7 @@ output:
     code_folding: hide
     code_download: true
     number_sections: true
-    df_print: kable
+    df_print: default
     theme: lumen
 params:
   identifier: ""   
@@ -853,37 +853,72 @@ plotheat.SCINA(exp = GetAssayData(d$genes, slot = 'data'),
 
 # Confusion matrices with clustering results {.tabset}
 
-```{r, results = 'asis'}
+```{r, results = 'asis', cache = FALSE}
 tmp <- data.frame(cell = colnames(d$genes),
                   scina = named$cell_labels)
 
 rownames(tmp) <- tmp$cell
 d$genes@meta.data$cell <- rownames(d$genes@meta.data)
 d$genes@meta.data <- merge(d$genes@meta.data, tmp, by = 'cell')
+```
 
+```{r, results = 'asis'}
 for (res in grep('RNA_snn', colnames(d$genes@meta.data), value = TRUE)) {
-    cat('## res', res, '\n\n')
-    ## DT::datatable(markers %>% as.data.frame() %>% 
-    ##           dplyr::mutate_if(is.numeric, funs(round(., 2))), 
-    ##           extensions = c("Buttons", "FixedColumns"),
-    ##           rownames = FALSE, 
-    ##           options = list(dom = "Bfrtip",
-    ##                          scrollX = TRUE, 
-    ##                          fixedColumns = list(leftColumns = 1),
-    ##                          buttons = c("csv", "excel")))
-
-    ## DT::datatable(as.data.frame.matrix(table(d$genes@meta.data[,res], d$genes@meta.data$scina)) %>% as.data.frame() %>% 
-    ##           dplyr::mutate_if(is.numeric, funs(round(., 2))), 
-    ##           extensions = c("Buttons", "FixedColumns"),
-    ##           rownames = FALSE, 
-    ##           options = list(dom = "Bfrtip",
-    ##                          scrollX = TRUE, 
-    ##                          fixedColumns = list(leftColumns = 1),
-    ##                          buttons = c("csv", "excel")))
-
+    cat('## ', res, '\n\n')
     print(as.data.frame.matrix(table(d$genes@meta.data[,res], d$genes@meta.data$scina)))
+    
     cat('\n\n')
 }
+```
+
+```{r, results = 'asis', df_table = 'default'}
+for (res in grep('RNA_snn', colnames(d$genes@meta.data), value = TRUE)) {
+    cat('## ', res, '\n\n')
+    print(as.data.frame.matrix(table(d$genes@meta.data[,res], d$genes@meta.data$scina)))
+    
+    cat('\n\n')
+}
+```
+
+# ARIs celltypes and SCINA outputs
+
+```{r, cache = FALSE}
+for (res in grep('RNA_snn', colnames(d$genes@meta.data), value = TRUE)) {
+   print(res)
+    print(as.data.frame.matrix(table(d$genes@meta.data[,res], d$genes@meta.data$scina)))
+}
+```
+
+ARI calculation
+
+
+## Genes vs SCINA
+
+Maybe removing the NA class in SCINA?
+
+```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
+aris <- list()
+i <- 1
+for (genes_res in seq(0.2, 2, 0.2)) {
+    genes_res <- sprintf('RNA_snn_res.%s', genes_res)
+    rownames(d$genes@meta.data) <- d$genes@meta.data$cell
+    known <- rownames(d$genes@meta.data[d$genes@meta.data$scina != 'unknown',])
+
+    aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
+                           length(unique(d$genes@meta.data[known, genes_res]))),
+                   sprintf('scina_%s (n=%s)', 'scina',
+                           length(unique(d$genes@meta.data[known, 'scina']))),
+                   adjustedRandIndex(d$genes@meta.data[known, genes_res],
+                                     d$genes@meta.data[known, 'scina']))
+                                     
+    i <- i +1
+}    
+
+aris <- do.call(rbind.data.frame, aris)
+head(aris)
+colnames(aris) <- c('genes_res', 'scina', 'ari')
+aris$ari <- as.numeric(as.character(aris$ari))
+print(aris)
 ```
 
 # Export objects
