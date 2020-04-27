@@ -1,5 +1,5 @@
 ---
-title: "Within sample report"
+title: "Within sample report: PBMC, cellranger"
 author: "Izaskun Mallona at Robinsonlab"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
@@ -260,6 +260,9 @@ for (item in names(d)) {
     print(plot2 + ggtitle(item))
     cat('\n\n')
 }
+
+
+
 ```
 
 ## Dimred PCA {.tabset}
@@ -328,13 +331,17 @@ for (item in names(d)) {
 
 ```
 
-```{r fig.width = 8, fig.height = 5, results = 'asis'}
+```{r fig.width = 8, fig.height = 5, results = 'asis', cache = FALSE}
+
 for (item in names(d)) {
+    
     cat("### ", item, "\n\n")
+    
     p1 <- DimPlot(d[[item]], reduction = "umap")
     p2 <- DimPlot(d[[item]], reduction = "tsne")
 
     print(CombinePlots(plots = list(p1, p2)) + ggtitle(item))
+    rm(p1, p2)
     cat('\n\n')
 
 }
@@ -342,8 +349,7 @@ for (item in names(d)) {
 
 # SCINA-based PBMC annotations
 
-Markers from supplementary table s10 from https://www.biorxiv.org/content/10.1101/632216v1.supplementary-material?versioned=true
-that is https://static-content.springer.com/esm/art%3A10.1038%2Fs41587-020-0465-8/MediaObjects/41587_2020_465_MOESM3_ESM.xlsx
+Markers from supplementary table s10 from [here](https://www.biorxiv.org/content/10.1101/632216v1.supplementary-material?versioned=true) [supp data](https://static-content.springer.com/esm/art%3A10.1038%2Fs41587-020-0465-8/MediaObjects/41587_2020_465_MOESM3_ESM.xlsx)
 
 
 ```{r}
@@ -525,18 +531,18 @@ table(named$cell_labels)
 ##                 signatures = pos_markers2, results = named)
 ```
 
-## Confusion matrices with clustering results {.tabset}
+## Confusion matrices with clustering results 
 
 First, add the SCINA outputs to the different SO objects
 
-```{r, results = 'asis', cache = FALSE}
+```{r, cache = FALSE}
 labelling <- data.frame(cell = colnames(d$genes),
                   scina = named$cell_labels)
 
 rownames(labelling) <- labelling$cell
 d$genes@meta.data$cell <- rownames(d$genes@meta.data)
 d$genes@meta.data <- merge(d$genes@meta.data, labelling, by = 'cell')
-
+rownames(d$genes@meta.data) <- d$genes@meta.data$cell
 
 ## still, the annotation can also be transfered to repeats/featurecounts
 
@@ -550,20 +556,27 @@ for (item in c('repeats', 'featurecounts')) {
     d[[item]] <- AddMetaData(object = d[[item]],
                              metadata = tmp['scina'],
                              col.name = 'scina')
+    rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
 }
 
 rm(labelling, tmp)
 
 ```
 
-```{r, results = 'asis'}
+## Results {.tabset}
+
+```{r problemrendering, results = 'asis', df_table = 'default'}
 for (res in grep('RNA_snn', colnames(d$genes@meta.data), value = TRUE)) {
     cat('### ', res, '\n\n')
-    
-    kable(as.data.frame.matrix(table(d$genes@meta.data[,res], d$genes@meta.data$scina)))
-    
+
+    tmp <- as.data.frame.matrix(table(d$genes@meta.data[,res],
+                                      d$genes@meta.data$scina))
+
+    print(t(tmp))
+
     cat('\n\n')
 }
+cat('\n\n')
 ```
 
 <!-- ## ARIs celltypes and SCINA outputs -->
@@ -575,44 +588,19 @@ for (res in grep('RNA_snn', colnames(d$genes@meta.data), value = TRUE)) {
 <!-- } -->
 <!-- ``` -->
 
-## Genes vs SCINA (ARIS)
 
-Removing the unassigned class in SCINA
 
-```{r}
-aris <- list()
-i <- 1
-for (genes_res in seq(0.2, 2, 0.2)) {
-    genes_res <- sprintf('RNA_snn_res.%s', genes_res)
-    rownames(d$genes@meta.data) <- d$genes@meta.data$cell
-    known <- rownames(d$genes@meta.data[d$genes@meta.data$scina != 'unknown',])
-
-    aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
-                           length(unique(d$genes@meta.data[known, genes_res]))),
-                   sprintf('scina_%s (n=%s)', 'scina',
-                           length(unique(d$genes@meta.data[known, 'scina']))),
-                   adjustedRandIndex(d$genes@meta.data[known, genes_res],
-                                     d$genes@meta.data[known, 'scina']))
-                                     
-    i <- i +1
-}    
-
-aris <- do.call(rbind.data.frame, aris)
-head(aris)
-colnames(aris) <- c('genes_res', 'scina', 'ari')
-aris$ari <- as.numeric(as.character(aris$ari))
-print(aris)
-```
-
-## Repeats and genes expression profiles by SCINA annotation {.tabset}
+# Repeats and genes expression profiles by SCINA annotation {.tabset}
 
 tSNEs/UMAPs
 
-```{r, fig.width =14, fig.height = 7}
+```{r, fig.width =14, fig.height = 7, results = 'asis'}
 for (item in names(d)) {
-    cat("### ", item, "\n\n")
-    p1 <- DimPlot(d[[item]], reduction = "umap", group.by = 'scina')
-    p2 <- DimPlot(d[[item]], reduction = "tsne", group.by = 'scina')
+    cat("## ", item, "\n\n")
+    ## d[[item]]@meta.data$scina <- as.factor(d[[item]]@meta.data$scina)
+    Idents(d[[item]]) <- 'scina'
+    p1 <- DimPlot(d[[item]], reduction = "umap", group.by = 'ident')
+    p2 <- DimPlot(d[[item]], reduction = "tsne", group.by = 'ident')
 
     print(CombinePlots(plots = list(p1, p2)) + ggtitle(item))
     cat('\n\n')
@@ -622,41 +610,44 @@ for (item in names(d)) {
 
 ## boxplots by identity {.tabset}
 
-```{r fig.height = 6, fig.with = 24, results = 'asis'}
+```{r fig.height = 6, fig.width = 24, results = 'asis'}
 ## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11')
-selected <- c(names(head(sort(apply(GetAssayData(d$repeats),1, coef_var), decreasing = TRUE),
-                       5)), c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a'))
+for (slot in c('repeats', 'featurecounts')) {
+    cat("### ", slot, "\n\n")
+    selected <- c(names(head(sort(apply(GetAssayData(d[[slot]]),1, coef_var),
+                                  decreasing = TRUE),
+                             5)),
+                  c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a'))
 
-for (run in names(d)) {
-    cat("### ", run, "\n\n")
-    repeats <- as.data.frame(FetchData(d$repeats, vars = selected, slot = 'data'))
+
+    repeats <- as.data.frame(FetchData(d[[slot]], vars = selected, slot = 'data'))
     repeats$cell <- rownames(repeats)
 
+    
     d$genes@meta.data$cell <- rownames(d$genes@meta.data)
     repeats <- merge(d$genes@meta.data[, c('scina', 'cell') ],
                      repeats, by = 'cell', all.x = TRUE)
-    
+
     rownames(repeats) <- repeats$cell
     
     repeats <- melt(repeats, id.vars = c('cell', 'scina'))
 
-    colnames(repeats) <- c('cell', 'scina', 'repfamily', 'CPM')
-
+    colnames(repeats) <- c('cell', 'scina', 'repfamily', 'data')
+    
     print(ggplot(repeats,
-           aes(x = scina, y = CPM)) + 
+           aes(x = scina, y = data)) + 
           geom_boxplot(outlier.size=1) +
           scale_y_continuous(trans='log10') +
         scale_fill_discrete(drop=FALSE) +
         facet_wrap(~ factor(repfamily), ncol = 10) +
         theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-        ylab('repeat expression [CPM]') +
-        xlab('SCINA identity') + ggtitle(sprintf('%s %s\n%s', run, 'repeats', 'scina')))
+        ylab('repeat expression [ncount]') +
+        xlab('SCINA identity') + ggtitle(sprintf('%s %s\n%s', slot, 'repeats', 'scina')))
 
     rm(repeats)
     cat('\n\n')
 }
 ```
-
 
 # Descriptive (clustering) {.tabset}
 
@@ -701,10 +692,7 @@ rm(res)
 rm(merged)
 ```
 
-# Descriptive (SCINA celltypes) {.tabset}
-
-
-## Descriptive (with scina) {.tabset}
+# Descriptive (with scina)
 
 Tabset: coloring according to the clustering results.
 
@@ -714,18 +702,16 @@ Tabset: coloring according to the clustering results.
 common_cells <- intersect(intersect(colnames(d$genes), colnames(d$repeats)),
                                     colnames(d$featurecounts))
 
-for (item_clust in names(d)) {
-    ## tag <- sprintf('%s\n%s', item_clust, res)
-    tag <- 'scina'
-    cat('### ', tag, '\n\n')
-    
-    merged <- data.frame(cell = common_cells,
-                         percent.mt = d$genes@meta.data[common_cells, 'percent.mt'])
+tag <- 'scina'
 
-    ## merged[,tag] <- d[[item_clust]]@meta.data[common_cells,res]
-    merged[,tag] <- d[[item_clust]]@meta.data[common_cells, tag]
+merged <- data.frame(cell = common_cells,
+                     percent.mt = d$genes@meta.data[common_cells, 'percent.mt'])
 
-    for (item in names(d)) {
+## merged[,tag] <- d[[item_clust]]@meta.data[common_cells,res]
+merged[,tag] <- d[[item]]@meta.data[common_cells, tag]
+
+for (item in names(d)) {
+        ## cat('## ', tag, '\n\n')
         d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
 
         merged <- merge(merged,
@@ -735,15 +721,14 @@ for (item_clust in names(d)) {
                         suffixes = c('', sprintf('\n%s', item)))
 
         ## cat("### ", item, "\n\n")
-
-    }
-    rownames(merged) <- merged$cell
-    merged <- merged[,-1]
-    colnames(merged) <- gsub('_RNA', '', colnames(merged))
-    plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(as.factor(merged[,tag])), 0.1))
-    ## plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(as.factor(merged[,tag])), 1))
-    cat('\n\n')
 }
+
+rownames(merged) <- merged$cell
+merged <- merged[,-1]
+colnames(merged) <- gsub('_RNA', '', colnames(merged))
+plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(as.factor(merged[,tag])), 0.1))
+## plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(as.factor(merged[,tag])), 1))
+## cat('\n\n')
 
 rm(res)
 rm(merged)
@@ -777,7 +762,7 @@ hist(unlist(ccell),
 
 Correlations per repeat
 
-```{r}
+```{r, warnings = FALSE}
 crepeat <- list()
 
 ## GetAssay(d$repeats, 'RNA')[1:10,1:10]
@@ -798,42 +783,42 @@ hist(unlist(crepeat), main = "correlation across repeats\nrepeats cellranger vs 
 
 ```
 
-Show correlation values per family etc
+<!-- Show correlation values per family etc -->
 
-```{r}
-merged <- na.omit(data.frame(repfamily = names(crepeat),
-                          rho = as.numeric(crepeat)))
+<!-- ```{r} -->
+<!-- merged <- na.omit(data.frame(repfamily = names(crepeat), -->
+<!--                           rho = as.numeric(crepeat))) -->
 
-means <-  apply(GetAssayData(object = d$repeats, slot = "counts"), 1, mean)
-means <- data.frame(repfamily = names(means),
-                    mean = as.numeric(means),
-                    stringsAsFactors = FALSE)
+<!-- means <-  apply(GetAssayData(object = d$repeats, slot = "counts"), 1, mean) -->
+<!-- means <- data.frame(repfamily = names(means), -->
+<!--                     mean = as.numeric(means), -->
+<!--                     stringsAsFactors = FALSE) -->
 
-sds <-  apply(GetAssayData(object = d$repeats, slot = "counts"), 1, sd)
-sds <- data.frame(repfamily = names(sds),
-                    sd = as.numeric(sds))
+<!-- sds <-  apply(GetAssayData(object = d$repeats, slot = "counts"), 1, sd) -->
+<!-- sds <- data.frame(repfamily = names(sds), -->
+<!--                     sd = as.numeric(sds)) -->
 
-merged <- merge(merged, sds, by = 'repfamily', all.x = TRUE)
-merged <- merge(merged, means, by = 'repfamily', all.x = TRUE)
-merged$log10mean <- log10(merged$mean + 1) 
+<!-- merged <- merge(merged, sds, by = 'repfamily', all.x = TRUE) -->
+<!-- merged <- merge(merged, means, by = 'repfamily', all.x = TRUE) -->
+<!-- merged$log10mean <- log10(merged$mean + 1)  -->
 
-idx <- as.character(merged[order(merged$rho, decreasing = TRUE), 'repfamily'])
+<!-- idx <- as.character(merged[order(merged$rho, decreasing = TRUE), 'repfamily']) -->
 
-## wide to long
-merged <- melt(merged, id.vars=c("repfamily"))
+<!-- ## wide to long -->
+<!-- merged <- melt(merged, id.vars=c("repfamily")) -->
 
-## merged <- merged[order(merged$value, merged$variable),]
+<!-- ## merged <- merged[order(merged$value, merged$variable),] -->
 
-merged$repfamily <- factor(merged$repfamily, levels = idx)
-```
+<!-- merged$repfamily <- factor(merged$repfamily, levels = idx) -->
+<!-- ``` -->
 
-```{r, fig.width = 20, fig.height = 10}
-ggplot(merged, aes(x=repfamily, y=value)) +
-    geom_point() +
-    facet_grid(vars(variable), scales ='free') +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+<!-- ```{r, fig.width = 20, fig.height = 10} -->
+<!-- ggplot(merged, aes(x=repfamily, y=value)) + -->
+<!--     geom_point() + -->
+<!--     facet_grid(vars(variable), scales ='free') + -->
+<!--     theme(axis.text.x = element_text(angle = 45, hjust = 1)) -->
 
-```
+<!-- ``` -->
 
 
 # Confusion matrix clusters
@@ -978,6 +963,35 @@ pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
 ```{r}
 aris_stored[['repeats_cr__repeats_fc']] <- aris
 
+```
+
+
+## Genes vs SCINA
+
+Removed the unassigned class in SCINA
+
+```{r}
+aris <- list()
+i <- 1
+for (genes_res in seq(0.2, 2, 0.2)) {
+    genes_res <- sprintf('RNA_snn_res.%s', genes_res)
+    rownames(d$genes@meta.data) <- d$genes@meta.data$cell
+    known <- rownames(d$genes@meta.data[d$genes@meta.data$scina != 'unknown',])
+
+    aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
+                           length(unique(d$genes@meta.data[known, genes_res]))),
+                   sprintf('scina_%s (n=%s)', 'scina',
+                           length(unique(d$genes@meta.data[known, 'scina']))),
+                   adjustedRandIndex(d$genes@meta.data[known, genes_res],
+                                     d$genes@meta.data[known, 'scina']))
+                                     
+    i <- i +1
+}    
+
+aris <- do.call(rbind.data.frame, aris)
+colnames(aris) <- c('genes_res', 'scina', 'ari')
+aris$ari <- as.numeric(as.character(aris$ari))
+print(aris)
 ```
 
 # Export objects
