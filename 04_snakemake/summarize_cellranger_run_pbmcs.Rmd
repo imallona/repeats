@@ -313,8 +313,6 @@ for (item in names(d)) {
 
 ```
 
-## Dimred UMAP and tSNE {.tabset}
-
 ```{r, message = FALSE, results = 'asis'}
 for (item in names(d)) {
 
@@ -329,7 +327,11 @@ for (item in names(d)) {
     d[[item]] <- RunTSNE(d[[item]], dims = NUM_PCS, check_duplicates = FALSE )
 }
 
+
 ```
+
+
+## Dimred UMAP and tSNE {.tabset}
 
 ```{r fig.width = 8, fig.height = 5, results = 'asis', cache = FALSE}
 
@@ -531,7 +533,7 @@ table(named$cell_labels)
 ##                 signatures = pos_markers2, results = named)
 ```
 
-## Confusion matrices with clustering results 
+## Confusion matrices with clustering results {.tabset}
 
 First, add the SCINA outputs to the different SO objects
 
@@ -563,20 +565,20 @@ rm(labelling, tmp)
 
 ```
 
-## Results {.tabset}
-
-```{r problemrendering, results = 'asis', df_table = 'default'}
+```{r problemrendering, results = 'asis', df_print = 'kable', cache = FALSE}
 for (res in grep('RNA_snn', colnames(d$genes@meta.data), value = TRUE)) {
     cat('### ', res, '\n\n')
 
     tmp <- as.data.frame.matrix(table(d$genes@meta.data[,res],
                                       d$genes@meta.data$scina))
 
-    print(t(tmp))
-
-    cat('\n\n')
+    ## print(t(tmp))
+    print(tmp)
+    
+    cat('\n\n\n')
+    rm(tmp)
 }
-cat('\n\n')
+
 ```
 
 <!-- ## ARIs celltypes and SCINA outputs -->
@@ -594,26 +596,26 @@ cat('\n\n')
 
 tSNEs/UMAPs
 
-```{r, fig.width =14, fig.height = 7, results = 'asis'}
+```{r, fig.width = 7, fig.height = 4, results = 'asis', cache = FALSE}
 for (item in names(d)) {
     cat("## ", item, "\n\n")
     ## d[[item]]@meta.data$scina <- as.factor(d[[item]]@meta.data$scina)
     Idents(d[[item]]) <- 'scina'
-    p1 <- DimPlot(d[[item]], reduction = "umap", group.by = 'ident')
-    p2 <- DimPlot(d[[item]], reduction = "tsne", group.by = 'ident')
+    print(DimPlot(d[[item]], reduction = "umap", group.by = 'ident'))
+    print(DimPlot(d[[item]], reduction = "tsne", group.by = 'ident'))
 
-    print(CombinePlots(plots = list(p1, p2)) + ggtitle(item))
+    ## print(CombinePlots(plots = list(p1, p2)) + ggtitle(item))
     cat('\n\n')
 
 }
 ```
 
-## boxplots by identity {.tabset}
+# boxplots by identity {.tabset}
 
-```{r fig.height = 6, fig.width = 24, results = 'asis'}
+```{r fig.height = 6, fig.width = 16, results = 'asis'}
 ## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11')
 for (slot in c('repeats', 'featurecounts')) {
-    cat("### ", slot, "\n\n")
+    cat("## ", slot, "\n\n")
     selected <- c(names(head(sort(apply(GetAssayData(d[[slot]]),1, coef_var),
                                   decreasing = TRUE),
                              5)),
@@ -730,7 +732,6 @@ plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(as.factor(merged[,tag])), 
 ## plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(as.factor(merged[,tag])), 1))
 ## cat('\n\n')
 
-rm(res)
 rm(merged)
 ```
 
@@ -740,7 +741,7 @@ Repeats by cellranger vs repeats by featurecounts on cellranger-standard bams.
 
 Correlations per cell
 
-```{r correl_first}
+```{r correl_first, warning = FALSE}
 ccell <- list()
      
 for (cell in intersect( colnames(GetAssay(d$repeats, 'RNA')),
@@ -762,7 +763,7 @@ hist(unlist(ccell),
 
 Correlations per repeat
 
-```{r, warnings = FALSE}
+```{r, warning = FALSE}
 crepeat <- list()
 
 ## GetAssay(d$repeats, 'RNA')[1:10,1:10]

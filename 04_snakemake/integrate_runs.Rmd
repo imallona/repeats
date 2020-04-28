@@ -154,10 +154,10 @@ coef_var <- function(x){
 
 ## SRR10974769
 
-params <- list(run1 = '/home/imallona/repeats_sc/runs/SRR10974769/summarize_cellranger_run_regress_nCount_FALSE_nFeature_FALSE.rds',
-               run2 = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/summarize_cellranger_run_regress_nCount_FALSE_nFeature_FALSE.rds',
-               run3 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/summarize_cellranger_run_regress_nCount_FALSE_nFeature_FALSE.rds',
-               run4 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/summarize_cellranger_run_regress_nCount_FALSE_nFeature_FALSE.rds')
+params <- list(run1 = '/home/imallona/repeats_sc/runs/SRR10974769/SRR10974769_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds',
+               run2 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds',
+               run3 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a/summarize_cellranger_run_regress_nCount_FALSE_nFeature_FALSE.rds',
+               run4 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds')
 ```
 
 
@@ -179,68 +179,75 @@ for (rds in params) {
 }
 ```
 
-# PBMC markers
+<!-- # PBMC markers -->
 
-As in https://satijalab.org/seurat/v3.1/pbmc3k_tutorial.html
+<!-- As in https://satijalab.org/seurat/v3.1/pbmc3k_tutorial.html -->
+
+<!-- ```{r} -->
+<!-- ids <- read.table(text='marker,type -->
+<!-- IL7R,naive_t_cd4 -->
+<!-- CCR7,naivet_t_cd4 -->
+<!-- IL7R,memory_t_cd4 -->
+<!-- S100A4,memory_t_cd4 -->
+<!-- CD14,mono -->
+<!-- LYZ,mono -->
+<!-- MS4A1,b -->
+<!-- CD8A,t_cd8 -->
+<!-- FCGR3A,mono_fcgr3a -->
+<!-- MS4A7,mono_fcgr3a -->
+<!-- GNLY,nk -->
+<!-- NKG7,nk -->
+<!-- FCER1A,dc -->
+<!-- CST3,dc -->
+<!-- PPBP,platelet', sep = ',', header = TRUE, stringsAsFactors = FALSE) -->
+<!-- ``` -->
+
+
+
+<!-- ```{r, fig.height = 3, fig.width = 6, dpi = 50, results="asis", message = FALSE}  -->
+<!-- for (run in names(d)) { -->
+<!--     cat("## ", run, " {.tabset}\n\n") -->
+<!--     ## print(run) -->
+<!--     ## for (marker in ids$marker) {     -->
+<!--     ## for (res in grep('RNA_snn', colnames(d[[run]]$genes@meta.data), value = TRUE)) { -->
+<!--     res <- 'RNA_snn_res.0.2' -->
+<!--     ## print(FeaturePlot(object = d[[run]]$genes, -->
+<!--     ##                   features = ids$marker, -->
+<!--     ##                   cols = c("green", "blue"),  -->
+<!--     ##                   combine = TRUE, -->
+<!--     ##                   pt.size = 1, -->
+<!--     ##                   shape.by = res, -->
+<!--     ##                   reduction = 'umap', -->
+<!--     ##                   label = TRUE)) ## + ggtitle(paste(run, marker, res))) -->
+<!--         ## } -->
+<!--     ## } -->
+
+<!--     for (type in unique(ids$type)) { -->
+<!--         cat("### ", type, " {.tabset}\n\n") -->
+<!--         ## print(paste(run, type, res)) -->
+<!--         print(RidgePlot(object = d[[run]]$genes, -->
+<!--                   features = ids[ids$type == type, 'marker'], -->
+<!--                   sort = FALSE, -->
+<!--                   assay = NULL, -->
+<!--                   group.by = res, -->
+<!--                   y.max = NULL, -->
+<!--                   same.y.lims = FALSE , -->
+<!--                   log = FALSE, -->
+<!--                   ncol = NULL, -->
+<!--                   slot = "data", -->
+<!--                   combine = FALSE)) -->
+
+<!--         cat("\n\n") -->
+<!--     } -->
+<!--     cat("\n\n") -->
+<!-- } -->
+<!-- ``` -->
+
+# Most variable repeats cellranger by identity
 
 ```{r}
-ids <- read.table(text='marker,type
-IL7R,naive_t_cd4
-CCR7,naivet_t_cd4
-IL7R,memory_t_cd4
-S100A4,memory_t_cd4
-CD14,mono
-LYZ,mono
-MS4A1,b
-CD8A,t_cd8
-FCGR3A,mono_fcgr3a
-MS4A7,mono_fcgr3a
-GNLY,nk
-NKG7,nk
-FCER1A,dc
-CST3,dc
-PPBP,platelet', sep = ',', header = TRUE, stringsAsFactors = FALSE)
-```
 
-
-
-```{r, fig.height = 3, fig.width = 6, dpi = 50, results="asis", message = FALSE} 
-for (run in names(d)) {
-    cat("## ", run, " {.tabset}\n\n")
-    ## print(run)
-    ## for (marker in ids$marker) {    
-    ## for (res in grep('RNA_snn', colnames(d[[run]]$genes@meta.data), value = TRUE)) {
-    res <- 'RNA_snn_res.0.2'
-    ## print(FeaturePlot(object = d[[run]]$genes,
-    ##                   features = ids$marker,
-    ##                   cols = c("green", "blue"), 
-    ##                   combine = TRUE,
-    ##                   pt.size = 1,
-    ##                   shape.by = res,
-    ##                   reduction = 'umap',
-    ##                   label = TRUE)) ## + ggtitle(paste(run, marker, res)))
-        ## }
-    ## }
-
-    for (type in unique(ids$type)) {
-        cat("### ", type, " {.tabset}\n\n")
-        ## print(paste(run, type, res))
-        print(RidgePlot(object = d[[run]]$genes,
-                  features = ids[ids$type == type, 'marker'],
-                  sort = FALSE,
-                  assay = NULL,
-                  group.by = res,
-                  y.max = NULL,
-                  same.y.lims = FALSE ,
-                  log = FALSE,
-                  ncol = NULL,
-                  slot = "data",
-                  combine = FALSE))
-
-        cat("\n\n")
-    }
-    cat("\n\n")
-}
+str(sapply(d, function(x) return(x$repeats@meta.data['scina'])))
 ```
 
 # Most variable repeats cellranger {.tabset}
