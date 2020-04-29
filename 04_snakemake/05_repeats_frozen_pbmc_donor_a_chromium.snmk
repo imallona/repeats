@@ -95,8 +95,8 @@ rule integration_pbmcs:
     input:
         run1 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds',
         run2 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds',
-        run3 = '/home/imallona/repeats_sc/runs/SRR10974769/SRR10974769_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds',
-        run4 = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_aris_regress_nCount_FALSE_nFeature_FALSE.rds'
+        # run3 = '/home/imallona/repeats_sc/runs/SRR10974769/SRR10974769_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds',
+        run3 = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds'
     params:
         rmd = 'integrate_runs.Rmd'
     output:
@@ -105,7 +105,7 @@ rule integration_pbmcs:
         op.join(BASE, 'runs', 'pbmc_integration_test.log')
     shell:
         """
-        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output.html}\", params = list(run1 = \"{input.run1}\", run2= \"{input.run2}\", run3 = \"{input.run3}\", run4 = \"{input.run4}\"))' &> {log}
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output.html}\", params = list(run1 = \"{input.run1}\", run2= \"{input.run2}\", run3 = \"{input.run3}\"))' &> {log}
         """
 
     
