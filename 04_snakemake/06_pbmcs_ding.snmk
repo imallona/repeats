@@ -32,12 +32,11 @@ RUN_NAME  = 'pbmcs_smartseq2_ding'
 RUN_TECH = 'smartseq2'
 GENOME = 'GRCh38'
 
-
 GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
 GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
 REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
 
-
+GTF_MAKING_SCRIPT = '~/src/repeats_sc/04_snakemake/gtf_maker.R'
 GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/gtf_parser.R'
 BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
 BOWTIE = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'
@@ -112,32 +111,32 @@ rule all:
 ## remember to cutadapt etc
 ## and no featurecounts
 
-## @todo check the pigzs for inputs
-rule map_bowtie_repeatome_se:
-    params:
-        repeatome = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0]),
-        sample = RUN_NAME,
-        path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome")
-    input:
-        fastq = op.join(BASE, "data", RUN_NAME, "{fastq}.fastq.gz"),
-        repeatome_tag_file = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt')
-    output:
-        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam")
-    log:
-        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}_bowtie_repeatome.log")
-    threads :
-        NTHREADS
-    shell:
-        """
-        mkdir -p {params.path}
+# ## @todo check the pigzs for inputs
+# rule map_bowtie_repeatome_se:
+#     params:
+#         repeatome = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0]),
+#         sample = RUN_NAME,
+#         path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome")
+#     input:
+#         fastq = op.join(BASE, "data", RUN_NAME, "{fastq}.fastq.gz"),
+#         repeatome_tag_file = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt')
+#     output:
+#         op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam")
+#     log:
+#         op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}_bowtie_repeatome.log")
+#     threads :
+#         NTHREADS
+#     shell:
+#         """
+#         mkdir -p {params.path}
 
-        ( {PIGZ} --keep --processes {threads} --to-stdout --decompress {input.fastq} | {BOWTIE} -q \
-        -v 2 \
-        --threads {threads} \
-        -k 2 --best --strata \
-        --sam \
-        --chunkmbs 128 {params.repeatome} - |  samtools view -@ {threads} -bS - > {output} ) 2> {log}
-        """
+#         ( {PIGZ} --keep --processes {threads} --to-stdout --decompress {input.fastq} | {BOWTIE} -q \
+#         -v 2 \
+#         --threads {threads} \
+#         -k 2 --best --strata \
+#         --sam \
+#         --chunkmbs 128 {params.repeatome} - |  samtools view -@ {threads} -bS - > {output} ) 2> {log}
+#         """
 
       
 rule bowtie_index_repeatome:
@@ -300,12 +299,23 @@ rule map_bowtie_repeatome_pe:
 #         mkdir -p {output.star_tmp}
 #         """
 
+# # test here to get the whole thing
+# rule bulk_featurecounts_repeats_repeatome_pe:
+#     input:
+#         bams = expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.counts.gz"),
+#                       fastq = get_samples(op.join(BASE, "data", RUN_NAME, 'pbmc_smartseq2_female.conf')))
+#     output:
+#         grouped =  op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "all_females.counts.gz"),
+#     shell:
         
+
+
 # @todo NOTE THE MULTIMAPPING ALLOWED!
 rule featurecounts_repeats_repeatome_pe:
     input:
         bam = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam"),
-        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
+        fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
     output:
         counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.counts")),
         gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.counts.gz")
@@ -320,7 +330,7 @@ rule featurecounts_repeats_repeatome_pe:
        -p \
        -t exon \
        -g gene_id \
-       -a {input.gtf} \
+       -a {input.fake_repeatome_gtf} \
        -o  {output.counts} \
        -M \
        {input.bam}  &> {log}
@@ -491,9 +501,31 @@ rule uncompress_genome:
         temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0]))
     shell:
         """
-        {PIGZ} -k --decompress -p {threads}  {input.fagz}
+        {PIGZ} -k --decompress -p {threads} {input.fagz}
         """
 
+rule fake_gtf_repeatome_in_repeats_coordinates:
+    input:
+        fa = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.gz')
+    output:
+        fai = temp(op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.fai')),
+        fauncomp = temp(op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa')),
+        fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
+    params:
+        rscript = GTF_MAKING_SCRIPT,
+        path = op.join(BASE, 'annotation')
+    threads:
+        NTHREADS
+    shell:
+        """
+        cd {params.path}
+        {PIGZ} -k --decompress -p {threads} {input.fa}
+
+        samtools faidx {output.fauncomp}
+        
+        {Rscript} {params.rscript} -f {output.fai} | {PIGZ} -c -p {threads} > {output.fake_repeatome_gtf}
+        
+        """
     
 rule extract_repeatome_from_gtf:
     priority: 100
