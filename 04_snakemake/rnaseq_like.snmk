@@ -56,7 +56,7 @@ REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscript
 CELLRANGER_REF_URL = 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-mm10-3.0.0.tar.gz'
 
 ## @FIXME to be moved to config
-
+GTF_MAKING_SCRIPT = '~/src/repeats_sc/04_snakemake/gtf_maker.R'
 GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/gtf_parser.R'
 
 BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
@@ -97,7 +97,8 @@ for item in ['bowtie', 'star', 'salmon']:
 rule featurecounts_repeats_repeatome:
     input:
         bam = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam"),
-        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
+        fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
     output:
         counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.counts")),
         gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.counts.gz")
@@ -111,7 +112,7 @@ rule featurecounts_repeats_repeatome:
        {FEATURECOUNTS} -T {threads} \
        -t exon \
        -g gene_id \
-       -a {input.gtf} \
+       -a {input.fake_repeatome_gtf} \
        -o  {output.counts} \
        -M \
        {input.bam}  &> {log}
@@ -119,6 +120,31 @@ rule featurecounts_repeats_repeatome:
        {PIGZ} --keep  -p {threads} {output.counts}
        """
 
+       
+rule fake_gtf_repeatome_in_repeats_coordinates:
+    input:
+        fa = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.gz')
+    output:
+        fai = temp(op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.fai')),
+        fauncomp = temp(op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa')),
+        fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
+    params:
+        rscript = GTF_MAKING_SCRIPT,
+        path = op.join(BASE, 'annotation')
+    threads:
+        NTHREADS
+    shell:
+        """
+        cd {params.path}
+        {PIGZ} -k --decompress -p {threads} {input.fa}
+
+        samtools faidx {output.fauncomp}
+        
+        {Rscript} {params.rscript} -f {output.fai} | {PIGZ} -c -p {threads} > {output.fake_repeatome_gtf}
+        
+        """
+
+        
 rule featurecounts_repeats_transcriptome:
     input:
         bam = op.join(BASE, "runs",RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),

@@ -32,7 +32,7 @@ while (TRUE) {
 
     line <- strsplit(line, split = '\t')[[1]]
     
-    parsed <- c(line[1], 'repeat', 'exon', line[1], line[2], 0, '+', '.', sprintf('gene_id "%s"; transcript_id "%s";', line[1], line[1]))
+    parsed <- c(line[1], 'repeat', 'exon', "1", line[2], "0.000000", '+', '.', sprintf('gene_id "%s"; transcript_id "%s";', line[1], line[1]))
     
     cat(sprintf('%s\n', paste(parsed, collapse = '\t')))
 }
