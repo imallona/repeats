@@ -37,7 +37,6 @@ rule knit_report_chromium:
 #         """
 #         {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output.html}\", params = list(identifier = \"{params.run_name}\", genes_cellranger = \"{input.genes}\", repeats_cellranger = \"{input.repeats}\", repeats_featurecounts = \"{input.featurecounts}\", seurat_output = \"{output.rds}\", aris_output = \"{output.aris}\"))' &> {log}
 #         """
-        
 
 rule run_feature_counts_spawned_bams:
     input:
@@ -67,6 +66,33 @@ rule run_feature_counts_spawned_bams:
     {PIGZ} --keep -p {threads} {output.counts}
     """
 
+rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
+    input:
+        flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split.flag'),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL) + '_minus_' + op.basename(GENES_GTF_URL))
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split')
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                               RUN_NAME + "_repeats.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard',
+                            RUN_NAME + "_repeats_not_overlapping_genes.counts.gz")
+    log :
+        log = op.join(BASE, "runs",  RUN_NAME, 'count_repeats_on_cellranger_standard', 'feature_counts_not_overlapping_genes.log'),
+    threads:
+        NTHREADS
+    shell: """
+    cd {params.path}
+
+    {FEATURECOUNTS} -T {threads} \
+    -t exon \
+    -g gene_id \
+    -a {input.gtf} \
+    -o  {output.counts} \
+    {params.path}/*bam  2>&1 > {log}
+
+    {PIGZ} --keep -p {threads} {output.counts}
+    """
     
 rule spawn_cellranger_bam_file_by_cell:
     input:
@@ -246,8 +272,21 @@ rule index_cellranger_repeats:
        touch {output.flag}
        """
 
-       
-
+## use this! @todo
+rule get_repeats_not_overlapping_genes_gtf:
+    input:
+        repeats_gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
+        genes_gtf =  op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
+    output:
+        op.join(BASE, 'annotation', op.basename(REP_GTF_URL) + '_minus_' + op.basename(GENES_GTF_URL))
+    params:
+        threads = NTHREADS
+    shell:
+        """
+        {BEDOPS} --difference {input.repeats_gtf} {input.genes_gtf} > {output}
+               
+        """
+        
 rule extract_repeatome_from_gtf:
     priority: 100
     input:

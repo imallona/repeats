@@ -105,3 +105,17 @@ tar xzvf sratoolkit.2.10.4-ubuntu64.tar.gz
 cd sratoolkit.2.10.4-ubuntu64/bin
 
 ./vdb-config --interactive
+
+
+## bedops
+mkdir -p ~/soft/bedops
+
+cd ~/soft/bedops
+wget https://github.com/bedops/bedops/archive/v2.4.39.tar.gz
+
+tar xzvf v2.4.39.tar.gz
+cd bedops-2.4.39
+
+make
+make install
+

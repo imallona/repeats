@@ -50,6 +50,7 @@ BIOAWK = '~/soft/bioawk/bioawk'
 BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
 Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
 FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
+BEDOPS='~/soft/bedops/bedops-2.4.39/bin/bedops'
 
 GSE144357_srr = ['SRR10974769', 'SRR10974768']
 
@@ -100,9 +101,6 @@ rule all:
                regress_nfeature = ['TRUE', 'FALSE'])#,
         # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html'),
         # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report_genes_regressed_out.html')
-
-
-
 
 
 rule get_colon_cancer_lines_GSE144357:    

@@ -50,7 +50,7 @@ BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
 Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
 FASTQ_DUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
 VDB_VALIDATE = '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate'
-
+BEDOPS='~/soft/bedops/bedops-2.4.39/bin/bedops'
 
 GSE144357_srr = ['SRR10974769', 'SRR10974768']
 
@@ -104,7 +104,9 @@ rule all:
         # op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
         # op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz"),
         expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_cellranger_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
-                       regress_nfeature = ['TRUE', 'FALSE'])#,
+                       regress_nfeature = ['TRUE', 'FALSE']),
+        op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard',
+                RUN_NAME + "_repeats_not_overlapping_genes.counts.gz")
         
 
 rule get_pbmc_v3:
