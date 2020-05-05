@@ -1070,10 +1070,10 @@ for (control_res in seq(0.2, 2, 0.2)) {
    
 
         aris[[i]] <- c(sprintf('control_fc_%s (n=%s)', control_res,
-                               length(unique(d$featurecounts@meta.data[cells, control_res]))),
+                               length(unique(d$control_repeats_only@meta.data[cells, control_res]))),
                        sprintf('all_genes_cr_%s (n=%s)', genes_res,
                                length(unique(d$genes@meta.data[cells, genes_res]))),
-                       adjustedRandIndex(d$featurecounts@meta.data[cells,control_res],
+                       adjustedRandIndex(d$control_repeats_only@meta.data[cells,control_res],
                                          d$genes@meta.data[cells,genes_res]))
         i <- i +1
     }    
@@ -1096,7 +1096,7 @@ pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
 ```
 
 ```{r}
-aris_stored[['genes_cr__genes_fc']] <- aris
+aris_stored[['control_fc__genes_cr']] <- aris
 
 ```
 
