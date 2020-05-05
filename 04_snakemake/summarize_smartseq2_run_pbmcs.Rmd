@@ -1,5 +1,5 @@
 ---
-title: "Within sample report: PBMC, cellranger"
+title: "Within sample report: PBMC, smartseq2"
 author: "Izaskun Mallona at Robinsonlab"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
@@ -16,7 +16,6 @@ params:
   genes_cellranger: ""
   repeats_cellranger: ""
   repeats_featurecounts: ""
-  repeats_only_featurecounts_control: ""
   seurat_output: ""
   aris_output: ""
   regress_genes_nCount: ""
@@ -113,10 +112,9 @@ coef_var <- function(x){
 ##                identifier = 'test')
 
 params <- list(identifier = "",
-               genes_cellranger = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
-               repeats_cellranger = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-               repeats_featurecounts = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard/5k_pbmc_v3_repeats.counts.gz",
-               repeats_only_featurecounts_control = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz",
+               genes_cellranger = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
+               repeats_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+               repeats_featurecounts = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz",
                seurat_output = "/home/imallona/tmp/test.rds",
                regress_genes_nCount = FALSE,
                regress_genes_nFeatures = FALSE)
@@ -182,34 +180,6 @@ rm(tmp)
 
 ```
 
-Featurecounts control data read
-
-```{r}
-
-tmp <- data.table::fread(params$repeats_only_featurecounts_control, sep = '\t', header = TRUE,
-                         drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
-rownames(tmp) <- tmp$Geneid ## here
-
-colnames(tmp) <- gsub(".*:([A-Z]+)-1.bam","\\1", colnames(tmp))
-## tmp <- tmp[,7:ncol(tmp)]
-
-tmp <- as.data.frame(tmp)
-rownames(tmp) <- tmp$Geneid
-tmp <- tmp[,-1]
-
-
-d$control_repeats_only <- CreateSeuratObject(
-    tmp,
-    project =  sprintf('%s_%s', params$identifier, 'repeats_featurecounts'),
-    assay = "RNA",
-    min.cells = 0,
-    min.features = 0,
-    names.field = 1,
-    names.delim = "_",
-    meta.data = NULL)
-
-rm(tmp)
-```
 # Basic Seurat processing
 
 ## QC before filtering {.tabset}
@@ -378,12 +348,6 @@ for (item in names(d)) {
 
 }
 ```
-
-<!-- ## Correlation all repeats vs repeats not overlapping genes -->
-
-<!-- ```{r} -->
-<!-- plot(d$ -->
-<!-- ``` -->
 
 # SCINA-based PBMC annotations
 
@@ -584,7 +548,7 @@ rownames(d$genes@meta.data) <- d$genes@meta.data$cell
 
 ## still, the annotation can also be transfered to repeats/featurecounts
 
-for (item in c('repeats', 'featurecounts', 'control_repeats_only')) {
+for (item in c('repeats', 'featurecounts')) {
     rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
 
     tmp <- merge(data.frame(cell = d[[item]]@meta.data$cell),
@@ -650,7 +614,7 @@ for (item in names(d)) {
 
 ```{r fig.height = 6, fig.width = 16, results = 'asis'}
 ## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11')
-for (slot in c('repeats', 'featurecounts', 'control_repeats_only')) {
+for (slot in c('repeats', 'featurecounts')) {
     cat("## ", slot, "\n\n")
     selected <- c(names(head(sort(apply(GetAssayData(d[[slot]]),1, coef_var),
                                   decreasing = TRUE),
@@ -738,7 +702,7 @@ Tabset: coloring according to the clustering results.
 
 ## res <- 'RNA_snn_res.0.2'
 common_cells <- intersect(intersect(colnames(d$genes), colnames(d$repeats)),
-                                    intersect(colnames(d$featurecounts), colnames(d$control_repeats_only)))
+                                    colnames(d$featurecounts))
 
 tag <- 'scina'
 
@@ -775,9 +739,7 @@ rm(merged)
 
 Repeats by cellranger vs repeats by featurecounts on cellranger-standard bams.
 
-## Correlations per cell
-
-First repeats vs featurecounts
+Correlations per cell
 
 ```{r correl_first, warning = FALSE}
 ccell <- list()
@@ -799,33 +761,7 @@ hist(unlist(ccell),
 
 ```
 
-Second featurecounts on all repeats vs featurecounts on some repeats only
-
-```{r}
-ccell <- list()
-     
-for (cell in intersect( colnames(GetAssay(d$control_repeats_only, 'RNA')),
-                       colnames(GetAssay(d$featurecounts, 'RNA')))) {
-    reps <- intersect(rownames(d$control_repeats_only), rownames(d$featurecounts))
-    
-    ccell[[cell]] <- cor(as.numeric(GetAssay(d$control_repeats_only, 'RNA')[reps,cell]),
-                         as.numeric(GetAssay(d$featurecounts, 'RNA')[reps,cell]),
-                         method = 'spearman')
-}
-
-```
-
-
-```{r}
-hist(unlist(ccell),
-     main = "correlation across cells\nrepeats vs nongene-repeats",
-     xlab = "Spearman's rho")
-```
-
-
-## Correlations per repeat
-
-First cellranger vs featurecounts
+Correlations per repeat
 
 ```{r, warning = FALSE}
 crepeat <- list()
@@ -843,32 +779,9 @@ for (re in intersect( rownames(GetAssay(d$repeats, 'RNA')),
 ```
 
 ```{r}
-hist(unlist(crepeat), main = "correlation across repeats\nrepeats cellranger vs repeats (featurecounts)", xlab = "Sperman's rho")
+hist(unlist(crepeat), main = "correlation across repeats\nrepeats cellranger vs repeats (featurecounts)")
+## lines(density(unlist(ccell)))
 
-```
-
-Second featurecounts on all repeats vs featurecounts on some repeats only
-
-```{r}
-crepeat <- list()
-
-## GetAssay(d$control_repeats_only, 'RNA')[1:10,1:10]
-
-for (re in intersect( rownames(GetAssay(d$control_repeats_only, 'RNA')),
-                     rownames(GetAssay(d$featurecounts, 'RNA')))) {
-
-    cells <-  intersect(colnames(d$control_repeats_only), colnames(d$featurecounts))
-    crepeat[[re]] <- cor(as.numeric(GetAssay(d$control_repeats_only, 'RNA')[re,cells]),
-                         as.numeric(GetAssay(d$featurecounts, 'RNA')[re, cells]),
-                         method = 'spearman')
-}
-```
-
-
-```{r}
-hist(unlist(crepeat),
-     main = "correlation across repeats\nrepeats vs nongene-repeats",
-     xlab = "Spearman's rho")
 ```
 
 <!-- Show correlation values per family etc -->
@@ -1053,52 +966,6 @@ aris_stored[['repeats_cr__repeats_fc']] <- aris
 
 ```
 
-## Genes vs repeats controls
-
-
-```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
-aris <- list()
-i <- 1
-for (control_res in seq(0.2, 2, 0.2)) {
-    control_res <- sprintf('RNA_snn_res.%s', control_res)
-    
-    for (genes_res in seq(0.2, 2, 0.2)) {
-        genes_res <- sprintf('RNA_snn_res.%s', genes_res)
-
-        cells <- intersect(rownames(d$control_repeats_only@meta.data), rownames(d$genes@meta.data))
-        
-   
-
-        aris[[i]] <- c(sprintf('control_fc_%s (n=%s)', control_res,
-                               length(unique(d$featurecounts@meta.data[cells, control_res]))),
-                       sprintf('all_genes_cr_%s (n=%s)', genes_res,
-                               length(unique(d$genes@meta.data[cells, genes_res]))),
-                       adjustedRandIndex(d$featurecounts@meta.data[cells,control_res],
-                                         d$genes@meta.data[cells,genes_res]))
-        i <- i +1
-    }    
-}
-
-aris <- do.call(rbind.data.frame, aris)
-colnames(aris) <- c('control_res', 'genes_res', 'ari')
-aris$ari <- as.numeric(as.character(aris$ari))
-```
-
-
-```{r, fig.width = 6, fig.height = 6}
-aris_wide <- reshape2::dcast(aris, control_res~genes_res, value.var="ari")
-
-rownames(aris_wide)<- aris_wide$control_res
-aris_wide <- aris_wide[,-1]
-
-pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
-         color = colorRampPalette(c("white","blue"))(20))
-```
-
-```{r}
-aris_stored[['genes_cr__genes_fc']] <- aris
-
-```
 
 ## Genes vs SCINA
 

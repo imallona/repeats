@@ -1,9 +1,10 @@
-rule knit_report_chromium:
+rule knit_report_chromium_test:
     input:
         genes = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
         repeats = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
         featurecounts = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard',
-                                RUN_NAME + "_repeats.counts.gz")
+                                RUN_NAME + "_repeats.counts.gz"),
+        repeats_only_featurecounts_control = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard_not_overlapping_genes', RUN_NAME + "_repeats_not_overlapping_genes.counts.gz")
     params:
         rmd = 'summarize_cellranger_run_pbmcs.Rmd',
         run_name = RUN_NAME
@@ -15,7 +16,7 @@ rule knit_report_chromium:
         op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_cellranger_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
     shell:
         """
-        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output.html}\", params = list(identifier = \"{params.run_name}\", genes_cellranger = \"{input.genes}\", repeats_cellranger = \"{input.repeats}\", repeats_featurecounts = \"{input.featurecounts}\", seurat_output = \"{output.rds}\", aris_output = \"{output.aris}\", regress_genes_nCount = \"{wildcards.regress_ncount}\", regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output.html}\", params = list(identifier = \"{params.run_name}\", genes_cellranger = \"{input.genes}\", repeats_cellranger = \"{input.repeats}\", repeats_featurecounts = \"{input.featurecounts}\", repeats_only_featurecounts_control = \"{input.repeats_only_featurecounts_control}\", seurat_output = \"{output.rds}\", aris_output = \"{output.aris}\", regress_genes_nCount = \"{wildcards.regress_ncount}\", regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}
         """
 
 # rule knit_report_chromium_genes_regressed_out:
@@ -73,11 +74,11 @@ rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
     params:
         path = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split')
     output:
-        counts  = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard_not_overlapping_genes', RUN_NAME + "_repeats.counts")),
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard_not_overlapping_genes', RUN_NAME + "_repeats_not_overlapping_genes.counts")),
         gz_counts = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard_not_overlapping_genes',
                             RUN_NAME + "_repeats_not_overlapping_genes.counts.gz")
     log :
-        log = op.join(BASE, "runs",  RUN_NAME, 'count_repeats_on_cellranger_standard', 'feature_counts_not_overlapping_genes.log'),
+        log = op.join(BASE, "runs",  RUN_NAME, 'count_repeats_on_cellranger_standard_not_overlapping_genes', 'feature_counts_not_overlapping_genes.log'),
     threads:
         NTHREADS
     shell: """
