@@ -1,4 +1,4 @@
-rule knit_report_chromium_test:
+rule knit_report_chromium:
     input:
         genes = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
         repeats = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),

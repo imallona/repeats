@@ -25,7 +25,7 @@ print('this comes from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE132
 # samples = pd.read_csv(config["samples"], sep = '\t').set_index("id", drop=False)
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
-NTHREADS = 10
+NTHREADS = 20
 LOCAL_MEM_GB = 100
 
 RUN_NAME  = 'pbmcs_smartseq2_ding'
@@ -89,8 +89,39 @@ rule all:
                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_female.conf'))),
         op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', RUN_NAME + "_star_genes.counts.gz"),
         op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
-        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.gz")
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.gz"),
+        expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+               regress_ncount = ['TRUE', 'FALSE'],
+               regress_nfeature = ['TRUE', 'FALSE'])
         
+
+rule knit_report_smartseq:
+    input:
+        genes_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'genes', RUN_NAME + '_star_genes.counts.gz'),
+        repeats_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
+        repeats_bowtie = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', RUN_NAME + '_bowtie_repeats.counts.gz')
+    params:
+        rmd = 'summarize_smartseq2_run_pbmcs.Rmd',
+        run_name = RUN_NAME
+    output:
+        html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
+    log:
+        op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_smartseq2_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
+    shell:
+        """
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+          output_file = \"{output.html}\", 
+          params = list(identifier = \"{params.run_name}\", 
+          genes_star = \"{input.genes_star}\", 
+          repeats_star = \"{input.repeats_star}\", 
+          repeats_bowtie = \"{input.repeats_bowtie}\", 
+          seurat_output = \"{output.rds}\", 
+          aris_output = \"{output.aris}\", 
+          regress_genes_nCount = \"{wildcards.regress_ncount}\", \
+          regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}
+        """
         
 # print(get_samples(op.join(BASE, "runs",
 #                                 RUN_NAME, 'data', 'pbmc_smartseq2_male.conf')))
@@ -240,7 +271,7 @@ rule featurecounts_repeats_transcriptome_pe:
        """
        {FEATURECOUNTS} -T {threads} \
        -p \
-       -t exon \
+       -t gene \
        -g gene_id \
        -a {input.gtf} \
        -o  {output.counts} \

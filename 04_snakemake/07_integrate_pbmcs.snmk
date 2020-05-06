@@ -1,0 +1,33 @@
+#!/usr/bin/env snakemake -s
+## 
+## Started 06 May 2020
+##
+## Izaskun Mallona
+## GPLv3
+
+import os.path as op
+from glob import glob
+
+rule all:
+    input:
+        op.join(BASE, 'runs', 'pbmc_integration_chromium.html')
+
+
+## srrwhatever is  not a pbmc!
+# @todo this comes from other reports, fix!
+rule integration_pbmcs_10x:
+    input:
+        c1 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds',
+        c2 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds',
+        # run3 = '/home/imallona/repeats_sc/runs/SRR10974769/SRR10974769_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds',
+        c3 = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds'
+    params:
+        rmd = 'integrate_runs_pbmcs.Rmd'
+    output:
+        html = op.join(BASE, 'runs', 'pbmc_integration_test.html')
+    log:
+        op.join(BASE, 'runs', 'pbmc_integration_test.log')
+    shell:
+        """
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output.html}\", params = list(chromium1 = \"{input.c1}\", chromium2= \"{input.c2}\", chromium3 = \"{input.c3}\"))' &> {log}
+        """

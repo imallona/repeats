@@ -98,6 +98,78 @@ coef_var <- function(x){
 
 ```
 
+
+```{r}
+
+featurecounts_to_seurat <- function(fn, identifier, add_gene_symbols = FALSE, remove_dirname = TRUE) {
+    ## Featurecounts-based repeats
+    counts <- data.table::fread(fn, sep = '\t', header = TRUE,
+                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+    rownames(counts) <- counts$Geneid ## here
+
+    colnames(counts) <- gsub(".*:([A-Z]+)-1.bam","\\1", colnames(counts))
+    ## counts <- counts[,7:ncol(counts)]
+
+    counts <- as.data.frame(counts)
+    rownames(counts) <- counts$Geneid
+    counts <- counts[,-1]
+
+    if (add_gene_symbols) {
+        if (!file.exists('feature_info_human.RData')) {
+            
+            annot <- list()
+
+            annot$ids <- rownames(counts)
+
+            annot$filters = "ensembl_gene_id_version"
+            annot$attributes = c(annot$filters, "external_gene_name", "chromosome_name", 
+                               "gene_biotype", "start_position", "end_position")
+            annot$biomart = "ENSEMBL_MART_ENSEMBL" 
+            annot$dataset = "hsapiens_gene_ensembl"
+            annot$host = "asia.ensembl.org"
+            annot$bmart <- biomaRt::useMart(biomart = annot$biomart, dataset = annot$dataset, 
+                                          host = annot$host)
+
+            feature_info <- biomaRt::getBM(attributes = annot$attributes,
+                                           filters = annot$filters, 
+                                           values = annot$ids, mart = annot$bmart)
+
+            ## dim(feature_info)
+            save(feature_info, file = 'feature_info_human.RData')
+        } else {
+            load('feature_info_human.RData')
+        }
+
+        tmp <- merge(data.frame(ensembl_gene_id_version = rownames(counts)),
+                       by = 'ensembl_gene_id_version', feature_info, all.x = TRUE)
+
+        rownames(tmp) <- tmp$ensembl_gene_id_version
+        tmp <- tmp[rownames(counts),]
+
+        stopifnot(rownames(counts) == tmp$ensembl_gene_id_version)
+
+        rownames(counts) <- sprintf('%s_%s', tmp$ensembl_gene_id_version, tmp$external_gene_name)
+    }
+
+    if (remove_dirname) {
+        colnames(counts) <- basename(colnames(counts))
+        colnames(counts) <- gsub('.bam', '', colnames(counts))
+        colnames(counts) <- gsub('_Aligned.sortedByCoord.out', '', colnames(counts))
+    }
+    return(CreateSeuratObject(
+        counts,
+        project = identifier,
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL))
+
+}
+```
+
+
 # Data load
 
 ```{r justfordebugging, eval = FALSE}
@@ -115,7 +187,7 @@ coef_var <- function(x){
 params <- list(identifier = "",
                genes_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/genes/pbmcs_smartseq2_ding_star_genes.counts.gz',
                repeats_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz',
-               repeats_bowtie = '',
+               repeats_bowtie = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz',
                seurat_output = "/home/imallona/tmp/test.rds",
                regress_genes_nCount = FALSE,
                regress_genes_nFeatures = FALSE)
@@ -124,47 +196,21 @@ params <- list(identifier = "",
 
 ```{r}
 d <- list()
-```
-
-
-```{r}
-
-featurecounts_to_seurat <- function(fn, identifier) {
-    ## Featurecounts-based repeats
-    tmp <- data.table::fread(fn, sep = '\t', header = TRUE,
-                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
-    rownames(tmp) <- tmp$Geneid ## here
-
-    colnames(tmp) <- gsub(".*:([A-Z]+)-1.bam","\\1", colnames(tmp))
-    ## tmp <- tmp[,7:ncol(tmp)]
-
-    tmp <- as.data.frame(tmp)
-    rownames(tmp) <- tmp$Geneid
-    tmp <- tmp[,-1]
-
-    return(CreateSeuratObject(
-        tmp,
-        project = identifier,
-        assay = "RNA",
-        min.cells = 0,
-        min.features = 0,
-        names.field = 1,
-        names.delim = "_",
-        meta.data = NULL))
-
-}
-```
-
-```{r}
-d <- list()
 
 d$genes <- featurecounts_to_seurat(
     params$genes_star,
-    identifier = sprintf('%s_%s', params$identifier, 'genes_star'))
+    identifier = sprintf('%s_%s', params$identifier, 'genes_star'),
+    add_gene_symbols = TRUE)
+
 d$repeats_star <- featurecounts_to_seurat(
     params$repeats_star,
     identifier = sprintf('%s_%s', params$identifier, 'repeats_star'))
-d$repeats_bowtie <- featurecounts_to_seurat(params$repeats_bowtie)
+
+
+## careful, included all repeat instances instead of repeat consensus
+## d$repeats_bowtie <- featurecounts_to_seurat(
+##     params$repeats_bowtie,
+##     identifier = sprintf('%s_%s', params$identifier, 'repeats_bowtie'))
 
 ```
 
@@ -189,56 +235,6 @@ for (item in names(d)) {
     print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
     cat('\n\n')
 }
-```
-
-
-## Add genesymbols to genes
-
-Assumes this is human!
-
-```{r}
-if (!file.exists('feature_info.RData')) {
-    
-    tmp <- list()
-
-    tmp$ids = rownames(d$genes)
-    length(tmp$ids)
-
-
-    tmp$filters = "ensembl_gene_id_version"
-    tmp$attributes = c(tmp$filters, "external_gene_name", "chromosome_name", 
-                       "gene_biotype", "start_position", "end_position")
-    tmp$biomart = "ENSEMBL_MART_ENSEMBL" 
-    tmp$dataset = "hsapiens_gene_ensembl"
-    tmp$host = "asia.ensembl.org"
-    tmp$bmart <- biomaRt::useMart(biomart = tmp$biomart, dataset = tmp$dataset, 
-                                  host = tmp$host)
-
-    feature_info <- biomaRt::getBM(attributes = tmp$attributes, filters = tmp$filters, 
-                                   values = tmp$ids, mart = tmp$bmart)
-
-    dim(feature_info)
-    save(feature_info, tmp, file = 'feature_info.RData')
-} else {
-    load('feature_info.RData')
-}
-
-```
-
-```{r}
-
-tmp <- merge(data.frame(ensembl_gene_id_version = rownames(d$genes)),
-             by = 'ensembl_gene_id_version', feature_info, all.x = TRUE)
-
-rownames(tmp) <- tmp$ensembl_gene_id_version
-tmp <- tmp[rownames(d$genes),]
-stopifnot (nrow(d$genes) == nrow(tmp))
-
-stopifnot(rownames(d$genes) == tmp$ensembl_gene_id_version)
-
-rownames(d$genes) <- sprintf('%s_%s', tmp$ensembl_gene_id_version, tmp$external_gene_name)
-
-stop('not feasible in a seurat object! move it before seurat')
 ```
 
 ## QC after filtering {.tabset}
@@ -552,16 +548,28 @@ Platelet	GNG11	+', header = TRUE, sep = '\t', stringsAsFactors = FALSE)
 ```{r}
 pos_markers2_tmp <- markers2[markers2$sign == '+',]
 pos_markers2 <-  list()
+pos_markers_compound <- list()
 
 for (ct in unique(pos_markers2_tmp$cell_type)) {
     pos_markers2[[ct]] <- pos_markers2_tmp[pos_markers2_tmp$cell_type ==ct, 'gene']
+    mapping <- data.frame(
+        id = rownames(d$genes),
+        symbol = sapply(strsplit(rownames(d$genes), '-'), function(x) return (x[2])),
+        ensg = sapply(strsplit(rownames(d$genes), '-'), function(x) return (x[1])),
+        stringsAsFactors = FALSE)
+    
+    head(mapping)
+
+    pos_markers_compound[[ct]] <- mapping[mapping$symbol %in% pos_markers2[[ct]], 'id']
 }
 
 ```
 
 ```{r}
+
+
 named <-  SCINA(GetAssayData(d$genes, slot = 'data'),
-                signatures = pos_markers2,
+                signatures = pos_markers_compound,
                 max_iter = 200,
                 convergence_n = 20, 
                 convergence_rate = 0.999, sensitivity_cutoff = 0.9)
@@ -586,7 +594,7 @@ rownames(d$genes@meta.data) <- d$genes@meta.data$cell
 
 ## still, the annotation can also be transfered to repeats/featurecounts
 
-for (item in c('repeats', 'featurecounts')) {
+for (item in c('repeats_star')) {
     rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
 
     tmp <- merge(data.frame(cell = d[[item]]@meta.data$cell),
@@ -652,7 +660,7 @@ for (item in names(d)) {
 
 ```{r fig.height = 6, fig.width = 16, results = 'asis'}
 ## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11')
-for (slot in c('repeats_star', 'repeats_bowtie')) {
+for (slot in c('repeats_star')) {
     cat("## ", slot, "\n\n")
     selected <- c(names(head(sort(apply(GetAssayData(d[[slot]]),1, coef_var),
                                   decreasing = TRUE),
@@ -738,8 +746,7 @@ Tabset: coloring according to the clustering results.
 ```{r descriptive2, results = 'asis', fig.width =8, fig.height = 8}
 
 ## res <- 'RNA_snn_res.0.2'
-common_cells <- intersect(intersect(colnames(d$genes), colnames(d$repeats)),
-                                    colnames(d$featurecounts))
+common_cells <- intersect(colnames(d$genes_star), colnames(d$repeats_star))
 
 tag <- 'scina'
 
@@ -772,201 +779,6 @@ plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(as.factor(merged[,tag])), 
 rm(merged)
 ```
 
-# Correlation values distribution
-
-Repeats by cellranger vs repeats by featurecounts on cellranger-standard bams.
-
-Correlations per cell
-
-```{r correl_first, warning = FALSE}
-ccell <- list()
-     
-for (cell in intersect( colnames(GetAssay(d$repeats, 'RNA')),
-                       colnames(GetAssay(d$featurecounts, 'RNA')))) {
-    reps <- intersect(rownames(d$repeats), rownames(d$featurecounts))
-    
-    ccell[[cell]] <- cor(as.numeric(GetAssay(d$repeats, 'RNA')[reps,cell]),
-                         as.numeric(GetAssay(d$featurecounts, 'RNA')[reps,cell]),
-                         method = 'spearman')
-}
-```
-
-```{r}
-hist(unlist(ccell),
-     main = "correlation across cells\nrepeats cellranger vs repeats (featurecounts)")
-## lines(density(unlist(ccell)))
-
-```
-
-Correlations per repeat
-
-```{r, warning = FALSE}
-crepeat <- list()
-
-## GetAssay(d$repeats, 'RNA')[1:10,1:10]
-
-for (re in intersect( rownames(GetAssay(d$repeats, 'RNA')),
-                     rownames(GetAssay(d$featurecounts, 'RNA')))) {
-
-    cells <-  intersect(colnames(d$repeats), colnames(d$featurecounts))
-    crepeat[[re]] <- cor(as.numeric(GetAssay(d$repeats, 'RNA')[re,cells]),
-                         as.numeric(GetAssay(d$featurecounts, 'RNA')[re, cells]),
-                         method = 'spearman')
-}
-```
-
-```{r}
-hist(unlist(crepeat), main = "correlation across repeats\nrepeats cellranger vs repeats (featurecounts)")
-## lines(density(unlist(ccell)))
-
-```
-
-# Confusion matrix clusters
-
-At a given resolution, compare both clusterings.
-
-Color scale depicts Rand Index.
-
-## Genes vs repeats star
-
-```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
-aris <- list()
-i <- 1
-for (genes_res in seq(0.2, 2, 0.2)) {
-    genes_res <- sprintf('RNA_snn_res.%s', genes_res)
-    
-    for (repeats_res in seq(0.2, 2, 0.2)) {
-        repeats_res <- sprintf('RNA_snn_res.%s', repeats_res)
-
-        cells <- intersect(rownames(d$genes@meta.data), rownames(d$repeats_star@meta.data))
-        
-   
-
-        aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
-                               length(unique(d$genes@meta.data[cells, genes_res]))),
-                       sprintf('repeats_star_%s (n=%s)', repeats_res,
-                               length(unique(d$repeats_star@meta.data[cells, repeats_res]))),
-                       adjustedRandIndex(d$genes@meta.data[cells,genes_res],
-                                         d$repeats_star@meta.data[cells,repeats_res]))
-        i <- i +1
-    }    
-}
-
-aris <- do.call(rbind.data.frame, aris)
-colnames(aris) <- c('genes_res', 'repeats_cr_res', 'ari')
-aris$ari <- as.numeric(as.character(aris$ari))
-```
-
-
-```{r, fig.width = 6, fig.height = 6}
-aris_wide <- reshape2::dcast(aris, genes_res~repeats_cr_res, value.var="ari")
-
-rownames(aris_wide)<- aris_wide$genes_res
-aris_wide <- aris_wide[,-1]
-
-pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
-         color = colorRampPalette(c("white","blue"))(20))
-```
-
-```{r store_aris}
-aris_stored <- list()
-stop('tillhere')
-aris_stored[['genes__repeats_cr']] <- aris
-```
-
-## Genes vs repeats (bowtie)
-
-
-```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
-aris <- list()
-i <- 1
-for (genes_res in seq(0.2, 2, 0.2)) {
-    genes_res <- sprintf('RNA_snn_res.%s', genes_res)
-    
-    for (repeats_res in seq(0.2, 2, 0.2)) {
-        repeats_res <- sprintf('RNA_snn_res.%s', repeats_res)
-
-        cells <- intersect(rownames(d$genes@meta.data), rownames(d$repeats_bowtie@meta.data))
-        
-   
-
-        aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
-                               length(unique(d$genes@meta.data[cells, genes_res]))),
-                       sprintf('repeats_bowtie_%s (n=%s)', repeats_res,
-                               length(unique(d$repeats_bowtie@meta.data[cells, repeats_res]))),
-                       adjustedRandIndex(d$genes@meta.data[cells,genes_res],
-                                         d$repeats_bowtie@meta.data[cells,repeats_res]))
-        i <- i +1
-    }    
-}
-
-aris <- do.call(rbind.data.frame, aris)
-colnames(aris) <- c('genes_res', 'repeats_fc_res', 'ari')
-aris$ari <- as.numeric(as.character(aris$ari))
-```
-
-```{r, fig.width = 6, fig.height = 6}
-aris_wide <- reshape2::dcast(aris, genes_res~repeats_fc_res, value.var="ari")
-
-rownames(aris_wide)<- aris_wide$genes_res
-aris_wide <- aris_wide[,-1]
-
-pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
-         color = colorRampPalette(c("white","blue"))(20))
-```
-
-```{r}
-aris_stored[['genes__repeats_fc']] <- aris
-```
-
-
-## Repeats vs repeats
-
-```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
-aris <- list()
-i <- 1
-for (repeats_star_res in seq(0.2, 2, 0.2)) {
-    repeats_star_res <- sprintf('RNA_snn_res.%s', repeats_star_res)
-    
-    for (repeats_res in seq(0.2, 2, 0.2)) {
-        repeats_res <- sprintf('RNA_snn_res.%s', repeats_res)
-
-        cells <- intersect(rownames(d$repeats_star@meta.data), rownames(d$repeats@meta.data))
-        
-   
-
-        aris[[i]] <- c(sprintf('repeats_fc_%s (n=%s)', repeats_star_res,
-                               length(unique(d$repeats_star@meta.data[cells, repeats_star_res]))),
-                       sprintf('repeats_cr_%s (n=%s)', repeats_res,
-                               length(unique(d$repeats@meta.data[cells, repeats_res]))),
-                       adjustedRandIndex(d$repeats_star@meta.data[cells,repeats_star_res],
-                                         d$repeats@meta.data[cells,repeats_res]))
-        i <- i +1
-    }    
-}
-
-aris <- do.call(rbind.data.frame, aris)
-colnames(aris) <- c('repeats_star_res', 'repeats_res', 'ari')
-aris$ari <- as.numeric(as.character(aris$ari))
-```
-
-
-```{r, fig.width = 6, fig.height = 6}
-aris_wide <- reshape2::dcast(aris, repeats_star_res~repeats_res, value.var="ari")
-
-rownames(aris_wide)<- aris_wide$repeats_star_res
-aris_wide <- aris_wide[,-1]
-
-pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
-         color = colorRampPalette(c("white","blue"))(20))
-```
-
-```{r}
-aris_stored[['repeats_cr__repeats_fc']] <- aris
-
-```
-
-
 ## Genes vs SCINA
 
 Removed the unassigned class in SCINA
@@ -976,15 +788,15 @@ aris <- list()
 i <- 1
 for (genes_res in seq(0.2, 2, 0.2)) {
     genes_res <- sprintf('RNA_snn_res.%s', genes_res)
-    rownames(d$genes@meta.data) <- d$genes@meta.data$cell
-    known <- rownames(d$genes@meta.data[d$genes@meta.data$scina != 'unknown',])
+    rownames(d$genes_star@meta.data) <- d$genes_star@meta.data$cell
+    known <- rownames(d$genes_star@meta.data[d$genes_star@meta.data$scina != 'unknown',])
 
     aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
-                           length(unique(d$genes@meta.data[known, genes_res]))),
+                           length(unique(d$genes_star@meta.data[known, genes_res]))),
                    sprintf('scina_%s (n=%s)', 'scina',
-                           length(unique(d$genes@meta.data[known, 'scina']))),
-                   adjustedRandIndex(d$genes@meta.data[known, genes_res],
-                                     d$genes@meta.data[known, 'scina']))
+                           length(unique(d$genes_star@meta.data[known, 'scina']))),
+                   adjustedRandIndex(d$genes_star@meta.data[known, genes_res],
+                                     d$genes_star@meta.data[known, 'scina']))
                                      
     i <- i +1
 }    
