@@ -134,11 +134,11 @@ d <- list()
 barcodes_fn <- params$genes_cellranger ## should end with `barcodes.tsv.gz`
 path <- dirname(barcodes_fn)
 
-d$genes <- CreateSeuratObject(counts = Read10X(data.dir = path),
-                              project = sprintf('%s_%s', params$identifier,
-                                                'genes_cellranger'),
-                                min.cells = 0,
-                                min.features = 0)
+d$genes_cellranger <- CreateSeuratObject(counts = Read10X(data.dir = path),
+                                         project = sprintf('%s_%s', params$identifier,
+                                                           'genes_cellranger'),
+                                         min.cells = 0,
+                                         min.features = 0)
 ```
 
 ```{r}
@@ -147,11 +147,11 @@ d$genes <- CreateSeuratObject(counts = Read10X(data.dir = path),
 barcodes_fn <- params$repeats_cellranger ## should end with `barcodes.tsv.gz`
 path <- dirname(barcodes_fn)
 
-d$repeats <- CreateSeuratObject(counts = Read10X(data.dir = path),
-                                project =  sprintf('%s_%s', params$identifier,
-                                                   'repeats_cellranger'),
-                                min.cells = 0,
-                                min.features = 0)
+d$repeats_cellranger <- CreateSeuratObject(counts = Read10X(data.dir = path),
+                                           project =  sprintf('%s_%s', params$identifier,
+                                                              'repeats_cellranger'),
+                                           min.cells = 0,
+                                           min.features = 0)
 
 ```
 
@@ -160,15 +160,14 @@ d$repeats <- CreateSeuratObject(counts = Read10X(data.dir = path),
 tmp <- data.table::fread(params$repeats_featurecounts, sep = '\t', header = TRUE,
                          drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
 rownames(tmp) <- tmp$Geneid ## here
-
-colnames(tmp) <- gsub(".*:([A-Z]+)-1.bam","\\1", colnames(tmp))
+colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
 ## tmp <- tmp[,7:ncol(tmp)]
 
 tmp <- as.data.frame(tmp)
 rownames(tmp) <- tmp$Geneid
 tmp <- tmp[,-1]
 
-d$featurecounts <- CreateSeuratObject(
+d$repeats_featurecounts <- CreateSeuratObject(
     tmp,
     project =  sprintf('%s_%s', params$identifier, 'repeats_featurecounts'),
     assay = "RNA",
@@ -190,7 +189,7 @@ tmp <- data.table::fread(params$repeats_only_featurecounts_control, sep = '\t', 
                          drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
 rownames(tmp) <- tmp$Geneid ## here
 
-colnames(tmp) <- gsub(".*:([A-Z]+)-1.bam","\\1", colnames(tmp))
+colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
 ## tmp <- tmp[,7:ncol(tmp)]
 
 tmp <- as.data.frame(tmp)
@@ -218,7 +217,7 @@ rm(tmp)
 for (item in names(d)) {
     cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
-    if (item == 'genes') {
+    if (item == 'genes_cellranger') {
         d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
         print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
@@ -237,9 +236,9 @@ for (item in names(d)) {
 
 Filtering out cells according to the repeats expression, and forwarding the selection to other layers
 
-```{r}
-d$genes <- subset(d$genes, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & (percent.mt < 10 | is.na(percent.mt)))
-selected_cells <- colnames(d$genes)
+```{r subset}
+d$genes_cellranger <- subset(d$genes_cellranger, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & (percent.mt < 10 | is.na(percent.mt)))
+selected_cells <- colnames(d$genes_cellranger)
 
 for (item in names(d)) {
     d[[item]] <- subset(d[[item]], cells = selected_cells)
@@ -251,7 +250,7 @@ for (item in names(d)) {
 for (item in names(d)) {
     cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
-    if (item == 'genes') {
+    if (item == 'genes_cellranger') {
         d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
         print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
@@ -558,7 +557,7 @@ for (ct in unique(pos_markers2_tmp$cell_type)) {
 ```
 
 ```{r}
-named <-  SCINA(GetAssayData(d$genes, slot = 'data'),
+named <-  SCINA(GetAssayData(d$genes_cellranger, slot = 'data'),
                 signatures = pos_markers2,
                 max_iter = 200,
                 convergence_n = 20, 
@@ -584,7 +583,7 @@ rownames(d$genes@meta.data) <- d$genes@meta.data$cell
 
 ## still, the annotation can also be transfered to repeats/featurecounts
 
-for (item in c('repeats', 'featurecounts', 'control_repeats_only')) {
+for (item in c('repeats_cellranger', 'repeats_featurecounts', 'control_repeats_only')) {
     rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
 
     tmp <- merge(data.frame(cell = d[[item]]@meta.data$cell),
@@ -650,7 +649,7 @@ for (item in names(d)) {
 
 ```{r fig.height = 6, fig.width = 16, results = 'asis'}
 ## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11')
-for (slot in c('repeats', 'featurecounts', 'control_repeats_only')) {
+for (slot in c('repeats_cellranger', 'repeats_featurecounts', 'control_repeats_only')) {
     cat("## ", slot, "\n\n")
     selected <- c(names(head(sort(apply(GetAssayData(d[[slot]]),1, coef_var),
                                   decreasing = TRUE),
@@ -694,8 +693,8 @@ Tabset: coloring according to the clustering results.
 ```{r descriptive, results = 'asis', fig.width =8, fig.height = 8}
 
 res <- 'RNA_snn_res.0.2'
-common_cells <- intersect(intersect(colnames(d$genes), colnames(d$repeats)),
-                                    colnames(d$featurecounts))
+common_cells <- intersect(intersect(colnames(d$genes_cellranger), colnames(d$repeats_cellranger)),
+                                    colnames(d$repeats_featurecounts))
 
 
 for (item_clust in names(d)) {
@@ -703,7 +702,7 @@ for (item_clust in names(d)) {
     cat('## ', tag, '\n\n')
     
     merged <- data.frame(cell = common_cells,
-                         percent.mt = d$genes@meta.data[common_cells, 'percent.mt'])
+                         percent.mt = d$genes_cellranger@meta.data[common_cells, 'percent.mt'])
 
     merged[,tag] <- d[[item_clust]]@meta.data[common_cells,res]
 
@@ -736,14 +735,10 @@ Tabset: coloring according to the clustering results.
 
 ```{r descriptive2, results = 'asis', fig.width =8, fig.height = 8}
 
-## res <- 'RNA_snn_res.0.2'
-common_cells <- intersect(intersect(colnames(d$genes), colnames(d$repeats)),
-                                    intersect(colnames(d$featurecounts), colnames(d$control_repeats_only)))
-
 tag <- 'scina'
 
 merged <- data.frame(cell = common_cells,
-                     percent.mt = d$genes@meta.data[common_cells, 'percent.mt'])
+                     percent.mt = d$genes_cellranger@meta.data[common_cells, 'percent.mt'])
 
 ## merged[,tag] <- d[[item_clust]]@meta.data[common_cells,res]
 merged[,tag] <- d[[item]]@meta.data[common_cells, tag]
@@ -782,12 +777,12 @@ First repeats vs featurecounts
 ```{r correl_first, warning = FALSE}
 ccell <- list()
      
-for (cell in intersect( colnames(GetAssay(d$repeats, 'RNA')),
-                       colnames(GetAssay(d$featurecounts, 'RNA')))) {
-    reps <- intersect(rownames(d$repeats), rownames(d$featurecounts))
+for (cell in intersect( colnames(GetAssay(d$repeats_cellranger, 'RNA')),
+                       colnames(GetAssay(d$repeats_featurecounts, 'RNA')))) {
+    reps <- intersect(rownames(d$repeats_cellranger), rownames(d$repeats_featurecounts))
     
-    ccell[[cell]] <- cor(as.numeric(GetAssay(d$repeats, 'RNA')[reps,cell]),
-                         as.numeric(GetAssay(d$featurecounts, 'RNA')[reps,cell]),
+    ccell[[cell]] <- cor(as.numeric(GetAssay(d$repeats_cellranger, 'RNA')[reps,cell]),
+                         as.numeric(GetAssay(d$repeats_featurecounts, 'RNA')[reps,cell]),
                          method = 'spearman')
 }
 ```
@@ -805,11 +800,11 @@ Second featurecounts on all repeats vs featurecounts on some repeats only
 ccell <- list()
      
 for (cell in intersect( colnames(GetAssay(d$control_repeats_only, 'RNA')),
-                       colnames(GetAssay(d$featurecounts, 'RNA')))) {
-    reps <- intersect(rownames(d$control_repeats_only), rownames(d$featurecounts))
+                       colnames(GetAssay(d$repeats_featurecounts, 'RNA')))) {
+    reps <- intersect(rownames(d$control_repeats_only), rownames(d$repeats_featurecounts))
     
     ccell[[cell]] <- cor(as.numeric(GetAssay(d$control_repeats_only, 'RNA')[reps,cell]),
-                         as.numeric(GetAssay(d$featurecounts, 'RNA')[reps,cell]),
+                         as.numeric(GetAssay(d$repeats_featurecounts, 'RNA')[reps,cell]),
                          method = 'spearman')
 }
 
@@ -830,14 +825,14 @@ First cellranger vs featurecounts
 ```{r, warning = FALSE}
 crepeat <- list()
 
-## GetAssay(d$repeats, 'RNA')[1:10,1:10]
+## GetAssay(d$repeats_cellranger, 'RNA')[1:10,1:10]
 
-for (re in intersect( rownames(GetAssay(d$repeats, 'RNA')),
-                     rownames(GetAssay(d$featurecounts, 'RNA')))) {
+for (re in intersect( rownames(GetAssay(d$repeats_cellranger, 'RNA')),
+                     rownames(GetAssay(d$repeats_featurecounts, 'RNA')))) {
 
-    cells <-  intersect(colnames(d$repeats), colnames(d$featurecounts))
-    crepeat[[re]] <- cor(as.numeric(GetAssay(d$repeats, 'RNA')[re,cells]),
-                         as.numeric(GetAssay(d$featurecounts, 'RNA')[re, cells]),
+    cells <-  intersect(colnames(d$repeats_cellranger), colnames(d$repeats_featurecounts))
+    crepeat[[re]] <- cor(as.numeric(GetAssay(d$repeats_cellranger, 'RNA')[re,cells]),
+                         as.numeric(GetAssay(d$repeats_featurecounts, 'RNA')[re, cells]),
                          method = 'spearman')
 }
 ```
@@ -855,11 +850,11 @@ crepeat <- list()
 ## GetAssay(d$control_repeats_only, 'RNA')[1:10,1:10]
 
 for (re in intersect( rownames(GetAssay(d$control_repeats_only, 'RNA')),
-                     rownames(GetAssay(d$featurecounts, 'RNA')))) {
+                     rownames(GetAssay(d$repeats_featurecounts, 'RNA')))) {
 
-    cells <-  intersect(colnames(d$control_repeats_only), colnames(d$featurecounts))
+    cells <-  intersect(colnames(d$control_repeats_only), colnames(d$repeats_featurecounts))
     crepeat[[re]] <- cor(as.numeric(GetAssay(d$control_repeats_only, 'RNA')[re,cells]),
-                         as.numeric(GetAssay(d$featurecounts, 'RNA')[re, cells]),
+                         as.numeric(GetAssay(d$repeats_featurecounts, 'RNA')[re, cells]),
                          method = 'spearman')
 }
 ```
@@ -926,16 +921,16 @@ for (genes_res in seq(0.2, 2, 0.2)) {
     for (repeats_res in seq(0.2, 2, 0.2)) {
         repeats_res <- sprintf('RNA_snn_res.%s', repeats_res)
 
-        cells <- intersect(rownames(d$genes@meta.data), rownames(d$repeats@meta.data))
+        cells <- intersect(rownames(d$genes_cellranger@meta.data), rownames(d$repeats_cellranger@meta.data))
         
    
 
         aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
-                               length(unique(d$genes@meta.data[cells, genes_res]))),
+                               length(unique(d$genes_cellranger@meta.data[cells, genes_res]))),
                        sprintf('repeats_cr_%s (n=%s)', repeats_res,
-                               length(unique(d$repeats@meta.data[cells, repeats_res]))),
-                       adjustedRandIndex(d$genes@meta.data[cells,genes_res],
-                                         d$repeats@meta.data[cells,repeats_res]))
+                               length(unique(d$repeats_cellranger@meta.data[cells, repeats_res]))),
+                       adjustedRandIndex(d$genes_cellranger@meta.data[cells,genes_res],
+                                         d$repeats_cellranger@meta.data[cells,repeats_res]))
         i <- i +1
     }    
 }
@@ -973,16 +968,16 @@ for (genes_res in seq(0.2, 2, 0.2)) {
     for (repeats_res in seq(0.2, 2, 0.2)) {
         repeats_res <- sprintf('RNA_snn_res.%s', repeats_res)
 
-        cells <- intersect(rownames(d$genes@meta.data), rownames(d$featurecounts@meta.data))
+        cells <- intersect(rownames(d$genes_cellranger@meta.data), rownames(d$repeats_featurecounts@meta.data))
         
    
 
         aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
-                               length(unique(d$genes@meta.data[cells, genes_res]))),
+                               length(unique(d$genes_cellranger@meta.data[cells, genes_res]))),
                        sprintf('repeats_fc_%s (n=%s)', repeats_res,
-                               length(unique(d$featurecounts@meta.data[cells, repeats_res]))),
-                       adjustedRandIndex(d$genes@meta.data[cells,genes_res],
-                                         d$featurecounts@meta.data[cells,repeats_res]))
+                               length(unique(d$repeats_featurecounts@meta.data[cells, repeats_res]))),
+                       adjustedRandIndex(d$genes_cellranger@meta.data[cells,genes_res],
+                                         d$repeats_featurecounts@meta.data[cells,repeats_res]))
         i <- i +1
     }    
 }
@@ -1018,16 +1013,14 @@ for (featurecounts_res in seq(0.2, 2, 0.2)) {
     for (repeats_res in seq(0.2, 2, 0.2)) {
         repeats_res <- sprintf('RNA_snn_res.%s', repeats_res)
 
-        cells <- intersect(rownames(d$featurecounts@meta.data), rownames(d$repeats@meta.data))
-        
-   
-
+        cells <- intersect(rownames(d$repeats_featurecounts@meta.data), rownames(d$repeats_cellranger@meta.data))
+           
         aris[[i]] <- c(sprintf('repeats_fc_%s (n=%s)', featurecounts_res,
-                               length(unique(d$featurecounts@meta.data[cells, featurecounts_res]))),
+                               length(unique(d$repeats_featurecounts@meta.data[cells, featurecounts_res]))),
                        sprintf('repeats_cr_%s (n=%s)', repeats_res,
-                               length(unique(d$repeats@meta.data[cells, repeats_res]))),
-                       adjustedRandIndex(d$featurecounts@meta.data[cells,featurecounts_res],
-                                         d$repeats@meta.data[cells,repeats_res]))
+                               length(unique(d$repeats_cellranger@meta.data[cells, repeats_res]))),
+                       adjustedRandIndex(d$repeats_featurecounts@meta.data[cells,featurecounts_res],
+                                         d$repeats_cellranger@meta.data[cells,repeats_res]))
         i <- i +1
     }    
 }
@@ -1065,16 +1058,16 @@ for (control_res in seq(0.2, 2, 0.2)) {
     for (genes_res in seq(0.2, 2, 0.2)) {
         genes_res <- sprintf('RNA_snn_res.%s', genes_res)
 
-        cells <- intersect(rownames(d$control_repeats_only@meta.data), rownames(d$genes@meta.data))
+        cells <- intersect(rownames(d$control_repeats_only@meta.data), rownames(d$genes_cellranger@meta.data))
         
    
 
         aris[[i]] <- c(sprintf('control_fc_%s (n=%s)', control_res,
                                length(unique(d$control_repeats_only@meta.data[cells, control_res]))),
                        sprintf('all_genes_cr_%s (n=%s)', genes_res,
-                               length(unique(d$genes@meta.data[cells, genes_res]))),
+                               length(unique(d$genes_cellranger@meta.data[cells, genes_res]))),
                        adjustedRandIndex(d$control_repeats_only@meta.data[cells,control_res],
-                                         d$genes@meta.data[cells,genes_res]))
+                                         d$genes_cellranger@meta.data[cells,genes_res]))
         i <- i +1
     }    
 }
@@ -1109,15 +1102,15 @@ aris <- list()
 i <- 1
 for (genes_res in seq(0.2, 2, 0.2)) {
     genes_res <- sprintf('RNA_snn_res.%s', genes_res)
-    rownames(d$genes@meta.data) <- d$genes@meta.data$cell
-    known <- rownames(d$genes@meta.data[d$genes@meta.data$scina != 'unknown',])
+    rownames(d$genes_cellranger@meta.data) <- d$genes_cellranger@meta.data$cell
+    known <- rownames(d$genes_cellranger@meta.data[d$genes_cellranger@meta.data$scina != 'unknown',])
 
     aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
-                           length(unique(d$genes@meta.data[known, genes_res]))),
+                           length(unique(d$genes_cellranger@meta.data[known, genes_res]))),
                    sprintf('scina_%s (n=%s)', 'scina',
-                           length(unique(d$genes@meta.data[known, 'scina']))),
-                   adjustedRandIndex(d$genes@meta.data[known, genes_res],
-                                     d$genes@meta.data[known, 'scina']))
+                           length(unique(d$genes_cellranger@meta.data[known, 'scina']))),
+                   adjustedRandIndex(d$genes_cellranger@meta.data[known, genes_res],
+                                     d$genes_cellranger@meta.data[known, 'scina']))
                                      
     i <- i +1
 }    
