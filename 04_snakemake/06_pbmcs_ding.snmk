@@ -25,7 +25,7 @@ print('this comes from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE132
 # samples = pd.read_csv(config["samples"], sep = '\t').set_index("id", drop=False)
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
-NTHREADS = 20
+NTHREADS = 40
 LOCAL_MEM_GB = 100
 
 RUN_NAME  = 'pbmcs_smartseq2_ding'
@@ -271,7 +271,7 @@ rule featurecounts_repeats_transcriptome_pe:
        """
        {FEATURECOUNTS} -T {threads} \
        -p \
-       -t gene \
+       -t exon \
        -g gene_id \
        -a {input.gtf} \
        -o  {output.counts} \

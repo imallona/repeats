@@ -208,9 +208,9 @@ d$repeats_star <- featurecounts_to_seurat(
 
 
 ## careful, included all repeat instances instead of repeat consensus
-## d$repeats_bowtie <- featurecounts_to_seurat(
-##     params$repeats_bowtie,
-##     identifier = sprintf('%s_%s', params$identifier, 'repeats_bowtie'))
+d$repeats_bowtie <- featurecounts_to_seurat(
+    params$repeats_bowtie,
+    identifier = sprintf('%s_%s', params$identifier, 'repeats_bowtie'))
 
 ```
 
@@ -704,7 +704,7 @@ Tabset: coloring according to the clustering results.
 ```{r descriptive, results = 'asis', fig.width =8, fig.height = 8}
 
 res <- 'RNA_snn_res.0.2'
-common_cells <- intersect(intersect(colnames(d$genes), colnames(d$repeats_star), d$repeats_bowtie)
+common_cells <- intersect(intersect(colnames(d$genes), colnames(d$repeats_star), d$repeats_bowtie))
 
 
 for (item_clust in names(d)) {
@@ -746,7 +746,7 @@ Tabset: coloring according to the clustering results.
 ```{r descriptive2, results = 'asis', fig.width =8, fig.height = 8}
 
 ## res <- 'RNA_snn_res.0.2'
-common_cells <- intersect(colnames(d$genes_star), colnames(d$repeats_star))
+common_cells <- intersect(colnames(d$genes), colnames(d$repeats_star))
 
 tag <- 'scina'
 
@@ -788,15 +788,15 @@ aris <- list()
 i <- 1
 for (genes_res in seq(0.2, 2, 0.2)) {
     genes_res <- sprintf('RNA_snn_res.%s', genes_res)
-    rownames(d$genes_star@meta.data) <- d$genes_star@meta.data$cell
-    known <- rownames(d$genes_star@meta.data[d$genes_star@meta.data$scina != 'unknown',])
+    rownames(d$genes@meta.data) <- d$genes@meta.data$cell
+    known <- rownames(d$genes@meta.data[d$genes@meta.data$scina != 'unknown',])
 
     aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
-                           length(unique(d$genes_star@meta.data[known, genes_res]))),
+                           length(unique(d$genes@meta.data[known, genes_res]))),
                    sprintf('scina_%s (n=%s)', 'scina',
-                           length(unique(d$genes_star@meta.data[known, 'scina']))),
-                   adjustedRandIndex(d$genes_star@meta.data[known, genes_res],
-                                     d$genes_star@meta.data[known, 'scina']))
+                           length(unique(d$genes@meta.data[known, 'scina']))),
+                   adjustedRandIndex(d$genes@meta.data[known, genes_res],
+                                     d$genes@meta.data[known, 'scina']))
                                      
     i <- i +1
 }    
