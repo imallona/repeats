@@ -11,6 +11,7 @@ output:
     number_sections: true
     df_print: kable
     theme: lumen
+    self_contained: yes
 params:
   identifier: ""   
   repeats_bowtie: ""
@@ -197,7 +198,7 @@ params <- list(identifier = "",
 ```{r}
 d <- list()
 
-d$genes <- featurecounts_to_seurat(
+d$genes_star <- featurecounts_to_seurat(
     params$genes_star,
     identifier = sprintf('%s_%s', params$identifier, 'genes_star'),
     add_gene_symbols = TRUE)
@@ -222,7 +223,7 @@ d$repeats_bowtie <- featurecounts_to_seurat(
 for (item in names(d)) {
     cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
-    if (item == 'genes') {
+    if (item == 'genes_star') {
         d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
         print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
@@ -242,8 +243,8 @@ for (item in names(d)) {
 Filtering out cells according to the repeats expression, and forwarding the selection to other layers
 
 ```{r}
-d$genes <- subset(d$genes, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & (percent.mt < 10 | is.na(percent.mt)))
-selected_cells <- colnames(d$genes)
+d$genes_star <- subset(d$genes_star, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & (percent.mt < 10 | is.na(percent.mt)))
+selected_cells <- colnames(d$genes_star)
 
 for (item in names(d)) {
     d[[item]] <- subset(d[[item]], cells = selected_cells)
@@ -315,12 +316,12 @@ for (item in names(d)) {
         
     }
     
-    if (item == 'genes') {
+    if (item == 'genes_star') {
         d[[item]] <- ScaleData(d[[item]], vars.to.regress = to_regress)
     } else {
         ## in this case, the variables to regress come from the genes!
         ## e.g. is the genes library size the one to normalize the repets'
-        tmp <- d$genes@meta.data
+        tmp <- d$genes_star@meta.data
         tmp$cell <- rownames(tmp)
         d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
         d[[item]]@meta.data <- merge(d[[item]]@meta.data, tmp, by = 'cell',
@@ -553,9 +554,9 @@ pos_markers_compound <- list()
 for (ct in unique(pos_markers2_tmp$cell_type)) {
     pos_markers2[[ct]] <- pos_markers2_tmp[pos_markers2_tmp$cell_type ==ct, 'gene']
     mapping <- data.frame(
-        id = rownames(d$genes),
-        symbol = sapply(strsplit(rownames(d$genes), '-'), function(x) return (x[2])),
-        ensg = sapply(strsplit(rownames(d$genes), '-'), function(x) return (x[1])),
+        id = rownames(d$genes_star),
+        symbol = sapply(strsplit(rownames(d$genes_star), '-'), function(x) return (x[2])),
+        ensg = sapply(strsplit(rownames(d$genes_star), '-'), function(x) return (x[1])),
         stringsAsFactors = FALSE)
     
     head(mapping)
@@ -568,14 +569,14 @@ for (ct in unique(pos_markers2_tmp$cell_type)) {
 ```{r}
 
 
-named <-  SCINA(GetAssayData(d$genes, slot = 'data'),
+named <-  SCINA(GetAssayData(d$genes_star, slot = 'data'),
                 signatures = pos_markers_compound,
                 max_iter = 200,
                 convergence_n = 20, 
                 convergence_rate = 0.999, sensitivity_cutoff = 0.9)
 
 table(named$cell_labels)
-## plotheat.SCINA(exp = GetAssayData(d$genes, slot = 'data'),
+## plotheat.SCINA(exp = GetAssayData(d$genes_star, slot = 'data'),
 ##                 signatures = pos_markers2, results = named)
 ```
 
@@ -584,13 +585,13 @@ table(named$cell_labels)
 First, add the SCINA outputs to the different SO objects
 
 ```{r, cache = FALSE}
-labelling <- data.frame(cell = colnames(d$genes),
+labelling <- data.frame(cell = colnames(d$genes_star),
                   scina = named$cell_labels)
 
 rownames(labelling) <- labelling$cell
-d$genes@meta.data$cell <- rownames(d$genes@meta.data)
-d$genes@meta.data <- merge(d$genes@meta.data, labelling, by = 'cell')
-rownames(d$genes@meta.data) <- d$genes@meta.data$cell
+d$genes_star@meta.data$cell <- rownames(d$genes_star@meta.data)
+d$genes_star@meta.data <- merge(d$genes_star@meta.data, labelling, by = 'cell')
+rownames(d$genes_star@meta.data) <- d$genes_star@meta.data$cell
 
 ## still, the annotation can also be transfered to repeats/featurecounts
 
@@ -612,11 +613,11 @@ rm(labelling, tmp)
 ```
 
 ```{r problemrendering, results = 'asis', df_print = 'kable', cache = FALSE}
-for (res in grep('RNA_snn', colnames(d$genes@meta.data), value = TRUE)) {
+for (res in grep('RNA_snn', colnames(d$genes_star@meta.data), value = TRUE)) {
     cat('### ', res, '\n\n')
 
-    tmp <- as.data.frame.matrix(table(d$genes@meta.data[,res],
-                                      d$genes@meta.data$scina))
+    tmp <- as.data.frame.matrix(table(d$genes_star@meta.data[,res],
+                                      d$genes_star@meta.data$scina))
 
     ## print(t(tmp))
     print(tmp)
@@ -630,9 +631,9 @@ for (res in grep('RNA_snn', colnames(d$genes@meta.data), value = TRUE)) {
 <!-- ## ARIs celltypes and SCINA outputs -->
 
 <!-- ```{r, cache = FALSE} -->
-<!-- for (res in grep('RNA_snn', colnames(d$genes@meta.data), value = TRUE)) { -->
+<!-- for (res in grep('RNA_snn', colnames(d$genes_star@meta.data), value = TRUE)) { -->
 <!--     print(res) -->
-<!--     print(as.data.frame.matrix(table(d$genes@meta.data[,res], d$genes@meta.data$scina))) -->
+<!--     print(as.data.frame.matrix(table(d$genes_star@meta.data[,res], d$genes_star@meta.data$scina))) -->
 <!-- } -->
 <!-- ``` -->
 
@@ -672,8 +673,8 @@ for (slot in c('repeats_star')) {
     repeats$cell <- rownames(repeats)
 
     
-    d$genes@meta.data$cell <- rownames(d$genes@meta.data)
-    repeats <- merge(d$genes@meta.data[, c('scina', 'cell') ],
+    d$genes_star@meta.data$cell <- rownames(d$genes_star@meta.data)
+    repeats <- merge(d$genes_star@meta.data[, c('scina', 'cell') ],
                      repeats, by = 'cell', all.x = TRUE)
 
     rownames(repeats) <- repeats$cell
@@ -704,7 +705,7 @@ Tabset: coloring according to the clustering results.
 ```{r descriptive, results = 'asis', fig.width =8, fig.height = 8}
 
 res <- 'RNA_snn_res.0.2'
-common_cells <- intersect(intersect(colnames(d$genes), colnames(d$repeats_star)), colnames(d$repeats_bowtie))
+common_cells <- intersect(intersect(colnames(d$genes_star), colnames(d$repeats_star)), colnames(d$repeats_bowtie))
 
 
 for (item_clust in names(d)) {
@@ -712,7 +713,7 @@ for (item_clust in names(d)) {
     cat('## ', tag, '\n\n')
     
     merged <- data.frame(cell = common_cells,
-                         percent.mt = d$genes@meta.data[common_cells, 'percent.mt'])
+                         percent.mt = d$genes_star@meta.data[common_cells, 'percent.mt'])
 
     merged[,tag] <- d[[item_clust]]@meta.data[common_cells,res]
 
@@ -749,10 +750,10 @@ Tabset: coloring according to the clustering results.
 tag <- 'scina'
 
 merged <- data.frame(cell = common_cells,
-                     percent.mt = d$genes@meta.data[common_cells, 'percent.mt'])
+                     percent.mt = d$genes_star@meta.data[common_cells, 'percent.mt'])
 
 ## merged[,tag] <- d[[item_clust]]@meta.data[common_cells,res]
-merged[,tag] <- d$genes@meta.data[common_cells, tag]
+merged[,tag] <- d$genes_star@meta.data[common_cells, tag]
 
 for (item in names(d)) {
         ## cat('## ', tag, '\n\n')
@@ -786,15 +787,15 @@ aris <- list()
 i <- 1
 for (genes_res in seq(0.2, 2, 0.2)) {
     genes_res <- sprintf('RNA_snn_res.%s', genes_res)
-    rownames(d$genes@meta.data) <- d$genes@meta.data$cell
-    known <- rownames(d$genes@meta.data[d$genes@meta.data$scina != 'unknown',])
+    rownames(d$genes_star@meta.data) <- d$genes_star@meta.data$cell
+    known <- rownames(d$genes_star@meta.data[d$genes_star@meta.data$scina != 'unknown',])
 
     aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
-                           length(unique(d$genes@meta.data[known, genes_res]))),
+                           length(unique(d$genes_star@meta.data[known, genes_res]))),
                    sprintf('scina_%s (n=%s)', 'scina',
-                           length(unique(d$genes@meta.data[known, 'scina']))),
-                   adjustedRandIndex(d$genes@meta.data[known, genes_res],
-                                     d$genes@meta.data[known, 'scina']))
+                           length(unique(d$genes_star@meta.data[known, 'scina']))),
+                   adjustedRandIndex(d$genes_star@meta.data[known, genes_res],
+                                     d$genes_star@meta.data[known, 'scina']))
                                      
     i <- i +1
 }    
@@ -805,12 +806,16 @@ aris$ari <- as.numeric(as.character(aris$ari))
 print(aris)
 ```
 
+```{r}
+aris_stored <- list(aris)
+```
+
 # Export objects
 
 List of seurat objects
 ```{r}
 saveRDS(object = d, file = params$seurat_output)
-## saveRDS(object = aris_stored, file = params$aris_output)
+saveRDS(object = aris_stored, file = params$aris_output)
 ```
 
 # Timestamp
