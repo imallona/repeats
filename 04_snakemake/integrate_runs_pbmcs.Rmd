@@ -50,6 +50,7 @@ library(reshape2)
 ## library(xtable)
 ## library(mclust)
 library(viridis)
+library(UpSetR)
 })
 ```
 
@@ -187,8 +188,6 @@ for (rds in params) {
 # Most variable repeats cellranger {.tabset}
 
 Similarly for repeats expression (avg +- sd of repeats CPM by gene expression cluster?)
-
-What's the point here?
 
 
 ```{r, fig.height = 5, fig.width = 15, results = 'asis'}
@@ -871,7 +870,8 @@ rm(parsed)
 ## head(aris_df)
 ```
 
-## All variable features and all repeats methods at once, using scina
+
+
 
 ## ARIs comparison {.tabset}
 
@@ -964,6 +964,196 @@ print(ggplot(aris_df,
       theme(axis.text.x = element_text(angle = 90, hjust = 1)))
 ```
 
+# All variable features and all repeats methods at once, using scina {.tabset}
+
+## With repeats including control not overlapping genes
+
+```{r}
+
+NCELLS = 200 ## cells per run:sample
+NVARIABLE = 20 ## variable repeats features (per run:sample)
+
+cr <- list()
+for (flavour in c('repeats_cellranger', 'repeats_star', 'repeats_featurecounts',
+                  'control_repeats_only')) {
+    for (run in names(d)[sapply(d, function(x) return(flavour %in% names(x)))]) {
+
+        cr[[paste(flavour, run)]] <- data.frame(
+            rep = head(VariableFeatures(d[[run]][[flavour]]), NVARIABLE),
+            flavour = flavour,
+            run = run,
+            stringsAsFactors = FALSE)
+    }    
+}
+
+cr <- do.call(rbind.data.frame, cr)
+table(cr$flavour, cr$run)
+
+variable <- list()
+for (flavour in c('repeats_cellranger', 'repeats_star', 'repeats_featurecounts', 'control_repeats_only')) {
+    for (run in names(d)[sapply(d, function(x) return(flavour %in% names(x)))]) {
+        idx <- sample(colnames(d[[run]][[flavour]]), size = NCELLS, replace = FALSE)
+        variable[[paste(run, flavour, sep = '.')]] <- GetAssayData(d[[run]][[flavour]],
+                            slot = 'data')[unique(cr$rep),idx]
+    }
+}
+
+foo <- do.call(cbind.data.frame, variable)
+
+colannot <- data.frame(id = colnames(foo),
+                       sample = sapply(strsplit(colnames(foo), '.', fixed = TRUE),
+                                        function(x) return(x[1])),
+                       flavour = sapply(strsplit(colnames(foo), '.', fixed = TRUE),
+                                       function(x) return(x[2])),
+                       cell = sapply(strsplit(colnames(foo), '.', fixed = TRUE),
+                                     function(x) return(x[3])),
+                       scina = NA,
+                       stringsAsFactors = FALSE)
+
+
+head(colannot)
+
+for ( i in 1:nrow(colannot)) {
+    colannot[i, 'scina'] <- as.character(d[[colannot[i, 'sample']]][[colannot[i, 'flavour']]]@meta.data[colannot[i, 'cell'], 'scina'])
+
+    
+}
+
+rownames(colannot) <- colannot$id
+
+table(colannot$scina)
+
+
+## remove any repeat whose annotation by scina is 'unknown'
+colannot <- colannot[colannot$scina != 'unknown',]
+foo <- foo[,colannot$id]
+dim(foo)
+
+## remove any repeat with 0 sd after sampling
+sum(is.infinite(unlist(foo)))
+foo <- foo[apply(foo, 1, sd) > 0,]
+
+```
+
+```{r, fig.height = 20, fig.width = 20}
+
+
+newCols <- colorRampPalette(grDevices::rainbow(length(unique(colannot$scina))))
+mycolors <- newCols(length(unique(colannot$scina)))
+names(mycolors) <- unique(colannot$scina)
+mycolors <- list(scina = mycolors)
+
+print(pheatmap(foo,
+               color = viridis(100),
+            cluster_rows = TRUE,
+            cluster_cols = TRUE,
+            show_rownames = TRUE,
+            show_colnames = FALSE,
+            clustering_distance_cols = "euclidean",
+            clustering_method = "ward.D2",
+            clustering_distance_rows = "euclidean",
+            fontsize_row = 12,
+            annotation_col = colannot[,c('flavour', 'sample', 'scina')],
+            annotation_colors = mycolors,
+            scale = "none"))
+
+
+
+```
+
+## Without non-overlapping genes repeats control (biased by transcriptome)
+
+```{r}
+
+NCELLS = 200 ## cells per run:sample
+NVARIABLE = 20 ## variable repeats features (per run:sample)
+
+cr <- list()
+for (flavour in c('repeats_cellranger', 'repeats_star', 'repeats_featurecounts')) {
+    for (run in names(d)[sapply(d, function(x) return(flavour %in% names(x)))]) {
+
+        cr[[paste(flavour, run)]] <- data.frame(
+            rep = head(VariableFeatures(d[[run]][[flavour]]), NVARIABLE),
+            flavour = flavour,
+            run = run,
+            stringsAsFactors = FALSE)
+    }    
+}
+
+cr <- do.call(rbind.data.frame, cr)
+table(cr$flavour, cr$run)
+
+variable <- list()
+for (flavour in c('repeats_cellranger', 'repeats_star', 'repeats_featurecounts')) {
+    for (run in names(d)[sapply(d, function(x) return(flavour %in% names(x)))]) {
+        idx <- sample(colnames(d[[run]][[flavour]]), size = NCELLS, replace = FALSE)
+        variable[[paste(run, flavour, sep = '.')]] <- GetAssayData(d[[run]][[flavour]],
+                            slot = 'data')[unique(cr$rep),idx]
+    }
+}
+
+foo <- do.call(cbind.data.frame, variable)
+
+colannot <- data.frame(id = colnames(foo),
+                       sample = sapply(strsplit(colnames(foo), '.', fixed = TRUE),
+                                        function(x) return(x[1])),
+                       flavour = sapply(strsplit(colnames(foo), '.', fixed = TRUE),
+                                       function(x) return(x[2])),
+                       cell = sapply(strsplit(colnames(foo), '.', fixed = TRUE),
+                                     function(x) return(x[3])),
+                       scina = NA,
+                       stringsAsFactors = FALSE)
+
+
+head(colannot)
+
+for ( i in 1:nrow(colannot)) {
+    colannot[i, 'scina'] <- as.character(d[[colannot[i, 'sample']]][[colannot[i, 'flavour']]]@meta.data[colannot[i, 'cell'], 'scina'])
+
+    
+}
+
+rownames(colannot) <- colannot$id
+
+table(colannot$scina)
+
+
+## remove any repeat whose annotation by scina is 'unknown'
+colannot <- colannot[colannot$scina != 'unknown',]
+foo <- foo[,colannot$id]
+dim(foo)
+
+## remove any repeat with 0 sd after sampling
+sum(is.infinite(unlist(foo)))
+foo <- foo[apply(foo, 1, sd) > 0,]
+
+```
+
+```{r, fig.height = 20, fig.width = 20}
+
+
+newCols <- colorRampPalette(grDevices::rainbow(length(unique(colannot$scina))))
+mycolors <- newCols(length(unique(colannot$scina)))
+names(mycolors) <- unique(colannot$scina)
+mycolors <- list(scina = mycolors)
+
+print(pheatmap(foo,
+               color = viridis(100),
+            cluster_rows = TRUE,
+            cluster_cols = TRUE,
+            show_rownames = TRUE,
+            show_colnames = FALSE,
+            clustering_distance_cols = "euclidean",
+            clustering_method = "ward.D2",
+            clustering_distance_rows = "euclidean",
+            fontsize_row = 12,
+            annotation_col = colannot[,c('flavour', 'sample', 'scina')],
+            annotation_colors = mycolors,
+            scale = "none"))
+
+
+
+```
 
 # Timestamp
 
