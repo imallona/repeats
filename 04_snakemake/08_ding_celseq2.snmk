@@ -87,11 +87,134 @@ rule all:
         op.join(BASE, "data", RUN_NAME, 'celseq2_ding.conf'),
         expand(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
-        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),  srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf')))
+        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),  srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
+        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', RUN_NAME + "_star_genes.counts.gz"),
+        op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.gz"),
       
 
 ruleorder: deal_with_umis_r1 > deal_with_umis_r2 > get_data
 
+
+# @todo NOTE THE MULTIMAPPING ALLOWED!
+rule featurecounts_repeats_repeatome_pe:
+    input:
+        expand(op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', "{srr}.bam"),
+               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
+          # bam = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam"),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
+        fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.gz")
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome")
+    log :
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "bowtie_repeats_featurecounts.log"),
+    threads:
+        NTHREADS
+    shell:
+       """
+       ## note multimappers are counted
+       {FEATURECOUNTS} -T {threads} \
+       -p \
+       -t exon \
+       -g gene_id \
+       -a {input.fake_repeatome_gtf} \
+       -o  {output.counts} \
+       -M \
+       {params.path}/*bam  &> {log}
+
+       {PIGZ} --keep  -p {threads} {output.counts}
+       """
+
+rule featurecounts_repeats_transcriptome_pe:
+    input:
+        # bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
+        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"), srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    output:
+        counts  = temp(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts')),
+        gz_counts = op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz')
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome')
+    log :
+        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "star_repeats_featurecounts.log"),
+    threads:
+        NTHREADS
+    shell:
+       """
+       {FEATURECOUNTS} -T {threads} \
+       -p \
+       -t exon \
+       -g gene_id \
+       -a {input.gtf} \
+       -o  {output.counts} \
+       {params.path}/*bam  &> {log}
+
+       {PIGZ} --keep -p {threads} {output.counts}
+       """
+       
+rule featurecounts_genes_transcriptome_pe:
+    input:
+        # bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
+        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
+               srr =  get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
+        
+        gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', RUN_NAME + "_star_genes.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', RUN_NAME + "_star_genes.counts.gz")
+    params:
+        path =  op.join(BASE, "runs", RUN_NAME, 'star_transcriptome')
+    log :
+        op.join(BASE, "runs",RUN_NAME, 'star_transcriptome', 'genes', "star_genes_featurecounts.log"),
+    threads:
+        NTHREADS
+    shell:
+       """
+       {FEATURECOUNTS} -T {threads} \
+       -p \
+       -t exon \
+       -g gene_id \
+       -a {input.gtf} \
+       -o  {output.counts} \
+       {params.path}/*bam  &> {log}
+
+       {PIGZ} --keep -p {threads} {output.counts}
+       """
+
+
+ 
+rule map_bowtie_repeatome_pe:
+    params:
+        repeatome = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0]),
+        sample = RUN_NAME,
+        path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome")
+    input:
+        fastq1 = op.join(BASE, "data", RUN_NAME, "{fastq}_umi_1.fastq.gz"),
+        fastq2 = op.join(BASE, "data", RUN_NAME, "{fastq}_umi_2.fastq.gz"),
+        repeatome_tag_file = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt')
+    output:
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam")
+    log:
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}_bowtie_repeatome.log")
+    threads :
+        NTHREADS
+    shell:
+        """
+        mkdir -p {params.path}
+
+        ( {BOWTIE} -q \
+        -1 <( {PIGZ} --keep --processes {threads} --to-stdout --decompress {input.fastq1} ) \
+        -2 <( {PIGZ} --keep --processes {threads} --to-stdout --decompress {input.fastq2} ) \
+        -v 2 \
+        --threads {threads} \
+        -k 2 --best --strata \
+        --sam \
+        --chunkmbs 128 {params.repeatome} |  samtools view -@ {threads} -bS - > {output} ) 2> {log}
+        """
+        
 # #@untested @todo @current
 # ## fix to take into account the different indices to map against
 # ## fix the cutadapt sickle thing
@@ -143,7 +266,7 @@ rule deal_with_umis_r2:
     shell: """
     join <(zcat {input.r2} | sed 's/.2 / /g' | awk '{{OFS=FS=" "; print $1}}' | nl)  \
        <(zcat {input.r1} | awk '{{OFS=FS=" "; print $1}}' | nl ) | \
-       awk '(NR%4==1){{a=$2;}}(NR%4==2){{umi=substr($3,0,12); b=$2}}(NR%4==3){{c=$2}}(NR%4==0){{d=$2;print a"_"umi".2\\n"b"\\n"c"\\n"d;}}' | {PIGZ} -p {threads} --stdout > {output.r2_umi}
+       awk '(NR%4==1){{a=$2;}}(NR%4==2){{umi=substr($3,0,12); b=$2}}(NR%4==3){{c=$2}}(NR%4==0){{d=$2;print a"_"umi".2\\n"b"\\n+\\n"d;}}' | {PIGZ} -p {threads} --stdout > {output.r2_umi}
 
     """
     
