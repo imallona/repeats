@@ -51,9 +51,9 @@ CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
 BIOAWK = '~/soft/bioawk/bioawk'
 BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
 Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
-FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
-FASTERQDUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fasterq-dump' # fastq-dump : 2.10.4
-VDB_VALIDATE = '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate'
+FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.5-ubuntu64/bin/fastq-dump' #
+FASTERQDUMP= '~/soft/sra-toools/sratoolkit.2.10.5-ubuntu64/bin/fasterq-dump' #
+VDB_VALIDATE = '~/soft/sra-toools/sratoolkit.2.10.5-ubuntu64/bin/vdb-validate'
 
 ## FASTQS, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}.fastq.gz"))
 
@@ -86,32 +86,104 @@ rule all:
     input:
         op.join(BASE, "data", RUN_NAME, 'celseq2_ding.conf'),
         expand(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
-               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf')))
+               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
+        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),  srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf')))
       
 
-rule get_data:
+ruleorder: deal_with_umis_r1 > deal_with_umis_r2 > get_data
+
+# #@untested @todo @current
+# ## fix to take into account the different indices to map against
+# ## fix the cutadapt sickle thing
+rule map_star_transcriptome_pe:
     input:
-        conf = op.join(BASE, "data", RUN_NAME, 'celseq2_ding.conf')
-    output:
-        r1_uncomp = temp(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq")),
-        r2_uncomp = temp(op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq")),
-        r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
-        r2 = op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq.gz"),
-        r3 = temp(op.join(BASE, "data", RUN_NAME, "{srr}_3.fastq.gz")),
-        r4 = temp(op.join(BASE, "data", RUN_NAME, "{srr}_4.fastq.gz"))
+        star_index_flag = op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrName.txt'), 
+        fastq1 = op.join(BASE, "data", RUN_NAME, "{fastq}_umi_1.fastq.gz"),
+        fastq2 = op.join(BASE, "data", RUN_NAME,  "{fastq}_umi_2.fastq.gz"),
     params:
-        path = op.join(BASE, "data", RUN_NAME)
+        star_index = op.join(BASE, 'indices', 'star', GENOME, 'transcriptome'),
+        path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome'),
+        prefix = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_")
+    output:
+        bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
+        star_tmp = temp(directory(op.join(BASE, 'runs', 'star_transcriptome', "{fastq}_STARtmp")))
     threads:
         NTHREADS
+    log:
+        op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_star.log")
+    # benchmark:
+    #     op.join(BASE, 'run/{sample}/{sample}_star_benchmark.txt')
     shell:
         """
         mkdir -p {params.path}
         cd {params.path}
         
-        {FASTERQDUMP} --threads {threads} --split-files {wildcards.srr}
+        {STAR} --genomeDir {params.star_index} \
+        --readFilesIn {input.fastq1} {input.fastq2} \
+        --runThreadN {threads} \
+        --outFileNamePrefix {params.prefix} \
+        --outSAMtype BAM SortedByCoordinate \
+        --readFilesCommand zcat  2> {log}
+
+        ## in case STAR managed to delete its own folder (doesn't always happen)
+        mkdir -p {output.star_tmp}
+        """
+
+
         
-        {PIGZ} --keep --processes {threads} {output.r1_uncomp}
-        {PIGZ} --keep --processes {threads} {output.r2_uncomp}
+## we assume the first 12 reads from read1 are the umis + CB
+rule deal_with_umis_r2:
+    input:
+        r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
+        r2 = op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq.gz")
+    output:
+        r2_umi = op.join(BASE, "data", RUN_NAME, "{srr}_umi_2.fastq.gz")
+    threads:
+        1
+    shell: """
+    join <(zcat {input.r2} | sed 's/.2 / /g' | awk '{{OFS=FS=" "; print $1}}' | nl)  \
+       <(zcat {input.r1} | awk '{{OFS=FS=" "; print $1}}' | nl ) | \
+       awk '(NR%4==1){{a=$2;}}(NR%4==2){{umi=substr($3,0,12); b=$2}}(NR%4==3){{c=$2}}(NR%4==0){{d=$2;print a"_"umi".2\\n"b"\\n"c"\\n"d;}}' | {PIGZ} -p {threads} --stdout > {output.r2_umi}
+
+    """
+    
+## we assume the first 12 reads from read1 are the umis + CB
+rule deal_with_umis_r1:
+    input:
+        r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz")
+    output:
+        r1_umi = op.join(BASE, "data", RUN_NAME, "{srr}_umi_1.fastq.gz")
+    threads:
+        1
+    shell:  """
+    {PIGZ} -p {threads} --decompress --stdout {input.r1} | sed 's/.1 / /g' | \
+      awk 'NR%4==1{{a=$1;}} 
+      NR%4==2{{umi=substr($0,0,12);b_without=substr($0,13)}} 
+      NR%4==3{{c=$0}} 
+      NR%4==0{{d=substr($0,13); print a"_"umi".1\\n"b_without"\\n+\\n"d;}}' | {PIGZ} -p {threads} --stdout > {output.r1_umi}
+
+    """
+
+rule get_data:
+    input:
+        conf = op.join(BASE, "data", RUN_NAME, 'celseq2_ding.conf')
+    output:
+        # r1_uncomp = temp(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq")),
+        # r2_uncomp = temp(op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq")),
+        r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
+        r2 = op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq.gz"),
+        r3 = temp(op.join(BASE, "data", RUN_NAME, "{srr}_3.fastq.gz"))
+    params:
+        path = op.join(BASE, "data", RUN_NAME)
+    threads:
+        1
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+
+        {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
+
         """
 
 ## runme first!
@@ -141,6 +213,6 @@ SRR9169439,RNA-Seq,89,1040755142,PRJNA545730,SAMN11914624,649516457,GEO,public,"
 SRR9169440,RNA-Seq,89,876917445,PRJNA545730,SAMN11914623,549907095,GEO,public,"sra,fastq","gs,ncbi,s3","s3.us-east-1,gs.US,ncbi.public",SRX5943795,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837175,SRP200058,GSM3837175,CEL-Seq2,female,Peripheral blood mononuclear cell,,
 SRR9169441,RNA-Seq,89,1094064184,PRJNA545730,SAMN11914622,682967510,GEO,public,"sra,fastq","s3,gs,ncbi","gs.US,ncbi.public,s3.us-east-1",SRX5943796,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837176,SRP200058,GSM3837176,CEL-Seq2,female,Peripheral blood mononuclear cell,,
 SRR9169442,RNA-Seq,89,406444488,PRJNA545730,SAMN11914621,254766791,GEO,public,"sra,fastq","s3,gs,ncbi","gs.US,s3.us-east-1,ncbi.public",SRX5943797,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837177,SRP200058,GSM3837177,CEL-Seq2,female,Peripheral blood mononuclear cell,,
-        EOF
+EOF
 
         """
