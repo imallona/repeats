@@ -53,6 +53,7 @@ BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
 Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
 FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
 VDB_VALIDATE = '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate'
+BEDOPS = '~/soft/bedops/bedops-2.4.39/bin/'
 
 ## FASTQS, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}.fastq.gz"))
 
@@ -92,14 +93,16 @@ rule all:
         op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.gz"),
         expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
                regress_ncount = ['TRUE', 'FALSE'],
-               regress_nfeature = ['TRUE', 'FALSE'])
+               regress_nfeature = ['TRUE', 'FALSE']),
+        op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + "_repeats_not_overlapping_genes.counts.gz")
         
 
 rule knit_report_smartseq:
     input:
         genes_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'genes', RUN_NAME + '_star_genes.counts.gz'),
         repeats_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
-        repeats_bowtie = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', RUN_NAME + '_bowtie_repeats.counts.gz')
+        repeats_bowtie = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', RUN_NAME + '_bowtie_repeats.counts.gz'),
+        repeats_no_overlap_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + "_repeats_not_overlapping_genes.counts.gz")
     params:
         rmd = 'summarize_smartseq2_run_pbmcs.Rmd',
         run_name = RUN_NAME
@@ -117,6 +120,7 @@ rule knit_report_smartseq:
           genes_star = \"{input.genes_star}\", 
           repeats_star = \"{input.repeats_star}\", 
           repeats_bowtie = \"{input.repeats_bowtie}\", 
+          repeats_no_overlap_star = \"{input.repeats_no_overlap_star}\",
           seurat_output = \"{output.rds}\", 
           aris_output = \"{output.aris}\", 
           regress_genes_nCount = \"{wildcards.regress_ncount}\", \
@@ -163,7 +167,74 @@ rule knit_report_smartseq:
 #         --chunkmbs 128 {params.repeatome} - |  samtools view -@ {threads} -bS - > {output} ) 2> {log}
 #         """
 
-      
+
+
+       
+rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
+    input:
+         expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
+                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_female.conf'))),
+         
+         expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
+                 srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_male.conf'))),
+         
+         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL) + '_minus_' + op.basename(GENES_GTF_URL))
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome')
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + "_repeats_not_overlapping_genes.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + "_repeats_not_overlapping_genes.counts.gz")
+    log :
+        log = op.join(BASE, "runs",  RUN_NAME, 'star_transcriptome', 'repeats', 'feature_counts_not_overlapping_genes.log'),
+    threads:
+        NTHREADS
+    shell: """
+    cd {params.path}
+
+    {FEATURECOUNTS} -T {threads} \
+    -t exon \
+    -g gene_id \
+    -a {input.gtf} \
+    -o  {output.counts} \
+    {params.path}/*bam  2>&1 > {log}
+
+    {PIGZ} --keep -p {threads} {output.counts}
+    """
+
+## use this! @todo
+rule get_repeats_not_overlapping_genes_gtf:
+    input:
+        repeats_gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
+        genes_gtf =  op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
+    output:
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL) + '_minus_' + op.basename(GENES_GTF_URL)),
+        repeats_gtf_decomp = temp(op.join(BASE, 'annotation', op.basename(REP_GTF_URL)) + '.tmp.gtf'),
+        genes_gtf_decomp =  temp(op.join(BASE, 'annotation', op.basename(GENES_GTF_URL)) + '.tmp.gtf'),
+        genesbed = temp(op.join(BASE, 'annotation', op.basename(GENES_GTF_URL)) + '.tmp.bed')
+    params:
+        threads = NTHREADS,
+        bedops_path= BEDOPS
+    shell:
+        """
+        ## this doesn't neither start
+
+        {PIGZ} --decompress --keep --stdout  {input.repeats_gtf} | \
+               sed 's/chr//g' > {output.repeats_gtf_decomp}
+        {PIGZ} --decompress --keep  --stdout  {input.genes_gtf} | \
+               sed 's/chr//g' > {output.genes_gtf_decomp}
+
+        # let's transform genes in bed and then use bedtools
+        export PATH={params.bedops_path}:$PATH
+
+        awk '{{ if ($0 ~ "transcript_id") print $0; else print $0" transcript_id "";"; }}' \
+           {output.genes_gtf_decomp} | gtf2bed - > {output.genesbed}
+
+        {BEDTOOLS} intersect -a {output.repeats_gtf_decomp} \
+          -b {output.genesbed} \
+          -v | {PIGZ} --stdout > {output.gtf}
+        """
+
+
 rule bowtie_index_repeatome:
     input:
         fa = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.gz')

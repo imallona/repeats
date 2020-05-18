@@ -16,6 +16,7 @@ params:
   identifier: ""   
   repeats_bowtie: ""
   repeats_star: ""
+  repeats_no_overlap_star: ""
   genes_star: ""
   seurat_output: ""
   aris_output: ""
@@ -185,10 +186,22 @@ featurecounts_to_seurat <- function(fn, identifier, add_gene_symbols = FALSE, re
 ##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/SRR10974769/count_repeats_on_cellranger_standard/SRR10974769_repeats.counts.gz",
 ##                identifier = 'test')
 
+## params <- list(identifier = "",
+##                genes_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/genes/pbmcs_smartseq2_ding_star_genes.counts.gz',
+##                repeats_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz',
+##                repeats_bowtie = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz',
+##                repeats_no_overlap_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz',
+##                seurat_output = "/home/imallona/tmp/test.rds",
+##                regress_genes_nCount = FALSE,
+##                regress_genes_nFeatures = FALSE)
+
+
+
 params <- list(identifier = "",
-               genes_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/genes/pbmcs_smartseq2_ding_star_genes.counts.gz',
-               repeats_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz',
-               repeats_bowtie = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz',
+               genes_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/genes/ding_celseq2_star_genes.counts.gz',
+               repeats_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats/ding_celseq2_star_transcriptome_repeats.counts.gz',
+               repeats_bowtie = '/home/imallona/repeats_sc/runs/ding_celseq2/bowtie_repeatome/ding_celseq2_bowtie_repeats.counts.gz',
+               repeats_no_overlap_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats/ding_celseq2_repeats_not_overlapping_genes.counts.gz',
                seurat_output = "/home/imallona/tmp/test.rds",
                regress_genes_nCount = FALSE,
                regress_genes_nFeatures = FALSE)
@@ -208,10 +221,13 @@ d$repeats_star <- featurecounts_to_seurat(
     identifier = sprintf('%s_%s', params$identifier, 'repeats_star'))
 
 
-## careful, included all repeat instances instead of repeat consensus
 d$repeats_bowtie <- featurecounts_to_seurat(
     params$repeats_bowtie,
     identifier = sprintf('%s_%s', params$identifier, 'repeats_bowtie'))
+
+d$repeats_no_overlap_star <- featurecounts_to_seurat(
+    params$repeats_no_overlap_star,
+    identifier = sprintf('%s_%s', params$identifier, 'repeats_no_overlap_star'))
 
 ```
 
@@ -243,7 +259,8 @@ for (item in names(d)) {
 Filtering out cells according to the repeats expression, and forwarding the selection to other layers
 
 ```{r}
-d$genes_star <- subset(d$genes_star, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & (percent.mt < 10 | is.na(percent.mt)))
+## d$genes_star <- subset(d$genes_star, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & (percent.mt < 10 | is.na(percent.mt)))
+d$genes_star <- subset(d$genes_star, subset = nFeature_RNA > 200 & (percent.mt < 10 | is.na(percent.mt)))
 selected_cells <- colnames(d$genes_star)
 
 for (item in names(d)) {

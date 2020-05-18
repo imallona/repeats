@@ -232,6 +232,36 @@ for (item in names(d)) {
 }
 ```
 
+Basic stats
+
+```{r}
+summarized <- list()
+## summarized[['header']] <- c('dataset','filter', 'ncells',
+##                             'ncount mean', 'ncount sd', 'nfeature mean', 'nfeature sd')
+    
+for (item in names(d)) {
+    summarized[[item]] <- c(
+        item, 'unfiltered', nrow(d[[item]]@meta.data),
+        mean(d[[item]]@meta.data$nCount_RNA), sd(d[[item]]@meta.data$nCount_RNA),
+        mean(d[[item]]@meta.data$nFeature_RNA), sd(d[[item]]@meta.data$nFeature_RNA))
+
+    if ('pct_mt_mean' %in% colnames(d[[item]]@meta.data)) {
+        summarized[[item]] <- c(summarized[[item]],
+                                mean(d[[item]]@meta.data@percent.mt, na.rm = TRUE))
+    }
+    else {
+        summarized[[item]] <- c(summarized[[item]], NA)
+        
+    }
+}
+
+summarized <- as.data.frame(do.call(rbind.data.frame, summarized))
+colnames(summarized) <- c('dataset','filter', 'ncells',
+                          'ncount_mean', 'ncount_sd', 'nfeature_mean', 'nfeature_sd',
+                          'percent.mt')
+print(summarized)
+```
+
 ## QC after filtering {.tabset}
 
 Filtering out cells according to the repeats expression, and forwarding the selection to other layers
@@ -265,6 +295,35 @@ for (item in names(d)) {
 }
 ```
 
+Basic stats
+
+```{r}
+summarized <- list()
+## summarized[['header']] <- c('dataset','filter', 'ncells',
+##                             'ncount mean', 'ncount sd', 'nfeature mean', 'nfeature sd')
+    
+for (item in names(d)) {
+    summarized[[item]] <- c(
+        item, 'filtered', nrow(d[[item]]@meta.data),
+        mean(d[[item]]@meta.data$nCount_RNA), sd(d[[item]]@meta.data$nCount_RNA),
+        mean(d[[item]]@meta.data$nFeature_RNA), sd(d[[item]]@meta.data$nFeature_RNA))
+
+    if ('pct_mt_mean' %in% colnames(d[[item]]@meta.data)) {
+        summarized[[item]] <- c(summarized[[item]],
+                                mean(d[[item]]@meta.data@percent.mt, na.rm = TRUE))
+    }
+    else {
+        summarized[[item]] <- c(summarized[[item]], NA)
+        
+    }
+}
+
+summarized <- as.data.frame(do.call(rbind.data.frame, summarized))
+colnames(summarized) <- c('dataset','filter', 'ncells',
+                          'ncount_mean', 'ncount_sd', 'nfeature_mean', 'nfeature_sd',
+                          'percent.mt')
+print(summarized)
+```
 
 
 
