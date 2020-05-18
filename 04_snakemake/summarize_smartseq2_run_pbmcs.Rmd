@@ -76,7 +76,8 @@ opts_chunk$set(fig.width = 5,
                cache.lazy = FALSE,
                warning = TRUE,
                echo = TRUE,
-               message = FALSE)
+               message = FALSE,
+               knitr.table.format = "html")
 
 
 options(bitmapType='cairo')
@@ -175,36 +176,26 @@ featurecounts_to_seurat <- function(fn, identifier, add_gene_symbols = FALSE, re
 # Data load
 
 ```{r justfordebugging, eval = FALSE}
-## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-##                repeats_cellranger= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz")
-
-## SRR10974769
-
-## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/SRR10974769/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-##                repeats_cellranger= "/home/imallona/repeats_sc/runs/SRR10974769/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/SRR10974769/count_repeats_on_cellranger_standard/SRR10974769_repeats.counts.gz",
-##                identifier = 'test')
-
-## params <- list(identifier = "",
-##                genes_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/genes/pbmcs_smartseq2_ding_star_genes.counts.gz',
-##                repeats_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz',
-##                repeats_bowtie = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz',
-##                repeats_no_overlap_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz',
-##                seurat_output = "/home/imallona/tmp/test.rds",
-##                regress_genes_nCount = FALSE,
-##                regress_genes_nFeatures = FALSE)
-
-
 
 params <- list(identifier = "",
-               genes_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/genes/ding_celseq2_star_genes.counts.gz',
-               repeats_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats/ding_celseq2_star_transcriptome_repeats.counts.gz',
-               repeats_bowtie = '/home/imallona/repeats_sc/runs/ding_celseq2/bowtie_repeatome/ding_celseq2_bowtie_repeats.counts.gz',
-               repeats_no_overlap_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats/ding_celseq2_repeats_not_overlapping_genes.counts.gz',
+               genes_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/genes/pbmcs_smartseq2_ding_star_genes.counts.gz',
+               repeats_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz',
+               repeats_bowtie = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz',
+               repeats_no_overlap_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz',
                seurat_output = "/home/imallona/tmp/test.rds",
                regress_genes_nCount = FALSE,
                regress_genes_nFeatures = FALSE)
+
+
+
+## params <- list(identifier = "",
+##                genes_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/genes/ding_celseq2_star_genes.counts.gz',
+##                repeats_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats/ding_celseq2_star_transcriptome_repeats.counts.gz',
+##                repeats_bowtie = '/home/imallona/repeats_sc/runs/ding_celseq2/bowtie_repeatome/ding_celseq2_bowtie_repeats.counts.gz',
+##                repeats_no_overlap_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats/ding_celseq2_repeats_not_overlapping_genes.counts.gz',
+##                seurat_output = "/home/imallona/tmp/test.rds",
+##                regress_genes_nCount = FALSE,
+##                regress_genes_nFeatures = FALSE)
 
 ```
 
@@ -254,13 +245,44 @@ for (item in names(d)) {
 }
 ```
 
+
+## Basic stats pre-QC
+
+```{r}
+summarized <- list()
+## summarized[['header']] <- c('dataset','filter', 'ncells',
+##                             'ncount mean', 'ncount sd', 'nfeature mean', 'nfeature sd')
+    
+for (item in names(d)) {
+    summarized[[item]] <- c(
+        item, 'unfiltered', nrow(d[[item]]@meta.data),
+        mean(d[[item]]@meta.data$nCount_RNA), sd(d[[item]]@meta.data$nCount_RNA),
+        mean(d[[item]]@meta.data$nFeature_RNA), sd(d[[item]]@meta.data$nFeature_RNA))
+
+    if ('pct_mt_mean' %in% colnames(d[[item]]@meta.data)) {
+        summarized[[item]] <- c(summarized[[item]],
+                                mean(d[[item]]@meta.data@percent.mt, na.rm = TRUE))
+    }
+    else {
+        summarized[[item]] <- c(summarized[[item]], NA)
+        
+    }
+}
+
+summarized <- as.data.frame(do.call(rbind.data.frame, summarized))
+colnames(summarized) <- c('dataset','filter', 'ncells',
+                          'ncount_mean', 'ncount_sd', 'nfeature_mean', 'nfeature_sd',
+                          'percent.mt')
+print(summarized)
+```
+
 ## QC after filtering {.tabset}
 
 Filtering out cells according to the repeats expression, and forwarding the selection to other layers
 
 ```{r}
-## d$genes_star <- subset(d$genes_star, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & (percent.mt < 10 | is.na(percent.mt)))
-d$genes_star <- subset(d$genes_star, subset = nFeature_RNA > 200 & (percent.mt < 10 | is.na(percent.mt)))
+d$genes_star <- subset(d$genes_star, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & (percent.mt < 10 | is.na(percent.mt)))
+## d$genes_star <- subset(d$genes_star, subset = nFeature_RNA > 200 & (percent.mt < 10 | is.na(percent.mt)))
 selected_cells <- colnames(d$genes_star)
 
 for (item in names(d)) {
@@ -289,7 +311,35 @@ for (item in names(d)) {
 ```
 
 
+## Basic stats post-QC
 
+```{r}
+summarized <- list()
+## summarized[['header']] <- c('dataset','filter', 'ncells',
+##                             'ncount mean', 'ncount sd', 'nfeature mean', 'nfeature sd')
+    
+for (item in names(d)) {
+    summarized[[item]] <- c(
+        item, 'filtered', nrow(d[[item]]@meta.data),
+        mean(d[[item]]@meta.data$nCount_RNA), sd(d[[item]]@meta.data$nCount_RNA),
+        mean(d[[item]]@meta.data$nFeature_RNA), sd(d[[item]]@meta.data$nFeature_RNA))
+
+    if ('pct_mt_mean' %in% colnames(d[[item]]@meta.data)) {
+        summarized[[item]] <- c(summarized[[item]],
+                                mean(d[[item]]@meta.data@percent.mt, na.rm = TRUE))
+    }
+    else {
+        summarized[[item]] <- c(summarized[[item]], NA)
+        
+    }
+}
+
+summarized <- as.data.frame(do.call(rbind.data.frame, summarized))
+colnames(summarized) <- c('dataset','filter', 'ncells',
+                          'ncount_mean', 'ncount_sd', 'nfeature_mean', 'nfeature_sd',
+                          'percent.mt')
+print(summarized)
+```
 
 ## Variable features {.tabset}
 
@@ -612,7 +662,7 @@ rownames(d$genes_star@meta.data) <- d$genes_star@meta.data$cell
 
 ## still, the annotation can also be transfered to repeats/featurecounts
 
-for (item in c('repeats_star')) {
+for (item in grep('repeats', names(d), value = TRUE)) {
     rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
 
     tmp <- merge(data.frame(cell = d[[item]]@meta.data$cell),
@@ -827,6 +877,23 @@ print(aris)
 aris_stored <- list(aris)
 ```
 
+# Diferential repeat expression by SCINA identity {.tabset}
+
+```{r, results = 'asis'}
+for (item in names(d)) {
+    cat('## ', item, '\n\n')
+    
+    Idents(d[[item]]) <- 'scina'
+
+    ## find markers for every scina identity (discarding the unplaced); report only positives   
+    markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
+                              only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+    
+    print(markers)
+    cat('\n\n')
+}
+
+```
 # Export objects
 
 List of seurat objects

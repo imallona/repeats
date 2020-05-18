@@ -1,4 +1,4 @@
--------------------------------------------------------------------------------
+---
 title: "Across samples report"
 author: "Izaskun Mallona at Robinsonlab"
 date: "`r format(Sys.time(), '%d %B, %Y')`"

@@ -74,7 +74,8 @@ opts_chunk$set(fig.width = 5,
                cache.lazy = FALSE,
                warning = TRUE,
                echo = TRUE,
-               message = FALSE)
+               message = FALSE,
+               knitr.table.format = "html")
 
 
 options(bitmapType='cairo')
@@ -135,7 +136,7 @@ barcodes_fn <- params$genes_cellranger ## should end with `barcodes.tsv.gz`
 path <- dirname(barcodes_fn)
 
 d$genes_cellranger <- CreateSeuratObject(counts = Read10X(data.dir = path),
-                                         project = sprintf('%s_%s', params$identifier,
+                                         project = sprintf('%s\n%s', params$identifier,
                                                            'genes_cellranger'),
                                          min.cells = 0,
                                          min.features = 0)
@@ -148,7 +149,7 @@ barcodes_fn <- params$repeats_cellranger ## should end with `barcodes.tsv.gz`
 path <- dirname(barcodes_fn)
 
 d$repeats_cellranger <- CreateSeuratObject(counts = Read10X(data.dir = path),
-                                           project =  sprintf('%s_%s', params$identifier,
+                                           project =  sprintf('%s\n%s', params$identifier,
                                                               'repeats_cellranger'),
                                            min.cells = 0,
                                            min.features = 0)
@@ -169,7 +170,7 @@ tmp <- tmp[,-1]
 
 d$repeats_featurecounts <- CreateSeuratObject(
     tmp,
-    project =  sprintf('%s_%s', params$identifier, 'repeats_featurecounts'),
+    project =  sprintf('%s_%s', params$identifier, 'repeats\nfeaturecounts'),
     assay = "RNA",
     min.cells = 0,
     min.features = 0,
@@ -199,7 +200,7 @@ tmp <- tmp[,-1]
 
 d$control_repeats_only <- CreateSeuratObject(
     tmp,
-    project =  sprintf('%s_%s', params$identifier, 'repeats_featurecounts'),
+    project =  sprintf('%s_%s', params$identifier, 'repeats\nfeaturecounts'),
     assay = "RNA",
     min.cells = 0,
     min.features = 0,
@@ -232,7 +233,7 @@ for (item in names(d)) {
 }
 ```
 
-Basic stats
+## Basic stats pre-QC
 
 ```{r}
 summarized <- list()
@@ -295,7 +296,7 @@ for (item in names(d)) {
 }
 ```
 
-Basic stats
+## Basic stats post-QC
 
 ```{r}
 summarized <- list()
@@ -369,12 +370,12 @@ for (item in names(d)) {
         
     }
     
-    if (item == 'genes') {
+    if (item == 'genes_cellranger') {
         d[[item]] <- ScaleData(d[[item]], vars.to.regress = to_regress)
     } else {
         ## in this case, the variables to regress come from the genes!
         ## e.g. is the genes library size the one to normalize the repets'
-        tmp <- d$genes@meta.data
+        tmp <- d[[item]]@meta.data
         tmp$cell <- rownames(tmp)
         d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
         d[[item]]@meta.data <- merge(d[[item]]@meta.data, tmp, by = 'cell',
@@ -421,16 +422,16 @@ for (item in names(d)) {
 
 ## Dimred UMAP and tSNE {.tabset}
 
-```{r fig.width = 8, fig.height = 5, results = 'asis', cache = FALSE}
+```{r fig.width = 8, fig.height = 5, results = 'asis', cache = FALSE, warning = FALSE}
 
 for (item in names(d)) {
-    
     cat("### ", item, "\n\n")
     
     p1 <- DimPlot(d[[item]], reduction = "umap")
     p2 <- DimPlot(d[[item]], reduction = "tsne")
 
-    print(CombinePlots(plots = list(p1, p2)) + ggtitle(item))
+    print(p1)
+    print(p2)
     rm(p1, p2)
     cat('\n\n')
 
@@ -632,17 +633,17 @@ table(named$cell_labels)
 First, add the SCINA outputs to the different SO objects
 
 ```{r, cache = FALSE}
-labelling <- data.frame(cell = colnames(d$genes),
+labelling <- data.frame(cell = colnames(d$genes_cellranger),
                   scina = named$cell_labels)
 
 rownames(labelling) <- labelling$cell
-d$genes@meta.data$cell <- rownames(d$genes@meta.data)
-d$genes@meta.data <- merge(d$genes@meta.data, labelling, by = 'cell')
-rownames(d$genes@meta.data) <- d$genes@meta.data$cell
+d$genes_cellranger@meta.data$cell <- rownames(d$genes_cellranger@meta.data)
+d$genes_cellranger@meta.data <- merge(d$genes_cellranger@meta.data, labelling, by = 'cell')
+rownames(d$genes_cellranger@meta.data) <- d$genes_cellranger@meta.data$cell
 
 ## still, the annotation can also be transfered to repeats/featurecounts
 
-for (item in c('repeats_cellranger', 'repeats_featurecounts', 'control_repeats_only')) {
+for (item in grep('repeats', names(d), value = TRUE)) {
     rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
 
     tmp <- merge(data.frame(cell = d[[item]]@meta.data$cell),
@@ -659,7 +660,7 @@ rm(labelling, tmp)
 
 ```
 
-```{r problemrendering, results = 'asis', df_print = 'kable', cache = FALSE}
+```{r problemrendering, cache = FALSE}
 for (res in grep('RNA_snn', colnames(d$genes@meta.data), value = TRUE)) {
     cat('### ', res, '\n\n')
 
@@ -667,9 +668,9 @@ for (res in grep('RNA_snn', colnames(d$genes@meta.data), value = TRUE)) {
                                       d$genes@meta.data$scina))
 
     ## print(t(tmp))
-    print(tmp)
+    print(kable(tmp))
     
-    cat('\n\n\n')
+    cat('\n\n')
     rm(tmp)
 }
 
@@ -1179,6 +1180,80 @@ colnames(aris) <- c('genes_res', 'scina', 'ari')
 aris$ari <- as.numeric(as.character(aris$ari))
 print(aris)
 ```
+
+
+# Diferential repeat expression by SCINA identity {.tabset}
+
+```{r does_not_work, eval = FALSE}
+for (item in names(d)) {
+    cat('## ', item, '\n\n')
+    
+    Idents(d[[item]]) <- 'scina'
+
+    ## find markers for every scina identity (discarding the unplaced); report only positives   
+    markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
+                              only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+    DT::datatable(markers)
+    cat('\n\n')
+}
+
+```
+
+## genes_cellranger
+
+```{r}
+item <- 'genes_cellranger'
+Idents(d[[item]]) <- 'scina'
+## find markers for every scina identity (discarding the unplaced); report only positives   
+markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
+                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+DT::datatable(markers)
+
+```
+
+## repeats_cellranger
+
+```{r}
+item <- 'repeats_cellranger'
+Idents(d[[item]]) <- 'scina'
+## find markers for every scina identity (discarding the unplaced); report only positives   
+markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
+                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+DT::datatable(markers)
+
+```
+
+
+## repeats_featurecounts
+
+```{r}
+item <- 'repeats_featurecounts'
+Idents(d[[item]]) <- 'scina'
+## find markers for every scina identity (discarding the unplaced); report only positives   
+markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
+                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+DT::datatable(markers)
+
+```
+
+## control_repeats_only
+
+```{r}
+item <- 'control_repeats_only'
+Idents(d[[item]]) <- 'scina'
+## find markers for every scina identity (discarding the unplaced); report only positives   
+markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
+                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+DT::datatable(markers)
+
+```
+
+
 
 # Export objects
 

@@ -92,7 +92,7 @@ rule all:
                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
         expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),  srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
         # op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', RUN_NAME + "_star_genes.counts.gz"),
-        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "{srr}_bowtie_repeats.counts.gz"), srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf')))
+        # expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "{srr}_bowtie_repeats.counts.gz"), srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf')))
         # op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
         # op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
         # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
@@ -388,7 +388,7 @@ rule deal_with_umis_r2:
     shell: """
     join <(zcat {input.r2} | sed 's/.2 / /g' | awk '{{OFS=FS=" "; print $1}}' | nl)  \
        <(zcat {input.r1} | awk '{{OFS=FS=" "; print $1}}' | nl ) | \
-       awk '(NR%4==1){{a=$2;}}(NR%4==2){{cb=substr($3,0,6);umi=substr($3,7,12); b=$2}}(NR%4==3){{c=$2}}(NR%4==0){{d=$2;print a"_"cb"_"umi".2\\n"b"\\n+\\n"d;}}' | {PIGZ} -p {threads} --stdout > {output.r2_umi}
+       awk '(NR%4==1){{a=$2;}}(NR%4==2){{cb=substr($3,0,6);umi=substr($3,7,6); b=$2}}(NR%4==3){{c=$2}}(NR%4==0){{d=$2;print a"_"cb"_"umi".2\\n"b"\\n+\\n"d;}}' | {PIGZ} -p {threads} --stdout > {output.r2_umi}
 
     """
 
@@ -421,7 +421,7 @@ rule deal_with_umis_r1:
     shell:  """
     {PIGZ} -p {threads} --decompress --stdout {input.r1} | sed 's/.1 / /g' | \
       awk 'NR%4==1{{a=$1;}} 
-      NR%4==2{{cb=substr($0,0,6);umi=substr($0,7,12);b_without=substr($0,13)}} 
+      NR%4==2{{cb=substr($0,0,6);umi=substr($0,7,6);b_without=substr($0,13)}} 
       NR%4==3{{c=$0}} 
       NR%4==0{{d=substr($0,13); print a"_"cb"_"umi".1\\n"b_without"\\n+\\n"d;}}' | {PIGZ} -p {threads} --stdout > {output.r1_umi}
 
