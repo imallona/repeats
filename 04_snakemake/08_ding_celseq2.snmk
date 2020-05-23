@@ -97,12 +97,13 @@ rule all:
         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
         # expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"), srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
-        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"), srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),        
+        # expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"), srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),        
         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_star_transcriptome_genes.counts.summary.png"), 
                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
-        # expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',
-                       # "{srr}_star_transcriptome_repeats.counts.summary.png"), 
-               # srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_Aligned.sortedByCoord.out.bam.counts.summary"), 
+               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_star_transcriptome_repeats.counts.summary.png"), 
+               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
                        "{srr}_repeats_no_overlap.counts.summary.png"), 
                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
@@ -192,15 +193,13 @@ rule profile_featurecounts_run_genes:
        
 rule profile_featurecounts_run_repeats_on_transcriptome:
     input:        
-        summary = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',
-                          "{srr}_Aligned.sortedByCoord.out.bam.counts.summary")
+        summary = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_Aligned.sortedByCoord.out.bam.counts.summary")
     params:
         path = op.join(BASE, "runs", RUN_NAME, "star_transcriptome"),
         script = FEATURECOUNTS_RSCRIPT,
         gtf = 'star_transcriptome_repeats'
     output:
-        png = op.join(BASE, "runs", RUN_NAME, "star_transcriptome",
-                     "{srr}_star_transcriptome_repeats.counts.summary.png")
+        png = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',  "{srr}_star_transcriptome_repeats.counts.summary.png")
     threads: 1
     shell:
        """
@@ -250,7 +249,7 @@ rule profile_featurecounts_run_repeats_no_overlap_on_transcriptome:
 #        """
             
 # @todo NOTE THE MULTIMAPPING ALLOWED!
-rule featurecounts_repeats_repeatome_pe_celseq:
+rule featurecounts_repeats_repeatome_bowtie:
     input:
         bam = op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', "{srr}.bam"),
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
@@ -328,22 +327,59 @@ rule feature_counts_repeats_not_overlapping_genes:
     """
 
     
-rule featurecounts_repeats_transcriptome_pe:
+# rule featurecounts_repeats_transcriptome_pe:
+#     input:
+#         bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
+#         # expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"), srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
+#         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+#     output:
+#         counts  = temp(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats',  '{srr}_star_transcriptome_repeats.counts')),
+#         gz_counts = op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', '{srr}_star_transcriptome_repeats.counts.gz'),
+#         detailed = temp(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_star_transcriptome_repeats.featureCounts")),
+#         gz_detailed = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_star_transcriptome_repeats.featureCounts.gz"),
+#         summary = op.join(BASE, "runs", RUN_NAME, "star_transcriptome",  'repeats', "{srr}_Aligned.sortedByCoord.out.bam.counts.summary")
+#     params:
+#         path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome'),
+#         subpath = 'repeats'
+#     log :
+#         op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_star_repeats_featurecounts.log"),
+#     threads:
+#         NTHREADS
+#     shell:
+#        """
+#        {FEATURECOUNTS} -T {threads} \
+#        -t exon \
+#        -g gene_id \
+#        -a {input.gtf} \
+#        -o  {output.counts} \
+#        -R CORE \
+#        --Rpath {params.path}/{params.subpath} \
+#        {input.bam}  &> {log}
+ 
+#        ## any CB:UMI pair that was seen is removed from the output (awk array)
+#        grep 'Assigned' {output.detailed} | \
+#        awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}'  | {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+
+#        {PIGZ} --keep -p {threads} {output.counts}
+       
+#        """
+
+rule featurecounts_genes:
     input:
         bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
         # expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"), srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
-        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+        gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
     output:
-        counts  = temp(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats',  '{srr}_star_transcriptome_repeats.counts')),
-        gz_counts = op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', '{srr}_star_transcriptome_repeats.counts.gz'),
-        detailed = temp(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_star_transcriptome_repeats.featureCounts")),
-        gz_detailed = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_star_transcriptome_repeats.featureCounts.gz"),
-        summary = op.join(BASE, "runs", RUN_NAME, "star_transcriptome",  'repeats', "{srr}_Aligned.sortedByCoord.out.bam.counts.summary")
+        genes_counts  = temp(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'genes', '{srr}_Aligned.sortedByCoord.out.bam.counts')),
+        genes_gz_counts = op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'genes', '{srr}_Aligned.sortedByCoord.out.bam.counts.gz'),
+        genes_detailed = temp(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts")),
+        genes_gz_detailed = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
+        genes_summary = op.join(BASE, "runs", RUN_NAME, "star_transcriptome",  "genes", "{srr}_Aligned.sortedByCoord.out.bam.counts.summary")
     params:
         path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome'),
-        subpath = 'repeats'
+        subpath = 'genes'
     log :
-        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_star_repeats_featurecounts.log"),
+        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_star_genes_featurecounts.log"),
     threads:
         NTHREADS
     shell:
@@ -352,35 +388,36 @@ rule featurecounts_repeats_transcriptome_pe:
        -t exon \
        -g gene_id \
        -a {input.gtf} \
-       -o  {output.counts} \
+       -o  {output.genes_counts} \
        -R CORE \
        --Rpath {params.path}/{params.subpath} \
        {input.bam}  &> {log}
  
        ## any CB:UMI pair that was seen is removed from the output (awk array)
-       grep 'Assigned' {output.detailed} | \
-       awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}'  | {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+       grep 'Assigned' {output.genes_detailed} | \
+       awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
+       {PIGZ} --keep  -p {threads} --stdout > {output.genes_gz_detailed}
 
-       {PIGZ} --keep -p {threads} {output.counts}
+       {PIGZ} --keep -p {threads} {output.genes_counts}
        
        """
 
-rule featurecounts_genes:
+
+rule featurecounts_repeats:
     input:
         bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
-        # expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"), srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
-        gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
     output:
-        counts  = temp(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'genes', '{srr}_Aligned.sortedByCoord.out.bam.counts')),
-        gz_counts = op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'genes', '{srr}_Aligned.sortedByCoord.out.bam.counts.gz'),
-        detailed = temp(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts")),
-        gz_detailed = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
-        summary = op.join(BASE, "runs", RUN_NAME, "star_transcriptome",  "genes", "{srr}_Aligned.sortedByCoord.out.bam.counts.summary")
+        counts  = temp(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', '{srr}_Aligned.sortedByCoord.out.bam.counts')),
+        gz_counts = op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', '{srr}_Aligned.sortedByCoord.out.bam.counts.gz'),
+        detailed = temp(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts")),
+        gz_detailed = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, "star_transcriptome",  "repeats", "{srr}_Aligned.sortedByCoord.out.bam.counts.summary")
     params:
         path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome'),
-        subpath = 'genes'
+        subpath = 'repeats'
     log :
-        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_star_genes_featurecounts.log"),
+        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_star_repeats_featurecounts.log"),
     threads:
         NTHREADS
     shell:
@@ -402,7 +439,7 @@ rule featurecounts_genes:
        {PIGZ} --keep -p {threads} {output.counts}
        
        """
-    
+       
 ## use this! @todo
 rule get_repeats_not_overlapping_genes_gtf:
     input:
