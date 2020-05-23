@@ -41,6 +41,8 @@ REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscript
 
 GTF_MAKING_SCRIPT = '~/src/repeats_sc/04_snakemake/gtf_maker.R'
 GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/gtf_parser.R'
+FEATURECOUNTS_RSCRIPT= '~/src/repeats_sc/04_snakemake/plot_featurecounts_profile.R'
+
 BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
 BOWTIE = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'
 
@@ -59,6 +61,7 @@ FASTERQDUMP= '~/soft/sra-toools/sratoolkit.2.10.5-ubuntu64/bin/fasterq-dump' #
 VDB_VALIDATE = '~/soft/sra-toools/sratoolkit.2.10.5-ubuntu64/bin/vdb-validate'
 BEDOPS = '~/soft/bedops/bedops-2.4.39/bin/'
 ## FASTQS, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}.fastq.gz"))
+
 
 ## include: "/home/imallona/src/repeats_sc/04_snakemake/rnaseq_like_human_paired_end.snmk"
 
@@ -91,7 +94,7 @@ rule all:
         expand(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
         expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),  srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
-        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{srr}.bam.featureCounts.gz"),
+        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{srr}_bowtie_repeats.counts.summary.png"),
                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
@@ -141,6 +144,28 @@ rule knit_report_smartseq_or_celseq:
           regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}
         """
 
+
+rule profile_featurecounts_run:
+    input:        
+        summary = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome",
+                          "{srr}_bowtie_repeats.counts.summary")
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome"),
+        script = FEATURECOUNTS_RSCRIPT,
+        gtf = 'bowtie_repeatome'
+    output:
+        png = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome",
+                      "{srr}_bowtie_repeats.counts.summary.png")
+    threads: 1
+    shell:
+       """
+       cd {params.path}
+       
+       {Rscript} {params.script} --summary {input.summary} --output {output.png} --identifier {params.gtf}
+       """
+
+
+            
 # @todo NOTE THE MULTIMAPPING ALLOWED!
 rule featurecounts_repeats_repeatome_pe_celseq:
     input:
@@ -148,10 +173,11 @@ rule featurecounts_repeats_repeatome_pe_celseq:
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
         fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
     output:
-        counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "{srr}_bowtie_repeats.counts")),
-        gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "{srr}_bowtie_repeats.counts.gz"),
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome",  "{srr}_bowtie_repeats.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome",  "{srr}_bowtie_repeats.counts.gz"),
         detailed = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{srr}.bam.featureCounts")),
-        gz_detailed = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{srr}.bam.featureCounts.gz")
+        gz_detailed = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{srr}.bam.featureCounts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome",  "{srr}_bowtie_repeats.counts.summary")
     params:
         path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome")
     log :
