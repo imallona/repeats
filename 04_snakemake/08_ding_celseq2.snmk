@@ -5,9 +5,8 @@
 ## Izaskun Mallona
 ## GPLv3
 
-print('Caution this is wrong as it counts etc per sample and not per cell!')
-print('use scumi instead')
 
+print('caution report only takes one SRR!')
 import os.path as op
 from glob import glob
 import re
@@ -108,7 +107,10 @@ rule all:
                        "{srr}_repeats_no_overlap.counts.summary.png"), 
                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
         expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{srr}_bowtie_repeats.counts.summary.png"),
-               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf')))
+               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
+        # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        #        regress_ncount = ['TRUE', 'FALSE'],
+        #        regress_nfeature = ['TRUE', 'FALSE']),
         
         # op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', RUN_NAME + "_star_genes.counts.gz"),
         # expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "{srr}_bowtie_repeats.counts.gz"), srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf')))
@@ -123,21 +125,25 @@ ruleorder: deal_with_umis_r1 > deal_with_umis_r2 > get_data
 
 
 
-rule knit_report_smartseq_or_celseq:
+rule knit_report_smartseq_or_celseq_DOESNOTWORKLONGCOUNTINPUTSINSTEAD:
     input:
-        genes_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'genes', RUN_NAME + '_star_genes.counts.gz'),
-        repeats_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
-        repeats_bowtie = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', RUN_NAME + '_bowtie_repeats.counts.gz'),
-        repeats_no_overlap_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + "_repeats_not_overlapping_genes.counts.gz")
+        # genes_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'genes', RUN_NAME + '_star_genes.counts.gz'),
+        # repeats_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
+        # repeats_bowtie = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', RUN_NAME + '_bowtie_repeats.counts.gz'),
+        # repeats_no_overlap_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', RUN_NAME + "_repeats_not_overlapping_genes.counts.gz")
+        repeats_no_overlap_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome/repeats_no_overlap/SRR9169209_repeats_no_overlap.counts.gz'),
+        genes_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'genes', 'SRR9169209_Aligned.sortedByCoord.out.bam.counts.gz'),
+        repeats_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome/repeats/SRR9169209_Aligned.sortedByCoord.out.bam.counts.gz'),
+        repeats_bowtie =  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome/SRR9169209_bowtie_repeats.counts.gz')       
     params:
         rmd = 'summarize_smartseq2_run_pbmcs.Rmd',
         run_name = RUN_NAME
     output:
-        html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-        rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
         aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
     log:
-        op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_smartseq2_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
+        op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_celseq2_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
     shell:
         """
         {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 

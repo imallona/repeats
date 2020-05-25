@@ -8,6 +8,42 @@
 import os.path as op
 from glob import glob
 
+
+rule profile_featurecounts_run_repeats:
+    input:        
+        summary = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard',
+                            RUN_NAME + "_repeats.counts.summary")
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard"),
+        script = FEATURECOUNTS_RSCRIPT,
+        gtf = 'cellranger_repeats'
+    output:
+        png = op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard",  "transcriptome_repeats.counts.summary.png")
+    threads: 1
+    shell:
+       """
+       cd {params.path}
+       
+       {Rscript} {params.script} --summary {input.summary} --output {output.png} --identifier {params.gtf}
+       """
+
+rule profile_featurecounts_run_repeats_not_genes:
+    input:        
+        summary = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard_not_overlapping_genes', RUN_NAME + "_repeats_not_overlapping_genes.counts.summary")
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes"),
+        script = FEATURECOUNTS_RSCRIPT,
+        gtf = 'cellranger_repeats_not_genes'
+    output:
+        png = op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes",  "transcriptome_repeats_not_genes.counts.summary.png")
+    threads: 1
+    shell:
+       """
+       cd {params.path}
+       
+       {Rscript} {params.script} --summary {input.summary} --output {output.png} --identifier {params.gtf}
+       """    
+
 rule knit_report_chromium:
     input:
         genes = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
@@ -58,7 +94,9 @@ rule run_feature_counts_spawned_bams:
         counts  = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard',
                                RUN_NAME + "_repeats.counts")),
         gz_counts = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard',
-                            RUN_NAME + "_repeats.counts.gz")
+                            RUN_NAME + "_repeats.counts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard',
+                            RUN_NAME + "_repeats.counts.summary")
     log :
         log = op.join(BASE, "runs",  RUN_NAME, 'count_repeats_on_cellranger_standard','feature_counts.log'),
     threads:
@@ -85,7 +123,9 @@ rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
     output:
         counts  = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard_not_overlapping_genes', RUN_NAME + "_repeats_not_overlapping_genes.counts")),
         gz_counts = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard_not_overlapping_genes',
-                            RUN_NAME + "_repeats_not_overlapping_genes.counts.gz")
+                            RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                           RUN_NAME + "_repeats_not_overlapping_genes.counts.summary")
     log :
         log = op.join(BASE, "runs",  RUN_NAME, 'count_repeats_on_cellranger_standard_not_overlapping_genes', 'feature_counts_not_overlapping_genes.log'),
     threads:

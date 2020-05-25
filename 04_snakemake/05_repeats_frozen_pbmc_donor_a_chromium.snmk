@@ -39,6 +39,7 @@ CELLRANGER_HG38_URL = 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellrange
 ## @FIXME to be moved to config
 
 GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/gtf_parser.R'
+FEATURECOUNTS_RSCRIPT= '~/src/repeats_sc/04_snakemake/plot_featurecounts_profile.R'
 
 BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
 BOWTIE = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'
@@ -87,7 +88,10 @@ rule all:
         # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report_genes_regressed_out.html'),
         # op.join(BASE, 'runs', 'pbmc_integration_test.html'),
          expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_cellranger_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
-                       regress_nfeature = ['TRUE', 'FALSE'])
+                       regress_nfeature = ['TRUE', 'FALSE']),
+         op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard",  "transcriptome_repeats.counts.summary.png"),
+         op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes",  "transcriptome_repeats_not_genes.counts.summary.png")
+
 
 # ## srrwhatever is  not a pbmc!
 # # @todo this comes from other reports, fix!

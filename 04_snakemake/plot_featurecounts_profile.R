@@ -6,11 +6,14 @@
 ##
 ## 21 May 2020
 
+## install.packages('Cairo', repos ="https://cloud.r-project.org")
+
 suppressPackageStartupMessages({
     library("optparse")
     library('data.table')
     library('reshape2')
     library('ggplot2')
+    library('Cairo')
 })
 
 
@@ -20,17 +23,23 @@ option_list = list(
                 help = 'summary file as produced by featurecounts'),
     make_option(c("-o", '--output'),
                 type = 'character', default = NULL,
-                help = 'output files prefix'),
-    make_option(c("-id", '--id'),
+                help = 'png output file'),
+    make_option(c("-i", '--identifier'),
                 type = 'character', default = NULL,
-                help = 'gtf identifier'),
+                help = 'gtf identifier'))
     
+options(bitmapType='cairo')
 
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
 ## opt$summary <- '/home/imallona/repeats_sc/runs/ding_celseq2/bowtie_repeatome/ding_celseq2SRR9169177_bowtie_repeats.counts.summary'
 ## opt$id <- 'test'
+## opt$summary <- '/home/imallona/repeats_sc/runs/pbmc_10k_v3/count_repeats_on_cellranger_standard/pbmc_10k_v3_repeats.counts.summary'
+## opt$output <- '/home/imallona/repeats_sc/runs/pbmc_10k_v3/count_repeats_on_cellranger_standard/transcriptome_repeats.counts.summary.png'
+## opt$identifier <- 'cellranger_repeats'
+
+
 
 fd <- data.table::fread(opt$summary, header = TRUE)
 
@@ -38,7 +47,7 @@ colnames(fd) <- basename(colnames(fd))
 if (ncol(fd) > 2) {
     set.seed(2574)
     idx <- sample(x = 2:ncol(fd), size = 4, replace = FALSE)
-    fd <- fd[,c(1, idx)]
+    fd <- as.data.frame(fd)[,c(1, idx)]
 }
 
 pct <- fd
@@ -60,9 +69,11 @@ p <- ggplot(pct, aes(x=Status, y = pct)) +
     geom_text(aes(label=sprintf('%.2g', count)), size=3,
               vjust = -0.5) +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    ylab ('reads (%)') +
+    ylab ('read assignments (%)') +
     ggtitle(sprintf('GTF %s', opt$id))
 
-ggsave(p, filename = sprintf('%s_barplot.png', opt$output), device = 'png')
+## ggsave(p, filename = sprintf('%s_barplot.png', opt$output), device = 'png')
 
 write.csv(pct, file = sprintf('%s_barplot.csv', opt$output))
+
+ggsave(p, filename = opt$output, device = 'png')
