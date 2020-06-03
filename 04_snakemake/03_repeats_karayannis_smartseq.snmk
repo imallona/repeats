@@ -44,3 +44,4 @@ rule all:
         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{fastq}_genes.counts.gz"), fastq = FASTQS)
 
         
+

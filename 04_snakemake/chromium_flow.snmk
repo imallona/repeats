@@ -18,7 +18,7 @@ rule profile_featurecounts_run_repeats:
         script = FEATURECOUNTS_RSCRIPT,
         gtf = 'cellranger_repeats'
     output:
-        png = op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard",  "transcriptome_repeats.counts.summary.png")
+        png = op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard",  RUN_NAME + "_transcriptome_repeats.counts.summary.png")
     threads: 1
     shell:
        """
@@ -35,7 +35,7 @@ rule profile_featurecounts_run_repeats_not_genes:
         script = FEATURECOUNTS_RSCRIPT,
         gtf = 'cellranger_repeats_not_genes'
     output:
-        png = op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes",  "transcriptome_repeats_not_genes.counts.summary.png")
+        png = op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes",  RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png")
     threads: 1
     shell:
        """

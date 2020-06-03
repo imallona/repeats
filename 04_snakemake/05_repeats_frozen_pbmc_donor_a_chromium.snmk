@@ -89,8 +89,8 @@ rule all:
         # op.join(BASE, 'runs', 'pbmc_integration_test.html'),
          expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_cellranger_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
                        regress_nfeature = ['TRUE', 'FALSE']),
-         op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard",  "transcriptome_repeats.counts.summary.png"),
-         op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes",  "transcriptome_repeats_not_genes.counts.summary.png")
+         op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard",  RUN_NAME + "_transcriptome_repeats.counts.summary.png"),
+         op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes",  RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png")
 
 
 # ## srrwhatever is  not a pbmc!
