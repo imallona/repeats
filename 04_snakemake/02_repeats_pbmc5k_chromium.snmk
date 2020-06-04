@@ -18,6 +18,7 @@ RUN_TECH = 'chromium'
 BASE = op.join('/home', 'imallona', 'repeats_sc')
 NTHREADS = 50
 LOCAL_MEM_GB = 100
+GENOME= 'GRCh38'
 
 ## @FIXME to be moved to config
 GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
@@ -109,7 +110,9 @@ rule all:
         op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard_not_overlapping_genes',
                 RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
         op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard", RUN_NAME +  "_transcriptome_repeats.counts.summary.png"),
-        op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes",  RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png")
+        op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes",  RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'quants_mat.gz'),
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'quants_mat.gz')
 
 rule get_pbmc_v3:
     params:

@@ -9,6 +9,211 @@ import os.path as op
 from glob import glob
 
 
+## salmon start
+
+
+
+# https://salmon.readthedocs.io/en/latest/alevin.html
+# ./bin/salmon index -t transcripts.fa -i transcripts_index --decoys decoys.txt -k 31
+## shall I use a decoy? https://github.com/COMBINE-lab/SalmonTools/README.md
+# apparently not
+# **NOTE:** Salmon version [v1.0](https://github.com/COMBINE-lab/salmon/releases/tag/v1.0.0) can directly index the genome and transcriptome and doesn't mandates to run the `generateDecoyTranscriptome` script, however it's still backward compatible. Please checkout [this](https://combine-lab.github.io/alevin-tutorial/2019/selective-alignment/) tutorial on how to run salmon with full genome + transcriptome without the annotation.
+rule index_genes_salmon_no_decoy:
+    input:
+        transcripts = op.join(BASE, 'annotation', op.basename(TRANSCRIPTOME_URL))
+    params:
+        k = 31,
+        path = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon')
+    log:
+        op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'genes_salmon_index.log')
+    threads:
+        NTHREADS
+    output:
+        op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'duplicate_clusters.tsv'),
+        op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'complete_ref_lens.bin')
+    shell:        
+        """
+        mkdir -p {params.path}
+        
+        ({SALMON} index --gencode -p {threads} index \
+           -t {input.transcripts} -i {params.path} -k {params.k})  2> {log}
+
+        touch -c {params.path}
+
+        """
+        
+rule get_transcriptome_fasta:
+    priority:
+        100
+    output:
+        tmp = temp(op.join(BASE, 'annotation', op.basename(TRANSCRIPTOME_URL) + '_temp.fa.gz')),
+        tx = temp(op.join(BASE, 'annotation', op.basename(TRANSCRIPTOME_URL)))
+    params:
+        url = TRANSCRIPTOME_URL
+    threads:
+        NTHREADS
+    shell:
+        """
+        curl -s -L -C - {params.url} -o {output.tmp}
+
+        ## to go from
+        # >ENST00000456328.2|ENSG00000223972.5|OTTHUMG0000000096 (etc)
+        # to
+        # >ENST00000456328.2
+        {PIGZ} -p {threads} --decompress --keep -c {output.tmp}  |  cut -d '|' -f1 | \
+        {PIGZ} -p {threads} -c  > {output.tx}
+        """
+
+
+rule get_decoy:
+    input:
+        transcriptome = op.join(BASE, 'annotation', op.basename(TRANSCRIPTOME_URL))
+    output:        
+        decoys = op.join(BASE, 'annotation', op.splitext(op.basename(TRANSCRIPTOME_URL))[0] + '_transcriptome_decoys.txt')
+    threads:
+       NTHREADS
+    shell:
+        """
+        {PIGZ} --decompress --keep --processes {threads} --to-stdout {input.transcriptome} |  grep ">" | \
+        cut -d ">" -f 2 | cut -d "|" -f 1 > {output.decoys}
+        """
+
+rule index_repeats_salmon_repeats_with_decoy_transcriptome:
+    input:
+        repeats = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.gz'),
+        # genome =  op.join(BASE, 'annotation', op.basename(GENOME_URL)),
+        transcriptome = op.join(BASE, 'annotation', op.basename(TRANSCRIPTOME_URL)),
+        decoys =  op.join(BASE, 'annotation', op.splitext(op.basename(TRANSCRIPTOME_URL))[0] + '_transcriptome_decoys.txt')
+    output:
+        op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
+        op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'complete_ref_lens.bin')
+    params:
+        path = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
+        k = 31
+    threads:
+        NTHREADS
+    log:
+        op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon_index.log')
+    shell:
+        """
+        mkdir -p {params.path}
+        
+        ({SALMON} index -p {threads} \
+          index -t <( zcat {input.repeats} {input.transcriptome}) -i {params.path} -k {params.k} \
+          -d {input.decoys}) 2> {log}
+        """
+
+# rule map_salmon_repeats_chromium:
+#     input:
+
+
+# from https://gist.github.com/k3yavi/c501705ed2d29b12b0d10cf78b3ed001
+## and https://github.com/COMBINE-lab/salmon/issues/336 to get the `attribute` instead of
+##   the group
+rule get_txp2gene_gene:
+    input:
+        genes_gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
+    output:
+        op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'txp2gene.tsv')
+    shell:
+         """
+         {PIGZ} --decompress -p {threads} -c {input.genes_gtf} | \
+           grep transcript | awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+         """
+
+## untested @todo check
+rule get_txp2gene_repeat:
+    input:
+        repeats_gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    output:
+        op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv')
+    params:
+        path = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon')
+    shell:
+        """
+        mkdir -p {params.path}
+        
+        {PIGZ} --decompress -p {threads} -c {input.repeats_gtf} | grep transcript | \
+        awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+        """
+
+rule map_salmon_repeats_chromium:
+    input:        
+        tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
+        idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
+        cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R1*fastq.gz'))),
+        r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R2*fastq.gz')))        
+    output:
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'quants_mat.gz')
+    threads:
+        NTHREADS
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME),
+        processing_path = op.join(BASE, 'runs', RUN_NAME),
+        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
+        cb = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R1*fastq.gz')))),
+        r2 = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R2*fastq.gz')))) 
+    log:
+        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium.log')
+    shell:
+        """
+    mkdir -p {params.processing_path}
+    cd {params.processing_path}
+
+    ({SALMON} alevin \
+    -l ISR \
+    -1 {params.cb} \
+    -2 {params.r2} \
+    --chromiumV3  \
+    -i {params.salmon_idx} \
+    -p {threads} -o {params.processing_path} \
+    --tgMap {input.tgmap} ) 2> {log}
+
+    touch -c {output}
+        """
+    
+
+        
+## beware the cb path for pbmc5k, they shouldn't be there at `RUN_NAME + '_fastqs/` subfoder
+rule map_salmon_genes_chromium:
+    input:        
+        tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'txp2gene.tsv'),
+        idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'duplicate_clusters.tsv'),
+        cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R1*fastq.gz'))),
+        r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R2*fastq.gz')))        
+    output:
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'quants_mat.gz')
+    threads:
+        NTHREADS
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME),
+        processing_path = op.join(BASE, 'runs', RUN_NAME),
+        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon'),
+        cb = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R1*fastq.gz')))),
+        r2 = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R2*fastq.gz')))) 
+    log:
+        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_genes_chromium.log')
+    shell:
+        """
+    mkdir -p {params.processing_path}
+    cd {params.processing_path}
+
+    ({SALMON} alevin \
+    -l ISR \
+    -1 {params.cb} \
+    -2 {params.r2} \
+    --chromiumV3  \
+    -i {params.salmon_idx} \
+    -p {threads} -o {params.processing_path} \
+    --tgMap {input.tgmap} ) 2> {log}
+
+    touch -c {output}
+        """
+                
+## samon end
+
+
+
 rule profile_featurecounts_run_repeats:
     input:        
         summary = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard',
