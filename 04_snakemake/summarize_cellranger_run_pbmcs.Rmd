@@ -62,6 +62,7 @@ library(mclust)
 library(pheatmap)
 library(SCINA)
 library(DT)
+library(clue)
 })
 ```
 
@@ -113,7 +114,7 @@ coef_var <- function(x){
 ##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/SRR10974769/count_repeats_on_cellranger_standard/SRR10974769_repeats.counts.gz",
 ##                identifier = 'test')
 
-params <- list(identifier = "",
+params <- list(identifier = "5k_pbmc_v3",
                genes_cellranger = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
                repeats_cellranger = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
                repeats_featurecounts = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard/5k_pbmc_v3_repeats.counts.gz",
@@ -210,6 +211,100 @@ d$control_repeats_only <- CreateSeuratObject(
 
 rm(tmp)
 ```
+
+
+# Read assignment descriptive
+
+@todo add paths explicitly (not recursive from `params$identifier`)
+
+Four cells selected randomly.
+
+```{r}
+## summaries <- list.files(file.path('/home/imallona', 'repeats_sc', 'runs', params$identifier),
+##                         pattern = '.*summary.*csv', recursive = TRUE)
+## summaries
+
+base <- file.path('/home/imallona', 'repeats_sc', 'runs')
+
+## /home/imallona/repeats_sc/runs/pbmc_10k_v3/cellranger_standard/outs/metrics_summary.csv
+
+summaries_cg <- list(genes_cellranger = file.path(
+                      base, params$identifier, 'cellranger_standard',
+                      'outs', 'metrics_summary.csv'),
+                  repeats_cellranger = file.path(
+                      base, params$identifier, 'cellranger_repeats',
+                      'outs', 'metrics_summary.csv'))
+summaries_fc <- list(
+    repeats_no_overlap = file.path(base, params$identifier, 'count_repeats_on_cellranger_standard_not_overlapping_genes', paste0(params$identifier, '_transcriptome_repeats_not_genes.counts.summary.png_barplot.csv')),
+    repeats_featurecounts = file.path(base, params$identifier, 'count_repeats_on_cellranger_standard',
+                                     paste0(params$identifier, '_transcriptome_repeats.counts.summary.png_barplot.csv')))
+
+                      
+sm <- list()
+
+## summaries cellranger
+for (su in names(summaries_cg)) {
+    tmp <- data.table::fread(summaries_cg[[su]], header = TRUE, sep = ',')
+    tmp <- data.frame(Status = colnames(tmp),
+                      bam = params$identifier,
+                      pct = gsub(',', '', gsub('%', '', tmp[1,])),
+                      count = NA)
+
+    tmp$Status <- gsub(' ', '_', tmp$Status)
+    numreads <- as.numeric(as.character(tmp[tmp$Status == 'Number_of_Reads','pct']))
+    tmp$pct <- as.numeric(gsub(',', '', tmp$pct))
+    tmp$count <- tmp$pct*numreads
+    tmp$id <- su
+    tmp <- tmp[grep('^Reads', tmp$Status),]
+    tmp$id <- su
+    sm[[su]] <- tmp
+}
+
+sm
+
+## summaries_fc
+
+for (su in names(summaries_fc)) {
+    sm[[su]] <- as.data.frame(data.table::fread(summaries_fc[[su]], header = TRUE, drop = 1))
+    
+    sm[[su]]$id <- su
+
+}
+
+sm <- do.call(rbind.data.frame, sm)
+
+sm <- as.data.frame(sm)
+
+
+sm <- sm[sm$Status %in% c('Assigned', 'Unassigned_MultiMapping', 'Unassigned_NoFeatures',
+                          'Unassigned_Ambiguity', 'Reads_Mapped_Confidently_to_Exonic_Regions',
+                          'Reads_Mapped_Confidently_to_Intergenic_Regions',
+                          'Reads_Mapped_Confidently_to_Transcriptome',
+                          'Reads_Mapped_Confidently_to_Intronic_Regions'),]
+
+sm$id <- factor(sm$id)
+
+## head(sm)
+## table(sm$bam)
+sm$cell <- gsub('_Aligned.sortedByCoord.out', '', sm$bam)
+sm$cell <- gsub('.bam', '', sm$cell)
+
+```
+
+```{r, fig.width = 8, fig.height = 8}
+ggplot(data=as.data.frame(sm), aes(x=id, y=pct, col = cell, group = cell)) +
+    geom_point() + geom_line()+
+    facet_wrap(~Status, ncol = 4)+
+    geom_text(aes(label=sprintf('%.2g', count)), size=3,
+              vjust = -0.5) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    ylab ('read assignments (%; text indicate counts)') +
+    xlab('status') + ggtitle(params$identifier) +
+    theme(legend.position="bottom") +  guides(col = guide_legend(nrow = 3))
+
+```
+
+
 # Basic Seurat processing
 
 ## QC before filtering {.tabset}
@@ -1200,7 +1295,12 @@ for (item in names(d)) {
 
 ```
 
+```{r}
+ml <- list()
+```
+
 ## genes_cellranger
+
 
 ```{r}
 item <- 'genes_cellranger'
@@ -1208,7 +1308,7 @@ Idents(d[[item]]) <- 'scina'
 ## find markers for every scina identity (discarding the unplaced); report only positives   
 markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
                           only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-
+ml[[item]] <- markers
 DT::datatable(markers)
 
 ```
@@ -1221,7 +1321,7 @@ Idents(d[[item]]) <- 'scina'
 ## find markers for every scina identity (discarding the unplaced); report only positives   
 markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
                           only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-
+ml[[item]] <- markers
 DT::datatable(markers)
 
 ```
@@ -1235,7 +1335,7 @@ Idents(d[[item]]) <- 'scina'
 ## find markers for every scina identity (discarding the unplaced); report only positives   
 markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
                           only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-
+ml[[item]] <- markers
 DT::datatable(markers)
 
 ```
@@ -1248,11 +1348,442 @@ Idents(d[[item]]) <- 'scina'
 ## find markers for every scina identity (discarding the unplaced); report only positives   
 markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
                           only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-
+ml[[item]] <- markers
 DT::datatable(markers)
 
 ```
 
+# F1-based
+
+Largely derived from Lukas Weber's https://github.com/lmweber/cytometry-clustering-comparison/blob/master/helpers/helper_match_evaluate_multiple.R (Hungarian algorithm)
+
+@todo document parameters
+
+```{r}
+## arguments:
+## - clus_algorithm: cluster labels from algorithm
+## - clus_truth: true cluster labels
+## (for both arguments: length = number of cells; names = cluster labels (integers))
+hungarian_weber <- function(clus_algorithm, clus_truth) {
+    ## number of detected clusters
+    n_clus <- length(table(clus_algorithm))
+    
+    ## remove unassigned cells (NA's in clus_truth)
+    unassigned <- is.na(clus_truth)
+    clus_algorithm <- clus_algorithm[!unassigned]
+    clus_truth <- clus_truth[!unassigned]
+    if (length(clus_algorithm) != length(clus_truth)) warning("vector lengths are not equal")
+    
+    tbl_algorithm <- table(clus_algorithm)
+    tbl_truth <- table(clus_truth)
+    
+    ## detected clusters in rows, true populations in columns
+    pr_mat <- re_mat <- F1_mat <- matrix(NA, nrow = length(tbl_algorithm), ncol = length(tbl_truth))
+    
+    for (i in 1:length(tbl_algorithm)) {
+        for (j in 1:length(tbl_truth)) {
+            i_int <- as.integer(names(tbl_algorithm))[i]  ## cluster number from algorithm
+            j_int <- as.integer(names(tbl_truth))[j]  ## cluster number from true labels
+            
+            true_positives <- sum(clus_algorithm == i_int & clus_truth == j_int, na.rm = TRUE)
+            detected <- sum(clus_algorithm == i_int, na.rm = TRUE)
+            truth <- sum(clus_truth == j_int, na.rm = TRUE)
+            
+            ## calculate precision, recall, and F1 score
+            precision_ij <- true_positives / detected
+            recall_ij <- true_positives / truth
+            F1_ij <- 2 * (precision_ij * recall_ij) / (precision_ij + recall_ij)
+            
+            if (F1_ij == "NaN") F1_ij <- 0
+            
+            pr_mat[i, j] <- precision_ij
+            re_mat[i, j] <- recall_ij
+            F1_mat[i, j] <- F1_ij
+        }
+    }
+    
+    ## put back cluster labels (note some row names may be missing due to removal of unassigned cells)
+    rownames(pr_mat) <- rownames(re_mat) <- rownames(F1_mat) <- names(tbl_algorithm)
+    colnames(pr_mat) <- colnames(re_mat) <- colnames(F1_mat) <- names(tbl_truth)
+    
+    ## match labels using Hungarian algorithm applied to matrix of F1 scores (Hungarian
+    ## algorithm calculates an optimal one-to-one assignment)
+    
+    ## use transpose matrix (Hungarian algorithm assumes n_rows <= n_cols)
+    F1_mat_trans <- t(F1_mat)
+    
+    if (nrow(F1_mat_trans) <= ncol(F1_mat_trans)) {
+        ## if fewer (or equal no.) true populations than detected clusters, can match all true populations
+        labels_matched <- clue::solve_LSAP(F1_mat_trans, maximum = TRUE)
+        ## use row and column names since some labels may have been removed due to unassigned cells
+        labels_matched <- as.numeric(colnames(F1_mat_trans)[as.numeric(labels_matched)])
+        names(labels_matched) <- rownames(F1_mat_trans)
+        
+    } else {
+        ## if fewer detected clusters than true populations, use transpose matrix and assign
+        ## NAs for true populations without any matching clusters
+        labels_matched_flipped <- clue::solve_LSAP(F1_mat, maximum = TRUE)
+        ## use row and column names since some labels may have been removed due to unassigned cells
+        labels_matched_flipped <- as.numeric(rownames(F1_mat_trans)[as.numeric(labels_matched_flipped)])
+        names(labels_matched_flipped) <- rownames(F1_mat)
+        
+        labels_matched <- rep(NA, ncol(F1_mat))
+        names(labels_matched) <- rownames(F1_mat_trans)
+        labels_matched[as.character(labels_matched_flipped)] <- as.numeric(names(labels_matched_flipped))
+    }
+    
+    ## precision, recall, F1 score, and number of cells for each matched cluster
+    pr <- re <- F1 <- n_cells_matched <- rep(NA, ncol(F1_mat))
+    names(pr) <- names(re) <- names(F1) <- names(n_cells_matched) <- names(labels_matched)
+    
+    for (i in 1:ncol(F1_mat)) {
+        ## set to 0 if no matching cluster (too few detected clusters); use character names 
+        ## for row and column indices in case subsampling completely removes some clusters
+        pr[i] <- ifelse(is.na(labels_matched[i]), 0, pr_mat[as.character(labels_matched[i]), names(labels_matched)[i]])
+        re[i] <- ifelse(is.na(labels_matched[i]), 0, re_mat[as.character(labels_matched[i]), names(labels_matched)[i]])
+        F1[i] <- ifelse(is.na(labels_matched[i]), 0, F1_mat[as.character(labels_matched[i]), names(labels_matched)[i]])
+        
+        n_cells_matched[i] <- sum(clus_algorithm == labels_matched[i], na.rm = TRUE)
+    }
+    
+    ## means across populations
+    mean_pr <- mean(pr)
+    mean_re <- mean(re)
+    mean_F1 <- mean(F1)
+    
+    return(list(n_clus = n_clus, 
+                pr = pr, 
+                re = re, 
+                F1 = F1, 
+                labels_matched = labels_matched, 
+                n_cells_matched = n_cells_matched, 
+                mean_pr = mean_pr, 
+                mean_re = mean_re, 
+                mean_F1 = mean_F1))
+}
+
+
+```
+
+F1 based
+
+hungarian weber should get 'truth' names
+
+```{r}
+## arguments:
+## - clus_algorithm: cluster labels from algorithm
+## - clus_truth: true cluster labels
+## (for both arguments: length = number of cells; names = cluster labels (integers))
+hungarian_weber <- function(clus_algorithm, clus_truth) {
+    ## number of detected clusters
+    n_clus <- length(table(clus_algorithm))
+    
+    ## remove unassigned cells (NA's in clus_truth)
+    unassigned <- is.na(clus_truth)
+    clus_algorithm <- clus_algorithm[!unassigned]
+    clus_truth <- clus_truth[!unassigned]
+    if (length(clus_algorithm) != length(clus_truth)) warning("vector lengths are not equal")
+    
+    tbl_algorithm <- table(clus_algorithm)
+    tbl_truth <- table(clus_truth)
+    
+    ## detected clusters in rows, true populations in columns
+    pr_mat <- re_mat <- F1_mat <- matrix(NA, nrow = length(tbl_algorithm), ncol = length(tbl_truth))
+    
+    for (i in 1:length(tbl_algorithm)) {
+        for (j in 1:length(tbl_truth)) {
+            i_int <- as.integer(names(tbl_algorithm))[i]  ## cluster number from algorithm
+            j_int <- as.integer(names(tbl_truth))[j]  ## cluster number from true labels
+            
+            true_positives <- sum(clus_algorithm == i_int & clus_truth == j_int, na.rm = TRUE)
+            detected <- sum(clus_algorithm == i_int, na.rm = TRUE)
+            truth <- sum(clus_truth == j_int, na.rm = TRUE)
+            
+            ## calculate precision, recall, and F1 score
+            precision_ij <- true_positives / detected
+            recall_ij <- true_positives / truth
+            F1_ij <- 2 * (precision_ij * recall_ij) / (precision_ij + recall_ij)
+            
+            if (F1_ij == "NaN") F1_ij <- 0
+            
+            pr_mat[i, j] <- precision_ij
+            re_mat[i, j] <- recall_ij
+            F1_mat[i, j] <- F1_ij
+        }
+    }
+    
+    ## put back cluster labels (note some row names may be missing due to removal of unassigned cells)
+    rownames(pr_mat) <- rownames(re_mat) <- rownames(F1_mat) <- names(tbl_algorithm)
+    colnames(pr_mat) <- colnames(re_mat) <- colnames(F1_mat) <- names(tbl_truth)
+    
+    ## match labels using Hungarian algorithm applied to matrix of F1 scores (Hungarian
+    ## algorithm calculates an optimal one-to-one assignment)
+    
+    ## use transpose matrix (Hungarian algorithm assumes n_rows <= n_cols)
+    F1_mat_trans <- t(F1_mat)
+    
+    if (nrow(F1_mat_trans) <= ncol(F1_mat_trans)) {
+        ## if fewer (or equal no.) true populations than detected clusters, can match all true populations
+        labels_matched <- clue::solve_LSAP(F1_mat_trans, maximum = TRUE)
+        ## use row and column names since some labels may have been removed due to unassigned cells
+        labels_matched <- as.numeric(colnames(F1_mat_trans)[as.numeric(labels_matched)])
+        names(labels_matched) <- rownames(F1_mat_trans)
+        
+    } else {
+        ## if fewer detected clusters than true populations, use transpose matrix and assign
+        ## NAs for true populations without any matching clusters
+        labels_matched_flipped <- clue::solve_LSAP(F1_mat, maximum = TRUE)
+        ## use row and column names since some labels may have been removed due to unassigned cells
+        labels_matched_flipped <- as.numeric(rownames(F1_mat_trans)[as.numeric(labels_matched_flipped)])
+        names(labels_matched_flipped) <- rownames(F1_mat)
+        
+        labels_matched <- rep(NA, ncol(F1_mat))
+        names(labels_matched) <- rownames(F1_mat_trans)
+        labels_matched[as.character(labels_matched_flipped)] <- as.numeric(names(labels_matched_flipped))
+    }
+    
+    ## precision, recall, F1 score, and number of cells for each matched cluster
+    pr <- re <- F1 <- n_cells_matched <- rep(NA, ncol(F1_mat))
+    names(pr) <- names(re) <- names(F1) <- names(n_cells_matched) <- names(labels_matched)
+    
+    for (i in 1:ncol(F1_mat)) {
+        ## set to 0 if no matching cluster (too few detected clusters); use character names 
+        ## for row and column indices in case subsampling completely removes some clusters
+        pr[i] <- ifelse(is.na(labels_matched[i]), 0, pr_mat[as.character(labels_matched[i]), names(labels_matched)[i]])
+        re[i] <- ifelse(is.na(labels_matched[i]), 0, re_mat[as.character(labels_matched[i]), names(labels_matched)[i]])
+        F1[i] <- ifelse(is.na(labels_matched[i]), 0, F1_mat[as.character(labels_matched[i]), names(labels_matched)[i]])
+        
+        n_cells_matched[i] <- sum(clus_algorithm == labels_matched[i], na.rm = TRUE)
+    }
+    
+    ## means across populations
+    mean_pr <- mean(pr)
+    mean_re <- mean(re)
+    mean_F1 <- mean(F1)
+    
+    return(list(n_clus = n_clus, 
+                pr = pr, 
+                re = re, 
+                F1 = F1, 
+                labels_matched = labels_matched, 
+                n_cells_matched = n_cells_matched, 
+                mean_pr = mean_pr, 
+                mean_re = mean_re, 
+                mean_F1 = mean_F1))
+}
+
+```
+
+
+```{r}
+hung <- list()
+i <- 1
+for (genes_res in seq(0.2, 2, 0.2)) {
+    genes_res <- sprintf('RNA_snn_res.%s', genes_res)
+    rownames(d$genes_cellranger@meta.data) <- d$genes_cellranger@meta.data$cell
+    known <- rownames(d$genes_cellranger@meta.data[d$genes_cellranger@meta.data$scina != 'unknown',])
+
+    length(as.factor(d$genes_cellranger@meta.data[known, genes_res]))
+    length(as.factor(d$genes_cellranger@meta.data[known, 'scina']))
+    hung[[i]] <- hungarian_weber(as.numeric(d$genes_cellranger@meta.data[known, genes_res]),
+                                 as.numeric(d$genes_cellranger@meta.data[known, 'scina']))
+
+    ## c(sprintf('genes_%s (n=%s)', genes_res,
+    ##                        length(unique(d$genes_cellranger@meta.data[known, genes_res]))),
+    ##                sprintf('scina_%s (n=%s)', 'scina',
+    ##                        length(unique(d$genes_cellranger@meta.data[known, 'scina']))),
+    ##                adjustedRandIndex(d$genes_cellranger@meta.data[known, genes_res],
+    ##                                  d$genes_cellranger@meta.data[known, 'scina']))
+                                     
+
+    i <- i +1
+}    
+
+## hung <- do.call(rbind.data.frame, hung)
+## colnames(hung) <- c('genes_res', 'scina', 'ari')
+## hung$ari <- as.numeric(as.character(hung$ari))
+str(hung)
+```
+
+
+```{r}
+map_levels <- function(x){
+    ## x<- as.character(iris$Species)
+    if(is.factor(x)) { 
+        nlevs <- nlevels(x)
+        levs <- levels(x)
+    } else {   # character
+        levs <- unique(x)
+        nlevs <- length(levs)
+    }
+    fd <- data.frame(level = levs, code = 1:nlevs)
+    return(fd)
+}
+
+## data(iris)
+## map_levels(iris$Species)
+## map_levels(as.character(iris$Species))
+```
+
+```{r}
+
+clus_algorithm <- d$genes_cellranger@meta.data[known, genes_res]
+str(clus_algorithm)
+
+clus_truth <- d$genes_cellranger@meta.data[known, 'scina']
+as.character(clus_truth)
+
+## inputs are factor vectors
+hungarian_weber_with_labels <- function(clus_algorithm, clus_truth) {    
+    ## number of detected clusters
+    n_clus <- length(table(clus_algorithm))
+
+    clus_names <- map_levels(clus_algorithm)
+    clus <- as.numeric(clus_algorithm)
+
+    truth_names <- map_levels(clus_truth)
+    clus_truth <- as.numeric(clus_truth)
+
+    ## remove unassigned cells (NA's in clus_truth)
+    unassigned <- is.na(clus_truth)
+    clus <- clus[!unassigned]
+    clus_truth <- clus_truth[!unassigned]
+    if (length(clus) != length(clus_truth)) warning("vector lengths are not equal")
+    
+    tbl_algorithm <- table(clus)
+    tbl_truth <- table(clus_truth)
+
+    ## detected clusters in rows, true populations in columns
+    pr_mat <- re_mat <- F1_mat <- matrix(NA, nrow = length(tbl_algorithm), ncol = length(tbl_truth))
+    
+    for (i in 1:length(tbl_algorithm)) {
+        for (j in 1:length(tbl_truth)) {
+            i_int <- as.integer(names(tbl_algorithm))[i]  ## cluster number from algorithm
+            j_int <- as.integer(names(tbl_truth))[j]  ## cluster number from true labels
+            j_label <- as.character(truth_names[truth_names$code== j_int, 'level'])
+                
+            true_positives <- sum(clus == i_int & clus_truth == j_int, na.rm = TRUE)
+            detected <- sum(clus == i_int, na.rm = TRUE)
+            truth <- sum(clus_truth == j_int, na.rm = TRUE)
+            
+            ## calculate precision, recall, and F1 score
+            precision_ij <- true_positives / detected
+            recall_ij <- true_positives / truth
+            F1_ij <- 2 * (precision_ij * recall_ij) / (precision_ij + recall_ij)
+            
+            if (F1_ij == "NaN") F1_ij <- 0
+            
+            pr_mat[i, j] <- precision_ij
+            re_mat[i, j] <- recall_ij
+            F1_mat[i, j] <- F1_ij
+        }
+    }
+    
+    ## put back cluster labels (note some row names may be missing due to removal of unassigned cells)
+    rownames(pr_mat) <- rownames(re_mat) <- rownames(F1_mat) <- names(tbl_algorithm)
+    colnames(pr_mat) <- colnames(re_mat) <- colnames(F1_mat) <- names(tbl_truth)
+  
+    ## match labels using Hungarian algorithm applied to matrix of F1 scores (Hungarian
+    ## algorithm calculates an optimal one-to-one assignment)
+    
+    ## use transpose matrix (Hungarian algorithm assumes n_rows <= n_cols)
+    F1_mat_trans <- t(F1_mat)
+    
+    if (nrow(F1_mat_trans) <= ncol(F1_mat_trans)) {
+        ## if fewer (or equal no.) true populations than detected clusters, can match all true populations
+        labels_matched <- clue::solve_LSAP(F1_mat_trans, maximum = TRUE)
+        ## use row and column names since some labels may have been removed due to unassigned cells
+        labels_matched <- as.numeric(colnames(F1_mat_trans)[as.numeric(labels_matched)])
+        names(labels_matched) <- rownames(F1_mat_trans)
+        
+    } else {
+        ## if fewer detected clusters than true populations, use transpose matrix and assign
+        ## NAs for true populations without any matching clusters
+        labels_matched_flipped <- clue::solve_LSAP(F1_mat, maximum = TRUE)
+        ## use row and column names since some labels may have been removed due to unassigned cells
+        labels_matched_flipped <- as.numeric(rownames(F1_mat_trans)[as.numeric(labels_matched_flipped)])
+        names(labels_matched_flipped) <- rownames(F1_mat)
+        
+        labels_matched <- rep(NA, ncol(F1_mat))
+        names(labels_matched) <- rownames(F1_mat_trans)
+        labels_matched[as.character(labels_matched_flipped)] <- as.numeric(names(labels_matched_flipped))
+    }
+    
+    ## precision, recall, F1 score, and number of cells for each matched cluster
+    pr <- re <- F1 <- n_cells_matched <- rep(NA, ncol(F1_mat))
+    names(pr) <- names(re) <- names(F1) <- names(n_cells_matched) <- names(labels_matched)
+    
+    for (i in 1:ncol(F1_mat)) {
+        ## set to 0 if no matching cluster (too few detected clusters); use character names 
+        ## for row and column indices in case subsampling completely removes some clusters
+        pr[i] <- ifelse(is.na(labels_matched[i]), 0, pr_mat[as.character(labels_matched[i]), names(labels_matched)[i]])
+        re[i] <- ifelse(is.na(labels_matched[i]), 0, re_mat[as.character(labels_matched[i]), names(labels_matched)[i]])
+        F1[i] <- ifelse(is.na(labels_matched[i]), 0, F1_mat[as.character(labels_matched[i]), names(labels_matched)[i]])
+        
+        n_cells_matched[i] <- sum(clus == labels_matched[i], na.rm = TRUE)
+    }
+    
+    ## means across populations
+    mean_pr <- mean(pr)
+    mean_re <- mean(re)
+    mean_F1 <- mean(F1)
+
+    ## add back proper naming
+    ## names(pr)
+    ## names(clus)
+    ## class(labels_matched)
+
+    ## add back original names
+    for (item in c('pr', 're', 'F1', 'labels_matched', 'n_cells_matched')) {
+        curr <- get(item)
+        names(curr) <- truth_names[names(curr), 'level']
+        assign(item, curr) 
+    }
+   
+    return(list(n_clus = n_clus, 
+                pr = pr, 
+                re = re, 
+                F1 = F1, 
+                labels_matched = labels_matched, 
+                n_cells_matched = n_cells_matched, 
+                mean_pr = mean_pr, 
+                mean_re = mean_re, 
+                mean_F1 = mean_F1))
+}
+
+```
+
+
+
+```{r}
+hung <- list()
+i <- 1
+for (genes_res in seq(0.2, 2, 0.2)) {
+    genes_res <- sprintf('RNA_snn_res.%s', genes_res)
+    rownames(d$genes_cellranger@meta.data) <- d$genes_cellranger@meta.data$cell
+    known <- rownames(d$genes_cellranger@meta.data[d$genes_cellranger@meta.data$scina != 'unknown',])
+
+    length(as.factor(d$genes_cellranger@meta.data[known, genes_res]))
+    length(as.factor(d$genes_cellranger@meta.data[known, 'scina']))
+    hung[[genes_res]] <- hungarian_weber_with_labels(d$genes_cellranger@meta.data[known, genes_res],
+                                 d$genes_cellranger@meta.data[known, 'scina'])
+
+    ## c(sprintf('genes_%s (n=%s)', genes_res,
+    ##                        length(unique(d$genes_cellranger@meta.data[known, genes_res]))),
+    ##                sprintf('scina_%s (n=%s)', 'scina',
+    ##                        length(unique(d$genes_cellranger@meta.data[known, 'scina']))),
+    ##                adjustedRandIndex(d$genes_cellranger@meta.data[known, genes_res],
+    ##                                  d$genes_cellranger@meta.data[known, 'scina']))
+                                     
+
+    ## i <- i +1
+}    
+
+## hung <- do.call(rbind.data.frame, hung)
+## colnames(hung) <- c('genes_res', 'scina', 'ari')
+## hung$ari <- as.numeric(as.character(hung$ari))
+str(hung)
+```
 
 
 # Export objects

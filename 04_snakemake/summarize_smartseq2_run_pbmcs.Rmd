@@ -177,14 +177,24 @@ featurecounts_to_seurat <- function(fn, identifier, add_gene_symbols = FALSE, re
 
 ```{r justfordebugging, eval = FALSE}
 
-params <- list(identifier = "",
-               genes_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/genes/pbmcs_smartseq2_ding_star_genes.counts.gz',
-               repeats_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz',
-               repeats_bowtie = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz',
-               repeats_no_overlap_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz',
+params <- list(identifier = "pbmcs_smartseq2_ding",
+               genes_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/genes/SRR9169209_Aligned.sortedByCoord.out.bam.counts.gz',
+               repeats_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats/SRR9169209_Aligned.sortedByCoord.out.bam.counts.gz',
+               repeats_bowtie = '/home/imallona/repeats_sc/runs/ding_celseq2/bowtie_repeatome/SRR9169209_bowtie_repeats.counts.gz',
+               repeats_no_overlap_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats_no_overlap/SRR9169209_repeats_no_overlap.counts.gz',
                seurat_output = "/home/imallona/tmp/test.rds",
                regress_genes_nCount = FALSE,
                regress_genes_nFeatures = FALSE)
+
+
+## params <- list(identifier = "",
+##                genes_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/genes/pbmcs_smartseq2_ding_star_genes.counts.gz',
+##                repeats_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz',
+##                repeats_bowtie = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz',
+##                repeats_no_overlap_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz',
+##                seurat_output = "/home/imallona/tmp/test.rds",
+##                regress_genes_nCount = FALSE,
+##                regress_genes_nFeatures = FALSE)
 
 
 
@@ -221,6 +231,75 @@ d$repeats_no_overlap_star <- featurecounts_to_seurat(
     identifier = sprintf('%s_%s', params$identifier, 'repeats_no_overlap_star'))
 
 ```
+
+# Read assignment descriptive
+
+@todo add paths explicitly (not recursive from `params$identifier`)
+
+Four cells selected randomly.
+
+```{r}
+## summaries <- list.files(file.path('/home/imallona', 'repeats_sc', 'runs', params$identifier),
+##                         pattern = '.*summary.*csv', recursive = TRUE)
+## summaries
+
+base <- file.path('/home/imallona', 'repeats_sc', 'runs')
+summaries <- list(repeats_bowtie = file.path(
+                      base, params$identifier, 'bowtie_repeatome',
+                      paste0(params$identifier, '_bowtie_repeats.counts.summary.png_barplot.csv')),
+                  genes_star = file.path(
+                      base, params$identifier, 'star_transcriptome/genes',
+                      paste0(params$identifier, '_genes.counts.summary.png_barplot.csv')),             
+                  repeats_star = file.path(
+                      base, params$identifier, 'star_transcriptome/repeats',
+                      paste0(params$identifier, '_repeats.counts.summary.png_barplot.csv')),
+                  repeats_no_overlap_star =  file.path(
+                      base, params$identifier, 'star_transcriptome/repeats_no_overlap',
+                      paste0(params$identifier, '_repeats_no_overlap.counts.summary.png_barplot.csv')))
+
+sm <- list()
+for (su in names(summaries)) {
+    sm[[su]] <- data.table::fread(summaries[[su]], header = TRUE)
+    sm[[su]]$id <- su
+
+}
+sm <- do.call(rbind.data.frame, sm)
+
+## ggplot(sm, aes(x=Status, y = pct)) +
+##     geom_bar(stat="identity") +
+##     facet_wrap(~id) +
+##     geom_text(aes(label=sprintf('%.2g', count)), size=3,
+##               vjust = -0.5) +
+##     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+##     ylab ('read assignments (%)') +
+##     ggtitle(sprintf('GTF %s', opt$id))
+sm <- as.data.frame(sm)
+## str(sm)
+## table(sm$Status)
+
+sm <- sm[sm$Status %in% c('Assigned', 'Unassigned_MultiMapping', 'Unassigned_NoFeatures',
+                          'Unassigned_Ambiguity'),]
+
+sm$id <- factor(sm$id)
+
+## head(sm)
+## table(sm$bam)
+sm$cell <- gsub('_Aligned.sortedByCoord.out', '', sm$bam)
+sm$cell <- gsub('.bam', '', sm$cell)
+
+```
+
+```{r, fig.width = 10, fig.height = 6}
+ggplot(data=as.data.frame(sm), aes(x=id, y=pct, col = cell, group = cell)) +
+    geom_point() + geom_line()+
+    facet_wrap(~Status, ncol = 4)+
+    geom_text(aes(label=sprintf('%.2g', count)), size=3,
+              vjust = -0.5) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    ylab ('read assignments (%; text indicate counts)') +
+    xlab('status') + ggtitle(params$identifier)
+
+```    
 
 # Basic Seurat processing
 
@@ -879,7 +958,7 @@ aris_stored <- list(aris)
 
 # Diferential repeat expression by SCINA identity {.tabset}
 
-```{r, results = 'asis'}
+```{r, results = 'asis', eval = FALSE}
 for (item in names(d)) {
     cat('## ', item, '\n\n')
     
@@ -894,6 +973,67 @@ for (item in names(d)) {
 }
 
 ```
+
+```{r}
+ml <- list()
+```
+
+## genes_star
+
+```{r}
+item <- 'genes_star'
+Idents(d[[item]]) <- 'scina'
+## find markers for every scina identity (discarding the unplaced); report only positives   
+markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
+                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+ml[[item]] <- markers
+DT::datatable(markers)
+
+```
+
+## repeats_star
+
+```{r}
+item <- 'repeats_star'
+Idents(d[[item]]) <- 'scina'
+## find markers for every scina identity (discarding the unplaced); report only positives   
+markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
+                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+ml[[item]] <- markers
+DT::datatable(markers)
+
+```
+
+
+## repeats_bowtie
+
+```{r}
+item <- 'repeats_bowtie'
+Idents(d[[item]]) <- 'scina'
+## find markers for every scina identity (discarding the unplaced); report only positives   
+markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
+                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+ml[[item]] <- markers
+DT::datatable(markers)
+
+```
+
+## repeats_no_overlap_star
+
+```{r}
+item <- 'repeats_no_overlap_star'
+Idents(d[[item]]) <- 'scina'
+## find markers for every scina identity (discarding the unplaced); report only positives   
+markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
+                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+ml[[item]] <- markers
+DT::datatable(markers)
+
+```
+
 # Export objects
 
 List of seurat objects

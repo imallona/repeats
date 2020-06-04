@@ -111,8 +111,8 @@ rule all:
                 RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
         op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard", RUN_NAME +  "_transcriptome_repeats.counts.summary.png"),
         op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes",  RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
-        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'quants_mat.gz'),
-        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'quants_mat.gz')
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
 
 rule get_pbmc_v3:
     params:

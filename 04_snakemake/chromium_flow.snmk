@@ -144,12 +144,12 @@ rule map_salmon_repeats_chromium:
         cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R1*fastq.gz'))),
         r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R2*fastq.gz')))        
     output:
-        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'quants_mat.gz')
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
     threads:
         NTHREADS
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        processing_path = op.join(BASE, 'runs', RUN_NAME),
+        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats'),
         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
         cb = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R1*fastq.gz')))),
         r2 = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R2*fastq.gz')))) 
@@ -182,12 +182,12 @@ rule map_salmon_genes_chromium:
         cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R1*fastq.gz'))),
         r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R2*fastq.gz')))        
     output:
-        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'quants_mat.gz')
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz')
     threads:
         NTHREADS
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        processing_path = op.join(BASE, 'runs', RUN_NAME),
+        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes'),
         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon'),
         cb = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R1*fastq.gz')))),
         r2 = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R2*fastq.gz')))) 
