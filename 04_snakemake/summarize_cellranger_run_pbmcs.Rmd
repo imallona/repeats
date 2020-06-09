@@ -64,6 +64,7 @@ library(SCINA)
 library(DT)
 library(clue)
 library(iCOBRA)
+library(RColorBrewer)
 })
 ```
 
@@ -534,11 +535,6 @@ for (item in names(d)) {
 }
 ```
 
-<!-- ## Correlation all repeats vs repeats not overlapping genes -->
-
-<!-- ```{r} -->
-<!-- plot(d$ -->
-<!-- ``` -->
 
 # SCINA-based PBMC annotations
 
@@ -700,6 +696,7 @@ Platelet	SPARC	+
 Platelet	RGS18	+
 Platelet	MYL9	+
 Platelet	GNG11	+', header = TRUE, sep = '\t', stringsAsFactors = FALSE)
+
 ```
 
 ```{r}
@@ -723,6 +720,9 @@ table(named$cell_labels)
 ## plotheat.SCINA(exp = GetAssayData(d$genes, slot = 'data'),
 ##                 signatures = pos_markers2, results = named)
 ```
+
+
+
 
 ## Confusion matrices with clustering results {.tabset}
 
@@ -843,6 +843,64 @@ for (slot in c('repeats_cellranger', 'repeats_featurecounts', 'control_repeats_o
     cat('\n\n')
 }
 ```
+
+
+
+# Dimred PCA comparing modalities and SCINA {.tabset}
+
+Colour by SCINA
+
+```{r, fig.width = 5.1, fig.height = 5.1, results = 'asis'}
+
+for (flavour1 in names(d)) {
+    ## d[[flavour]][["pca"]]
+    ## ## A dimensional reduction object with key PC_ 
+    ## ##  Number of dimensions: 50 
+    ## ##  Projected dimensional reduction calculated:  FALSE 
+    ## ##  Jackstraw run: TRUE 
+    ## ##  Computed using assay: RNA
+    ## head(Embeddings(d[[flavour]], reduction = "pca")[, 1:5])
+    ## head(Loadings(d[[flavour]], reduction = "pca")[, 1:5])
+    for (flavour2 in setdiff(names(d), flavour1)) {
+        cat('## ', flavour1, flavour2, '\n\n')
+    
+        common <- intersect(rownames(Embeddings(d[[flavour1]])),
+                            rownames(Embeddings(d[[flavour2]])))
+
+        palette <- brewer.pal(n = nlevels(d[[flavour1]]@meta.data$scina), name = "Paired")
+
+        for (i in 1:5) {
+            for (j in 1:5) {
+                par(mar=c(5.1, 4.1, 7.1, 2.1))
+                ## par(mfrow = c(5,5))
+                plot(x = Embeddings(d[[flavour1]], reduction = "pca")[common,i],
+                     y = Embeddings(d[[flavour2]], reduction = "pca")[common,j],
+                     ## main = sprintf('flavour1 %s PC %s\nflavour2 %s PC %s',
+                                    ## flavour1, i, flavour2, j),
+                     col = palette[as.numeric(d[[flavour1]]@meta.data[common, 'scina'])],
+                     pch = 19, cex = 0.5,
+                     xlab = sprintf('%s PC %s', flavour1, i),
+                     ylab = sprintf('%s PC %s', flavour2, j))
+
+                ## if (i == 1 & j == 1) {
+                    legend('top',
+                           legend = levels(d[[flavour1]]@meta.data[common, 'scina']),
+                           col = palette[1:nlevels(d[[flavour1]]@meta.data[common, 'scina'])],
+                           pch=19, cex=0.8,
+                           inset=c(0,-0.42),
+                           ncol = 2,
+                           xpd = TRUE)
+                ## }
+            }
+        }
+
+        cat('\n\n')
+    }
+}
+
+
+```
+
 
 # Descriptive (clustering) {.tabset}
 
@@ -1363,112 +1421,6 @@ Largely derived from Lukas Weber's https://github.com/lmweber/cytometry-clusteri
 @todo document parameters
 
 ```{r}
-## arguments:
-## - clus_algorithm: cluster labels from algorithm
-## - clus_truth: true cluster labels
-## (for both arguments: length = number of cells; names = cluster labels (integers))
-hungarian_weber <- function(clus_algorithm, clus_truth) {
-    ## number of detected clusters
-    n_clus <- length(table(clus_algorithm))
-    
-    ## remove unassigned cells (NA's in clus_truth)
-    unassigned <- is.na(clus_truth)
-    clus_algorithm <- clus_algorithm[!unassigned]
-    clus_truth <- clus_truth[!unassigned]
-    if (length(clus_algorithm) != length(clus_truth)) warning("vector lengths are not equal")
-    
-    tbl_algorithm <- table(clus_algorithm)
-    tbl_truth <- table(clus_truth)
-    
-    ## detected clusters in rows, true populations in columns
-    pr_mat <- re_mat <- F1_mat <- matrix(NA, nrow = length(tbl_algorithm), ncol = length(tbl_truth))
-    
-    for (i in 1:length(tbl_algorithm)) {
-        for (j in 1:length(tbl_truth)) {
-            i_int <- as.integer(names(tbl_algorithm))[i]  ## cluster number from algorithm
-            j_int <- as.integer(names(tbl_truth))[j]  ## cluster number from true labels
-            
-            true_positives <- sum(clus_algorithm == i_int & clus_truth == j_int, na.rm = TRUE)
-            detected <- sum(clus_algorithm == i_int, na.rm = TRUE)
-            truth <- sum(clus_truth == j_int, na.rm = TRUE)
-            
-            ## calculate precision, recall, and F1 score
-            precision_ij <- true_positives / detected
-            recall_ij <- true_positives / truth
-            F1_ij <- 2 * (precision_ij * recall_ij) / (precision_ij + recall_ij)
-            
-            if (F1_ij == "NaN") F1_ij <- 0
-            
-            pr_mat[i, j] <- precision_ij
-            re_mat[i, j] <- recall_ij
-            F1_mat[i, j] <- F1_ij
-        }
-    }
-    
-    ## put back cluster labels (note some row names may be missing due to removal of unassigned cells)
-    rownames(pr_mat) <- rownames(re_mat) <- rownames(F1_mat) <- names(tbl_algorithm)
-    colnames(pr_mat) <- colnames(re_mat) <- colnames(F1_mat) <- names(tbl_truth)
-    
-    ## match labels using Hungarian algorithm applied to matrix of F1 scores (Hungarian
-    ## algorithm calculates an optimal one-to-one assignment)
-    
-    ## use transpose matrix (Hungarian algorithm assumes n_rows <= n_cols)
-    F1_mat_trans <- t(F1_mat)
-    
-    if (nrow(F1_mat_trans) <= ncol(F1_mat_trans)) {
-        ## if fewer (or equal no.) true populations than detected clusters, can match all true populations
-        labels_matched <- clue::solve_LSAP(F1_mat_trans, maximum = TRUE)
-        ## use row and column names since some labels may have been removed due to unassigned cells
-        labels_matched <- as.numeric(colnames(F1_mat_trans)[as.numeric(labels_matched)])
-        names(labels_matched) <- rownames(F1_mat_trans)
-        
-    } else {
-        ## if fewer detected clusters than true populations, use transpose matrix and assign
-        ## NAs for true populations without any matching clusters
-        labels_matched_flipped <- clue::solve_LSAP(F1_mat, maximum = TRUE)
-        ## use row and column names since some labels may have been removed due to unassigned cells
-        labels_matched_flipped <- as.numeric(rownames(F1_mat_trans)[as.numeric(labels_matched_flipped)])
-        names(labels_matched_flipped) <- rownames(F1_mat)
-        
-        labels_matched <- rep(NA, ncol(F1_mat))
-        names(labels_matched) <- rownames(F1_mat_trans)
-        labels_matched[as.character(labels_matched_flipped)] <- as.numeric(names(labels_matched_flipped))
-    }
-    
-    ## precision, recall, F1 score, and number of cells for each matched cluster
-    pr <- re <- F1 <- n_cells_matched <- rep(NA, ncol(F1_mat))
-    names(pr) <- names(re) <- names(F1) <- names(n_cells_matched) <- names(labels_matched)
-    
-    for (i in 1:ncol(F1_mat)) {
-        ## set to 0 if no matching cluster (too few detected clusters); use character names 
-        ## for row and column indices in case subsampling completely removes some clusters
-        pr[i] <- ifelse(is.na(labels_matched[i]), 0, pr_mat[as.character(labels_matched[i]), names(labels_matched)[i]])
-        re[i] <- ifelse(is.na(labels_matched[i]), 0, re_mat[as.character(labels_matched[i]), names(labels_matched)[i]])
-        F1[i] <- ifelse(is.na(labels_matched[i]), 0, F1_mat[as.character(labels_matched[i]), names(labels_matched)[i]])
-        
-        n_cells_matched[i] <- sum(clus_algorithm == labels_matched[i], na.rm = TRUE)
-    }
-    
-    ## means across populations
-    mean_pr <- mean(pr)
-    mean_re <- mean(re)
-    mean_F1 <- mean(F1)
-    
-    return(list(n_clus = n_clus, 
-                pr = pr, 
-                re = re, 
-                F1 = F1, 
-                labels_matched = labels_matched, 
-                n_cells_matched = n_cells_matched, 
-                mean_pr = mean_pr, 
-                mean_re = mean_re, 
-                mean_F1 = mean_F1))
-}
-
-
-```
-
-```{r}
 map_levels <- function(x){
     ## x<- as.character(iris$Species)
     if(is.factor(x)) { 
@@ -1488,12 +1440,6 @@ map_levels <- function(x){
 ```
 
 ```{r}
-
-clus_algorithm <- d$genes_cellranger@meta.data[known, genes_res]
-str(clus_algorithm)
-
-clus_truth <- d$genes_cellranger@meta.data[known, 'scina']
-as.character(clus_truth)
 
 ## inputs are factor vectors
 hungarian_weber_with_labels <- function(clus_algorithm, clus_truth) {    
@@ -1590,11 +1536,6 @@ hungarian_weber_with_labels <- function(clus_algorithm, clus_truth) {
     mean_re <- mean(re)
     mean_F1 <- mean(F1)
 
-    ## add back proper naming
-    ## names(pr)
-    ## names(clus)
-    ## class(labels_matched)
-
     ## add back original names
     for (item in c('pr', 're', 'F1', 'labels_matched', 'n_cells_matched')) {
         curr <- get(item)
@@ -1615,11 +1556,8 @@ hungarian_weber_with_labels <- function(clus_algorithm, clus_truth) {
 
 ```
 
-
-
 ```{r}
 hung <- list()
-i <- 1
 
 for (flavour in names(d)) {
     resolutions <- grep('RNA_snn_res', colnames(d[[flavour]]@meta.data), value = TRUE)
@@ -1633,27 +1571,11 @@ for (flavour in names(d)) {
         hung[[flavour]][[res]] <- hungarian_weber_with_labels(d[[flavour]]@meta.data[known, res],
                                                          d[[flavour]]@meta.data[known, 'scina'])
 
-        ## c(sprintf('genes_%s (n=%s)', res,
-        ##                        length(unique(d[[flavour]]@meta.data[known, res]))),
-        ##                sprintf('scina_%s (n=%s)', 'scina',
-        ##                        length(unique(d[[flavour]]@meta.data[known, 'scina']))),
-        ##                adjustedRandIndex(d[[flavour]]@meta.data[known, res],
-        ##                                  d[[flavour]]@meta.data[known, 'scina']))
-        
-
-        ## i <- i +1
     }
     
 }
 
-## hung <- do.call(rbind.data.frame, hung)
-## colnames(hung) <- c('genes_res', 'scina', 'ari')
-## hung$ari <- as.numeric(as.character(hung$ari))
-str(hung)
 ```
-
-
-Genes clustering! iCOBRA-based PR curves
 
 ```{r}
 
@@ -1675,7 +1597,7 @@ cobra <- do.call(rbind.data.frame, cobra)
 
 ```
 
-```{r, fig.height = 10, fig.width = 10}
+```{r, fig.height = 14, fig.width = 7}
 ggplot(data = cobra, aes(x = pr, y =  re, group = res, col = res)) +
     geom_point() +
     facet_grid(flavour~cell, margins = FALSE) +
@@ -1683,7 +1605,7 @@ ggplot(data = cobra, aes(x = pr, y =  re, group = res, col = res)) +
 
 ```
 
-```{r, fig.height = 10, fig.width = 10}
+```{r, fig.height = 12, fig.width = 8}
 ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
     geom_point() +
     facet_grid(flavour~res, margins = FALSE) +
@@ -1691,7 +1613,7 @@ ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
 
 ```
 
-```{r, fig.height = 10, fig.width = 10}
+```{r, fig.height = 7, fig.width = 7}
 ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
     geom_point() +
     facet_wrap(~flavour) + 
@@ -1699,7 +1621,7 @@ ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
 
 ```
 
-```{r, fig.height = 10, fig.width = 10}
+```{r, fig.height = 14, fig.width = 8}
 ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) +
     geom_point() +
     facet_grid(flavour~res) + 
@@ -1727,18 +1649,12 @@ for (flavour in levels(cobra$flavour)) {
 maxF1 <- do.call(rbind.data.frame, maxF1)
 colnames(maxF1) <- c('flavour', 'cell', 'max_F1')
 maxF1$max_F1 <- as.numeric(as.character(maxF1$max_F1))
-
-
-
-## sorting by max F1, any flavour
-unique(as.character(maxF1$cell[order(maxF1$max_F1)]))
-       
+      
 maxF1$cell <- factor(as.character(maxF1$cell), levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)])))
 
-str(maxF1)
 ```
 
-```{r}
+```{r, fig.width = 7, fig.height = 7}
 ggplot(data = maxF1, aes(x= cell, y = max_F1, col = flavour, group = flavour)) +
     geom_point() +
     theme(axis.text.x = element_text(angle = 90, hjust = 1))
