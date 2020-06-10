@@ -1,6 +1,6 @@
 #!/usr/bin/env snakemake -s
 ## 
-## Started 14th Jan 2020
+## Started 10 June
 ##
 ## Izaskun Mallona
 ## GPLv3
@@ -8,15 +8,16 @@
 import os.path as op
 from glob import glob
 
-RUN_NAME  = '5k_pbmc_v3'
+RUN_NAME  = 'pbmc8k'
 RUN_TECH = 'chromium'
+CHEMISTRY = 'SC3Pv3'
 
 ## Folder structure start --------------------------------------------------------------------- ##
 
 
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
-NTHREADS = 50
+NTHREADS = 20
 LOCAL_MEM_GB = 100
 GENOME= 'GRCh38'
 
@@ -45,7 +46,7 @@ PIGZ = '/usr/bin/pigz'
 BIOPYTHON_CONVERT='biopython.convert'
 STAR = '~/soft/star/STAR-2.7.3a/source/STAR'
 FEATURECOUNTS = '~/soft/subread/subread-2.0.0-source/bin/featureCounts'
-SALMON = '~/soft/salmon/salmon-1.1.0_linux_x86_64/bin/salmon'
+SALMON = '~/soft/salmon/salmon-1.2.1/bin/salmon'
 CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
 BIOAWK = '~/soft/bioawk/bioawk'
 BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
@@ -54,24 +55,7 @@ FASTQ_DUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fast
 VDB_VALIDATE = '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate'
 BEDOPS='~/soft/bedops/bedops-2.4.39/bin/bedops'
 
-GSE144357_srr = ['SRR10974769', 'SRR10974768']
-
-## config file start ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-# configfile: "config.yaml"
-# validate(config, "schemas/config.schema.yaml")
-
-# samples = pd.read_csv(config["samples"], sep = '\t').set_index("id", drop=False)
-
-RUN_NAME  = '5k_pbmc_v3'
-CHEMISTRY = 'SC3Pv3'
 DEMUX = False
-
-# samples_R2, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_1.fastq.gz"))
-# samples_R1, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_2.fastq.gz"))
-# samples_I3, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_3.fastq.gz"))
-
-## this is needed to be hardcoded/config file
 
 try:
    if not op.exists(op.dirname(op.join(BASE, 'annotation'))):
@@ -90,21 +74,19 @@ for item in ['bowtie', 'star', 'salmon']:
 
 include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow.snmk"
 
-
 onsuccess:
-    shell("mailx -A gmail -s "'snakemake_02_pbmcs_success'" izaskun.mallona@gmail.com < {log}")
+    shell("mailx -A gmail -s "'8k success'" izaskun.mallona@gmail.com < {log}")
 
 onerror:
-    shell("mailx -A gmail -s "'snakemake_02_pbmcs_error'" izaskun.mallona@gmail.com  < {log}")
+    shell("mailx -A gmail -s "'8k error'" izaskun.mallona@gmail.com  < {log}")
 
     
 rule all:
     input:
-        # op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'Log.out'),
-        # op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'run.log'),
-        # op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs',  'web_summary.html'),
-        # op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
-        # op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz"),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'run.log'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs',  'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
+        op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz"),
         expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_cellranger_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
                        regress_nfeature = ['TRUE', 'FALSE']),
         op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard_not_overlapping_genes',
@@ -112,19 +94,17 @@ rule all:
         op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard", RUN_NAME +  "_transcriptome_repeats.counts.summary.png"),
         op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes",  RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
-        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
-        expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
-                       regress_nfeature = ['TRUE', 'FALSE'])
-        
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
 
-rule get_pbmc_v3:
+rule get_pbmc_8k:
+    priority: 100
     params:
-        url = 'http://s3-us-west-2.amazonaws.com/10x.files/samples/cell-exp/3.0.2/5k_pbmc_v3/5k_pbmc_v3_fastqs.tar',
+        url = 'http://s3-us-west-2.amazonaws.com/10x.files/samples/cell-exp/2.1.0/pbmc8k/pbmc8k_fastqs.tar',
         path = op.join(BASE, 'data', RUN_NAME),
     output:
-        fn = op.join(BASE, 'data', RUN_NAME, '5k_pbmc_v3_fastqs.tar'),
-        uncompressed =  op.join(BASE, 'data', RUN_NAME, '5k_pbmc_v3_fastqs',
-                                '5k_pbmc_v3_S1_L001_I1_001.fastq.gz')
+        fn = op.join(BASE, 'data', RUN_NAME, 'pbmc8k_fastqs.tar'),
+        uncompressed =  op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs',
+                                'pbmc8k_S1_L001_I1_001.fastq.gz')
     shell:
         """    
         mkdir -p {params.path}
@@ -133,34 +113,10 @@ rule get_pbmc_v3:
         tar xvf {output.fn}
         """
 
-
-    # output:
-    #     temp = temp(op.join(BASE, 'data', RUN_NAME, 'frozen_pbmc_donor_a_fastqs.tar')),
-    #     flag_fastq = op.join(BASE, 'data', RUN_NAME, 'read-RA_si-TATTGGTG_lane-004-chunk-002.fastq.gz')                    
-    # params:
-    #     path = op.join(BASE, 'data', RUN_NAME),
-    #     url = 'http://cf.10xgenomics.com/samples/cell-exp/1.1.0/frozen_pbmc_donor_a/frozen_pbmc_donor_a_fastqs.tar'
-        
-    # log:
-    #     op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_retrieval.log')
-    # shell:
-    #     """
-    #     mkdir -p {params.path}
-    #     cd $_
-    #     wget {params.url} &> {log}
-
-    #     tar xvf {output.temp}
-    #     mv {params.path}/fastqs/flowcell1/*fastq.gz {params.path}
-
-    #     rmdir {params.path}/fastqs/flowcell1
-    #     rmdir {params.path}/fastqs/
-    #     """
-
-        
 rule run_cellranger_repeats:
     input:
-        flag = op.join(BASE, 'data', RUN_NAME, '5k_pbmc_v3_fastqs',
-                                '5k_pbmc_v3_S1_L001_I1_001.fastq.gz'),
+        flag = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs',
+                                'pbmc8k_S1_L001_I1_001.fastq.gz'),
         transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
@@ -191,8 +147,8 @@ rule run_cellranger_repeats:
         
 rule run_cellranger_standard:
     input:
-        flag = op.join(BASE, 'data', RUN_NAME, '5k_pbmc_v3_fastqs',
-                                '5k_pbmc_v3_S1_L001_I1_001.fastq.gz'),
+        flag = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs',
+                                'pbmc8k_S1_L001_I1_001.fastq.gz'),
         transcriptome = op.join(BASE, 'indices', 'cellranger',
                                 'refdata-cellranger-GRCh38-3.0.0')
     params:
@@ -223,8 +179,6 @@ rule run_cellranger_standard:
           --localmem={params.local_mem_gb}
         """
 
-
-        
 rule map_salmon_repeats_chromium:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),

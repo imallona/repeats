@@ -11,6 +11,7 @@ from glob import glob
 RUN_NAME  = 'pbmc_10k_v3'
 CHEMISTRY = 'SC3Pv3'
 DEMUX = False
+GENOME = 'GRCh38'
 
 # Peripheral blood mononuclear cells (PBMCs) from a healthy donor (the same cells were used to generate pbmc_1k_v2, pbmc_10k_v3). PBMCs are primary cells with relatively small amounts of RNA (~1pg RNA/cell).
 
@@ -86,7 +87,9 @@ rule all:
         expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_cellranger_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
                        regress_nfeature = ['TRUE', 'FALSE']),
         op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard",  RUN_NAME + "_transcriptome_repeats.counts.summary.png"),
-        op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes",  RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png")
+        op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes",  RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
 
 
 
@@ -179,3 +182,79 @@ rule run_cellranger_standard:
           --localmem={params.local_mem_gb} \
           --chemistry={params.chemistry}
         """
+
+## salmon start
+# print(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '*R1*fastq.gz'))))
+
+rule map_salmon_repeats_chromium:
+    input:        
+        tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
+        idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
+        cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '*R1*fastq.gz'))),
+        r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '*R2*fastq.gz')))        
+    output:
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
+    threads:
+        NTHREADS
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME),
+        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats'),
+        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
+        cb = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '*R1*fastq.gz')))),
+        r2 = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '*R2*fastq.gz')))) 
+    log:
+        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium.log')
+    shell:
+        """
+    mkdir -p {params.processing_path}
+    cd {params.processing_path}
+
+    ({SALMON} alevin \
+    -l ISR \
+    -1 {params.cb} \
+    -2 {params.r2} \
+    --chromiumV3  \
+    -i {params.salmon_idx} \
+    -p {threads} -o {params.processing_path} \
+    --tgMap {input.tgmap} ) 2> {log}
+
+    touch -c {output}
+        """
+    
+
+rule map_salmon_genes_chromium:
+    input:        
+        tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'txp2gene.tsv'),
+        idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'duplicate_clusters.tsv'),
+        cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '*R1*fastq.gz'))),
+        r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '*R2*fastq.gz')))        
+    output:
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz')
+    threads:
+        NTHREADS
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME),
+        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes'),
+        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon'),
+        cb = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '*R1*fastq.gz')))),
+        r2 = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '*R2*fastq.gz')))) 
+    log:
+        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_genes_chromium.log')
+    shell:
+        """
+    mkdir -p {params.processing_path}
+    cd {params.processing_path}
+
+    ({SALMON} alevin \
+    -l ISR \
+    -1 {params.cb} \
+    -2 {params.r2} \
+    --chromiumV3  \
+    -i {params.salmon_idx} \
+    -p {threads} -o {params.processing_path} \
+    --tgMap {input.tgmap} ) 2> {log}
+
+    touch -c {output}
+        """
+
+## salmon end
