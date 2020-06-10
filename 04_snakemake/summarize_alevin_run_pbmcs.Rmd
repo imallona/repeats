@@ -201,7 +201,8 @@ for (item in names(d)) {
     cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
     if (item == 'genes_alevin') {
-        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
+        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]],
+                                                          pattern = "ENS.*[0-9]+-MT-.*")
         print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
                       ncol = 3))
@@ -264,7 +265,8 @@ for (item in names(d)) {
     cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
     if (item == 'genes_alevin') {
-        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
+        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]],
+                                                          pattern = "ENS.*[0-9]+-MT-.*")
         print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
                       ncol = 3))
@@ -276,6 +278,8 @@ for (item in names(d)) {
     print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
     cat('\n\n')
 }
+
+
 ```
 
 ## Basic stats post-QC
@@ -306,6 +310,7 @@ colnames(summarized) <- c('dataset','filter', 'ncells',
                           'ncount_mean', 'ncount_sd', 'nfeature_mean', 'nfeature_sd',
                           'percent.mt')
 print(summarized)
+
 ```
 
 
@@ -333,7 +338,6 @@ for (item in names(d)) {
 }
 
 
-
 ```
 
 ## Dimred PCA {.tabset}
@@ -352,7 +356,7 @@ for (item in names(d)) {
         
     }
     
-    if (item == 'genes_cellranger') {
+    if (item == 'genes_alevin') {
         d[[item]] <- ScaleData(d[[item]], vars.to.regress = to_regress)
     } else {
         ## in this case, the variables to regress come from the genes!
@@ -395,9 +399,10 @@ for (item in names(d)) {
 
     d[[item]] <- RunUMAP(d[[item]], dims = NUM_PCS)
         
-    d[[item]] <- RunTSNE(d[[item]], dims = NUM_PCS, check_duplicates = FALSE )
+    d[[item]] <- RunTSNE(d[[item]], dims = NUM_PCS)
 }
 
+stop('check here')
 
 ```
 
@@ -405,7 +410,6 @@ for (item in names(d)) {
 ## Dimred UMAP and tSNE {.tabset}
 
 ```{r fig.width = 8, fig.height = 5, results = 'asis', cache = FALSE, warning = FALSE}
-
 for (item in names(d)) {
     cat("### ", item, "\n\n")
     
@@ -613,8 +617,8 @@ named <-  SCINA(GetAssayData(d$genes_alevin, slot = 'data'),
                 convergence_rate = 0.999, sensitivity_cutoff = 0.9)
 
 table(named$cell_labels)
-## plotheat.SCINA(exp = GetAssayData(d$genes, slot = 'data'),
-##                 signatures = pos_markers2, results = named)
+## plotheat.SCINA(exp = GetAssayData(d$genes_alevin, slot = 'data'),
+                ## signatures = pos_markers_compound, results = named)
 ```
 
 
@@ -626,9 +630,13 @@ First, add the SCINA outputs to the different SO objects
 
 ```{r, cache = FALSE}
 labelling <- data.frame(cell = colnames(d$genes_alevin),
-                  scina = named$cell_labels)
+                        scina = named$cell_labels,
+                        stringsAsFactors = FALSE)
+
+
 
 rownames(labelling) <- labelling$cell
+
 d$genes_alevin@meta.data$cell <- rownames(d$genes_alevin@meta.data)
 d$genes_alevin@meta.data <- merge(d$genes_alevin@meta.data, labelling, by = 'cell')
 rownames(d$genes_alevin@meta.data) <- d$genes_alevin@meta.data$cell
@@ -696,52 +704,6 @@ for (item in names(d)) {
 
 }
 ```
-
-# boxplots by identity {.tabset}
-
-@todo delete me, coef_var is pointless
-
-```{r fig.height = 6, fig.width = 16, results = 'asis', eval = FALSE}
-## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11')
-for (slot in c('repeats_alevin')) {
-    cat("## ", slot, "\n\n")
-
-    ## this is idiotic @todo add variable feature selection
-    selected <- c(names(head(sort(apply(GetAssayData(d[[slot]]),1, coef_var),
-                                  decreasing = TRUE),
-                             5)),
-                  c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a'))
-
-
-    repeats <- as.data.frame(FetchData(d[[slot]], vars = selected, slot = 'data'))
-    repeats$cell <- rownames(repeats)
-
-    
-    d$genes_cellranger@meta.data$cell <- rownames(d$genes_cellranger@meta.data)
-    repeats <- merge(d$genes_cellranger@meta.data[, c('scina', 'cell') ],
-                     repeats, by = 'cell', all.x = TRUE)
-
-    rownames(repeats) <- repeats$cell
-    
-    repeats <- melt(repeats, id.vars = c('cell', 'scina'))
-
-    colnames(repeats) <- c('cell', 'scina', 'repfamily', 'data')
-    
-    print(ggplot(repeats,
-           aes(x = scina, y = data)) + 
-          geom_boxplot(outlier.size=1) +
-          scale_y_continuous(trans='log10') +
-        scale_fill_discrete(drop=FALSE) +
-        facet_wrap(~ factor(repfamily), ncol = 10) +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-        ylab('repeat expression [ncount]') +
-        xlab('SCINA identity') + ggtitle(sprintf('%s %s\n%s', slot, 'repeats', 'scina')))
-
-    rm(repeats)
-    cat('\n\n')
-}
-```
-
 
 
 # Dimred PCA comparing modalities and SCINA {.tabset}
@@ -877,143 +839,6 @@ plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(as.factor(merged[,tag])), 
 
 rm(merged)
 ```
-
-# Correlation values distribution
-
-Repeats by cellranger vs repeats by featurecounts on cellranger-standard bams.
-
-## Correlations per cell
-
-First repeats vs featurecounts
-
-```{r correl_first, warning = FALSE}
-ccell <- list()
-     
-for (cell in intersect( colnames(GetAssay(d$repeats_cellranger, 'RNA')),
-                       colnames(GetAssay(d$repeats_featurecounts, 'RNA')))) {
-    reps <- intersect(rownames(d$repeats_cellranger), rownames(d$repeats_featurecounts))
-    
-    ccell[[cell]] <- cor(as.numeric(GetAssay(d$repeats_cellranger, 'RNA')[reps,cell]),
-                         as.numeric(GetAssay(d$repeats_featurecounts, 'RNA')[reps,cell]),
-                         method = 'spearman')
-}
-```
-
-```{r}
-hist(unlist(ccell),
-     main = "correlation across cells\nrepeats cellranger vs repeats (featurecounts)")
-## lines(density(unlist(ccell)))
-
-```
-
-Second featurecounts on all repeats vs featurecounts on some repeats only
-
-```{r}
-ccell <- list()
-     
-for (cell in intersect( colnames(GetAssay(d$control_repeats_only, 'RNA')),
-                       colnames(GetAssay(d$repeats_featurecounts, 'RNA')))) {
-    reps <- intersect(rownames(d$control_repeats_only), rownames(d$repeats_featurecounts))
-    
-    ccell[[cell]] <- cor(as.numeric(GetAssay(d$control_repeats_only, 'RNA')[reps,cell]),
-                         as.numeric(GetAssay(d$repeats_featurecounts, 'RNA')[reps,cell]),
-                         method = 'spearman')
-}
-
-```
-
-
-```{r}
-hist(unlist(ccell),
-     main = "correlation across cells\nrepeats vs nongene-repeats",
-     xlab = "Spearman's rho")
-```
-
-
-## Correlations per repeat
-
-First cellranger vs featurecounts
-
-```{r, warning = FALSE}
-crepeat <- list()
-
-## GetAssay(d$repeats_cellranger, 'RNA')[1:10,1:10]
-
-for (re in intersect( rownames(GetAssay(d$repeats_cellranger, 'RNA')),
-                     rownames(GetAssay(d$repeats_featurecounts, 'RNA')))) {
-
-    cells <-  intersect(colnames(d$repeats_cellranger), colnames(d$repeats_featurecounts))
-    crepeat[[re]] <- cor(as.numeric(GetAssay(d$repeats_cellranger, 'RNA')[re,cells]),
-                         as.numeric(GetAssay(d$repeats_featurecounts, 'RNA')[re, cells]),
-                         method = 'spearman')
-}
-```
-
-```{r}
-hist(unlist(crepeat), main = "correlation across repeats\nrepeats cellranger vs repeats (featurecounts)", xlab = "Sperman's rho")
-
-```
-
-Second featurecounts on all repeats vs featurecounts on some repeats only
-
-```{r}
-crepeat <- list()
-
-## GetAssay(d$control_repeats_only, 'RNA')[1:10,1:10]
-
-for (re in intersect( rownames(GetAssay(d$control_repeats_only, 'RNA')),
-                     rownames(GetAssay(d$repeats_featurecounts, 'RNA')))) {
-
-    cells <-  intersect(colnames(d$control_repeats_only), colnames(d$repeats_featurecounts))
-    crepeat[[re]] <- cor(as.numeric(GetAssay(d$control_repeats_only, 'RNA')[re,cells]),
-                         as.numeric(GetAssay(d$repeats_featurecounts, 'RNA')[re, cells]),
-                         method = 'spearman')
-}
-```
-
-
-```{r}
-hist(unlist(crepeat),
-     main = "correlation across repeats\nrepeats vs nongene-repeats",
-     xlab = "Spearman's rho")
-```
-
-<!-- Show correlation values per family etc -->
-
-<!-- ```{r} -->
-<!-- merged <- na.omit(data.frame(repfamily = names(crepeat), -->
-<!--                           rho = as.numeric(crepeat))) -->
-
-<!-- means <-  apply(GetAssayData(object = d$repeats, slot = "counts"), 1, mean) -->
-<!-- means <- data.frame(repfamily = names(means), -->
-<!--                     mean = as.numeric(means), -->
-<!--                     stringsAsFactors = FALSE) -->
-
-<!-- sds <-  apply(GetAssayData(object = d$repeats, slot = "counts"), 1, sd) -->
-<!-- sds <- data.frame(repfamily = names(sds), -->
-<!--                     sd = as.numeric(sds)) -->
-
-<!-- merged <- merge(merged, sds, by = 'repfamily', all.x = TRUE) -->
-<!-- merged <- merge(merged, means, by = 'repfamily', all.x = TRUE) -->
-<!-- merged$log10mean <- log10(merged$mean + 1)  -->
-
-<!-- idx <- as.character(merged[order(merged$rho, decreasing = TRUE), 'repfamily']) -->
-
-<!-- ## wide to long -->
-<!-- merged <- melt(merged, id.vars=c("repfamily")) -->
-
-<!-- ## merged <- merged[order(merged$value, merged$variable),] -->
-
-<!-- merged$repfamily <- factor(merged$repfamily, levels = idx) -->
-<!-- ``` -->
-
-<!-- ```{r, fig.width = 20, fig.height = 10} -->
-<!-- ggplot(merged, aes(x=repfamily, y=value)) + -->
-<!--     geom_point() + -->
-<!--     facet_grid(vars(variable), scales ='free') + -->
-<!--     theme(axis.text.x = element_text(angle = 45, hjust = 1)) -->
-
-<!-- ``` -->
 
 
 # Confusion matrix clusters
@@ -1330,7 +1155,7 @@ cobra <- do.call(rbind.data.frame, cobra)
 
 ```
 
-```{r, fig.height = 14, fig.width = 7}
+```{r, fig.height = 7, fig.width = 7}
 ggplot(data = cobra, aes(x = pr, y =  re, group = res, col = res)) +
     geom_point() +
     facet_grid(flavour~cell, margins = FALSE) +
@@ -1338,7 +1163,7 @@ ggplot(data = cobra, aes(x = pr, y =  re, group = res, col = res)) +
 
 ```
 
-```{r, fig.height = 12, fig.width = 8}
+```{r, fig.height = 6, fig.width = 8}
 ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
     geom_point() +
     facet_grid(flavour~res, margins = FALSE) +
@@ -1354,7 +1179,7 @@ ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
 
 ```
 
-```{r, fig.height = 14, fig.width = 8}
+```{r, fig.height = 8, fig.width = 8}
 ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) +
     geom_point() +
     facet_grid(flavour~res) + 
