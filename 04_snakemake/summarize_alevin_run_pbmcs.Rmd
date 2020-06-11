@@ -192,6 +192,12 @@ d$repeats_alevin <- CreateSeuratObject(counts =  assays(d$repeats_alevin)$counts
 
 ```
 
+
+```{r}
+GetAssayData(d$repeats_alevin)[1:3, 1:3]
+GetAssayData(d$genes_alevin)[1:3, 1:3]
+
+```
 # Basic Seurat processing
 
 ## QC before filtering {.tabset}
@@ -214,6 +220,7 @@ for (item in names(d)) {
     print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
     cat('\n\n')
 }
+
 ```
 
 ## Basic stats pre-QC
@@ -258,6 +265,7 @@ for (item in names(d)) {
     d[[item]] <- subset(d[[item]], cells = selected_cells)
 }
 
+
 ```
 
 ```{r, results = 'asis', fig.width = 8, fig.height = 4}
@@ -278,6 +286,7 @@ for (item in names(d)) {
     print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
     cat('\n\n')
 }
+
 
 
 ```
@@ -343,6 +352,8 @@ for (item in names(d)) {
 ## Dimred PCA {.tabset}
 
 ```{r, message = FALSE, results ='asis'}
+bak <- d
+
 NUM_PCS <- 1:20
 for (item in names(d)) {
     cat("### ", item, "\n\n")
@@ -361,7 +372,7 @@ for (item in names(d)) {
     } else {
         ## in this case, the variables to regress come from the genes!
         ## e.g. is the genes library size the one to normalize the repets'
-        tmp <- d[[item]]@meta.data
+        tmp <- d$genes_alevin@meta.data
         tmp$cell <- rownames(tmp)
         d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
         d[[item]]@meta.data <- merge(d[[item]]@meta.data, tmp, by = 'cell',
@@ -377,7 +388,7 @@ for (item in names(d)) {
     
     d[[item]] <- RunPCA(d[[item]], features = VariableFeatures(object = d[[item]]))
     
-    DimPlot(d[[item]], reduction = "pca")
+    print(DimPlot(d[[item]], reduction = "pca"))
     
     print(ElbowPlot(d[[item]]) + ggtitle(item))
 
@@ -402,7 +413,7 @@ for (item in names(d)) {
     d[[item]] <- RunTSNE(d[[item]], dims = NUM_PCS)
 }
 
-stop('check here')
+## stop('check here')
 
 ```
 
@@ -412,13 +423,11 @@ stop('check here')
 ```{r fig.width = 8, fig.height = 5, results = 'asis', cache = FALSE, warning = FALSE}
 for (item in names(d)) {
     cat("### ", item, "\n\n")
-    
-    p1 <- DimPlot(d[[item]], reduction = "umap")
-    p2 <- DimPlot(d[[item]], reduction = "tsne")
 
-    print(p1)
-    print(p2)
-    rm(p1, p2)
+    
+    print(DimPlot(d[[item]], reduction = "umap", group.by = 'seurat_clusters'))
+    print(DimPlot(d[[item]], reduction = "tsne", group.by = 'seurat_clusters'))
+
     cat('\n\n')
 
 }
@@ -638,18 +647,21 @@ labelling <- data.frame(cell = colnames(d$genes_alevin),
 rownames(labelling) <- labelling$cell
 
 d$genes_alevin@meta.data$cell <- rownames(d$genes_alevin@meta.data)
-d$genes_alevin@meta.data <- merge(d$genes_alevin@meta.data, labelling, by = 'cell')
+d$genes_alevin@meta.data <- merge(d$genes_alevin@meta.data, labelling, by = 'cell', all.x = TRUE)
 rownames(d$genes_alevin@meta.data) <- d$genes_alevin@meta.data$cell
 
 ## still, the annotation can also be transfered to repeats/featurecounts
 
 for (item in grep('repeats', names(d), value = TRUE)) {
-    rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
+    d[[item]]@meta.data$cell <-  rownames(d[[item]]@meta.data)
 
+    
     tmp <- merge(data.frame(cell = d[[item]]@meta.data$cell),
                  labelling, all.x = TRUE)
+
     rownames(tmp) <- tmp$cell
 
+    
     d[[item]] <- AddMetaData(object = d[[item]],
                              metadata = tmp['scina'],
                              col.name = 'scina')
@@ -660,7 +672,7 @@ rm(labelling, tmp)
 
 ```
 
-```{r problemrendering, cache = FALSE}
+```{r problemrendering, cache = FALSE, eval = FALSE}
 for (res in grep('RNA_snn', colnames(d$genes_alevin@meta.data), value = TRUE)) {
     cat('### ', res, '\n\n')
 
@@ -694,10 +706,10 @@ tSNEs/UMAPs
 ```{r, fig.width = 7, fig.height = 4, results = 'asis', cache = FALSE}
 for (item in names(d)) {
     cat("## ", item, "\n\n")
-    ## d[[item]]@meta.data$scina <- as.factor(d[[item]]@meta.data$scina)
-    Idents(d[[item]]) <- 'scina'
-    print(DimPlot(d[[item]], reduction = "umap", group.by = 'ident'))
-    print(DimPlot(d[[item]], reduction = "tsne", group.by = 'ident'))
+    d[[item]]@meta.data$scina <- as.factor(d[[item]]@meta.data$scina)
+    ## Idents(d[[item]]) <- 'scina'
+    print(DimPlot(d[[item]], reduction = "umap", group.by = 'scina'))
+    print(DimPlot(d[[item]], reduction = "tsne", group.by = 'scina'))
 
     ## print(CombinePlots(plots = list(p1, p2)) + ggtitle(item))
     cat('\n\n')
@@ -1155,7 +1167,7 @@ cobra <- do.call(rbind.data.frame, cobra)
 
 ```
 
-```{r, fig.height = 7, fig.width = 7}
+```{r, fig.height = 4, fig.width = 7}
 ggplot(data = cobra, aes(x = pr, y =  re, group = res, col = res)) +
     geom_point() +
     facet_grid(flavour~cell, margins = FALSE) +
@@ -1163,7 +1175,7 @@ ggplot(data = cobra, aes(x = pr, y =  re, group = res, col = res)) +
 
 ```
 
-```{r, fig.height = 6, fig.width = 8}
+```{r, fig.height = 4, fig.width = 8}
 ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
     geom_point() +
     facet_grid(flavour~res, margins = FALSE) +
@@ -1171,7 +1183,7 @@ ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
 
 ```
 
-```{r, fig.height = 7, fig.width = 7}
+```{r, fig.height = 4, fig.width = 7}
 ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
     geom_point() +
     facet_wrap(~flavour) + 
@@ -1179,7 +1191,7 @@ ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
 
 ```
 
-```{r, fig.height = 8, fig.width = 8}
+```{r, fig.height = 4, fig.width = 8}
 ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) +
     geom_point() +
     facet_grid(flavour~res) + 

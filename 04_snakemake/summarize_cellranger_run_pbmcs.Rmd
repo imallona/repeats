@@ -472,7 +472,7 @@ for (item in names(d)) {
     } else {
         ## in this case, the variables to regress come from the genes!
         ## e.g. is the genes library size the one to normalize the repets'
-        tmp <- d[[item]]@meta.data
+        tmp <- d$genes_cellranger@meta.data
         tmp$cell <- rownames(tmp)
         d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
         d[[item]]@meta.data <- merge(d[[item]]@meta.data, tmp, by = 'cell',
