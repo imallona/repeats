@@ -102,21 +102,20 @@ rule get_pbmc_8k:
         url = 'http://s3-us-west-2.amazonaws.com/10x.files/samples/cell-exp/2.1.0/pbmc8k/pbmc8k_fastqs.tar',
         path = op.join(BASE, 'data', RUN_NAME),
     output:
-        fn = op.join(BASE, 'data', RUN_NAME, 'pbmc8k_fastqs.tar'),
-        uncompressed =  op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs',
-                                'pbmc8k_S1_L001_I1_001.fastq.gz')
+        fn = temp(op.join(BASE, 'data', RUN_NAME, 'pbmc8k_fastqs.tar')),
+        uncompressed =  op.join(BASE, 'data', RUN_NAME, 'pbmc8k_S1_L007_I1_001.fastq.gz')
     shell:
         """    
         mkdir -p {params.path}
         cd {params.path}
         curl -s -L -C - {params.url} -O {output.fn}
         tar xvf {output.fn}
+        mv fastqs/*fastq.gz .
         """
 
 rule run_cellranger_repeats:
     input:
-        flag = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs',
-                                'pbmc8k_S1_L001_I1_001.fastq.gz'),
+        flag = op.join(BASE, 'data', RUN_NAME, 'pbmc8k_S1_L007_I1_001.fastq.gz'),
         transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
@@ -147,8 +146,7 @@ rule run_cellranger_repeats:
         
 rule run_cellranger_standard:
     input:
-        flag = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs',
-                                'pbmc8k_S1_L001_I1_001.fastq.gz'),
+        flag = op.join(BASE, 'data', RUN_NAME, 'pbmc8k_S1_L007_I1_001.fastq.gz'),
         transcriptome = op.join(BASE, 'indices', 'cellranger',
                                 'refdata-cellranger-GRCh38-3.0.0')
     params:
