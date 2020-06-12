@@ -165,6 +165,14 @@ rule knit_report_smartseq_or_celseq_DOESNOTWORKLONGCOUNTINPUTSINSTEAD:
         """
 
 
+def list_cbs(fastqs_path):
+   fns = sorted(filter(re.compile('SR.*[0-9]_1.fastq.gz').match, os.listdir(fastqs_path)))
+   return([op.join(fastqs_path, x) for x in fns])
+
+def list_r2s(fastqs_path):
+   fns = sorted(filter(re.compile('SR.*[0-9]_2.fastq.gz').match, os.listdir(fastqs_path)))
+   return([op.join(fastqs_path, x) for x in fns])
+
 
 rule run_alevin_celseq2_repeats_ONGOINGNOTTESTEDnomanualfastqparsing:
     input:        
@@ -172,8 +180,8 @@ rule run_alevin_celseq2_repeats_ONGOINGNOTTESTEDnomanualfastqparsing:
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
         # cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*_umi_1.fastq.gz'))),
         # r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*_umi_2.fastq.gz')))
-        cb = sorted(filter(re.compile('SR.*[0-9]*_1_fastq.gz').match, os.listdir(op.join(BASE, 'data', RUN_NAME)))),
-        r2 = sorted(filter(re.compile('SR.*[0-9]*_2_fastq.gz').match, os.listdir(op.join(BASE, 'data', RUN_NAME))))
+        cb = list_cbs(op.join(BASE, 'data', RUN_NAME)),
+        r2 = list_r2s(op.join(BASE, 'data', RUN_NAME))
         
     output:
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
@@ -183,8 +191,8 @@ rule run_alevin_celseq2_repeats_ONGOINGNOTTESTEDnomanualfastqparsing:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
         processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats'),
         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
-        cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*_umi_1.fastq.gz'))),
-        r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*_umi_2.fastq.gz')))    
+        cb = list_cbs(op.join(BASE, 'data', RUN_NAME)),
+        r2 = list_r2s(op.join(BASE, 'data', RUN_NAME))        
     log:
         op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium.log')
     shell:
@@ -197,6 +205,7 @@ rule run_alevin_celseq2_repeats_ONGOINGNOTTESTEDnomanualfastqparsing:
     -1 {params.cb} \
     -2 {params.r2} \
     --celseq2  \
+    --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
     --tgMap {input.tgmap} ) 2> {log}
@@ -204,14 +213,17 @@ rule run_alevin_celseq2_repeats_ONGOINGNOTTESTEDnomanualfastqparsing:
     touch -c {output}
         """
 
+
+
+   
 rule run_alevin_celseq2_genes_ONGOINGNOTTESTEDnomanualfastqparsing:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'duplicate_clusters.tsv'),
         # cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*_umi_1.fastq.gz'))),
         # r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*_umi_2.fastq.gz')))
-        cb = sorted(filter(re.compile('SR.*[0-9]*_1_fastq.gz').match, os.listdir(op.join(BASE, 'data', RUN_NAME)))),
-        r2 = sorted(filter(re.compile('SR.*[0-9]*_2_fastq.gz').match, os.listdir(op.join(BASE, 'data', RUN_NAME))))
+        cb = list_cbs(op.join(BASE, 'data', RUN_NAME)),
+        r2 = list_r2s(op.join(BASE, 'data', RUN_NAME))
         
     output:
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz')
@@ -221,8 +233,8 @@ rule run_alevin_celseq2_genes_ONGOINGNOTTESTEDnomanualfastqparsing:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
         processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes'),
         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon'),
-        cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*_umi_1.fastq.gz'))),
-        r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*_umi_2.fastq.gz')))
+        cb = list_cbs(op.join(BASE, 'data', RUN_NAME)),
+        r2 = list_r2s(op.join(BASE, 'data', RUN_NAME))
     log:
         op.join(BASE, 'runs', RUN_NAME, 'run_salmon_genes_chromium.log')
     shell:
@@ -235,6 +247,7 @@ rule run_alevin_celseq2_genes_ONGOINGNOTTESTEDnomanualfastqparsing:
     -1 {params.cb} \
     -2 {params.r2} \
     --celseq2  \
+    --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
     --tgMap {input.tgmap} ) 2> {log}
