@@ -114,9 +114,9 @@ rule all:
         # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
         #        regress_ncount = ['TRUE', 'FALSE'],
         #        regress_nfeature = ['TRUE', 'FALSE']),
-        expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', "{subset}",
+        expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  "{subset}", 'alevin',
                        'quants_mat.gz'), subset = ['male', 'female']),
-        expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', "{subset}",
+        expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{subset}", 'alevin',
                        'quants_mat.gz'), subset = ['male', 'female'])
         
         # op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', RUN_NAME + "_star_genes.counts.gz"),
@@ -231,7 +231,7 @@ rule run_alevin_celseq2_repeats:
         r2 = list_r2s
         
     output:
-        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', "{subset}", 'quants_mat.gz')
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats',  "{subset}", 'alevin', 'quants_mat.gz')
     threads:
         NTHREADS
     params:
@@ -269,7 +269,7 @@ rule run_alevin_celseq2_genes:
         r2 = list_r2s
         
     output:
-        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', "{subset}", 'quants_mat.gz')
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', "{subset}", 'alevin',  'quants_mat.gz')
     threads:
         NTHREADS
     params:
