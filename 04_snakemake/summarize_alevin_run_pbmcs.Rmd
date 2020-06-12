@@ -598,6 +598,23 @@ Platelet	GNG11	+', header = TRUE, sep = '\t', stringsAsFactors = FALSE)
 ```
 
 ```{r}
+pal <- read.table(text = 'identity,color
+CD4+_T_cell,"#A6CEE3"
+Cytotoxic_T_cell,"#1F78B4"
+B_cell,"#B2DF8A"
+Natural_killer_cell,"#33A02C"
+CD14+_monocyte,"#FB9A99"
+CD16+_monocyte,"#E31A1C"
+Dendritic_cell,"#FDBF6F"
+Plasmacytoid_dendritic_cell,"#FF7F00"
+Plasma_cell,"#CAB2D6"
+Platelet,"#6A3D9A"
+unknown,"#C0C0C0"', header = TRUE, sep = ',', stringsAsFactors = FALSE)
+
+rownames(pal) <- pal$identity
+```
+
+```{r palette}
 pos_markers2_tmp <- markers2[markers2$sign == '+',]
 pos_markers2 <-  list()
 pos_markers_compound <- list()
@@ -708,9 +725,12 @@ for (item in names(d)) {
     cat("## ", item, "\n\n")
     d[[item]]@meta.data$scina <- as.factor(d[[item]]@meta.data$scina)
     ## Idents(d[[item]]) <- 'scina'
-    print(DimPlot(d[[item]], reduction = "umap", group.by = 'scina'))
-    print(DimPlot(d[[item]], reduction = "tsne", group.by = 'scina'))
+    print(DimPlot(d[[item]], reduction = "umap", group.by = 'scina',
+                  cols = setNames(pal$color, pal$identity)))
 
+    print(DimPlot(d[[item]], reduction = "tsne", group.by = 'scina', 
+                  cols = setNames(pal$color, pal$identity)))
+    
     ## print(CombinePlots(plots = list(p1, p2)) + ggtitle(item))
     cat('\n\n')
 
@@ -749,15 +769,17 @@ for (flavour1 in names(d)) {
                      y = Embeddings(d[[flavour2]], reduction = "pca")[common,j],
                      ## main = sprintf('flavour1 %s PC %s\nflavour2 %s PC %s',
                                     ## flavour1, i, flavour2, j),
-                     col = palette[as.numeric(d[[flavour1]]@meta.data[common, 'scina'])],
+                     ## col = palette[as.numeric(d[[flavour1]]@meta.data[common, 'scina'])],
+                     col = pal[d[[flavour1]]@meta.data[common, 'scina'],'color'],
                      pch = 19, cex = 0.5,
                      xlab = sprintf('%s PC %s', flavour1, i),
                      ylab = sprintf('%s PC %s', flavour2, j))
 
                 ## if (i == 1 & j == 1) {
                     legend('top',
-                           legend = levels(d[[flavour1]]@meta.data[common, 'scina']),
-                           col = palette[1:nlevels(d[[flavour1]]@meta.data[common, 'scina'])],
+                           legend = pal$identity,
+                           ## col = palette[1:nlevels(d[[flavour1]]@meta.data[common, 'scina'])],
+                           col = pal$color,
                            pch=19, cex=0.8,
                            inset=c(0,-0.42),
                            ncol = 2,
@@ -845,7 +867,8 @@ for (item in names(d)) {
 rownames(merged) <- merged$cell
 merged <- merged[,-1]
 colnames(merged) <- gsub('_RNA', '', colnames(merged))
-plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(as.factor(merged[,tag])), 0.1))
+
+plot(merged, pch = 20, cex = 0.5, col = ac(pal[merged$scina, 'color'], 0.1))
 ## plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(as.factor(merged[,tag])), 1))
 ## cat('\n\n')
 
