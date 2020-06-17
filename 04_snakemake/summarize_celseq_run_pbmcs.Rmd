@@ -123,8 +123,10 @@ params <- list(identifier = "",
                repeats_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats/SRR9169177.bam.featureCounts.gz',
                repeats_no_overlap_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/SRR9169177.bam.featureCounts.gz',
                seurat_output = "/home/imallona/tmp/test.rds",
-               repeats_alevin = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/repeats/alevin/quants_mat.gz',
-               genes_alevin = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/genes/alevin/quants_mat.gz',
+               repeats_alevin1 = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/repeats/male/alevin/quants_mat.gz',
+               genes_alevin1 = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/genes/male/alevin/quants_mat.gz',
+               repeats_alevin2 = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/repeats/female/alevin/quants_mat.gz',
+               genes_alevin2 = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/genes/female/alevin/quants_mat.gz',
                regress_genes_nCount = FALSE,
                regress_genes_nFeatures = FALSE)
 
@@ -181,17 +183,39 @@ CEL-Seq2: {
 
 
 ```{r}
-d$genes_alevin <- tximeta::tximeta(coldata = data.frame(
+genes_alevin1 <- tximeta::tximeta(coldata = data.frame(
                                        names = "genes",
-                                       files = params$genes_alevin,
+                                       files = params$genes_alevin1,
                                        stringsAsFactors = FALSE
                                    ), type = "alevin")
-                                  
-counts <-  assays(d$genes_alevin)$counts
-dim(counts)
-head(counts[,1:5])
 
-d$genes_alevin <- NULL
+counts1 <-  assays(genes_alevin1)$counts
+
+genes_alevin2 <- tximeta::tximeta(coldata = data.frame(
+                                       names = "genes",
+                                       files = params$genes_alevin2,
+                                       stringsAsFactors = FALSE
+                                   ), type = "alevin")
+
+counts2 <-  assays(genes_alevin2)$counts
+
+dim(counts1)
+dim(counts2)
+counts1[1:2,1:2]
+counts1 <- as.data.frame(counts1)
+counts2 <- as.data.frame(counts2)
+colnames(counts1) <- paste0('male_', colnames(counts1))
+colnames(counts2) <- paste0('female_', colnames(counts2))
+
+counts1$gene <- rownames(counts1)
+counts2$gene <- rownames(counts2)
+counts <- merge(counts1, counts2, by = 'gene', all = TRUE)
+colnames(counts)
+rownames(counts) <- counts$gene
+
+counts <- counts[,setdiff(colnames(counts), 'gene')]
+
+head(counts[,1:5])
 
 annot <- list()
 
@@ -225,19 +249,53 @@ rownames(counts) <- sprintf('%s_%s', tmp$ensembl_gene_id_version, tmp$external_g
 d$genes_alevin <- CreateSeuratObject(counts =  counts,
                                      project = 'genes_alevin')
 
+rm(tmp, counts1, counts2, counts)
+
+grep('-MT-', rownames(d$genes_alevin), value = TRUE)
+
 ```
 
 
 
 ```{r}
-d$repeats_alevin <- tximeta::tximeta(coldata = data.frame(
-                                       names = "repeats",
-                                       files = params$repeats_alevin,
-                                       stringsAsFactors = FALSE
-                                     ), type = "alevin")
 
-d$repeats_alevin <- CreateSeuratObject(counts =  assays(d$repeats_alevin)$counts,
-                                     project = 'repeats_alevin')
+
+reps1 <- tximeta::tximeta(coldata = data.frame(
+                                       names = "repeats",
+                                       files = params$repeats_alevin1,
+                                       stringsAsFactors = FALSE
+                                    ), type = "alevin")
+
+reps1 <- as.data.frame(assays(reps1)$counts)
+
+reps2 <- tximeta::tximeta(coldata = data.frame(
+                                        
+                                       names = "repeats",
+                                       files = params$repeats_alevin2,
+                                       stringsAsFactors = FALSE
+                                    ), type = "alevin")
+
+reps2 <- as.data.frame(assays(reps2)$counts)
+
+colnames(reps1) <- paste0('male_', colnames(reps1))
+colnames(reps2) <- paste0('female_', colnames(reps2))
+
+
+reps1$gene <- rownames(reps1)
+reps2$gene <- rownames(reps2)
+
+class(reps1)
+
+counts <- merge(reps1, reps2, by = 'gene', all = TRUE)
+rownames(counts) <- counts$gene
+counts <- counts[,setdiff(colnames(counts), 'gene')]
+
+
+d$repeats_alevin <- CreateSeuratObject(counts =  counts,
+                                       project = 'repeats_alevin')
+
+d$repeats_alevin
+
 
 ```
 
@@ -307,7 +365,7 @@ print(summarized)
 Filtering out cells according to the repeats expression, and forwarding the selection to other layers
 
 ```{r subset}
-d$genes_alevin <- subset(d$genes_alevin, subset = percent.mt < 10 | is.na(percent.mt))
+d$genes_alevin <- subset(d$genes_alevin, subset = percent.mt < 18| is.na(percent.mt))
 
 selected_cells <- colnames(d$genes_alevin)
 length(selected_cells)
@@ -471,13 +529,21 @@ for (item in names(d)) {
 
 ## Dimred UMAP and tSNE {.tabset}
 
+```{r, eval = FALSE}
+item <- 'repeats_alevin'
+
+print(DimPlot(d[[item]], reduction = "umap", group.by = 'orig.ident'))
+print(DimPlot(d[[item]], reduction = "umap", group.by = 'RNA_snn_res.2'))
+
+```
+
 ```{r fig.width = 8, fig.height = 5, results = 'asis', cache = FALSE, warning = FALSE}
 for (item in names(d)) {
     cat("### ", item, "\n\n")
 
     
-    print(DimPlot(d[[item]], reduction = "umap", group.by = 'seurat_clusters'))
-    print(DimPlot(d[[item]], reduction = "tsne", group.by = 'seurat_clusters'))
+    print(DimPlot(d[[item]], reduction = "umap", group.by = 'RNA_snn_res.2'))
+    print(DimPlot(d[[item]], reduction = "tsne", group.by = 'RNA_snn_res.2'))
 
     cat('\n\n')
 
@@ -781,11 +847,27 @@ for (item in names(d)) {
 
     print(DimPlot(d[[item]], reduction = "tsne", group.by = 'scina', 
                   cols = setNames(pal$color, pal$identity)))
-    
+
     ## print(CombinePlots(plots = list(p1, p2)) + ggtitle(item))
     cat('\n\n')
 
 }
+```
+
+```{r fig.width = 14, fig.height = 7}
+item <- 'genes_alevin'
+print(DimPlot(d[[item]], reduction = "umap", group.by = 'scina', 
+              cols = setNames(pal$color, pal$identity), split.by = 'scina'))
+    
+
+```
+
+```{r fig.width = 14, fig.height = 7}
+item <- 'repeats_alevin'
+print(DimPlot(d[[item]], reduction = "umap", group.by = 'scina', 
+              cols = setNames(pal$color, pal$identity), split.by = 'scina'))
+    
+
 ```
 
 
@@ -1064,6 +1146,7 @@ Largely derived from Lukas Weber's https://github.com/lmweber/cytometry-clusteri
 @todo document parameters
 
 ```{r}
+
 map_levels <- function(x){
     ## x<- as.character(iris$Species)
     if(is.factor(x)) { 

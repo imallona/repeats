@@ -119,3 +119,29 @@ cd bedops-2.4.39
 make
 make install
 
+
+## salmon, including the chromium v1 binary
+
+cd ~/soft/salmon
+
+wget https://github.com/COMBINE-lab/salmon/archive/v1.2.1.tar.gz
+tar xzvf v1.2.1.tar.gz
+mv salmon-1.2.1  salmon-1.2.1_src
+cd salmon-1.2.1_src
+
+# mkdir build
+# cd build
+# cmake .. ## rather download the binaries later, and just do the chromium1 workaround here
+#   workaround described at https://combine-lab.github.io/alevin-tutorial/2018/running-alevin/
+#     (section 10x v1 Data)
+
+cd scripts/v1_10x;
+g++ -std=c++11 -O3 -I ../../include -o wrapper wrapper.cpp -lz
+
+cd ~/soft/salmon
+wget https://github.com/COMBINE-lab/salmon/releases/download/v1.2.1/salmon-1.2.1_linux_x86_64.tar.gz
+tar xzvf salmon-1.2.1_linux_x86_64.tar.gz
+mv salmon-latest_linux_x86_64 salmon-1.2.1
+
+cd salmon-1.2.1/bin
+ln -s ~/soft/salmon/salmon-1.2.1_src/scripts/v1_10x/run.sh run_v1_10x.sh
