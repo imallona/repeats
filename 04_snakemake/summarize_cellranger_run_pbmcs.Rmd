@@ -19,6 +19,7 @@ params:
   repeats_only_featurecounts_control: ""
   seurat_output: ""
   aris_output: ""
+  cobra_output: ""
   regress_genes_nCount: ""
   regress_genes_nFeature: ""
 ---
@@ -1620,7 +1621,7 @@ for (flavour in names(hung)) {
 }
 
 cobra <- do.call(rbind.data.frame, cobra)
-
+cobra$id <- params$identifier
 ```
 
 ```{r, fig.height = 14, fig.width = 7}
@@ -1635,7 +1636,8 @@ ggplot(data = cobra, aes(x = pr, y =  re, group = res, col = res)) +
 ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
     geom_point() +
     facet_grid(flavour~res, margins = FALSE) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
 
 ```
 
@@ -1643,7 +1645,8 @@ ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
 ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
     geom_point() +
     facet_wrap(~flavour) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
 
 ```
 
@@ -1651,7 +1654,8 @@ ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
 ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) +
     geom_point() +
     facet_grid(flavour~res) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
 
 ```
 
@@ -1683,7 +1687,8 @@ maxF1$cell <- factor(as.character(maxF1$cell), levels = unique(as.character(maxF
 ```{r, fig.width = 7, fig.height = 7}
 ggplot(data = maxF1, aes(x= cell, y = max_F1, col = flavour, group = flavour)) +
     geom_point() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
        
 ```
 
@@ -1694,6 +1699,7 @@ List of seurat objects
 ```{r}
 saveRDS(object = d, file = params$seurat_output)
 saveRDS(object = aris_stored, file = params$aris_output)
+saveRDS(object = cobra, file = params$cobra_output)
 ```
 
 # Timestamp

@@ -13,12 +13,10 @@ output:
     theme: lumen
 params:
   identifier: ""   
-  genes_cellranger: ""
-  genes_alevin: ""
-  repeats_cellranger: ""
-  repeats_featurecounts: ""
-  repeats_only_featurecounts_control: ""
-  repeats_alevin: ""
+  genes_alevin1: ""
+  genes_alevin2: ""
+  repeats_alevin1: ""
+  repeats_alevin2: ""
   seurat_output: ""
   aris_output: ""
   regress_genes_nCount: ""
@@ -138,7 +136,7 @@ d <- list()
 
 ```{r}
 ## Featurecounts-based repeats
-tmp <- data.table::fread(params$repeats_bowtie, sep = '\t', header = FALSE, fill = TRUE)
+## tmp <- data.table::fread(params$repeats_bowtie, sep = '\t', header = FALSE, fill = TRUE)
 
 ##                          drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
 ## rownames(tmp) <- tmp$Geneid ## here

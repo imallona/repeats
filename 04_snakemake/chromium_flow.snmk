@@ -216,11 +216,13 @@ rule knit_report_chromium:
     output:
         html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_cellranger_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
         rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_cellranger_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-        aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
+        aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
     log:
         op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_cellranger_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
     shell: """
-        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output.html}\", params = list(identifier = \"{params.run_name}\", genes_cellranger = \"{input.genes}\", repeats_cellranger = \"{input.repeats}\", repeats_featurecounts = \"{input.featurecounts}\", repeats_only_featurecounts_control = \"{input.repeats_only_featurecounts_control}\", seurat_output = \"{output.rds}\", aris_output = \"{output.aris}\", regress_genes_nCount = \"{wildcards.regress_ncount}\", regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output.html}\", params = list(identifier = \"{params.run_name}\", genes_cellranger = \"{input.genes}\", repeats_cellranger = \"{input.repeats}\", repeats_featurecounts = \"{input.featurecounts}\", repeats_only_featurecounts_control = \"{input.repeats_only_featurecounts_control}\", seurat_output = \"{output.rds}\", aris_output = \"{output.aris}\", regress_genes_nCount = \"{wildcards.regress_ncount}\", regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
+      cobra_output = \"{output.cobra}\"))' &> {log}
         """
 
 # rule knit_report_chromium_genes_regressed_out:
