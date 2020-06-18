@@ -19,7 +19,7 @@ rule all:
 
 ## srrwhatever is  not a pbmc!
 # @todo this comes from other reports, fix!
-rule integration_pbmcs_10x:
+rule integration_pbmcs_10x_plus_smartseq2:
     input:
         c1 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds',
         c2 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds',

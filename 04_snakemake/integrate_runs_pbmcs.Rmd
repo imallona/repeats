@@ -33,7 +33,7 @@ library(Matrix)
 
 library(knitr)
 library(Seurat)
-## library(dplyr)
+library(dplyr)
 ## library(scater)
 library(data.table)
 ## library(SingleCellExperiment)
@@ -51,6 +51,7 @@ library(reshape2)
 ## library(mclust)
 library(viridis)
 library(UpSetR)
+
 })
 ```
 
@@ -1154,6 +1155,53 @@ print(pheatmap(foo,
 
 
 ```
+
+# F1s
+
+```{r}
+cobra <- list()
+
+
+for (rds in params) {
+    fn <- list.files(dirname(rds), pattern = '.*cobra.*TRUE.*TRUE.*')
+   
+    
+    cobra[[sapply(strsplit(dirname(rds), .Platform$file.sep),
+                  function(x) return(x[6]))]] <- readRDS(file = file.path(dirname(rds), fn))
+}
+
+cobra <- do.call(rbind.data.frame, cobra)
+```
+
+```{r}
+pal <- read.table(text = 'identity,color
+CD4+_T_cell,"#A6CEE3"
+Cytotoxic_T_cell,"#1F78B4"
+B_cell,"#B2DF8A"
+Natural_killer_cell,"#33A02C"
+CD14+_monocyte,"#FB9A99"
+CD16+_monocyte,"#E31A1C"
+Dendritic_cell,"#FDBF6F"
+Plasmacytoid_dendritic_cell,"#FF7F00"
+Plasma_cell,"#CAB2D6"
+Platelet,"#6A3D9A"
+unknown,"#C0C0C0"', header = TRUE, sep = ',', stringsAsFactors = FALSE)
+
+rownames(pal) <- pal$identity
+```
+
+
+```{r, fig.width = 12, fig.height = 6}
+
+ggplot(data = cobra,      
+    aes(x = res, y =  F1, group=flavour, col = cell)) +
+    geom_point() +
+    facet_grid(id~flavour) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+```
+
 
 # Timestamp
 
