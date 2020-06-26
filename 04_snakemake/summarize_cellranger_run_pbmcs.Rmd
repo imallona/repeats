@@ -139,6 +139,7 @@ d <- list()
 barcodes_fn <- params$genes_cellranger ## should end with `barcodes.tsv.gz`
 path <- dirname(barcodes_fn)
 
+
 d$genes_cellranger <- CreateSeuratObject(counts = Read10X(data.dir = path),
                                          project = sprintf('%s\n%s', params$identifier,
                                                            'genes_cellranger'),
@@ -834,12 +835,14 @@ for (slot in c('repeats_cellranger', 'repeats_featurecounts', 'control_repeats_o
     cat("## ", slot, "\n\n")
 
     ## this is idiotic @todo add variable feature selection
-    selected <- c(names(head(sort(apply(GetAssayData(d[[slot]]),1, coef_var),
-                                  decreasing = TRUE),
-                             5)),
-                  c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a'))
+    ## selected <- c(names(head(sort(apply(GetAssayData(d[[slot]]),1, coef_var),
+                                  ## decreasing = TRUE),
+                             ## 5)),
+                  ## c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a'))
 
+    selected <- head(VariableFeatures(d[[slot]]), n = 10)
 
+    
     repeats <- as.data.frame(FetchData(d[[slot]], vars = selected, slot = 'data'))
     repeats$cell <- rownames(repeats)
 
@@ -1008,6 +1011,59 @@ plot(merged, pch = 20, cex = 0.5, col = ac(pal[merged$scina, 'color'], 0.1))
 
 rm(merged)
 ```
+
+
+## Descriptive with SCINA and PCs {.tabset}
+
+
+Comparing PCs to SCINA
+
+```{r descriptive3, results = 'asis', fig.width = 10, fig.height = 10}
+
+
+for (item in names(d)) {
+    cat('### ', item, '\n\n')
+
+
+    tag <- 'scina'
+
+    merged <- data.frame(cell = common_cells,
+                         percent.mt = d$genes_cellranger@meta.data[common_cells, 'percent.mt'])
+
+    ## merged <- data.frame(cell = common_cells,
+    ##                      percent.mt = d$genes_cellranger@meta.data[common_cells, 'percent.mt'],
+    ##                      Embeddings(d[[1]], reduction = "pca")[common_cells, 1:5])
+
+
+    ## merged[,tag] <- d[[item_clust]]@meta.data[common_cells,res]
+    merged[,tag] <- d[[item]]@meta.data[common_cells, tag]
+
+    d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
+
+    ## merged <- merge(merged,
+    ##                 d[[item]]@meta.data[c('cell', 'nCount_RNA', 'nFeature_RNA')],
+    ##                 by = 'cell',
+    ##                 all.x = TRUE,
+    ##                 suffixes = c('', sprintf('\n%s', item)))
+
+    merged <- cbind(merged,
+                   Embeddings(d[[1]], reduction = "pca")[merged$cell, 1:5])
+       
+    rownames(merged) <- merged$cell
+    merged <- merged[,-1]
+    colnames(merged) <- gsub('_RNA', '', colnames(merged))
+    ## print(dim(merged))
+    
+    plot(merged, pch = 20, cex = 0.5, col = ac(pal[merged$scina, 'color'], 0.1))
+    ## plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(as.factor(merged[,tag])), 1))
+    ## cat('\n\n')
+
+    rm(merged)
+    cat("\n\n")
+}
+
+```
+
 
 # Correlation values distribution
 

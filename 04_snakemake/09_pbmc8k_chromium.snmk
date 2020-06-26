@@ -181,8 +181,8 @@ rule map_salmon_repeats_chromium:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
-        cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R1*fastq.gz'))),
-        r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R2*fastq.gz')))        
+        cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R1*fastq.gz'))),
+        r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R2*fastq.gz')))        
     output:
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
     threads:
@@ -191,8 +191,8 @@ rule map_salmon_repeats_chromium:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
         processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats'),
         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
-        cb = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R1*fastq.gz')))),
-        r2 = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R2*fastq.gz')))) 
+        cb = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R1*fastq.gz')))),
+        r2 = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R2*fastq.gz')))) 
     log:
         op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium.log')
     shell:
@@ -219,8 +219,8 @@ rule map_salmon_genes_chromium:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'duplicate_clusters.tsv'),
-        cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R1*fastq.gz'))),
-        r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R2*fastq.gz')))        
+        cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R1*fastq.gz'))),
+        r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R2*fastq.gz')))        
     output:
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz')
     threads:
@@ -229,8 +229,8 @@ rule map_salmon_genes_chromium:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
         processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes'),
         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon'),
-        cb = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R1*fastq.gz')))),
-        r2 = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_fastqs/*R2*fastq.gz')))) 
+        cb = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R1*fastq.gz')))),
+        r2 = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R2*fastq.gz')))) 
     log:
         op.join(BASE, 'runs', RUN_NAME, 'run_salmon_genes_chromium.log')
     shell:
