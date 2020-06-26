@@ -1,6 +1,8 @@
 #!/usr/bin/env snakemake -s
 ## 
 ## Started 10 June
+## This is chromium v2 https://support.10xgenomics.com/single-cell-gene-expression/datasets/2.1.0/pbmc8k
+## pbmcs from a healthy donnor
 ##
 ## Izaskun Mallona
 ## GPLv3
@@ -17,7 +19,7 @@ CHEMISTRY = 'SC3Pv3'
 
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
-NTHREADS = 20
+NTHREADS = 30
 LOCAL_MEM_GB = 100
 GENOME= 'GRCh38'
 
@@ -74,12 +76,6 @@ for item in ['bowtie', 'star', 'salmon']:
 
 include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow.snmk"
 
-onsuccess:
-    shell("mailx -A gmail -s "'8k success'" izaskun.mallona@gmail.com < {log}")
-
-onerror:
-    shell("mailx -A gmail -s "'8k error'" izaskun.mallona@gmail.com  < {log}")
-
     
 rule all:
     input:
@@ -94,7 +90,7 @@ rule all:
         op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard", RUN_NAME +  "_transcriptome_repeats.counts.summary.png"),
         op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes",  RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
-        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
+        # op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
 
 rule get_pbmc_8k:
     priority: 100
@@ -204,7 +200,7 @@ rule map_salmon_repeats_chromium:
     -l ISR \
     -1 {params.cb} \
     -2 {params.r2} \
-    --chromiumV3  \
+    --chromium  \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
     --tgMap {input.tgmap} ) 2> {log}
@@ -242,7 +238,7 @@ rule map_salmon_genes_chromium:
     -l ISR \
     -1 {params.cb} \
     -2 {params.r2} \
-    --chromiumV3  \
+    --chromium  \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
     --tgMap {input.tgmap} ) 2> {log}

@@ -939,9 +939,7 @@ Tabset: coloring according to the clustering results.
 ```{r descriptive, results = 'asis', fig.width =8, fig.height = 8}
 
 res <- 'RNA_snn_res.0.2'
-common_cells <- intersect(intersect(colnames(d$genes_cellranger), colnames(d$repeats_cellranger)),
-                                    colnames(d$repeats_featurecounts))
-
+common_cells <- Reduce(intersect, sapply(d, colnames))
 
 for (item_clust in names(d)) {
     tag <- sprintf('%s\n%s', item_clust, res)
@@ -1013,13 +1011,14 @@ rm(merged)
 ```
 
 
-## Descriptive with SCINA and PCs {.tabset}
+# Descriptive with SCINA and PCs {.tabset}
 
 
 Comparing PCs to SCINA
 
 ```{r descriptive3, results = 'asis', fig.width = 10, fig.height = 10}
 
+common_cells <- Reduce(intersect, sapply(d, colnames))
 
 for (item in names(d)) {
     cat('### ', item, '\n\n')
