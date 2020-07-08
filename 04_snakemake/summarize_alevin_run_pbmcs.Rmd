@@ -116,9 +116,9 @@ coef_var <- function(x){
 ##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/SRR10974769/count_repeats_on_cellranger_standard/SRR10974769_repeats.counts.gz",
 ##                identifier = 'test')
 
-params <- list(identifier = "5k_pbmc_v3",
-               genes_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/genes/alevin/quants_mat.gz',
-               repeats_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/repeats/alevin/quants_mat.gz',
+params <- list(identifier = "pbmc8k",
+               genes_alevin = '/home/imallona/repeats_sc/runs/pbmc8k/alevin/genes/alevin/quants_mat.gz',
+               repeats_alevin = '/home/imallona/repeats_sc/runs/pbmc8k/alevin/repeats/alevin/quants_mat.gz',
                regress_genes_nCount = FALSE,
                regress_genes_nFeatures = FALSE,
                seurat_output  = '/home/imallona/tmp/test.RData',
@@ -153,7 +153,7 @@ annot$attributes = c(annot$filters, "external_gene_name", "chromosome_name",
                      "gene_biotype", "start_position", "end_position")
 annot$biomart = "ENSEMBL_MART_ENSEMBL" 
 annot$dataset = "hsapiens_gene_ensembl"
-annot$host = "asia.ensembl.org"
+annot$host = "ensembl.org"
 annot$bmart <- biomaRt::useMart(biomart = annot$biomart, dataset = annot$dataset, 
                                 host = annot$host)
 
@@ -1261,6 +1261,10 @@ List of seurat objects
 ```{r}
 saveRDS(object = d, file = params$seurat_output)
 saveRDS(object = aris_stored, file = params$aris_output)
+```
+# Test
+
+```{r child = 'summarize_pbmcs_functions.Rmd'}
 ```
 
 # Timestamp
