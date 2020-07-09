@@ -56,6 +56,7 @@ library(data.table)
 ## library(RColorBrewer)
 ## library(corrplot)
 library(ggplot2)
+## library(GGally)
 library(reshape2)
 ## library(xtable)
 library(mclust)
@@ -468,9 +469,6 @@ for (item in names(d)) {
     cat('\n\n')
 }
 
-
-
-
 ```
 
 ## Dimred PCA {.tabset}
@@ -792,7 +790,7 @@ rm(labelling, tmp)
 
 ```
 
-```{r problemrendering, cache = FALSE}
+```{r problemrendering, cache = FALSE, eval = FALSE}
 for (res in grep('RNA_snn', colnames(d$genes@meta.data), value = TRUE)) {
     cat('### ', res, '\n\n')
 
@@ -981,6 +979,12 @@ for (item_clust in names(d)) {
     merged <- merged[,-1]
     colnames(merged) <- gsub('_RNA', '', colnames(merged))
     plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(merged[,tag]), 0.1))
+    ## ggpairs(
+    ##     merged,
+    ##     upper = list(continuous = "density", combo = "box_no_facet"),
+    ##     lower = list(continuous = "points", combo = "dot_no_facet"),
+    ##     mapping = ggplot2::aes(color = ac(as.numeric(merged[,tag], 0.1)))
+    ## )
     cat('\n\n')
 }
 
@@ -1038,11 +1042,15 @@ common_cells <- Reduce(intersect, sapply(d, colnames))
 for (item in names(d)) {
     cat('### ', item, '\n\n')
 
-
     tag <- 'scina'
 
+    ## common_cells
+    ## head(rownames(d[[item]]@meta.data))
+
     merged <- data.frame(cell = common_cells,
-                         percent.mt = d$genes_cellranger@meta.data[common_cells, 'percent.mt'])
+                         percent.mt = d$genes_cellranger@meta.data[common_cells, 'percent.mt'],
+                         nCount = d[[item]]@meta.data[common_cells, 'nCount_RNA'],
+                         nFeature = d[[item]]@meta.data[common_cells, 'nFeature_RNA'])
 
     ## merged <- data.frame(cell = common_cells,
     ##                      percent.mt = d$genes_cellranger@meta.data[common_cells, 'percent.mt'],
@@ -1069,6 +1077,14 @@ for (item in names(d)) {
     ## print(dim(merged))
     
     plot(merged, pch = 20, cex = 0.5, col = ac(pal[merged$scina, 'color'], 0.1))
+    ## ggpairs(
+    ##     merged,
+    ##     upper = list(continuous = "density", combo = "box_no_facet"),
+    ##     lower = list(continuous = "points", combo = "dot_no_facet"),
+    ##     mapping = ggplot2::aes(color = merged$scina)) +
+    ##     ggplot2::scale_color_manual(pal[merged$scina, 'color'])
+
+    
     ## plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(as.factor(merged[,tag])), 1))
     ## cat('\n\n')
 
@@ -1694,7 +1710,7 @@ cobra <- do.call(rbind.data.frame, cobra)
 cobra$id <- params$identifier
 ```
 
-```{r, fig.height = 10, fig.width = 7}
+```{r, fig.height = 10, fig.width = 7, eval = FALSE}
 ggplot(data = cobra, aes(x = pr, y =  re, group = res, col = res)) +
     geom_point() +
     facet_grid(flavour~cell, margins = FALSE) +
@@ -1702,7 +1718,7 @@ ggplot(data = cobra, aes(x = pr, y =  re, group = res, col = res)) +
 
 ```
 
-```{r, fig.height = 10, fig.width = 8}
+```{r, fig.height = 6, fig.width = 8}
 ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
     geom_point() +
     facet_grid(flavour~res, margins = FALSE) +
@@ -1711,7 +1727,7 @@ ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
 
 ```
 
-```{r, fig.height = 7, fig.width = 7}
+```{r, fig.height = 5, fig.width = 7}
 ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
     geom_point() +
     facet_wrap(~flavour) + 
@@ -1720,7 +1736,7 @@ ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
 
 ```
 
-```{r, fig.height = 10, fig.width = 8}
+```{r, fig.height = 8, fig.width = 8}
 ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) +
     geom_point() +
     facet_grid(flavour~res) + 
@@ -1763,7 +1779,7 @@ ggplot(data = maxF1, aes(x= cell, y = max_F1, col = flavour, group = flavour)) +
        
 ```
 
-```{r}
+```{r, df_print = 'paged'}
 as.data.frame(cobra %>%
               group_by(flavour, cell) %>%
               summarize(max(F1)) %>%
