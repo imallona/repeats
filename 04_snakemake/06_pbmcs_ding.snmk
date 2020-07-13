@@ -1,0 +1,1511 @@
+#!/usr/bin/env snakemake -s
+## 
+## Started 30 March 2020
+##
+## Izaskun Mallona
+## GPLv3
+
+import os.path as op
+from glob import glob
+import re
+# import pandas as pd
+
+print('This is human')
+print('check featurecounts pairedend')
+print('this comes from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE132044')
+
+## Folder structure start --------------------------------------------------------------------- ##
+
+
+## config file start ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# configfile: "config.yaml"
+# validate(config, "schemas/config.schema.yaml")
+
+# samples = pd.read_csv(config["samples"], sep = '\t').set_index("id", drop=False)
+#@FIXME to be moved to config, not hardcoded!
+BASE = op.join('/home', 'imallona', 'repeats_sc')
+NTHREADS = 40
+LOCAL_MEM_GB = 100
+
+RUN_NAME  = 'pbmcs_smartseq2_ding'
+RUN_TECH = 'smartseq2'
+GENOME = 'GRCh38'
+
+GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
+GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
+REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
+
+GTF_MAKING_SCRIPT = '~/src/repeats_sc/04_snakemake/gtf_maker.R'
+GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/gtf_parser.R'
+FEATURECOUNTS_RSCRIPT= '~/src/repeats_sc/04_snakemake/plot_featurecounts_profile.R'
+
+BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
+BOWTIE = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'
+
+##pigz 2.3.1
+PIGZ = '/usr/bin/pigz'
+BIOPYTHON_CONVERT='biopython.convert'
+STAR = '~/soft/star/STAR-2.7.3a/source/STAR'
+FEATURECOUNTS = '~/soft/subread/subread-2.0.0-source/bin/featureCounts'
+SALMON = '~/soft/salmon/salmon-1.1.0_linux_x86_64/bin/salmon'
+CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
+BIOAWK = '~/soft/bioawk/bioawk'
+BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
+Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
+FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
+VDB_VALIDATE = '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate'
+BEDOPS = '~/soft/bedops/bedops-2.4.39/bin/'
+
+## FASTQS, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}.fastq.gz"))
+
+## include: "/home/imallona/src/repeats_sc/04_snakemake/rnaseq_like_human_paired_end.snmk"
+
+try:
+   if not op.exists(op.dirname(op.join(BASE, 'annotation'))):
+      os.makedirs(op.join(BASE, 'annotation'))
+except OSError as err:
+   print(err)
+      
+for item in ['bowtie', 'star', 'salmon']:
+   try:
+      if not op.exists(op.dirname(op.join(BASE, 'indices', item))):
+         os.makedirs(op.join(BASE, 'indices', item))
+   except OSError as err:
+      print(err)
+
+## Folder structure end ----------------------------------------------------------------------- ##
+
+def get_samples(fn):
+    # samples = pd.read_table(fn)
+   samples = []
+   with open(fn) as fh:
+    for line in fh: 
+        samples.append(line.strip())
+    return(samples)
+
+rule all:
+    input:
+        expand(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
+               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_male.conf'))),
+        expand(op.join(BASE,  "data", RUN_NAME, "{srr}_2.fastq.gz"),
+               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_female.conf'))),
+        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', RUN_NAME + "_star_genes.counts.gz"),
+        op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.gz"),
+        expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+               regress_ncount = ['TRUE', 'FALSE'],
+               regress_nfeature = ['TRUE', 'FALSE']),
+        op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
+                     RUN_NAME + "_repeats_no_overlap.counts.summary.png"),
+        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
+                     RUN_NAME + "_genes.counts.summary.png"),
+        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',
+                     RUN_NAME + "_repeats.counts.summary.png"),
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.summary.png")
+        
+
+rule knit_report_smartseq:
+    input:
+        genes_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'genes', RUN_NAME + '_star_genes.counts.gz'),
+        repeats_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
+        repeats_bowtie = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', RUN_NAME + '_bowtie_repeats.counts.gz'),
+        repeats_no_overlap_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', RUN_NAME + "_repeats_not_overlapping_genes.counts.gz")
+    params:
+        rmd = 'summarize_smartseq2_run_pbmcs.Rmd',
+        run_name = RUN_NAME
+    output:
+        html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
+    log:
+        op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_smartseq2_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
+    shell:
+        """
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+          output_file = \"{output.html}\", 
+          params = list(identifier = \"{params.run_name}\", 
+          genes_star = \"{input.genes_star}\", 
+          repeats_star = \"{input.repeats_star}\", 
+          repeats_bowtie = \"{input.repeats_bowtie}\", 
+          repeats_no_overlap_star = \"{input.repeats_no_overlap_star}\",
+          seurat_output = \"{output.rds}\", 
+          aris_output = \"{output.aris}\", 
+          cobra_output = \"{output.cobra}\",
+          regress_genes_nCount = \"{wildcards.regress_ncount}\", \
+          regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}
+        """
+        
+# print(get_samples(op.join(BASE, "runs",
+#                                 RUN_NAME, 'data', 'pbmc_smartseq2_male.conf')))
+
+
+## untested start
+
+# ## cutadapt
+# ## sickle
+# ## map with star etc
+# ## the indices in human!
+## remember to cutadapt etc
+## and no featurecounts
+
+# ## @todo check the pigzs for inputs
+# rule map_bowtie_repeatome_se:
+#     params:
+#         repeatome = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0]),
+#         sample = RUN_NAME,
+#         path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome")
+#     input:
+#         fastq = op.join(BASE, "data", RUN_NAME, "{fastq}.fastq.gz"),
+#         repeatome_tag_file = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt')
+#     output:
+#         op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam")
+#     log:
+#         op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}_bowtie_repeatome.log")
+#     threads :
+#         NTHREADS
+#     shell:
+#         """
+#         mkdir -p {params.path}
+
+#         ( {PIGZ} --keep --processes {threads} --to-stdout --decompress {input.fastq} | {BOWTIE} -q \
+#         -v 2 \
+#         --threads {threads} \
+#         -k 2 --best --strata \
+#         --sam \
+#         --chunkmbs 128 {params.repeatome} - |  samtools view -@ {threads} -bS - > {output} ) 2> {log}
+#         """
+
+
+rule profile_featurecounts_repeats_bowtie:
+    input:        
+        summary = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.summary")
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome"),
+        script = FEATURECOUNTS_RSCRIPT,
+        gtf = 'bowtie_repeatome_genes'
+    output:
+        png = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.summary.png")
+    threads: 1
+    shell:
+       """
+       cd {params.path}
+       
+       {Rscript} {params.script} --summary {input.summary} --output {output.png} --identifier {params.gtf}
+       """
+
+    
+rule profile_featurecounts_run_genes_on_transcriptome:
+    input:        
+        summary = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'genes', RUN_NAME + "_star_genes.counts.summary")
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes'),
+        script = FEATURECOUNTS_RSCRIPT,
+        gtf = 'star_transcriptome_genes'
+    output:
+        png = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
+                     RUN_NAME + "_genes.counts.summary.png")
+    threads: 1
+    shell:
+       """
+       cd {params.path}
+       
+       {Rscript} {params.script} --summary {input.summary} --output {output.png} --identifier {params.gtf}
+       """
+
+rule profile_featurecounts_run_repeats_on_transcriptome:
+    input:        
+        summary = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + "_star_transcriptome_repeats.counts.summary")
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats'),
+        script = FEATURECOUNTS_RSCRIPT,
+        gtf = 'star_transcriptome_repeats'
+    output:
+        png = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',
+                     RUN_NAME + "_repeats.counts.summary.png")
+    threads: 1
+    shell:
+       """
+       cd {params.path}
+       
+       {Rscript} {params.script} --summary {input.summary} --output {output.png} --identifier {params.gtf}
+       """
+       
+rule profile_featurecounts_run_repeats_no_overlap_on_transcriptome:
+    input:        
+        summary = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', RUN_NAME + "_repeats_not_overlapping_genes.counts.summary")
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap'),
+        script = FEATURECOUNTS_RSCRIPT,
+        gtf = 'star_transcriptome_repeats_no_overlap'
+    output:
+        png = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
+                     RUN_NAME + "_repeats_no_overlap.counts.summary.png")
+    threads: 1
+    shell:
+       """
+       cd {params.path}
+       
+       {Rscript} {params.script} --summary {input.summary} --output {output.png} --identifier {params.gtf}
+       """
+       
+rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
+    input:
+         expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
+                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_female.conf'))),
+         
+         expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
+                 srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_male.conf'))),
+         
+         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL) + '_minus_' + op.basename(GENES_GTF_URL))
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome')
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', RUN_NAME + "_repeats_not_overlapping_genes.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', RUN_NAME + "_repeats_not_overlapping_genes.counts.summary")        
+    log :
+        log = op.join(BASE, "runs",  RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', 'feature_counts_not_overlapping_genes.log'),
+    threads:
+        NTHREADS
+    shell: """
+    cd {params.path}
+
+    mkdir -p {params.path}/repeats_no_overlap
+
+    {FEATURECOUNTS} -T {threads} \
+    -t exon \
+    -g gene_id \
+    -a {input.gtf} \
+    -o  {output.counts} \
+    {params.path}/*bam  2>&1 > {log}
+
+    {PIGZ} --keep -p {threads} {output.counts}
+    """
+
+## use this! @todo
+rule get_repeats_not_overlapping_genes_gtf:
+    input:
+        repeats_gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
+        genes_gtf =  op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
+    output:
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL) + '_minus_' + op.basename(GENES_GTF_URL)),
+        repeats_gtf_decomp = temp(op.join(BASE, 'annotation', op.basename(REP_GTF_URL)) + '.tmp.gtf'),
+        genes_gtf_decomp =  temp(op.join(BASE, 'annotation', op.basename(GENES_GTF_URL)) + '.tmp.gtf'),
+        genesbed = temp(op.join(BASE, 'annotation', op.basename(GENES_GTF_URL)) + '.tmp.bed')
+    params:
+        threads = NTHREADS,
+        bedops_path= BEDOPS
+    shell:
+        """
+        ## this doesn't neither start
+
+        {PIGZ} --decompress --keep --stdout  {input.repeats_gtf} | \
+               sed 's/chr//g' > {output.repeats_gtf_decomp}
+        {PIGZ} --decompress --keep  --stdout  {input.genes_gtf} | \
+               sed 's/chr//g' > {output.genes_gtf_decomp}
+
+        # let's transform genes in bed and then use bedtools
+        export PATH={params.bedops_path}:$PATH
+
+        awk '{{ if ($0 ~ "transcript_id") print $0; else print $0" transcript_id "";"; }}' \
+           {output.genes_gtf_decomp} | gtf2bed - > {output.genesbed}
+
+        {BEDTOOLS} intersect -a {output.repeats_gtf_decomp} \
+          -b {output.genesbed} \
+          -v | {PIGZ} --stdout > {output.gtf}
+        """
+
+
+rule bowtie_index_repeatome:
+    input:
+        fa = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.gz')
+    threads: NTHREADS
+    params:
+        label = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome',  op.splitext(op.basename(REP_GTF_URL))[0]),
+        path =  op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome')
+    log:
+        op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', 'bowtie_repeatome.log')
+    output:
+        fa_uncomp = temp(op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa')),
+        o1 = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt') #,
+    shell:
+        """
+        mkdir -p {params.path}
+        
+        {PIGZ} -k --decompress -p {threads} {input.fa}
+        
+        ({BOWTIE_BUILD} {output.fa_uncomp} {params.label} --threads {threads}) 2> {log}
+        """
+
+        
+rule map_bowtie_repeatome_pe:
+    params:
+        repeatome = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0]),
+        sample = RUN_NAME,
+        path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome")
+    input:
+        fastq1 = op.join(BASE, "data", RUN_NAME, "{fastq}_1.fastq.gz"),
+        fastq2 = op.join(BASE, "data", RUN_NAME, "{fastq}_2.fastq.gz"),
+        repeatome_tag_file = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt')
+    output:
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam")
+    log:
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}_bowtie_repeatome.log")
+    threads :
+        NTHREADS
+    shell:
+        """
+        mkdir -p {params.path}
+
+        ( {BOWTIE} -q \
+        -1 <( {PIGZ} --keep --processes {threads} --to-stdout --decompress {input.fastq1} ) \
+        -2 <( {PIGZ} --keep --processes {threads} --to-stdout --decompress {input.fastq2} ) \
+        -v 2 \
+        --threads {threads} \
+        -k 2 --best --strata \
+        --sam \
+        --chunkmbs 128 {params.repeatome} |  samtools view -@ {threads} -bS - > {output} ) 2> {log}
+        """
+
+# @todo NOTE THE MULTIMAPPING ALLOWED!
+rule featurecounts_repeats_repeatome_pe:
+    input:
+        expand(op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', "{srr}.bam"),
+               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_male.conf'))),
+        expand(op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', "{srr}.bam"),
+               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_female.conf'))),
+          # bam = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam"),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
+        fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.summary")
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome")
+    log :
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "bowtie_repeats_featurecounts.log"),
+    threads:
+        NTHREADS
+    shell:
+       """
+       ## note multimappers are counted
+       {FEATURECOUNTS} -T {threads} \
+       -p \
+       -t exon \
+       -g gene_id \
+       -a {input.fake_repeatome_gtf} \
+       -o  {output.counts} \
+       -M \
+       {params.path}/*bam  &> {log}
+
+       {PIGZ} --keep  -p {threads} {output.counts}
+       """
+
+rule featurecounts_repeats_transcriptome_pe:
+    input:
+        # bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
+        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
+               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_female.conf'))),
+        
+        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
+                 srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_male.conf'))),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    output:
+        counts  = temp(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts')),
+        gz_counts = op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz')
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome')
+    log :
+        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "star_repeats_featurecounts.log"),
+    threads:
+        NTHREADS
+    shell:
+       """
+       {FEATURECOUNTS} -T {threads} \
+       -p \
+       -t exon \
+       -g gene_id \
+       -a {input.gtf} \
+       -o  {output.counts} \
+       {params.path}/*bam  &> {log}
+
+       {PIGZ} --keep -p {threads} {output.counts}
+       """
+       
+rule featurecounts_genes_transcriptome_pe:
+    input:
+        # bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
+        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
+               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_female.conf'))),
+        
+        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
+               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_male.conf'))),
+        gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', RUN_NAME + "_star_genes.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', RUN_NAME + "_star_genes.counts.gz")
+    params:
+        path =  op.join(BASE, "runs", RUN_NAME, 'star_transcriptome')
+    log :
+        op.join(BASE, "runs",RUN_NAME, 'star_transcriptome', 'genes', "star_genes_featurecounts.log"),
+    threads:
+        NTHREADS
+    shell:
+       """
+       {FEATURECOUNTS} -T {threads} \
+       -p \
+       -t exon \
+       -g gene_id \
+       -a {input.gtf} \
+       -o  {output.counts} \
+       {params.path}/*bam  &> {log}
+
+       {PIGZ} --keep -p {threads} {output.counts}
+       """
+       
+# #@untested @todo @current
+# ## fix to take into account the different indices to map against
+# ## fix the cutadapt sickle thing
+rule map_star_transcriptome_pe:
+    input:
+        star_index_flag = op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrName.txt'), 
+        fastq1 = op.join(BASE, "data", RUN_NAME, "{fastq}_1.fastq.gz"),
+        fastq2 = op.join(BASE, "data", RUN_NAME,  "{fastq}_2.fastq.gz"),
+    params:
+        star_index = op.join(BASE, 'indices', 'star', GENOME, 'transcriptome'),
+        path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome'),
+        prefix = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_")
+    output:
+        bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
+        star_tmp = temp(directory(op.join(BASE, 'runs', 'star_transcriptome', "{fastq}_STARtmp")))
+    threads:
+        NTHREADS
+    log:
+        op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_star.log")
+    # benchmark:
+    #     op.join(BASE, 'run/{sample}/{sample}_star_benchmark.txt')
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+        
+        {STAR} --genomeDir {params.star_index} \
+        --readFilesIn {input.fastq1} {input.fastq2} \
+        --runThreadN {threads} \
+        --outFileNamePrefix {params.prefix} \
+        --outSAMtype BAM SortedByCoordinate \
+        --readFilesCommand zcat  2> {log}
+
+        ## in case STAR managed to delete its own folder (doesn't always happen)
+        mkdir -p {output.star_tmp}
+        """
+
+        
+rule index_repeats_genome_star:
+    params:
+        genome_dir = op.join(BASE, 'indices', 'star', GENOME, 'repeatome'),
+    input:
+        fa = op.join(BASE, 'annotation', op.basename(GENOME_URL)),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    log:
+        op.join(BASE, 'indices', 'star', GENOME, 'repeatome', 'repeats_star_index.log')
+    threads:
+        NTHREADS
+    output:
+        op.join(BASE, 'indices', 'star', GENOME, 'repeatome', 'chrName.txt'),
+        op.join(BASE, 'indices', 'star', GENOME, 'repeatome', 'chrStart.txt'),
+        op.join(BASE, 'indices', 'star', GENOME, 'repeatome', 'chrNameLength.txt'),
+        fa_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])),
+        gtf_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(REP_GTF_URL))[0]))
+    shell:
+        """
+        mkdir -p {params.genome_dir}
+
+        {PIGZ} -k --decompress -p {threads} {input.gtf}
+        {PIGZ} -k --decompress -p {threads} {input.fa}
+
+        ({STAR}  \
+        --runMode genomeGenerate \
+        --runThreadN {threads} \
+        --sjdbGTFfile {output.gtf_decomp} \
+        --genomeDir {params.genome_dir} \
+        --genomeFastaFiles {output.fa_decomp}) 2> {log}
+
+        touch {output}
+        """
+
+rule index_genes_genome_star:
+    params:
+        genome_dir = op.join(BASE, 'indices', 'star', GENOME, 'transcriptome'),
+    input:
+        fa = op.join(BASE, 'annotation', op.basename(GENOME_URL)),
+        gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
+    output:    
+        op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrName.txt'),
+        op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrStart.txt'),
+        op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrNameLength.txt'),
+        fa_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])),
+        gtf_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENES_GTF_URL))[0]))
+
+    log:
+        op.join(BASE, 'indices', 'star', 'transcriptome', 'genes_star_index.log')
+    threads:
+        NTHREADS
+    shell:
+        """
+        mkdir -p {params.genome_dir}
+
+        {PIGZ} -k --decompress -p {threads} {input.gtf}
+        
+        {PIGZ} -k --decompress -p {threads} {input.fa}
+
+        ({STAR}  \
+        --runMode genomeGenerate \
+        --runThreadN {threads} \
+        --sjdbGTFfile {output.gtf_decomp} \
+        --genomeDir {params.genome_dir} \
+        --genomeFastaFiles {output.fa_decomp}) 2> {log}
+
+        touch {output}
+        """
+
+rule uncompress_genome:
+    params:
+        genome_dir = op.join(BASE, 'annotation'),
+    input:
+        fagz = op.join(BASE, 'annotation', op.basename(GENOME_URL))
+    output:
+        temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0]))
+    shell:
+        """
+        {PIGZ} -k --decompress -p {threads} {input.fagz}
+        """
+
+rule fake_gtf_repeatome_in_repeats_coordinates:
+    input:
+        fa = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.gz')
+    output:
+        fai = temp(op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.fai')),
+        fauncomp = temp(op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa')),
+        fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
+    params:
+        rscript = GTF_MAKING_SCRIPT,
+        path = op.join(BASE, 'annotation')
+    threads:
+        NTHREADS
+    shell:
+        """
+        cd {params.path}
+        {PIGZ} -k --decompress -p {threads} {input.fa}
+
+        samtools faidx {output.fauncomp}
+        
+        {Rscript} {params.rscript} -f {output.fai} | {PIGZ} -c -p {threads} > {output.fake_repeatome_gtf}
+        
+        """
+    
+rule extract_repeatome_from_gtf:
+    priority: 100
+    input:
+        genome = op.join(BASE, 'annotation', op.basename(GENOME_URL)),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    output:
+        genome_uncompressed = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])) + '.temp_extract',
+        fai = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])) + '.temp_extract.fai',
+        fasta = temp(op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.fa'),
+        gtftemp = op.join(BASE, 'annotation', 'temp_' + op.basename(REP_GTF_URL)),
+        fastagz = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.fa.gz'
+    params :
+        rscript = GTF_PARSING_RSCRIPT
+    threads:
+        NTHREADS
+    shell:
+        """
+        {PIGZ} --keep --decompress -p {threads} -c  {input.genome} > {output.genome_uncompressed}
+
+        ## faking the GTF to describe the instance and not the 'exon'
+
+        {Rscript} {params.rscript} -g {input.gtf} | {PIGZ} -c -p {threads} > \
+          {output.gtftemp}
+        
+        # {BEDTOOLS} getfasta -name -s -fi {output.fasta} \
+        #   -bed {output.gtftemp} -fo {output.fasta}
+
+        {BEDTOOLS} getfasta -name -s -fi {output.genome_uncompressed} \
+          -bed {output.gtftemp} -fo {output.fasta}
+
+        ## remove the coordinates appended by bedtools!
+        sed 's/:/ /g' {output.fasta} | cut -f1 -d" " | \
+          {PIGZ}  -p {threads} -c > {output.fastagz}
+        
+        """
+
+
+rule add_chr_strings_to_genome:
+    priority:
+        100
+    input:
+        op.join(BASE, 'annotation', 'without_chr_' + op.basename(GENOME_URL))
+    output:
+        op.join(BASE, 'annotation', op.basename(GENOME_URL))
+    params:
+        url = GENOME_URL
+    threads:
+        NTHREADS
+    shell:
+        """
+        {PIGZ} --keep --decompress -p {threads} -c {input} | \
+           sed 's/>/>chr/g' | {PIGZ} -p {threads} -c > {output}
+        """
+    
+rule get_genome_fasta:
+    priority:
+        100
+    output:
+        temp(op.join(BASE, 'annotation', 'without_chr_' + op.basename(GENOME_URL)))
+    params:
+        url = GENOME_URL
+    shell:
+        """
+        curl -s -L -C - {params.url} -o {output}
+        """
+      
+rule get_repeats_gtf:
+    priority:
+        100
+    params:
+        url = REP_GTF_URL,
+        genome_path = op.join(BASE, 'annotation')
+    output:
+        op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    shell:
+        """        
+        curl -s -L -C - {params.url} -o {output}
+        """
+        
+rule get_genes_gtf:
+    priority:
+        100
+    params:
+        url = GENES_GTF_URL
+    output:
+        gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
+    shell:
+        """    
+        curl -s -L -C - {params.url} -o {output.gtf}
+        """
+
+# ## untested end
+        
+rule get_data:
+    input:
+        male = op.join(BASE, "data", RUN_NAME, 'pbmc_smartseq2_male.conf'),
+        female = op.join(BASE, "data", RUN_NAME, 'pbmc_smartseq2_female.conf'),
+    output:
+        r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
+        r2 = op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq.gz"),
+        r3 = temp(op.join(BASE, "data", RUN_NAME, "{srr}_3.fastq.gz")),
+        r4 = temp(op.join(BASE, "data", RUN_NAME, "{srr}_4.fastq.gz"))
+    params:
+        path = op.join(BASE, "data", RUN_NAME)
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+        
+        {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
+        """
+    
+rule get_srr_identifiers:
+    output:
+        male = op.join(BASE, "data", RUN_NAME, 'pbmc_smartseq2_male.conf'),
+        female = op.join(BASE, "data", RUN_NAME, 'pbmc_smartseq2_female.conf')
+    params:
+        path = op.join(BASE, "data", RUN_NAME)
+    shell:
+        """
+        ## from https://www.ncbi.nlm.nih.gov/Traces/study/?acc=PRJNA545730&o=acc_s%3Aa
+        ## esearch -db sra -q 'PRJNA545730' | efetch -format runinfo
+
+        mkdir -p {params.path}
+        cd {params.path}
+
+        cat << EOF >> pbmc_smartseq2_female.conf
+SRR9171035
+SRR9171036
+SRR9171037
+SRR9171038
+SRR9171039
+SRR9171040
+SRR9171041
+SRR9171042
+SRR9171043
+SRR9171044
+SRR9171045
+SRR9171046
+SRR9171047
+SRR9171048
+SRR9171049
+SRR9171050
+SRR9171052
+SRR9171053
+SRR9171054
+SRR9171055
+SRR9171056
+SRR9171057
+SRR9171279
+SRR9171280
+SRR9171281
+SRR9171282
+SRR9171284
+SRR9171285
+SRR9171286
+SRR9171287
+SRR9171288
+SRR9171289
+SRR9171290
+SRR9171291
+SRR9171292
+SRR9171293
+SRR9171295
+SRR9171296
+SRR9171298
+SRR9171299
+SRR9171300
+SRR9171301
+SRR9171302
+SRR9167534
+SRR9167535
+SRR9167536
+SRR9167537
+SRR9167538
+SRR9167539
+SRR9167540
+SRR9167541
+SRR9167542
+SRR9167543
+SRR9167544
+SRR9167545
+SRR9167546
+SRR9167547
+SRR9167548
+SRR9167550
+SRR9167552
+SRR9167553
+SRR9167554
+SRR9167556
+SRR9167774
+SRR9167775
+SRR9167776
+SRR9167777
+SRR9167778
+SRR9167779
+SRR9167780
+SRR9167781
+SRR9167782
+SRR9167783
+SRR9167784
+SRR9167785
+SRR9167786
+SRR9167787
+SRR9167788
+SRR9167789
+SRR9167790
+SRR9167791
+SRR9167792
+SRR9167793
+SRR9167794
+SRR9167795
+SRR9167796
+SRR9167797
+SRR9168016
+SRR9168017
+SRR9168018
+SRR9168019
+SRR9168020
+SRR9168021
+SRR9168022
+SRR9168023
+SRR9168024
+SRR9168025
+SRR9168026
+SRR9168028
+SRR9168029
+SRR9168030
+SRR9168031
+SRR9168032
+SRR9168033
+SRR9168034
+SRR9168035
+SRR9168036
+SRR9168037
+SRR9168255
+SRR9168256
+SRR9168257
+SRR9168258
+SRR9168259
+SRR9168260
+SRR9168261
+SRR9168262
+SRR9168264
+SRR9168265
+SRR9168266
+SRR9168267
+SRR9168268
+SRR9168270
+SRR9168271
+SRR9168272
+SRR9168273
+SRR9168274
+SRR9168275
+SRR9168276
+SRR9168277
+SRR9168494
+SRR9168495
+SRR9168496
+SRR9168497
+SRR9168498
+SRR9168499
+SRR9168500
+SRR9168501
+SRR9168503
+SRR9168505
+SRR9168506
+SRR9168507
+SRR9168509
+SRR9168510
+SRR9168511
+SRR9168512
+SRR9168513
+SRR9168514
+SRR9168516
+SRR9168517
+SRR9168734
+SRR9168735
+SRR9168736
+SRR9168737
+SRR9168738
+SRR9168739
+SRR9168740
+SRR9168741
+SRR9168742
+SRR9168743
+SRR9168745
+SRR9168746
+SRR9168747
+SRR9168748
+SRR9168749
+SRR9168751
+SRR9168752
+SRR9168753
+SRR9168754
+SRR9168755
+SRR9168756
+SRR9168975
+SRR9168976
+SRR9168978
+SRR9168980
+SRR9168981
+SRR9168982
+SRR9168983
+SRR9168984
+SRR9168985
+SRR9168986
+SRR9168987
+SRR9168988
+SRR9168989
+SRR9168990
+SRR9168991
+SRR9168992
+SRR9168993
+SRR9168994
+SRR9168995
+SRR9168996
+SRR9168997
+SRR9169220
+SRR9169221
+SRR9169223
+SRR9169224
+SRR9169225
+SRR9169227
+SRR9169448
+SRR9169449
+SRR9169450
+SRR9169451
+SRR9169452
+SRR9169453
+SRR9169454
+SRR9169455
+SRR9169456
+SRR9169457
+SRR9169458
+SRR9169459
+SRR9169460
+SRR9169461
+SRR9169462
+SRR9169463
+SRR9169680
+SRR9169681
+SRR9169682
+SRR9169683
+SRR9169684
+SRR9169685
+SRR9169686
+SRR9169687
+SRR9169688
+SRR9169689
+SRR9169690
+SRR9169691
+SRR9169692
+SRR9169693
+SRR9169694
+SRR9169695
+SRR9169696
+SRR9169697
+SRR9169698
+SRR9169699
+SRR9169700
+SRR9169701
+SRR9169702
+SRR9169703
+SRR9169920
+SRR9169921
+SRR9169922
+SRR9169923
+SRR9169924
+SRR9169925
+SRR9169926
+SRR9169927
+SRR9169928
+SRR9169929
+SRR9169930
+SRR9169931
+SRR9169932
+SRR9169933
+SRR9169934
+SRR9169935
+SRR9169936
+SRR9169937
+SRR9169938
+SRR9169939
+SRR9169940
+SRR9169941
+SRR9169942
+SRR9169943
+SRR9170161
+SRR9170162
+SRR9170164
+SRR9170165
+SRR9170166
+SRR9170167
+SRR9170168
+SRR9170169
+SRR9170170
+SRR9170171
+SRR9170172
+SRR9170173
+SRR9170174
+SRR9170175
+SRR9170176
+SRR9170177
+SRR9170178
+SRR9170180
+SRR9170182
+SRR9170183
+SRR9170380
+SRR9170381
+SRR9170384
+SRR9170385
+SRR9170386
+SRR9170387
+SRR9170388
+SRR9170389
+SRR9170390
+SRR9170391
+SRR9170392
+SRR9170393
+SRR9170394
+SRR9170395
+SRR9170396
+SRR9170397
+SRR9170398
+SRR9170399
+SRR9170400
+SRR9170401
+SRR9170595
+SRR9170597
+SRR9170598
+SRR9170599
+SRR9170600
+SRR9170601
+SRR9170602
+SRR9170603
+SRR9170604
+SRR9170605
+SRR9170606
+SRR9170607
+SRR9170608
+SRR9170609
+SRR9170610
+SRR9170611
+SRR9170613
+SRR9170614
+SRR9170615
+SRR9170616
+SRR9170617
+SRR9170618
+SRR9170814
+SRR9170815
+SRR9170816
+SRR9170818
+SRR9170819
+SRR9170820
+SRR9170821
+SRR9170822
+SRR9170823
+SRR9170824
+SRR9170826
+SRR9170827
+SRR9170828
+SRR9170829
+SRR9170830
+SRR9170831
+SRR9170833
+SRR9170834
+SRR9170835
+SRR9170836
+SRR9170837
+SRR9171297
+SRR9170612
+SRR9168757
+SRR9170163
+SRR9170179
+SRR9171051
+SRR9171058
+SRR9171283
+SRR9171294
+SRR9167549
+SRR9167555
+SRR9167557
+SRR9168014
+SRR9168015
+SRR9168027
+SRR9168263
+SRR9168269
+SRR9168504
+SRR9168508
+SRR9168515
+SRR9168744
+SRR9168750
+SRR9168974
+SRR9168977
+SRR9168979
+SRR9169226
+SRR9170379
+SRR9170382
+SRR9170383
+SRR9170402
+SRR9170596
+SRR9170817
+SRR9170825
+SRR9169222
+SRR9170160
+SRR9170832
+SRR9167551
+SRR9168254
+SRR9168502
+SRR9170181
+EOF
+
+        cat << EOF >> pbmc_smartseq2_male.conf
+SRR9171011
+SRR9171012
+SRR9171013
+SRR9171014
+SRR9171015
+SRR9171016
+SRR9171018
+SRR9171019
+SRR9171020
+SRR9171021
+SRR9171022
+SRR9171023
+SRR9171024
+SRR9171025
+SRR9171026
+SRR9171027
+SRR9171028
+SRR9171029
+SRR9171030
+SRR9171031
+SRR9171032
+SRR9171033
+SRR9171034
+SRR9171256
+SRR9171257
+SRR9171258
+SRR9171259
+SRR9171260
+SRR9171261
+SRR9171262
+SRR9171263
+SRR9171264
+SRR9171265
+SRR9171266
+SRR9171267
+SRR9171268
+SRR9171269
+SRR9171270
+SRR9171272
+SRR9171273
+SRR9171274
+SRR9171275
+SRR9171276
+SRR9171278
+SRR9167510
+SRR9167511
+SRR9167512
+SRR9167513
+SRR9167514
+SRR9167515
+SRR9167516
+SRR9167517
+SRR9167518
+SRR9167520
+SRR9167521
+SRR9167522
+SRR9167524
+SRR9167525
+SRR9167528
+SRR9167529
+SRR9167530
+SRR9167532
+SRR9167533
+SRR9167750
+SRR9167751
+SRR9167753
+SRR9167754
+SRR9167755
+SRR9167756
+SRR9167757
+SRR9167758
+SRR9167759
+SRR9167760
+SRR9167761
+SRR9167762
+SRR9167764
+SRR9167765
+SRR9167766
+SRR9167767
+SRR9167768
+SRR9167769
+SRR9167770
+SRR9167771
+SRR9167772
+SRR9167773
+SRR9167990
+SRR9167991
+SRR9167992
+SRR9167993
+SRR9167994
+SRR9167995
+SRR9167997
+SRR9167998
+SRR9167999
+SRR9168000
+SRR9168002
+SRR9168003
+SRR9168004
+SRR9168005
+SRR9168006
+SRR9168008
+SRR9168010
+SRR9168011
+SRR9168012
+SRR9168013
+SRR9168230
+SRR9168232
+SRR9168233
+SRR9168234
+SRR9168235
+SRR9168236
+SRR9168237
+SRR9168238
+SRR9168239
+SRR9168240
+SRR9168241
+SRR9168242
+SRR9168243
+SRR9168245
+SRR9168246
+SRR9168247
+SRR9168248
+SRR9168249
+SRR9168250
+SRR9168252
+SRR9168253
+SRR9168470
+SRR9168471
+SRR9168472
+SRR9168473
+SRR9168476
+SRR9168477
+SRR9168478
+SRR9168479
+SRR9168480
+SRR9168481
+SRR9168482
+SRR9168483
+SRR9168484
+SRR9168485
+SRR9168486
+SRR9168488
+SRR9168490
+SRR9168491
+SRR9168492
+SRR9168493
+SRR9168710
+SRR9168711
+SRR9168712
+SRR9168713
+SRR9168714
+SRR9168715
+SRR9168716
+SRR9168717
+SRR9168718
+SRR9168720
+SRR9168721
+SRR9168722
+SRR9168723
+SRR9168724
+SRR9168725
+SRR9168726
+SRR9168727
+SRR9168728
+SRR9168729
+SRR9168730
+SRR9168731
+SRR9168732
+SRR9168733
+SRR9168950
+SRR9168951
+SRR9168952
+SRR9168953
+SRR9168955
+SRR9168956
+SRR9168957
+SRR9168958
+SRR9168959
+SRR9168960
+SRR9168961
+SRR9168962
+SRR9168963
+SRR9168965
+SRR9168966
+SRR9168967
+SRR9168968
+SRR9168969
+SRR9168970
+SRR9168971
+SRR9168972
+SRR9168973
+SRR9169195
+SRR9169196
+SRR9169197
+SRR9169198
+SRR9169199
+SRR9169200
+SRR9169201
+SRR9169422
+SRR9169423
+SRR9169424
+SRR9169425
+SRR9169426
+SRR9169427
+SRR9169428
+SRR9169429
+SRR9169430
+SRR9169431
+SRR9169432
+SRR9169433
+SRR9169434
+SRR9169436
+SRR9169437
+SRR9169438
+SRR9169656
+SRR9169657
+SRR9169658
+SRR9169659
+SRR9169660
+SRR9169661
+SRR9169662
+SRR9169663
+SRR9169664
+SRR9169665
+SRR9169667
+SRR9169669
+SRR9169670
+SRR9169671
+SRR9169672
+SRR9169673
+SRR9169674
+SRR9169675
+SRR9169676
+SRR9169677
+SRR9169678
+SRR9169896
+SRR9169897
+SRR9169898
+SRR9169899
+SRR9169900
+SRR9169901
+SRR9169902
+SRR9169903
+SRR9169904
+SRR9169906
+SRR9169907
+SRR9169908
+SRR9169909
+SRR9169910
+SRR9169911
+SRR9169912
+SRR9169913
+SRR9169915
+SRR9169916
+SRR9169917
+SRR9169918
+SRR9169919
+SRR9170136
+SRR9170138
+SRR9170139
+SRR9170140
+SRR9170141
+SRR9170142
+SRR9170143
+SRR9170144
+SRR9170145
+SRR9170147
+SRR9170148
+SRR9170149
+SRR9170150
+SRR9170151
+SRR9170152
+SRR9170153
+SRR9170155
+SRR9170156
+SRR9170157
+SRR9170158
+SRR9170159
+SRR9170355
+SRR9170356
+SRR9170357
+SRR9170358
+SRR9170359
+SRR9170360
+SRR9170361
+SRR9170362
+SRR9170365
+SRR9170366
+SRR9170368
+SRR9170369
+SRR9170370
+SRR9170371
+SRR9170372
+SRR9170373
+SRR9170374
+SRR9170375
+SRR9170376
+SRR9170377
+SRR9170378
+SRR9170571
+SRR9170572
+SRR9170573
+SRR9170574
+SRR9170575
+SRR9170577
+SRR9170578
+SRR9170579
+SRR9170580
+SRR9170581
+SRR9170582
+SRR9170583
+SRR9170584
+SRR9170585
+SRR9170586
+SRR9170588
+SRR9170589
+SRR9170590
+SRR9170591
+SRR9170592
+SRR9170593
+SRR9170594
+SRR9170790
+SRR9170791
+SRR9170792
+SRR9170793
+SRR9170794
+SRR9170795
+SRR9170797
+SRR9170798
+SRR9170799
+SRR9170801
+SRR9170802
+SRR9170803
+SRR9170804
+SRR9170805
+SRR9170806
+SRR9170808
+SRR9170809
+SRR9170810
+SRR9170811
+SRR9170813
+SRR9167523
+SRR9167996
+SRR9170367
+SRR9170796
+SRR9167752
+SRR9169914
+SRR9171017
+SRR9171255
+SRR9171271
+SRR9171277
+SRR9167519
+SRR9167526
+SRR9167527
+SRR9167531
+SRR9167763
+SRR9168001
+SRR9168007
+SRR9168009
+SRR9168231
+SRR9168244
+SRR9168251
+SRR9168487
+SRR9168489
+SRR9168719
+SRR9168954
+SRR9168964
+SRR9169435
+SRR9169666
+SRR9169668
+SRR9169679
+SRR9169905
+SRR9170137
+SRR9170146
+SRR9170154
+SRR9170363
+SRR9170364
+SRR9170576
+SRR9170807
+SRR9170812
+SRR9168475
+SRR9170587
+SRR9170800
+SRR9168474
+EOF
+
+        """

@@ -1,0 +1,1278 @@
+---
+title: "Within sample report: PBMC, alevin"
+author: "Izaskun Mallona at Robinsonlab"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    code_download: true
+    number_sections: true
+    df_print: kable
+    theme: lumen
+params:
+  identifier: ""   
+  genes_alevin: ""
+  repeats_alevin: ""
+  seurat_output: ""
+  aris_output: ""
+  regress_genes_nCount: ""
+  regress_genes_nFeature: ""
+---
+
+
+# Config
+
+## Parameters
+
+Rendered for sample:
+
+```{r}
+print(params)
+```
+
+## Libraries
+
+```{r}
+suppressPackageStartupMessages({
+library(Matrix)
+
+library(knitr)
+library(Seurat)
+library(dplyr)
+## library(scater)
+library(dplyr)
+library(data.table)
+## library(SingleCellExperiment)
+## library(scran)
+## library(org.Mm.eg.db)
+## suppressPackageStartupMessages(library(dplyr))
+## suppressPackageStartupMessages(library(DT))
+## library(pheatmap)
+## library(Cairo)
+## library(RColorBrewer)
+## library(corrplot)
+library(ggplot2)
+library(reshape2)
+## library(xtable)
+library(mclust)
+library(pheatmap)
+library(SCINA)
+library(DT)
+library(clue)
+library(iCOBRA)
+library(RColorBrewer)
+library(tximeta)
+library(SummarizedExperiment)
+})
+```
+
+```{r}
+opts_chunk$set(fig.width = 5,
+               fig.height = 5,
+               dev = 'png',
+               cache = FALSE,
+               include = TRUE,
+               cache.lazy = FALSE,
+               warning = TRUE,
+               echo = TRUE,
+               message = FALSE,
+               knitr.table.format = "html")
+
+
+options(bitmapType='cairo')
+getOption('bitmapType')
+```
+
+
+## Functions
+
+```{r functions}
+## add alpha
+ac <- function(col, alpha=1){
+  apply(sapply(col, col2rgb)/255, 2, 
+                     function(x) 
+                       rgb(x[1], x[2], x[3], alpha=alpha))  
+}
+
+coef_var <- function(x){
+        (sd(x)/mean(x))*100
+}
+
+```
+
+# Data load
+
+```{r justfordebugging, eval = FALSE}
+## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_cellranger= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz")
+
+## SRR10974769
+
+## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/SRR10974769/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_cellranger= "/home/imallona/repeats_sc/runs/SRR10974769/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/SRR10974769/count_repeats_on_cellranger_standard/SRR10974769_repeats.counts.gz",
+##                identifier = 'test')
+
+params <- list(identifier = "pbmc8k",
+               genes_alevin = '/home/imallona/repeats_sc/runs/pbmc8k/alevin/genes/alevin/quants_mat.gz',
+               repeats_alevin = '/home/imallona/repeats_sc/runs/pbmc8k/alevin/repeats/alevin/quants_mat.gz',
+               regress_genes_nCount = FALSE,
+               regress_genes_nFeatures = FALSE,
+               seurat_output  = '/home/imallona/tmp/test.RData',
+               aris_output  = '/home/imallona/tmp/aris.RData')
+               
+
+```
+
+```{r}
+d <- list()
+```
+
+
+```{r}
+
+d$genes_alevin <- tximeta::tximeta(coldata = data.frame(
+                                       names = "genes",
+                                       files = params$genes_alevin,
+                                       stringsAsFactors = FALSE
+                                   ), type = "alevin")
+                                  
+
+counts <-  assays(d$genes_alevin)$counts
+d$genes_alevin <- NULL
+
+annot <- list()
+
+annot$ids <- rownames(counts)
+
+annot$filters = "ensembl_gene_id_version"
+annot$attributes = c(annot$filters, "external_gene_name", "chromosome_name", 
+                     "gene_biotype", "start_position", "end_position")
+annot$biomart = "ENSEMBL_MART_ENSEMBL" 
+annot$dataset = "hsapiens_gene_ensembl"
+annot$host = "ensembl.org"
+annot$bmart <- biomaRt::useMart(biomart = annot$biomart, dataset = annot$dataset, 
+                                host = annot$host)
+
+feature_info <- biomaRt::getBM(attributes = annot$attributes,
+                               filters = annot$filters, 
+                               values = annot$ids, mart = annot$bmart)
+
+
+tmp <- merge(data.frame(ensembl_gene_id_version = rownames(counts)),
+             by = 'ensembl_gene_id_version', feature_info, all.x = TRUE)
+
+rownames(tmp) <- tmp$ensembl_gene_id_version
+tmp <- tmp[rownames(counts),]
+
+stopifnot(rownames(counts) == tmp$ensembl_gene_id_version)
+
+rownames(counts) <- sprintf('%s_%s', tmp$ensembl_gene_id_version, tmp$external_gene_name)
+
+
+d$genes_alevin <- CreateSeuratObject(counts =  counts,
+                                     project = 'genes_alevin')
+
+
+
+```
+
+```{r}
+d$repeats_alevin <- tximeta::tximeta(coldata = data.frame(
+                                       names = "repeats",
+                                       files = params$repeats_alevin,
+                                       stringsAsFactors = FALSE
+                                     ), type = "alevin")
+
+d$repeats_alevin <- CreateSeuratObject(counts =  assays(d$repeats_alevin)$counts,
+                                     project = 'repeats_alevin')
+
+```
+
+
+```{r}
+GetAssayData(d$repeats_alevin)[1:3, 1:3]
+GetAssayData(d$genes_alevin)[1:3, 1:3]
+
+```
+# Basic Seurat processing
+
+## QC before filtering {.tabset}
+
+```{r, results = 'asis', fig.width = 8, fig.height = 4}
+for (item in names(d)) {
+    cat("### ", item, "\n\n")
+    ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
+    if (item == 'genes_alevin') {
+        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]],
+                                                          pattern = "ENS.*[0-9]+-MT-.*")
+        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
+        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+                      ncol = 3))
+
+    } else {
+        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2))
+    
+    }
+    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+    cat('\n\n')
+}
+
+```
+
+## Basic stats pre-QC
+
+```{r}
+summarized <- list()
+## summarized[['header']] <- c('dataset','filter', 'ncells',
+##                             'ncount mean', 'ncount sd', 'nfeature mean', 'nfeature sd')
+    
+for (item in names(d)) {
+    summarized[[item]] <- c(
+        item, 'unfiltered', nrow(d[[item]]@meta.data),
+        mean(d[[item]]@meta.data$nCount_RNA), sd(d[[item]]@meta.data$nCount_RNA),
+        mean(d[[item]]@meta.data$nFeature_RNA), sd(d[[item]]@meta.data$nFeature_RNA))
+
+    if ('pct_mt_mean' %in% colnames(d[[item]]@meta.data)) {
+        summarized[[item]] <- c(summarized[[item]],
+                                mean(d[[item]]@meta.data@percent.mt, na.rm = TRUE))
+    }
+    else {
+        summarized[[item]] <- c(summarized[[item]], NA)
+        
+    }
+}
+
+summarized <- as.data.frame(do.call(rbind.data.frame, summarized))
+colnames(summarized) <- c('dataset','filter', 'ncells',
+                          'ncount_mean', 'ncount_sd', 'nfeature_mean', 'nfeature_sd',
+                          'percent.mt')
+print(summarized)
+```
+
+## QC after filtering {.tabset}
+
+Filtering out cells according to the repeats expression, and forwarding the selection to other layers
+
+```{r subset}
+d$genes_alevin <- subset(d$genes_alevin, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & (percent.mt < 10 | is.na(percent.mt)))
+selected_cells <- colnames(d$genes_alevin)
+
+for (item in names(d)) {
+    d[[item]] <- subset(d[[item]], cells = selected_cells)
+}
+
+
+```
+
+```{r, results = 'asis', fig.width = 8, fig.height = 4}
+for (item in names(d)) {
+    cat("### ", item, "\n\n")
+    ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
+    if (item == 'genes_alevin') {
+        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]],
+                                                          pattern = "ENS.*[0-9]+-MT-.*")
+        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
+        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+                      ncol = 3))
+
+    } else {
+        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2))
+    
+    }
+    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+    cat('\n\n')
+}
+
+
+
+```
+
+## Basic stats post-QC
+
+```{r}
+summarized <- list()
+## summarized[['header']] <- c('dataset','filter', 'ncells',
+##                             'ncount mean', 'ncount sd', 'nfeature mean', 'nfeature sd')
+    
+for (item in names(d)) {
+    summarized[[item]] <- c(
+        item, 'filtered', nrow(d[[item]]@meta.data),
+        mean(d[[item]]@meta.data$nCount_RNA), sd(d[[item]]@meta.data$nCount_RNA),
+        mean(d[[item]]@meta.data$nFeature_RNA), sd(d[[item]]@meta.data$nFeature_RNA))
+
+    if ('pct_mt_mean' %in% colnames(d[[item]]@meta.data)) {
+        summarized[[item]] <- c(summarized[[item]],
+                                mean(d[[item]]@meta.data@percent.mt, na.rm = TRUE))
+    }
+    else {
+        summarized[[item]] <- c(summarized[[item]], NA)
+        
+    }
+}
+
+summarized <- as.data.frame(do.call(rbind.data.frame, summarized))
+colnames(summarized) <- c('dataset','filter', 'ncells',
+                          'ncount_mean', 'ncount_sd', 'nfeature_mean', 'nfeature_sd',
+                          'percent.mt')
+print(summarized)
+
+```
+
+
+
+## Variable features {.tabset}
+
+```{r, message = FALSE, fig.width =8, fig.height = 4, results= 'asis'}
+for (item in names(d)) {
+    cat("### ", item, "\n\n")
+
+    d[[item]] <- NormalizeData(object = d[[item]],
+                               normalization.method = "LogNormalize",
+                               scale.factor = 10000)
+    
+    d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst", nfeatures = 2000)
+
+    ## Identify the 10 most highly variable genes
+    top10 <- head(VariableFeatures(d[[item]]), 10)
+
+    ## plot variable features with and without labels
+    plot1 <- VariableFeaturePlot(d[[item]])
+    plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+    print(plot2 + ggtitle(item))
+    cat('\n\n')
+}
+
+
+```
+
+## Dimred PCA {.tabset}
+
+```{r, message = FALSE, results ='asis'}
+bak <- d
+
+NUM_PCS <- 1:20
+for (item in names(d)) {
+    cat("### ", item, "\n\n")
+
+    to_regress <- NULL
+    if (as.logical(params$regress_genes_nCount)) {
+        to_regress <- c(to_regress, 'nCount_RNA')
+    }
+    if (as.logical(params$regress_genes_nFeature)) {
+        to_regress <- c(to_regress, 'nFeature_RNA')
+        
+    }
+    
+    if (item == 'genes_alevin') {
+        d[[item]] <- ScaleData(d[[item]], vars.to.regress = to_regress)
+    } else {
+        ## in this case, the variables to regress come from the genes!
+        ## e.g. is the genes library size the one to normalize the repets'
+        tmp <- d$genes_alevin@meta.data
+        tmp$cell <- rownames(tmp)
+        d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
+        d[[item]]@meta.data <- merge(d[[item]]@meta.data, tmp, by = 'cell',
+                                     suffixes = c('', '_genes'))
+        rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
+
+
+        d[[item]] <- ScaleData(d[[item]],
+                               vars.to.regress = if(is.null(to_regress)) NULL else paste0(to_regress, '_genes'))
+        
+        rm(tmp) 
+    }
+    
+    d[[item]] <- RunPCA(d[[item]], features = VariableFeatures(object = d[[item]]))
+    
+    print(DimPlot(d[[item]], reduction = "pca"))
+    
+    print(ElbowPlot(d[[item]]) + ggtitle(item))
+
+
+    cat('\n\n')
+}
+
+
+```
+
+```{r, message = FALSE, results = 'asis'}
+for (item in names(d)) {
+
+    d[[item]] <- FindNeighbors(d[[item]], dims = NUM_PCS)
+    for (res in seq(0.2, 2, by = 0.2)) {
+        d[[item]] <- FindClusters(d[[item]], resolution = res, verbose = FALSE)
+
+    }
+
+    d[[item]] <- RunUMAP(d[[item]], dims = NUM_PCS)
+        
+    d[[item]] <- RunTSNE(d[[item]], dims = NUM_PCS)
+}
+
+## stop('check here')
+
+```
+
+
+## Dimred UMAP and tSNE {.tabset}
+
+```{r fig.width = 8, fig.height = 5, results = 'asis', cache = FALSE, warning = FALSE}
+for (item in names(d)) {
+    cat("### ", item, "\n\n")
+
+    
+    print(DimPlot(d[[item]], reduction = "umap", group.by = 'seurat_clusters'))
+    print(DimPlot(d[[item]], reduction = "tsne", group.by = 'seurat_clusters'))
+
+    cat('\n\n')
+
+}
+```
+
+
+# SCINA-based PBMC annotations
+
+Markers from supplementary table s10 from [here](https://www.biorxiv.org/content/10.1101/632216v1.supplementary-material?versioned=true) [supp data](https://static-content.springer.com/esm/art%3A10.1038%2Fs41587-020-0465-8/MediaObjects/41587_2020_465_MOESM3_ESM.xlsx)
+
+
+```{r}
+markers2 <- read.table(text = 'cell_type	gene	sign
+CD4+_T_cell	CD3D	+
+CD4+_T_cell	CD3E	+
+CD4+_T_cell	CD3G	+
+CD4+_T_cell	TRAC	+
+CD4+_T_cell	CD4	+
+CD4+_T_cell	TCF7	+
+CD4+_T_cell	CD27	+
+CD4+_T_cell	IL7R	+
+CD4+_T_cell	CD8A	-
+CD4+_T_cell	CD8B	-
+CD4+_T_cell	GNLY	-
+CD4+_T_cell	NKG7	-
+CD4+_T_cell	CST7	-
+Cytotoxic_T_cell	CD3D	+
+Cytotoxic_T_cell	CD3E	+
+Cytotoxic_T_cell	CD3G	+
+Cytotoxic_T_cell	TRAC	+
+Cytotoxic_T_cell	CD8A	+
+Cytotoxic_T_cell	CD8B	+
+Cytotoxic_T_cell	GZMK	+
+Cytotoxic_T_cell	CCL5	+
+Cytotoxic_T_cell	NKG7	+
+Cytotoxic_T_cell	CD4	-
+Cytotoxic_T_cell	FCER1G	-
+B_cell	CD19	+
+B_cell	MS4A1	+
+B_cell	CD79A	+
+B_cell	CD79B	+
+B_cell	MZB1	+
+B_cell	IGHD	+
+B_cell	IGHM	+
+Natural_killer_cell	NCAM1	+
+Natural_killer_cell	NKG7	+
+Natural_killer_cell	KLRB1	+
+Natural_killer_cell	KLRD1	+
+Natural_killer_cell	KLRF1	+
+Natural_killer_cell	KLRC1	+
+Natural_killer_cell	KLRC2	+
+Natural_killer_cell	KLRC3	+
+Natural_killer_cell	KLRC4	+
+Natural_killer_cell	CD3D	-
+Natural_killer_cell	CD3E	-
+Natural_killer_cell	CD3G	-
+Natural_killer_cell	CD14	-
+Natural_killer_cell	FCGR3A	+
+Natural_killer_cell	FCGR3B	+
+Natural_killer_cell	ITGAL	+
+Natural_killer_cell	ITGAM	+
+Natural_killer_cell	FCER1G	+
+Natural_killer_cell	TRAC	-
+CD14+_monocyte	VCAN	+
+CD14+_monocyte	FCN1	+
+CD14+_monocyte	S100A8	+
+CD14+_monocyte	S100A9	+
+CD14+_monocyte	CD14	+
+CD14+_monocyte	ITGAL	+
+CD14+_monocyte	ITGAM	+
+CD14+_monocyte	CSF3R	+
+CD14+_monocyte	CSF1R	+
+CD14+_monocyte	CX3CR1	+
+CD14+_monocyte	FCGR3A	-
+CD14+_monocyte	FCGR3B	-
+CD14+_monocyte	TYROBP	+
+CD14+_monocyte	LYZ	+
+CD14+_monocyte	S100A12	+
+CD14+_monocyte	CD3D	-
+CD14+_monocyte	CD3E	-
+CD14+_monocyte	CD3G	-
+CD14+_monocyte	TRAC	-
+CD14+_monocyte	NKG7	-
+CD14+_monocyte	KLRB1	-
+CD14+_monocyte	KLRD1	-
+CD16+_monocyte	FCN1	+
+CD16+_monocyte	FCGR3A	+
+CD16+_monocyte	FCGR3B	+
+CD16+_monocyte	ITGAL	+
+CD16+_monocyte	ITGAM	+
+CD16+_monocyte	CSF3R	+
+CD16+_monocyte	CSF1R	+
+CD16+_monocyte	CX3CR1	+
+CD16+_monocyte	CDKN1C	+
+CD16+_monocyte	MS4A7	+
+CD16+_monocyte	S100A8	-
+CD16+_monocyte	S100A9	-
+CD16+_monocyte	S100A12	-
+CD16+_monocyte	CD14	-
+CD16+_monocyte	CD3D	-
+CD16+_monocyte	CD3E	-
+CD16+_monocyte	CD3G	-
+CD16+_monocyte	TRAC	-
+CD16+_monocyte	NKG7	-
+CD16+_monocyte	KLRB1	-
+CD16+_monocyte	KLRD1	-
+Dendritic_cell	HLA-DPB1	+
+Dendritic_cell	HLA-DPA1	+
+Dendritic_cell	HLA-DQA1	+
+Dendritic_cell	ITGAX	+
+Dendritic_cell	CD3D	-
+Dendritic_cell	CD3E	-
+Dendritic_cell	CD3G	-
+Dendritic_cell	NCAM1	-
+Dendritic_cell	CD19	-
+Dendritic_cell	CD14	-
+Dendritic_cell	CD1C	+
+Dendritic_cell	CD1E	+
+Dendritic_cell	FCER1A	+
+Dendritic_cell	CLEC10A	+
+Dendritic_cell	FCGR2B	+
+Dendritic_cell	MS4A1	-
+Dendritic_cell	CD79A	-
+Dendritic_cell	CD79B	-
+Plasmacytoid_dendritic_cell	IL3RA	+
+Plasmacytoid_dendritic_cell	GZMB	+
+Plasmacytoid_dendritic_cell	JCHAIN	+
+Plasmacytoid_dendritic_cell	IRF7	+
+Plasmacytoid_dendritic_cell	TCF4	+
+Plasmacytoid_dendritic_cell	LILRA4	+
+Plasmacytoid_dendritic_cell	CLEC4C	+
+Plasmacytoid_dendritic_cell	ITGAX	-
+Plasmacytoid_dendritic_cell	CD3D	-
+Plasmacytoid_dendritic_cell	CD3E	-
+Plasmacytoid_dendritic_cell	CD3G	-
+Plasmacytoid_dendritic_cell	NCAM1	-
+Plasmacytoid_dendritic_cell	CD19	-
+Plasmacytoid_dendritic_cell	CD14	-
+Plasmacytoid_dendritic_cell	MS4A1	-
+Plasmacytoid_dendritic_cell	CD79A	-
+Plasmacytoid_dendritic_cell	CD79B	-
+Plasma_cell	CD38	+
+Plasma_cell	XBP1	+
+Plasma_cell	CD27	+
+Plasma_cell	SLAMF7	+
+Plasma_cell	CD19	-
+Plasma_cell	MS4A1	-
+Plasma_cell	CD3D	-
+Plasma_cell	CD3E	-
+Plasma_cell	CD3G	-
+Plasma_cell	IGHA1	+
+Plasma_cell	IGHA2	+
+Plasma_cell	IGHG1	+
+Plasma_cell	IGHG2	+
+Plasma_cell	IGHG3	+
+Plasma_cell	IGHG4	+
+Platelet	PF4	+
+Platelet	PPBP	+
+Platelet	GP5	+
+Platelet	ITGA2B	+
+Platelet	NRGN	+
+Platelet	TUBB1	+
+Platelet	SPARC	+
+Platelet	RGS18	+
+Platelet	MYL9	+
+Platelet	GNG11	+', header = TRUE, sep = '\t', stringsAsFactors = FALSE)
+
+```
+
+```{r}
+pal <- read.table(text = 'identity,color
+CD4+_T_cell,"#A6CEE3"
+Cytotoxic_T_cell,"#1F78B4"
+B_cell,"#B2DF8A"
+Natural_killer_cell,"#33A02C"
+CD14+_monocyte,"#FB9A99"
+CD16+_monocyte,"#E31A1C"
+Dendritic_cell,"#FDBF6F"
+Plasmacytoid_dendritic_cell,"#FF7F00"
+Plasma_cell,"#CAB2D6"
+Platelet,"#6A3D9A"
+unknown,"#C0C0C0"', header = TRUE, sep = ',', stringsAsFactors = FALSE)
+
+rownames(pal) <- pal$identity
+```
+
+```{r palette}
+pos_markers2_tmp <- markers2[markers2$sign == '+',]
+pos_markers2 <-  list()
+pos_markers_compound <- list()
+
+for (ct in unique(pos_markers2_tmp$cell_type)) {
+    pos_markers2[[ct]] <- pos_markers2_tmp[pos_markers2_tmp$cell_type ==ct, 'gene']
+    mapping <- data.frame(
+        id = rownames(d$genes_alevin),
+        symbol = sapply(strsplit(rownames(d$genes_alevin), '-'), function(x) return (x[2])),
+        ensg = sapply(strsplit(rownames(d$genes_alevin), '-'), function(x) return (x[1])),
+        stringsAsFactors = FALSE)
+    
+    head(mapping)
+
+    pos_markers_compound[[ct]] <- mapping[mapping$symbol %in% pos_markers2[[ct]], 'id']
+}
+
+
+```
+
+```{r}
+named <-  SCINA(GetAssayData(d$genes_alevin, slot = 'data'),
+                signatures = pos_markers_compound,
+                max_iter = 200,
+                convergence_n = 20, 
+                convergence_rate = 0.999, sensitivity_cutoff = 0.9)
+
+table(named$cell_labels)
+## plotheat.SCINA(exp = GetAssayData(d$genes_alevin, slot = 'data'),
+                ## signatures = pos_markers_compound, results = named)
+```
+
+
+
+
+## Confusion matrices with clustering results {.tabset}
+
+First, add the SCINA outputs to the different SO objects
+
+```{r, cache = FALSE}
+labelling <- data.frame(cell = colnames(d$genes_alevin),
+                        scina = named$cell_labels,
+                        stringsAsFactors = FALSE)
+
+
+
+rownames(labelling) <- labelling$cell
+
+d$genes_alevin@meta.data$cell <- rownames(d$genes_alevin@meta.data)
+d$genes_alevin@meta.data <- merge(d$genes_alevin@meta.data, labelling, by = 'cell', all.x = TRUE)
+rownames(d$genes_alevin@meta.data) <- d$genes_alevin@meta.data$cell
+
+## still, the annotation can also be transfered to repeats/featurecounts
+
+for (item in grep('repeats', names(d), value = TRUE)) {
+    d[[item]]@meta.data$cell <-  rownames(d[[item]]@meta.data)
+
+    
+    tmp <- merge(data.frame(cell = d[[item]]@meta.data$cell),
+                 labelling, all.x = TRUE)
+
+    rownames(tmp) <- tmp$cell
+
+    
+    d[[item]] <- AddMetaData(object = d[[item]],
+                             metadata = tmp['scina'],
+                             col.name = 'scina')
+    rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
+}
+
+rm(labelling, tmp)
+
+```
+
+```{r problemrendering, cache = FALSE, eval = FALSE}
+for (res in grep('RNA_snn', colnames(d$genes_alevin@meta.data), value = TRUE)) {
+    cat('### ', res, '\n\n')
+
+    tmp <- as.data.frame.matrix(table(d$genes_alevin@meta.data[,res],
+                                      d$genes_alevin@meta.data$scina))
+
+    ## print(t(tmp))
+    print(kable(tmp))
+    
+    cat('\n\n')
+    rm(tmp)
+}
+
+```
+
+<!-- ## ARIs celltypes and SCINA outputs -->
+
+<!-- ```{r, cache = FALSE} -->
+<!-- for (res in grep('RNA_snn', colnames(d$genes@meta.data), value = TRUE)) { -->
+<!--     print(res) -->
+<!--     print(as.data.frame.matrix(table(d$genes@meta.data[,res], d$genes@meta.data$scina))) -->
+<!-- } -->
+<!-- ``` -->
+
+
+
+# Repeats and genes expression profiles by SCINA annotation {.tabset}
+
+tSNEs/UMAPs
+
+```{r, fig.width = 7, fig.height = 4, results = 'asis', cache = FALSE}
+for (item in names(d)) {
+    cat("## ", item, "\n\n")
+    d[[item]]@meta.data$scina <- as.factor(d[[item]]@meta.data$scina)
+    ## Idents(d[[item]]) <- 'scina'
+    print(DimPlot(d[[item]], reduction = "umap", group.by = 'scina',
+                  cols = setNames(pal$color, pal$identity)))
+
+    print(DimPlot(d[[item]], reduction = "tsne", group.by = 'scina', 
+                  cols = setNames(pal$color, pal$identity)))
+    
+    ## print(CombinePlots(plots = list(p1, p2)) + ggtitle(item))
+    cat('\n\n')
+
+}
+```
+
+
+# Dimred PCA comparing modalities and SCINA {.tabset}
+
+Colour by SCINA
+
+```{r, fig.width = 5.1, fig.height = 5.1, results = 'asis'}
+
+for (flavour1 in names(d)) {
+    ## d[[flavour]][["pca"]]
+    ## ## A dimensional reduction object with key PC_ 
+    ## ##  Number of dimensions: 50 
+    ## ##  Projected dimensional reduction calculated:  FALSE 
+    ## ##  Jackstraw run: TRUE 
+    ## ##  Computed using assay: RNA
+    ## head(Embeddings(d[[flavour]], reduction = "pca")[, 1:5])
+    ## head(Loadings(d[[flavour]], reduction = "pca")[, 1:5])
+    for (flavour2 in setdiff(names(d), flavour1)) {
+        cat('## ', flavour1, flavour2, '\n\n')
+    
+        common <- intersect(rownames(Embeddings(d[[flavour1]])),
+                            rownames(Embeddings(d[[flavour2]])))
+
+        palette <- brewer.pal(n = nlevels(d[[flavour1]]@meta.data$scina), name = "Paired")
+
+        for (i in 1:5) {
+            for (j in 1:5) {
+                par(mar=c(5.1, 4.1, 7.1, 2.1))
+                ## par(mfrow = c(5,5))
+                plot(x = Embeddings(d[[flavour1]], reduction = "pca")[common,i],
+                     y = Embeddings(d[[flavour2]], reduction = "pca")[common,j],
+                     ## main = sprintf('flavour1 %s PC %s\nflavour2 %s PC %s',
+                                    ## flavour1, i, flavour2, j),
+                     ## col = palette[as.numeric(d[[flavour1]]@meta.data[common, 'scina'])],
+                     col = pal[d[[flavour1]]@meta.data[common, 'scina'],'color'],
+                     pch = 19, cex = 0.5,
+                     xlab = sprintf('%s PC %s', flavour1, i),
+                     ylab = sprintf('%s PC %s', flavour2, j))
+
+                ## if (i == 1 & j == 1) {
+                    legend('top',
+                           legend = pal$identity,
+                           ## col = palette[1:nlevels(d[[flavour1]]@meta.data[common, 'scina'])],
+                           col = pal$color,
+                           pch=19, cex=0.8,
+                           inset=c(0,-0.42),
+                           ncol = 2,
+                           xpd = TRUE)
+                ## }
+            }
+        }
+
+        cat('\n\n')
+    }
+}
+
+
+```
+
+
+# Descriptive (clustering) {.tabset}
+
+Tabset: coloring according to the clustering results.
+
+```{r descriptive, results = 'asis', fig.width =8, fig.height = 8}
+
+res <- 'RNA_snn_res.0.2'
+common_cells <- intersect(colnames(d$genes_alevin), colnames(d$repeats_alevin))
+
+for (item_clust in names(d)) {
+    tag <- sprintf('%s\n%s', item_clust, res)
+    cat('## ', tag, '\n\n')
+    
+    merged <- data.frame(cell = common_cells,
+                         percent.mt = d$genes_alevin@meta.data[common_cells, 'percent.mt'])
+
+    merged[,tag] <- d[[item_clust]]@meta.data[common_cells,res]
+
+    for (item in names(d)) {
+        d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
+
+        merged <- merge(merged,
+                        d[[item]]@meta.data[c('cell', 'nCount_RNA', 'nFeature_RNA')],
+                        by = 'cell',
+                        all.x = TRUE,
+                        suffixes = c('', sprintf('\n%s', item)))
+
+        ## cat("### ", item, "\n\n")
+
+    }
+    rownames(merged) <- merged$cell
+    merged <- merged[,-1]
+    colnames(merged) <- gsub('_RNA', '', colnames(merged))
+    plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(merged[,tag]), 0.1))
+    cat('\n\n')
+}
+
+rm(res)
+rm(merged)
+```
+
+# Descriptive (with scina)
+
+Tabset: coloring according to the clustering results.
+
+```{r descriptive2, results = 'asis', fig.width =8, fig.height = 8}
+
+tag <- 'scina'
+
+merged <- data.frame(cell = common_cells,
+                     percent.mt = d$genes_alevin@meta.data[common_cells, 'percent.mt'])
+
+## merged[,tag] <- d[[item_clust]]@meta.data[common_cells,res]
+merged[,tag] <- d[[item]]@meta.data[common_cells, tag]
+
+for (item in names(d)) {
+        ## cat('## ', tag, '\n\n')
+        d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
+
+        merged <- merge(merged,
+                        d[[item]]@meta.data[c('cell', 'nCount_RNA', 'nFeature_RNA')],
+                        by = 'cell',
+                        all.x = TRUE,
+                        suffixes = c('', sprintf('\n%s', item)))
+
+        ## cat("### ", item, "\n\n")
+}
+
+rownames(merged) <- merged$cell
+merged <- merged[,-1]
+colnames(merged) <- gsub('_RNA', '', colnames(merged))
+
+plot(merged, pch = 20, cex = 0.5, col = ac(pal[merged$scina, 'color'], 0.1))
+## plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(as.factor(merged[,tag])), 1))
+## cat('\n\n')
+
+rm(merged)
+```
+
+
+# Confusion matrix clusters
+
+At a given resolution, compare both clusterings.
+
+Color scale depicts Rand Index.
+
+## Genes vs repeats (alevin)
+
+```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
+aris <- list()
+i <- 1
+for (genes_res in seq(0.2, 2, 0.2)) {
+    genes_res <- sprintf('RNA_snn_res.%s', genes_res)
+    
+    for (repeats_res in seq(0.2, 2, 0.2)) {
+        repeats_res <- sprintf('RNA_snn_res.%s', repeats_res)
+
+        cells <- intersect(rownames(d$genes_alevin@meta.data), rownames(d$repeats_alevin@meta.data))
+        
+   
+
+        aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
+                               length(unique(d$genes_alevin@meta.data[cells, genes_res]))),
+                       sprintf('repeats_cr_%s (n=%s)', repeats_res,
+                               length(unique(d$repeats_alevin@meta.data[cells, repeats_res]))),
+                       adjustedRandIndex(d$genes_alevin@meta.data[cells,genes_res],
+                                         d$repeats_alevin@meta.data[cells,repeats_res]))
+        i <- i +1
+    }    
+}
+
+aris <- do.call(rbind.data.frame, aris)
+colnames(aris) <- c('genes_res', 'repeats_cr_res', 'ari')
+aris$ari <- as.numeric(as.character(aris$ari))
+```
+
+
+```{r, fig.width = 6, fig.height = 6}
+aris_wide <- reshape2::dcast(aris, genes_res~repeats_cr_res, value.var="ari")
+
+rownames(aris_wide)<- aris_wide$genes_res
+aris_wide <- aris_wide[,-1]
+
+pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
+         color = colorRampPalette(c("white","blue"))(20))
+```
+
+```{r store_aris}
+aris_stored <- list()
+aris_stored[['genes__repeats_cr']] <- aris
+```
+
+## Genes vs SCINA
+
+Removed the unassigned class in SCINA
+
+```{r}
+aris <- list()
+i <- 1
+for (genes_res in seq(0.2, 2, 0.2)) {
+    genes_res <- sprintf('RNA_snn_res.%s', genes_res)
+    rownames(d$genes_alevin@meta.data) <- d$genes_alevin@meta.data$cell
+    known <- rownames(d$genes_alevin@meta.data[d$genes_alevin@meta.data$scina != 'unknown',])
+
+    aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
+                           length(unique(d$genes_alevin@meta.data[known, genes_res]))),
+                   sprintf('scina_%s (n=%s)', 'scina',
+                           length(unique(d$genes_alevin@meta.data[known, 'scina']))),
+                   adjustedRandIndex(d$genes_alevin@meta.data[known, genes_res],
+                                     d$genes_alevin@meta.data[known, 'scina']))
+                                     
+    i <- i +1
+}    
+
+aris <- do.call(rbind.data.frame, aris)
+colnames(aris) <- c('genes_res', 'scina', 'ari')
+aris$ari <- as.numeric(as.character(aris$ari))
+print(aris)
+```
+
+
+# Diferential repeat expression by SCINA identity {.tabset}
+
+```{r does_not_work, eval = FALSE}
+for (item in names(d)) {
+    cat('## ', item, '\n\n')
+    
+    Idents(d[[item]]) <- 'scina'
+
+    ## find markers for every scina identity (discarding the unplaced); report only positives   
+    markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
+                              only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+    DT::datatable(markers)
+    cat('\n\n')
+}
+
+```
+
+```{r}
+ml <- list()
+```
+
+## genes_alevin
+
+
+```{r}
+item <- 'genes_alevin'
+Idents(d[[item]]) <- 'scina'
+## find markers for every scina identity (discarding the unplaced); report only positives   
+markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
+                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+ml[[item]] <- markers
+DT::datatable(markers)
+
+```
+
+## repeats_alevin
+
+```{r}
+item <- 'repeats_alevin'
+Idents(d[[item]]) <- 'scina'
+## find markers for every scina identity (discarding the unplaced); report only positives   
+markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
+                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+ml[[item]] <- markers
+DT::datatable(markers)
+
+```
+
+
+# F1-based
+
+Largely derived from Lukas Weber's https://github.com/lmweber/cytometry-clustering-comparison/blob/master/helpers/helper_match_evaluate_multiple.R (Hungarian algorithm)
+
+@todo document parameters
+
+```{r}
+map_levels <- function(x){
+    ## x<- as.character(iris$Species)
+    if(is.factor(x)) { 
+        nlevs <- nlevels(x)
+        levs <- levels(x)
+    } else {   # character
+        levs <- unique(x)
+        nlevs <- length(levs)
+    }
+    fd <- data.frame(level = levs, code = 1:nlevs)
+    return(fd)
+}
+
+## data(iris)
+## map_levels(iris$Species)
+## map_levels(as.character(iris$Species))
+```
+
+```{r}
+
+## inputs are factor vectors
+hungarian_weber_with_labels <- function(clus_algorithm, clus_truth) {    
+    ## number of detected clusters
+    n_clus <- length(table(clus_algorithm))
+
+    clus_names <- map_levels(clus_algorithm)
+    clus <- as.numeric(clus_algorithm)
+
+    truth_names <- map_levels(clus_truth)
+    clus_truth <- as.numeric(clus_truth)
+
+    ## remove unassigned cells (NA's in clus_truth)
+    unassigned <- is.na(clus_truth)
+    clus <- clus[!unassigned]
+    clus_truth <- clus_truth[!unassigned]
+    if (length(clus) != length(clus_truth)) warning("vector lengths are not equal")
+    
+    tbl_algorithm <- table(clus)
+    tbl_truth <- table(clus_truth)
+
+    ## detected clusters in rows, true populations in columns
+    pr_mat <- re_mat <- F1_mat <- matrix(NA, nrow = length(tbl_algorithm), ncol = length(tbl_truth))
+    
+    for (i in 1:length(tbl_algorithm)) {
+        for (j in 1:length(tbl_truth)) {
+            i_int <- as.integer(names(tbl_algorithm))[i]  ## cluster number from algorithm
+            j_int <- as.integer(names(tbl_truth))[j]  ## cluster number from true labels
+            j_label <- as.character(truth_names[truth_names$code== j_int, 'level'])
+                
+            true_positives <- sum(clus == i_int & clus_truth == j_int, na.rm = TRUE)
+            detected <- sum(clus == i_int, na.rm = TRUE)
+            truth <- sum(clus_truth == j_int, na.rm = TRUE)
+            
+            ## calculate precision, recall, and F1 score
+            precision_ij <- true_positives / detected
+            recall_ij <- true_positives / truth
+            F1_ij <- 2 * (precision_ij * recall_ij) / (precision_ij + recall_ij)
+            
+            if (F1_ij == "NaN") F1_ij <- 0
+            
+            pr_mat[i, j] <- precision_ij
+            re_mat[i, j] <- recall_ij
+            F1_mat[i, j] <- F1_ij
+        }
+    }
+    
+    ## put back cluster labels (note some row names may be missing due to removal of unassigned cells)
+    rownames(pr_mat) <- rownames(re_mat) <- rownames(F1_mat) <- names(tbl_algorithm)
+    colnames(pr_mat) <- colnames(re_mat) <- colnames(F1_mat) <- names(tbl_truth)
+  
+    ## match labels using Hungarian algorithm applied to matrix of F1 scores (Hungarian
+    ## algorithm calculates an optimal one-to-one assignment)
+    
+    ## use transpose matrix (Hungarian algorithm assumes n_rows <= n_cols)
+    F1_mat_trans <- t(F1_mat)
+    
+    if (nrow(F1_mat_trans) <= ncol(F1_mat_trans)) {
+        ## if fewer (or equal no.) true populations than detected clusters, can match all true populations
+        labels_matched <- clue::solve_LSAP(F1_mat_trans, maximum = TRUE)
+        ## use row and column names since some labels may have been removed due to unassigned cells
+        labels_matched <- as.numeric(colnames(F1_mat_trans)[as.numeric(labels_matched)])
+        names(labels_matched) <- rownames(F1_mat_trans)
+        
+    } else {
+        ## if fewer detected clusters than true populations, use transpose matrix and assign
+        ## NAs for true populations without any matching clusters
+        labels_matched_flipped <- clue::solve_LSAP(F1_mat, maximum = TRUE)
+        ## use row and column names since some labels may have been removed due to unassigned cells
+        labels_matched_flipped <- as.numeric(rownames(F1_mat_trans)[as.numeric(labels_matched_flipped)])
+        names(labels_matched_flipped) <- rownames(F1_mat)
+        
+        labels_matched <- rep(NA, ncol(F1_mat))
+        names(labels_matched) <- rownames(F1_mat_trans)
+        labels_matched[as.character(labels_matched_flipped)] <- as.numeric(names(labels_matched_flipped))
+    }
+    
+    ## precision, recall, F1 score, and number of cells for each matched cluster
+    pr <- re <- F1 <- n_cells_matched <- rep(NA, ncol(F1_mat))
+    names(pr) <- names(re) <- names(F1) <- names(n_cells_matched) <- names(labels_matched)
+    
+    for (i in 1:ncol(F1_mat)) {
+        ## set to 0 if no matching cluster (too few detected clusters); use character names 
+        ## for row and column indices in case subsampling completely removes some clusters
+        pr[i] <- ifelse(is.na(labels_matched[i]), 0, pr_mat[as.character(labels_matched[i]), names(labels_matched)[i]])
+        re[i] <- ifelse(is.na(labels_matched[i]), 0, re_mat[as.character(labels_matched[i]), names(labels_matched)[i]])
+        F1[i] <- ifelse(is.na(labels_matched[i]), 0, F1_mat[as.character(labels_matched[i]), names(labels_matched)[i]])
+        
+        n_cells_matched[i] <- sum(clus == labels_matched[i], na.rm = TRUE)
+    }
+    
+    ## means across populations
+    mean_pr <- mean(pr)
+    mean_re <- mean(re)
+    mean_F1 <- mean(F1)
+
+    ## add back original names
+    for (item in c('pr', 're', 'F1', 'labels_matched', 'n_cells_matched')) {
+        curr <- get(item)
+        names(curr) <- truth_names[names(curr), 'level']
+        assign(item, curr) 
+    }
+   
+    return(list(n_clus = n_clus, 
+                pr = pr, 
+                re = re, 
+                F1 = F1, 
+                labels_matched = labels_matched, 
+                n_cells_matched = n_cells_matched, 
+                mean_pr = mean_pr, 
+                mean_re = mean_re, 
+                mean_F1 = mean_F1))
+}
+
+```
+
+```{r}
+hung <- list()
+
+for (flavour in names(d)) {
+    resolutions <- grep('RNA_snn_res', colnames(d[[flavour]]@meta.data), value = TRUE)
+    hung[[flavour]] <- list()
+    for (res in resolutions) {
+        rownames(d[[flavour]]@meta.data) <- d[[flavour]]@meta.data$cell
+        known <- rownames(d[[flavour]]@meta.data[d[[flavour]]@meta.data$scina != 'unknown',])
+
+        length(as.factor(d[[flavour]]@meta.data[known, res]))
+        length(as.factor(d[[flavour]]@meta.data[known, 'scina']))
+        hung[[flavour]][[res]] <- hungarian_weber_with_labels(d[[flavour]]@meta.data[known, res],
+                                                         d[[flavour]]@meta.data[known, 'scina'])
+
+    }
+    
+}
+
+```
+
+```{r}
+
+cobra <- list()
+i <- 1
+for (flavour in names(hung)) {
+    for (res in names(hung[[flavour]])) {
+    cobra[[i]] <- data.frame(cell = names(hung[[flavour]][[res]]$pr),
+                             pr = hung[[flavour]][[res]]$pr,
+                             re = hung[[flavour]][[res]]$re,
+                             F1 = hung[[flavour]][[res]]$F1,
+                             res = res,
+                             flavour = flavour)
+    i = i +1
+    }
+}
+
+cobra <- do.call(rbind.data.frame, cobra)
+
+```
+
+```{r, fig.height = 4, fig.width = 7}
+ggplot(data = cobra, aes(x = pr, y =  re, group = res, col = res)) +
+    geom_point() +
+    facet_grid(flavour~cell, margins = FALSE) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+```{r, fig.height = 4, fig.width = 8}
+ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
+    geom_point() +
+    facet_grid(flavour~res, margins = FALSE) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+```{r, fig.height = 4, fig.width = 7}
+ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
+    geom_point() +
+    facet_wrap(~flavour) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+```{r, fig.height = 4, fig.width = 8}
+ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) +
+    geom_point() +
+    facet_grid(flavour~res) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+For each cell type, get the max F1 stratifying by flavour *regardless of the resolution*.
+
+```{r}
+
+## cobra <- cobra[order(cobra$F1, cobra$cell, decreasing = TRUE),]
+## maxf1 <- cobra[0,]
+maxF1 <- list()
+
+for (flavour in levels(cobra$flavour)) {
+    for (cell in levels(cobra$cell)) {
+        maxF1[[paste(flavour, cell)]] <- c(flavour, cell, max(cobra[cobra$flavour == flavour &
+                                                                    cobra$cell == cell, 'F1']))
+    }
+    
+}
+
+
+maxF1 <- do.call(rbind.data.frame, maxF1)
+colnames(maxF1) <- c('flavour', 'cell', 'max_F1')
+maxF1$max_F1 <- as.numeric(as.character(maxF1$max_F1))
+      
+maxF1$cell <- factor(as.character(maxF1$cell), levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)])))
+
+```
+
+```{r, fig.width = 7, fig.height = 7}
+ggplot(data = maxF1, aes(x= cell, y = max_F1, col = flavour, group = flavour)) +
+    geom_point() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+       
+```
+
+
+# Export objects
+
+List of seurat objects
+```{r}
+saveRDS(object = d, file = params$seurat_output)
+saveRDS(object = aris_stored, file = params$aris_output)
+```
+# Test
+
+```{r child = 'summarize_pbmcs_functions.Rmd'}
+```
+
+# Timestamp
+
+```{r sessionInfo, cache = FALSE}
+date()
+sessionInfo()
+devtools::session_info()
+
+```
+
