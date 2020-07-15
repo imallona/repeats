@@ -86,7 +86,7 @@ opts_chunk$set(fig.width = 5,
 
 
 options(bitmapType='cairo')
-getOption('bitmapType')
+## getOption('bitmapType')
 ```
 
 
@@ -278,14 +278,35 @@ rm(tmp)
 ```
 
 
-Mixed (genes + repeats not overlapping genes) object generation
+Mixed (genes + uniquely mapping repeats not overlapping genes) object generation
 
 
 ```{r}
 
 common_cells <- intersect(colnames(d$genes_cellranger), colnames(d$control_repeats_only_unique))
 ## length(common_cells)
-d$both <- CreateSeuratObject(
+d$both_unique <- CreateSeuratObject(
+    rbind(as.matrix(GetAssayData(d$genes_cellranger, slot = 'counts'))[,common_cells],
+          as.matrix(GetAssayData(d$control_repeats_only_unique, slot = 'counts'))[,common_cells]),
+    assay = "RNA",
+    min.cells = 0,
+    min.features = 0,
+    names.field = 1,
+    names.delim = "_",
+    meta.data = NULL)
+
+
+rm(common_cells)
+```
+
+Mixed: genes + multimapping repeats not overlapping genes
+
+
+```{r}
+
+common_cells <- intersect(colnames(d$genes_cellranger), colnames(d$control_repeats_only_multi))
+## length(common_cells)
+d$both_multi <- CreateSeuratObject(
     rbind(as.matrix(GetAssayData(d$genes_cellranger, slot = 'counts'))[,common_cells],
           as.matrix(GetAssayData(d$control_repeats_only_unique, slot = 'counts'))[,common_cells]),
     assay = "RNA",
@@ -413,13 +434,46 @@ ggplot(data=as.data.frame(sm), aes(x=id, y=pct, col = cell, group = cell)) +
 
 ## QC before filtering {.tabset}
 
+```{r}
+
+d$genes_cellranger[["percent.mt"]] <- PercentageFeatureSet(d$genes_cellranger, pattern = "^MT-")
+
+```
+
+
+```{r}
+
+## QC is based upon genes 
+item <- 'genes_cellranger'
+
+libsize.drop <- isOutlier(d$genes_cellranger$nCount_RNA, nmads = 3, type = "both", log = TRUE)
+feature.drop <- isOutlier(d$genes_cellranger$nFeature_RNA, nmads = 3, type = "both", log = TRUE)
+mito.drop <- isOutlier(d$genes_cellranger$percent.mt, nmads = 3, type = "higher")
+
+selected_cells <- colnames(d$genes_cellranger)[!(libsize.drop | feature.drop | mito.drop)]
+```
+
+
+Outlier tagging results
+
+```{r}
+print(data.frame(ByLibSize = sum(libsize.drop),
+                 ByFeature = sum(feature.drop), 
+                 ByMito = sum(mito.drop),
+                 Remaining = length(selected_cells)))
+```
+
 ```{r, results = 'asis', fig.width = 8, fig.height = 4}
 for (item in names(d)) {
     cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
     if (item == 'genes_cellranger') {
         d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
-        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
+
+        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt") +
+              geom_vline(xintercept = attributes(libsize.drop)$thresholds) +
+              geom_hline(yintercept = attributes(mito.drop)$thresholds))
+        
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
                       ncol = 3))
 
@@ -427,7 +481,12 @@ for (item in names(d)) {
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2))
     
     }
-    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+
+    d[[item]]@meta.data$qc_pass <- rownames(d[[item]]@meta.data) %in% selected_cells
+    
+    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA",
+                         group.by = 'qc_pass', shape.by = 'qc_pass'))
+    
     cat('\n\n')
 }
 ```
@@ -459,29 +518,18 @@ summarized <- as.data.frame(do.call(rbind.data.frame, summarized))
 colnames(summarized) <- c('dataset','filter', 'ncells',
                           'ncount_mean', 'ncount_sd', 'nfeature_mean', 'nfeature_sd',
                           'mito_pct_mean')
-print(summarized)
+```
+
+```{r}
+DT::datatable(summarized)
 ```
 
 ## QC after filtering {.tabset}
 
 Filtering out cells according to the repeats expression, and forwarding the selection to other layers
 
+
 ```{r}
-
-## QC is based upon genes 
-item <- 'genes_cellranger'
-
-libsize.drop <- isOutlier(d$genes_cellranger$nCount_RNA, nmads = 3, type = "both", log = TRUE)
-feature.drop <- isOutlier(d$genes_cellranger$nFeature_RNA, nmads = 3, type = "both", log = TRUE)
-mito.drop <- isOutlier(d$genes_cellranger$percent.mt, nmads = 3, type = "higher")
-
-selected_cells <- colnames(d$genes_cellranger)[!(libsize.drop | feature.drop | mito.drop)]
-
-print(data.frame(ByLibSize = sum(libsize.drop),
-                 ByFeature = sum(feature.drop), 
-                 ByMito = sum(mito.drop),
-                 Remaining = length(selected_cells)))
-
 ## the subsetting applies to all slots, even though the metrics come from genes only
 for (item in names(d)) {
     d[[item]] <- subset(d[[item]], cells = selected_cells)
@@ -535,14 +583,18 @@ summarized <- as.data.frame(do.call(rbind.data.frame, summarized))
 colnames(summarized) <- c('dataset','filter', 'ncells',
                           'ncount_mean', 'ncount_sd', 'nfeature_mean', 'nfeature_sd',
                           'mito_pct_mean')
-print(summarized)
+
+```
+
+```{r}
+DT::datatable(summarized)
 ```
 
 
 
 ## Variable features {.tabset}
 
-We take the top 10% of the features
+We take the top 10% of the features for genes or genes + repeats, but 25% for repeats.
 
 ```{r, message = FALSE, fig.width =8, fig.height = 4, results= 'asis'}
 for (item in names(d)) {
@@ -551,10 +603,18 @@ for (item in names(d)) {
     d[[item]] <- NormalizeData(object = d[[item]],
                                normalization.method = "LogNormalize",
                                scale.factor = 10000)
-    
-    d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst",
-                                      nfeatures = round(nrow(d[[item]])/10))
 
+    ## if repeats, we take half of them
+    ## else if genes, then the top 10 pct
+    if (grepl('repeats', item)) {
+        d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst",
+                                          nfeatures = round(nrow(d[[item]])/4))
+    }
+    else {
+        d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst",
+                                          nfeatures = round(nrow(d[[item]])/10))
+    }
+    
     ## Identify the 10 most highly variable genes
     top10 <- head(VariableFeatures(d[[item]]), 10)
 
@@ -642,8 +702,9 @@ for (item in names(d)) {
     p1 <- DimPlot(d[[item]], reduction = "umap")
     p2 <- DimPlot(d[[item]], reduction = "tsne")
 
-    print(p1)
-    print(p2)
+    print(p1 + ggtitle(item))
+    print(p2 + ggtitle(item))
+    
     rm(p1, p2)
     cat('\n\n')
 
@@ -854,9 +915,7 @@ table(named$cell_labels)
 ##                 signatures = pos_markers2, results = named)
 ```
 
-## Confusion matrices with clustering results {.tabset}
-
-First, add the SCINA outputs to the different SO objects
+Add the SCINA outputs to the different SO objects
 
 ```{r, cache = FALSE}
 labelling <- data.frame(cell = colnames(d$genes_cellranger),
@@ -869,7 +928,7 @@ rownames(d$genes_cellranger@meta.data) <- d$genes_cellranger@meta.data$cell
 
 ## still, the annotation can also be transfered to repeats/featurecounts
 
-for (item in c('both', grep('repeats', names(d), value = TRUE))) {
+for (item in c(grep('repeats|both', names(d), value = TRUE))) {
     rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
 
     tmp <- merge(data.frame(cell = d[[item]]@meta.data$cell),
@@ -886,21 +945,21 @@ rm(labelling, tmp)
 
 ```
 
-```{r problemrendering, cache = FALSE, eval = FALSE}
-for (res in grep('RNA_snn', colnames(d$genes@meta.data), value = TRUE)) {
-    cat('### ', res, '\n\n')
+<!-- ```{r problemrendering, cache = FALSE, eval = FALSE} -->
+<!-- for (res in grep('RNA_snn', colnames(d$genes@meta.data), value = TRUE)) { -->
+<!--     cat('### ', res, '\n\n') -->
 
-    tmp <- as.data.frame.matrix(table(d$genes@meta.data[,res],
-                                      d$genes@meta.data$scina))
+<!--     tmp <- as.data.frame.matrix(table(d$genes@meta.data[,res], -->
+<!--                                       d$genes@meta.data$scina)) -->
 
-    ## print(t(tmp))
-    print(kable(tmp))
+<!--     ## print(t(tmp)) -->
+<!--     print(kable(tmp)) -->
     
-    cat('\n\n')
-    rm(tmp)
-}
+<!--     cat('\n\n') -->
+<!--     rm(tmp) -->
+<!-- } -->
 
-```
+<!-- ``` -->
 
 <!-- ## ARIs celltypes and SCINA outputs -->
 
@@ -938,58 +997,58 @@ for (item in names(d)) {
 }
 ```
 
-# boxplots by identity {.tabset}
+<!-- # boxplots by identity {.tabset} -->
 
-```{r fig.height = 6, fig.width = 16, results = 'asis'}
-## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11')
-for (slot in grep('repeats', names(d), value = TRUE)) {
-    cat("## ", slot, "\n\n")
+<!-- ```{r fig.height = 6, fig.width = 16, results = 'asis'} -->
+<!-- ## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11') -->
+<!-- for (slot in grep('repeats', names(d), value = TRUE)) { -->
+<!--     cat("## ", slot, "\n\n") -->
 
-    ## this is idiotic @todo add variable feature selection
-    ## selected <- c(names(head(sort(apply(GetAssayData(d[[slot]]),1, coef_var),
-                                  ## decreasing = TRUE),
-                             ## 5)),
-                  ## c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a'))
+<!--     ## this is idiotic @todo add variable feature selection -->
+<!--     ## selected <- c(names(head(sort(apply(GetAssayData(d[[slot]]),1, coef_var), -->
+<!--                                   ## decreasing = TRUE), -->
+<!--                              ## 5)), -->
+<!--                   ## c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a')) -->
 
-    selected <- head(VariableFeatures(d[[slot]]), n = 10)
-
-    
-    repeats <- as.data.frame(FetchData(d[[slot]], vars = selected, slot = 'data'))
-    repeats$cell <- rownames(repeats)
+<!--     selected <- head(VariableFeatures(d[[slot]]), n = 10) -->
 
     
-    d$genes_cellranger@meta.data$cell <- rownames(d$genes_cellranger@meta.data)
-    repeats <- merge(d$genes_cellranger@meta.data[, c('scina', 'cell') ],
-                     repeats, by = 'cell', all.x = TRUE)
+<!--     repeats <- as.data.frame(FetchData(d[[slot]], vars = selected, slot = 'data')) -->
+<!--     repeats$cell <- rownames(repeats) -->
 
-    rownames(repeats) <- repeats$cell
     
-    repeats <- melt(repeats, id.vars = c('cell', 'scina'))
+<!--     d$genes_cellranger@meta.data$cell <- rownames(d$genes_cellranger@meta.data) -->
+<!--     repeats <- merge(d$genes_cellranger@meta.data[, c('scina', 'cell') ], -->
+<!--                      repeats, by = 'cell', all.x = TRUE) -->
 
-    colnames(repeats) <- c('cell', 'scina', 'repfamily', 'data')
+<!--     rownames(repeats) <- repeats$cell -->
     
-    print(ggplot(repeats,
-           aes(x = scina, y = data)) + 
-          geom_boxplot(outlier.size=1) +
-          scale_y_continuous(trans='log10') +
-        scale_fill_discrete(drop=FALSE) +
-        facet_wrap(~ factor(repfamily), ncol = 10) +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-        ylab('repeat expression [ncount]') +
-        xlab('SCINA identity') + ggtitle(sprintf('%s %s\n%s', slot, 'repeats', 'scina')))
+<!--     repeats <- melt(repeats, id.vars = c('cell', 'scina')) -->
 
-    rm(repeats)
-    cat('\n\n')
-}
-```
+<!--     colnames(repeats) <- c('cell', 'scina', 'repfamily', 'data') -->
+    
+<!--     print(ggplot(repeats, -->
+<!--            aes(x = scina, y = data)) +  -->
+<!--           geom_boxplot(outlier.size=1) + -->
+<!--           scale_y_continuous(trans='log10') + -->
+<!--         scale_fill_discrete(drop=FALSE) + -->
+<!--         facet_wrap(~ factor(repfamily), ncol = 10) + -->
+<!--         theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--         ylab('repeat expression [ncount]') + -->
+<!--         xlab('SCINA identity') + ggtitle(sprintf('%s %s\n%s', slot, 'repeats', 'scina'))) -->
+
+<!--     rm(repeats) -->
+<!--     cat('\n\n') -->
+<!-- } -->
+<!-- ``` -->
 
 
 
 # Dimred PCA comparing modalities and SCINA {.tabset}
 
-Colour by SCINA
+Colour: SCINA-based celltype.
 
-```{r, fig.width = 5.1, fig.height = 5.1, results = 'asis'}
+```{r, fig.width = 10, fig.height = 10, results = 'asis'}
 
 for (flavour1 in names(d)) {
     ## d[[flavour]][["pca"]]
@@ -1010,7 +1069,9 @@ for (flavour1 in names(d)) {
 
         for (i in 1:3) {
             for (j in 1:3) {
-                par(mar=c(5.1, 4.1, 7.1, 2.1))
+                ## cat ('### ', i, j, '\n\n')
+
+                par(mar=c(5.1, 4.1, 7.1, 2.1), mfrow = c(3,3)) ## here
                 ## par(mfrow = c(5,5))
                 plot(x = Embeddings(d[[flavour1]], reduction = "pca")[common,i],
                      y = Embeddings(d[[flavour2]], reduction = "pca")[common,j],
@@ -1032,6 +1093,8 @@ for (flavour1 in names(d)) {
                            ncol = 2,
                            xpd = TRUE)
                 ## }
+
+                ## cat('\n\n')
             }
         }
 
@@ -1097,7 +1160,7 @@ rm(merged)
 
 Tabset: coloring according to the clustering results.
 
-```{r descriptive2, results = 'asis', fig.width =8, fig.height = 8}
+```{r}
 
 tag <- 'scina'
 
@@ -1123,6 +1186,16 @@ for (item in names(d)) {
 rownames(merged) <- merged$cell
 merged <- merged[,-1]
 colnames(merged) <- gsub('_RNA', '', colnames(merged))
+```
+
+Diagonal labels:
+
+```{r}
+colnames(merged)
+```
+
+```{r descriptive2, results = 'asis', fig.width =8, fig.height = 8}
+
 plot(merged, pch = 20, cex = 0.5, col = ac(pal[merged$scina, 'color'], 0.1))
 ## plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(as.factor(merged[,tag])), 1))
 ## cat('\n\n')
@@ -1136,13 +1209,13 @@ rm(merged)
 
 Comparing PCs to SCINA
 
-```{r descriptive3, results = 'asis', fig.width = 10, fig.height = 10}
+```{r descriptive3, results = 'asis', fig.width = 7, fig.height = 7}
 
 ## common_cells <- Reduce(intersect, sapply(d, colnames))
 common_cells <- colnames(d[[1]])
 
 for (item in names(d)) {
-    cat('### ', item, '\n\n')
+    cat('## ', item, '\n\n')
 
     tag <- 'scina'
 
@@ -1164,14 +1237,8 @@ for (item in names(d)) {
 
     d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
 
-    ## merged <- merge(merged,
-    ##                 d[[item]]@meta.data[c('cell', 'nCount_RNA', 'nFeature_RNA')],
-    ##                 by = 'cell',
-    ##                 all.x = TRUE,
-    ##                 suffixes = c('', sprintf('\n%s', item)))
-
     merged <- cbind(merged,
-                   Embeddings(d[[1]], reduction = "pca")[merged$cell, 1:5])
+                   Embeddings(d[[item]], reduction = "pca")[merged$cell, 1:5])
        
     rownames(merged) <- merged$cell
     merged <- merged[,-1]
@@ -1197,109 +1264,109 @@ for (item in names(d)) {
 ```
 
 
-# Correlation values distribution
+<!-- # Correlation values distribution -->
 
-Repeats by cellranger vs repeats by featurecounts on cellranger-standard bams.
+<!-- Repeats by cellranger vs repeats by featurecounts on cellranger-standard bams. -->
 
-Skipped currently
+<!-- Skipped currently -->
 
-## Correlations per cell
+<!-- ## Correlations per cell -->
 
-Skipped
+<!-- Skipped -->
 
-First repeats vs featurecounts
+<!-- First repeats vs featurecounts -->
 
-```{r correl_first, warning = FALSE, eval = FALSE}
-ccell <- list()
+<!-- ```{r correl_first, warning = FALSE, eval = FALSE} -->
+<!-- ccell <- list() -->
      
-for (cell in intersect( colnames(GetAssay(d$repeats_cellranger, 'RNA')),
-                       colnames(GetAssay(d$repeats_featurecounts, 'RNA')))) {
-    reps <- intersect(rownames(d$repeats_cellranger), rownames(d$repeats_featurecounts))
+<!-- for (cell in intersect( colnames(GetAssay(d$repeats_cellranger, 'RNA')), -->
+<!--                        colnames(GetAssay(d$repeats_featurecounts, 'RNA')))) { -->
+<!--     reps <- intersect(rownames(d$repeats_cellranger), rownames(d$repeats_featurecounts)) -->
     
-    ccell[[cell]] <- cor(as.numeric(GetAssay(d$repeats_cellranger, 'RNA')[reps,cell]),
-                         as.numeric(GetAssay(d$repeats_featurecounts, 'RNA')[reps,cell]),
-                         method = 'spearman')
-}
-```
+<!--     ccell[[cell]] <- cor(as.numeric(GetAssay(d$repeats_cellranger, 'RNA')[reps,cell]), -->
+<!--                          as.numeric(GetAssay(d$repeats_featurecounts, 'RNA')[reps,cell]), -->
+<!--                          method = 'spearman') -->
+<!-- } -->
+<!-- ``` -->
 
-```{r, eval = FALSE}
-hist(unlist(ccell),
-     main = "correlation across cells\nrepeats cellranger vs repeats (featurecounts)")
-## lines(density(unlist(ccell)))
+<!-- ```{r, eval = FALSE} -->
+<!-- hist(unlist(ccell), -->
+<!--      main = "correlation across cells\nrepeats cellranger vs repeats (featurecounts)") -->
+<!-- ## lines(density(unlist(ccell))) -->
 
-```
+<!-- ``` -->
 
-Second featurecounts on all repeats vs featurecounts on some repeats only
+<!-- Second featurecounts on all repeats vs featurecounts on some repeats only -->
 
-```{r, eval = FALSE}
-ccell <- list()
+<!-- ```{r, eval = FALSE} -->
+<!-- ccell <- list() -->
      
-for (cell in intersect( colnames(GetAssay(d$control_repeats_only, 'RNA')),
-                       colnames(GetAssay(d$repeats_featurecounts, 'RNA')))) {
-    reps <- intersect(rownames(d$control_repeats_only), rownames(d$repeats_featurecounts))
+<!-- for (cell in intersect( colnames(GetAssay(d$control_repeats_only, 'RNA')), -->
+<!--                        colnames(GetAssay(d$repeats_featurecounts, 'RNA')))) { -->
+<!--     reps <- intersect(rownames(d$control_repeats_only), rownames(d$repeats_featurecounts)) -->
     
-    ccell[[cell]] <- cor(as.numeric(GetAssay(d$control_repeats_only, 'RNA')[reps,cell]),
-                         as.numeric(GetAssay(d$repeats_featurecounts, 'RNA')[reps,cell]),
-                         method = 'spearman')
-}
+<!--     ccell[[cell]] <- cor(as.numeric(GetAssay(d$control_repeats_only, 'RNA')[reps,cell]), -->
+<!--                          as.numeric(GetAssay(d$repeats_featurecounts, 'RNA')[reps,cell]), -->
+<!--                          method = 'spearman') -->
+<!-- } -->
 
-```
-
-
-```{r, eval = FALSE}
-hist(unlist(ccell),
-     main = "correlation across cells\nrepeats vs nongene-repeats",
-     xlab = "Spearman's rho")
-```
+<!-- ``` -->
 
 
-## Correlations per repeat
-
-First cellranger vs featurecounts
-
-```{r, warning = FALSE, eval = FALSE}
-crepeat <- list()
-
-## GetAssay(d$repeats_cellranger, 'RNA')[1:10,1:10]
-
-for (re in intersect( rownames(GetAssay(d$repeats_cellranger, 'RNA')),
-                     rownames(GetAssay(d$repeats_featurecounts, 'RNA')))) {
-
-    cells <-  intersect(colnames(d$repeats_cellranger), colnames(d$repeats_featurecounts))
-    crepeat[[re]] <- cor(as.numeric(GetAssay(d$repeats_cellranger, 'RNA')[re,cells]),
-                         as.numeric(GetAssay(d$repeats_featurecounts, 'RNA')[re, cells]),
-                         method = 'spearman')
-}
-```
-
-```{r, eval = FALSE}
-hist(unlist(crepeat), main = "correlation across repeats\nrepeats cellranger vs repeats (featurecounts)", xlab = "Sperman's rho")
-
-```
-
-Second featurecounts on all repeats vs featurecounts on some repeats only
-
-```{r, eval = FALSE}
-crepeat <- list()
-
-## GetAssay(d$control_repeats_only, 'RNA')[1:10,1:10]
-
-for (re in intersect( rownames(GetAssay(d$control_repeats_only, 'RNA')),
-                     rownames(GetAssay(d$repeats_featurecounts, 'RNA')))) {
-
-    cells <-  intersect(colnames(d$control_repeats_only), colnames(d$repeats_featurecounts))
-    crepeat[[re]] <- cor(as.numeric(GetAssay(d$control_repeats_only, 'RNA')[re,cells]),
-                         as.numeric(GetAssay(d$repeats_featurecounts, 'RNA')[re, cells]),
-                         method = 'spearman')
-}
-```
+<!-- ```{r, eval = FALSE} -->
+<!-- hist(unlist(ccell), -->
+<!--      main = "correlation across cells\nrepeats vs nongene-repeats", -->
+<!--      xlab = "Spearman's rho") -->
+<!-- ``` -->
 
 
-```{r, eval = FALSE}
-hist(unlist(crepeat),
-     main = "correlation across repeats\nrepeats vs nongene-repeats",
-     xlab = "Spearman's rho")
-```
+<!-- ## Correlations per repeat -->
+
+<!-- First cellranger vs featurecounts -->
+
+<!-- ```{r, warning = FALSE, eval = FALSE} -->
+<!-- crepeat <- list() -->
+
+<!-- ## GetAssay(d$repeats_cellranger, 'RNA')[1:10,1:10] -->
+
+<!-- for (re in intersect( rownames(GetAssay(d$repeats_cellranger, 'RNA')), -->
+<!--                      rownames(GetAssay(d$repeats_featurecounts, 'RNA')))) { -->
+
+<!--     cells <-  intersect(colnames(d$repeats_cellranger), colnames(d$repeats_featurecounts)) -->
+<!--     crepeat[[re]] <- cor(as.numeric(GetAssay(d$repeats_cellranger, 'RNA')[re,cells]), -->
+<!--                          as.numeric(GetAssay(d$repeats_featurecounts, 'RNA')[re, cells]), -->
+<!--                          method = 'spearman') -->
+<!-- } -->
+<!-- ``` -->
+
+<!-- ```{r, eval = FALSE} -->
+<!-- hist(unlist(crepeat), main = "correlation across repeats\nrepeats cellranger vs repeats (featurecounts)", xlab = "Sperman's rho") -->
+
+<!-- ``` -->
+
+<!-- Second featurecounts on all repeats vs featurecounts on some repeats only -->
+
+<!-- ```{r, eval = FALSE} -->
+<!-- crepeat <- list() -->
+
+<!-- ## GetAssay(d$control_repeats_only, 'RNA')[1:10,1:10] -->
+
+<!-- for (re in intersect( rownames(GetAssay(d$control_repeats_only, 'RNA')), -->
+<!--                      rownames(GetAssay(d$repeats_featurecounts, 'RNA')))) { -->
+
+<!--     cells <-  intersect(colnames(d$control_repeats_only), colnames(d$repeats_featurecounts)) -->
+<!--     crepeat[[re]] <- cor(as.numeric(GetAssay(d$control_repeats_only, 'RNA')[re,cells]), -->
+<!--                          as.numeric(GetAssay(d$repeats_featurecounts, 'RNA')[re, cells]), -->
+<!--                          method = 'spearman') -->
+<!-- } -->
+<!-- ``` -->
+
+
+<!-- ```{r, eval = FALSE} -->
+<!-- hist(unlist(crepeat), -->
+<!--      main = "correlation across repeats\nrepeats vs nongene-repeats", -->
+<!--      xlab = "Spearman's rho") -->
+<!-- ``` -->
 
 <!-- Show correlation values per family etc -->
 
@@ -1753,7 +1820,7 @@ DT::datatable(markers)
 
 
 
-# F1-based
+# F1 scores unsupervised clustering : SCINA cell types
 
 Largely derived from Lukas Weber's https://github.com/lmweber/cytometry-clustering-comparison/blob/master/helpers/helper_match_evaluate_multiple.R (Hungarian algorithm)
 
@@ -1935,40 +2002,6 @@ cobra <- do.call(rbind.data.frame, cobra)
 cobra$id <- params$identifier
 ```
 
-```{r, fig.height = 10, fig.width = 7, eval = FALSE}
-ggplot(data = cobra, aes(x = pr, y =  re, group = res, col = res)) +
-    geom_point() +
-    facet_grid(flavour~cell, margins = FALSE) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
-
-```
-
-```{r, fig.height = 6, fig.width = 8}
-ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
-    geom_point() +
-    facet_grid(flavour~res, margins = FALSE) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
-
-```
-
-```{r, fig.height = 5, fig.width = 7}
-ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
-    geom_point() +
-    facet_wrap(~flavour) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
-
-```
-
-```{r, fig.height = 8, fig.width = 8}
-ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) +
-    geom_point() +
-    facet_grid(flavour~res) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
-
-```
 
 For each cell type, get the max F1 stratifying by flavour *regardless of the resolution*.
 
@@ -1996,20 +2029,48 @@ maxF1$cell <- factor(as.character(maxF1$cell),
 
 ```
 
-```{r, fig.width = 7, fig.height = 7}
+```{r}
+DT::datatable(as.data.frame(cobra %>%
+              group_by(flavour, cell) %>%
+              summarize(max(F1)) %>%
+              arrange(desc(`max(F1)`))))
+````
+
+
+```{r, fig.height = 6, fig.width = 8}
+ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
+    geom_point() +
+    facet_grid(flavour~res, margins = FALSE) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+```
+
+```{r, fig.height = 8, fig.width = 8}
+ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
+    geom_point() +
+    facet_wrap(~flavour) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+```
+
+```{r, fig.height = 5, fig.width = 8}
+ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) +
+    geom_point() +
+    facet_grid(flavour~res) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+```
+
+```{r, fig.width = 5, fig.height = 5}
 ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
     geom_point() +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
        
 ```
-
-```{r, df_print = 'paged'}
-as.data.frame(cobra %>%
-              group_by(flavour, cell) %>%
-              summarize(max(F1)) %>%
-              arrange(desc(`max(F1)`)))
-````
 
 # Export objects
 
