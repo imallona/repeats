@@ -52,7 +52,7 @@ STAR = '~/soft/star/STAR-2.7.3a/source/STAR'
 FEATURECOUNTS = '~/soft/subread/subread-2.0.0-source/bin/featureCounts'
 # SALMON = '~/soft/salmon/salmon-1.1.0_linux_x86_64/bin/salmon'
 SALMON='/home/imallona/soft/salmon/salmon-1.2.1/bin/salmon'
-SALMON_V1_10X_RUN='/home/imallona/soft/salmon/salmon-1.2.1_src/scripts/v1_10x/run_modified_with_i1.sh'
+SALMON_V1_10X_RUN='/home/imallona/soft/salmon/salmon-1.2.1_src/scripts/v1_10x/run.sh'
 SALMON_V1_10X_WRAPPER='/home/imallona/soft/salmon/salmon-1.2.1_src/scripts/v1_10x/wrapper'
 CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
 BIOAWK = '~/soft/bioawk/bioawk'
@@ -102,10 +102,12 @@ rule all:
                         "count_repeats_on_cellranger_standard_not_overlapping_genes",
                         "{multimappers}",
                         RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
-                 multimappers = ['multimappers', 'unique_reads'])
+                 multimappers = ['multimappers', 'unique_reads']),
          # op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
-         # op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
-
+         # op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
+         # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+         #       regress_ncount = ['TRUE', 'FALSE'],
+         #       regress_nfeature = ['TRUE', 'FALSE'])
 
 
 # ## srrwhatever is  not a pbmc!
@@ -269,9 +271,7 @@ To run alevin in v1 mode the following three changes are required:
 
 """
 
-
-
-rule map_salmon_repeats_chromium_v1_DOESNOTWORK:
+rule map_salmon_repeats_chromium_v1_ALTERNATIVE_DOESNOTWORKNEITHER:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
@@ -284,37 +284,76 @@ rule map_salmon_repeats_chromium_v1_DOESNOTWORK:
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
         processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats'),
-        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon')
+        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
+        converter_path =  op.dirname("{SALMON_V1_V10X_RUN}")
     log:
         op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium.log')
     shell:
         """
     mkdir -p {params.processing_path}
-    cd {params.processing_path}
 
-    ## link wrapper
-    ln -s {SALMON_V1_10X_WRAPPER}
-    
-    # ({SALMON_V1_10X_RUN} {SALMON} alevin \
-    # -lISR \
-    # -b {params.fastqs_path}/ \
-    # --gemcode \
-    # -i {params.salmon_idx} \
-    # -p {threads} \
-    # -o {params.processing_path} \
-    # --tgMap {input.tgmap} ) 2> {log}
+    cd {params.converter_path}
+
+    # cd {params.processing_path}
 
     {SALMON_V1_10X_RUN} {SALMON} alevin \
-      -lISR \
-      -b {params.fastqs_path}/ \
-      --gemcode \
-      -i {params.salmon_idx} \
-      -p {threads} \
-      -o {params.processing_path} \
-      --tgMap {input.tgmap}
+    -lISR \
+    -b {params.fastqs_path}/ \
+    --gemcode \
+    -i {params.salmon_idx} \
+    -p {threads} \
+    -o {params.processing_path} \
+    --tgMap {input.tgmap}
 
     touch -c {output}
-        """
+    """
+
+
+
+# rule map_salmon_repeats_chromium_v1_DOESNOTWORK:
+#     input:        
+#         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
+#         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
+#         cb = sorted(glob(op.join(BASE, 'data', RUN_NAME,  '*I1*fastq.gz'))),
+#         r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME,  '*RA*fastq.gz')))        
+#     output:
+#         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
+#     threads:
+#         NTHREADS
+#     params:
+#         fastqs_path = op.join(BASE, 'data', RUN_NAME),
+#         processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats'),
+#         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon')
+#     log:
+#         op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium.log')
+#     shell:
+#         """
+#     mkdir -p {params.processing_path}
+#     cd {params.processing_path}
+
+#     ## link wrapper
+#     ln -s {SALMON_V1_10X_WRAPPER}
+    
+#     # ({SALMON_V1_10X_RUN} {SALMON} alevin \
+#     # -lISR \
+#     # -b {params.fastqs_path}/ \
+#     # --gemcode \
+#     # -i {params.salmon_idx} \
+#     # -p {threads} \
+#     # -o {params.processing_path} \
+#     # --tgMap {input.tgmap} ) 2> {log}
+
+#     {SALMON_V1_10X_RUN} {SALMON} alevin \
+#       -lISR \
+#       -b {params.fastqs_path}/ \
+#       --gemcode \
+#       -i {params.salmon_idx} \
+#       -p {threads} \
+#       -o {params.processing_path} \
+#       --tgMap {input.tgmap}
+
+#     touch -c {output}
+#         """
     
 
 rule map_salmon_genes_chromium_v1_DOESNOTWORK:
