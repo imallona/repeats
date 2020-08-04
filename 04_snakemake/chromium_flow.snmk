@@ -238,7 +238,18 @@ rule knit_report_chromium:
             BASE, "runs", RUN_NAME,
             'count_repeats_on_cellranger_standard_not_overlapping_genes',
             'unique_reads',
-            RUN_NAME + "_repeats_not_overlapping_genes.counts.gz")
+            RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+        repeats_bowtie_multi = op.join(
+            BASE, "runs", RUN_NAME,
+            'bowtie_repeatome',
+            'multimappers',
+            'all_cells_repeats.counts.gz'),
+        repeats_bowtie_unique = op.join(
+            BASE, "runs", RUN_NAME,
+            'bowtie_repeatome',
+            'unique_reads',
+            'all_cells_repeats.counts.gz')        
+            
     params:
         rmd = 'summarize_cellranger_run_pbmcs.Rmd',
         run_name = RUN_NAME
@@ -263,6 +274,8 @@ rule knit_report_chromium:
                      aris_output = \"{output.aris}\", 
                      regress_genes_nCount = \"{wildcards.regress_ncount}\", 
                      regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
+                     repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
+                     repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\", 
                      cobra_output = \"{output.cobra}\"))' &> {log}
         """
 
@@ -286,7 +299,7 @@ rule knit_report_chromium:
 #         {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output.html}\", params = list(identifier = \"{params.run_name}\", genes_cellranger = \"{input.genes}\", repeats_cellranger = \"{input.repeats}\", repeats_featurecounts = \"{input.featurecounts}\", seurat_output = \"{output.rds}\", aris_output = \"{output.aris}\"))' &> {log}
 #         """
 
-rule run_feature_counts_spawned_bams:
+rule run_featurecounts_spawned_bams:
     input:
         flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split.flag'),
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
@@ -426,7 +439,125 @@ rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
             """)
         
     
+## test run bowtie start
+## to avoid explicitly handling the cell barcodes, we take the cellranger output as correct
+##   (e.g. splitting the cells by CB from the cellranger standard output)
+rule map_bowtie_by_cell:
+    input:
+        flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split.flag')
+    output:
+        flag_map_bowtie =  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag')
+    params:
+        split_bam_path = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split'),
+        split_fastq_path = op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome'),
+        repeatome = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0])
+    threads:
+        NTHREADS
+    shell:
+        """
+        mkdir -p {params.split_fastq_path}
+        cd {params.split_fastq_path}
+
+        for fn in $(find {params.split_bam_path} -name "*bam")
+        do
+           echo "$fn"
+           
+           {BEDTOOLS} bamtofastq -i "$fn" -fq "$(basename $fn .bam).fastq"
+        
+           ( {BOWTIE} -q \
+            -v 2 \
+            --threads {threads} \
+            -k 2 --best --strata \
+            --sam \
+            --chunkmbs 128 {params.repeatome} "$(basename $fn .bam).fastq" | \
+              samtools view -@ {threads} -bS - > "$(basename $fn .bam)_bowtie.bam" ) 2> \
+              "$(basename $fn .bam)_bowtie.log"
+
+            ## removing the fastq
+            rm "$fn"
+        done
+
+        touch {output.flag_map_bowtie}
+        """
+
+# multimappers with ifelse?
+rule featurecounts_bowtie_repeats_repeatome:
+    input:
+        # bam = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam"),
+        flag_map_bowtie =  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
+        fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                               "all_cells_repeats.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                            "all_cells_repeats.counts.gz")
+    params:
+        bam_path = op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome'),
+        processing_path = op.join(BASE, "runs", RUN_NAME, "{multimappers}", 'bowtie_repeatome')
+    log :
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}", "all_cell_featurecounts.log"),
+    threads:
+        NTHREADS
+    # shell:
+    #    """
+    #    ## note multimappers are counted
+
+    #    mkdir -p {params.processing_path}
+
+    #    cd {params.processing_path}
+       
+    #    {FEATURECOUNTS} -T {threads} \
+    #    -t exon \
+    #    -g gene_id \
+    #    -a {input.fake_repeatome_gtf} \
+    #    -o  {output.counts} \
+    #    -M \
+    #    {params.bam_path}/*bam  &> {log}
+
+    #    {PIGZ} --keep  -p {threads} {output.counts}
+    #    """
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            mkdir -p {params.processing_path}
+
+            cd {params.processing_path}
+            
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.fake_repeatome_gtf} \
+            -o  {output.counts} \
+            -M --fraction \
+            {params.bam_path}/*bam  &> {log}
+
+            {PIGZ} --keep  -p {threads} {output.counts}
+         """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            mkdir -p {params.processing_path}
+
+            cd {params.processing_path}
+            
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.fake_repeatome_gtf} \
+            -o  {output.counts} \
+            {params.bam_path}/*bam  &> {log}
+
+            {PIGZ} --keep  -p {threads} {output.counts}
+
+            """)
     
+
+## test run bowtie end
+
 rule spawn_cellranger_bam_file_by_cell:
     input:
         bam = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'possorted_genome_bam.bam'),

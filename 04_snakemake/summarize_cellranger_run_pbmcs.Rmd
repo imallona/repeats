@@ -16,9 +16,11 @@ params:
   genes_cellranger: ""
   repeats_cellranger: ""
   repeats_featurecounts_multi: ""
-  repeats_only_featurecounts_control_multi: ""
   repeats_featurecounts_unique: ""
+  repeats_only_featurecounts_control_multi: ""
   repeats_only_featurecounts_control_unique: ""
+  repeats_bowtie_multi: ""
+  repeats_bowtie_unique: ""
   seurat_output: ""
   aris_output: ""
   cobra_output: ""
@@ -76,7 +78,7 @@ library(RColorBrewer)
 opts_chunk$set(fig.width = 5,
                fig.height = 5,
                dev = 'png',
-               cache = FALSE,
+               cache = TRUE,
                include = TRUE,
                cache.lazy = FALSE,
                warning = TRUE,
@@ -100,9 +102,9 @@ ac <- function(col, alpha=1){
                        rgb(x[1], x[2], x[3], alpha=alpha))  
 }
 
-coef_var <- function(x){
-        (sd(x)/mean(x))*100
-}
+## coef_var <- function(x){
+##         (sd(x)/mean(x))*100
+## }
 
 ```
 
@@ -120,16 +122,18 @@ coef_var <- function(x){
 ##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/SRR10974769/count_repeats_on_cellranger_standard/SRR10974769_repeats.counts.gz",
 ##                identifier = 'test')
 
-params <- list(identifier = "pbmc_10k_v3",
-               genes_cellranger = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
-               repeats_cellranger = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-               repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/count_repeats_on_cellranger_standard/multimappers/pbmc_10k_v3_repeats.counts.gz",
-               repeats_only_featurecounts_control_multi = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers/pbmc_10k_v3_repeats_not_overlapping_genes.counts.gz",
-               repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/count_repeats_on_cellranger_standard/unique_reads/pbmc_10k_v3_repeats.counts.gz",
-               repeats_only_featurecounts_control_unique = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/pbmc_10k_v3_repeats_not_overlapping_genes.counts.gz",
+params <- list(identifier = "frozen_pbmc_donor_a",
+               genes_cellranger = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
+               repeats_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+               repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/multimappers/frozen_pbmc_donor_a_repeats.counts.gz",
+               repeats_only_featurecounts_control_multi = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers/frozen_pbmc_donor_a_repeats_not_overlapping_genes.counts.gz",
+               repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/unique_reads/frozen_pbmc_donor_a_repeats.counts.gz",
+               repeats_only_featurecounts_control_unique = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/frozen_pbmc_donor_a_repeats_not_overlapping_genes.counts.gz",
                seurat_output = "/home/imallona/tmp/test.rds",
                regress_genes_nCount = FALSE,
-               regress_genes_nFeatures = FALSE)
+               regress_genes_nFeatures = FALSE,
+               repeats_bowtie_unique = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/bowtie_repeatome/unique_reads/all_cells_repeats.counts.gz',
+                repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/bowtie_repeatome/multimappers/all_cells_repeats.counts.gz')
 
 ```
 
@@ -322,9 +326,74 @@ rm(common_cells)
 
 ```
 
+Bowtie data
+
+
+```{r}
+
+tmp <- data.table::fread(params$repeats_bowtie_unique, sep = '\t', header = TRUE,
+                         drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+rownames(tmp) <- tmp$Geneid ## here
+
+colnames(tmp) <- gsub(".*:([A-Z]+-1)_bowtie.bam","\\1", colnames(tmp))
+## tmp <- tmp[,7:ncol(tmp)]
+
+tmp <- as.data.frame(tmp)
+rownames(tmp) <- tmp$Geneid
+tmp <- tmp[,-1]
+
+
+d$repeats_bowtie_unique <- CreateSeuratObject(
+    tmp,
+    project =  sprintf('%s_%s', params$identifier, 'repeats\nbowtie\nunique'),
+    assay = "RNA",
+    min.cells = 0,
+    min.features = 0,
+    names.field = 1,
+    names.delim = "_",
+    meta.data = NULL)
+
+rm(tmp)
+    
+```
+
+```{r}
+
+tmp <- data.table::fread(params$repeats_bowtie_multi, sep = '\t', header = TRUE,
+                         drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+rownames(tmp) <- tmp$Geneid ## here
+
+colnames(tmp) <- gsub(".*:([A-Z]+-1)_bowtie.bam","\\1", colnames(tmp))
+## tmp <- tmp[,7:ncol(tmp)]
+
+tmp <- as.data.frame(tmp)
+rownames(tmp) <- tmp$Geneid
+tmp <- tmp[,-1]
+
+
+d$repeats_bowtie_multi <- CreateSeuratObject(
+    tmp,
+    project =  sprintf('%s_%s', params$identifier, 'repeats\nbowtie\nmulti'),
+    assay = "RNA",
+    min.cells = 0,
+    min.features = 0,
+    names.field = 1,
+    names.delim = "_",
+    meta.data = NULL)
+
+rm(tmp)
+
+```
+
+
+
+
+
 # Read assignment descriptive
 
 @todo add paths explicitly (not recursive from `params$identifier`)
+
+@todo fix this to check all featurecounts stuff directly
 
 Four cells selected randomly.
 
@@ -550,10 +619,12 @@ for (item in names(d)) {
                       ncol = 3))
 
     } else {
-        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2))
+        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2) +
+              ggtitle(item))
     
     }
-    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA") +
+          ggtitle(sprintf('%s', item)))
     cat('\n\n')
 }
 ```
@@ -2077,6 +2148,92 @@ ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
        
 ```
+
+# Comparison across techniques
+
+## Euclidean distance
+
+Compare per-cell concatenated counts.
+
+
+```{r}
+
+
+repeats_shared <- Reduce(intersect, sapply(d[grep('repeats', names(d))], rownames))
+## cells_shared <- Reduce(intersect, sapply(d[grep('repeats', names(d))], colnames))
+## rather, use old variable from the qc step
+cells_shared <- selected_cells
+
+stopifnot(length(repeats_shared) > 0)
+
+
+
+stopifnot(length(cells_shared) > 0)
+          
+    
+## oned <- lapply(d, function(x) as.vector(as.matrix(
+                                  ## GetAssayData(d[[x]])[repeats_shared, cells_shared], 'counts')))
+
+
+oned <- list()
+for (item in grep('repeats', names(d), value = TRUE)) {
+      oned[[item]] <- as.vector(as.matrix(
+          GetAssayData(d[[item]], 'counts')[repeats_shared, cells_shared]))
+}
+
+## oned_df <- setNames(object = do.call(rbind.data.frame, oned),
+##                     c(NULL,  grep('repeats', names(d), value = TRUE)))
+
+oned_df <- t(simplify2array(oned))
+
+rm(oned)
+
+oned_dist <- dist(oned_df,  method = 'euclidean')
+
+oned_dist <- as.data.frame(as.matrix(oned_dist))
+
+colnames(oned_dist) <-  grep('repeats', names(d), value = TRUE)
+rownames(oned_dist) <- colnames(oned_dist)
+head(oned_dist)
+hc_dist <- hclust(d = as.dist(oned_dist), method = 'ward.D')
+
+
+plot(hc_dist)
+
+```
+
+Plus pheatmap-like representation.. of the distances maybe?
+
+```{r}
+pheatmap(oned_dist, cluster_rows = hc_dist, cluster_cols = hc_dist)
+```
+
+
+
+## Correlations
+
+Similarly, for Spearman's correlations (it's angular distances! directly the rho value as distance).
+
+```{r}
+oned_cor <- cor(t(oned_df), method = 'spearman')
+
+oned_cor <- as.data.frame(as.matrix(oned_cor))
+
+colnames(oned_cor) <-  grep('repeats', names(d), value = TRUE)
+rownames(oned_cor) <- colnames(oned_cor)
+head(oned_cor)
+hc_cor <- hclust(d = as.dist(oned_cor))
+
+
+plot(hc_cor)
+```
+
+
+
+```{r}
+pheatmap(oned_cor, cluster_rows = hc_cor, cluster_cols = hc_cor, display_numbers = TRUE )
+```
+
 
 # Export objects
 
