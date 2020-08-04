@@ -21,6 +21,8 @@ params:
   repeats_only_featurecounts_control_unique: ""
   repeats_bowtie_multi: ""
   repeats_bowtie_unique: ""
+  genes_alevin: ""
+  repeats_alevin: ""
   seurat_output: ""
   aris_output: ""
   cobra_output: ""
@@ -69,8 +71,10 @@ library(pheatmap)
 library(SCINA)
 library(DT)
 library(clue)
-library(iCOBRA)
+## library(iCOBRA)
 library(RColorBrewer)
+library(tximeta)
+library(SummarizedExperiment)
 })
 ```
 
@@ -133,7 +137,9 @@ params <- list(identifier = "frozen_pbmc_donor_a",
                regress_genes_nCount = FALSE,
                regress_genes_nFeatures = FALSE,
                repeats_bowtie_unique = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/bowtie_repeatome/unique_reads/all_cells_repeats.counts.gz',
-                repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/bowtie_repeatome/multimappers/all_cells_repeats.counts.gz')
+               repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/bowtie_repeatome/multimappers/all_cells_repeats.counts.gz',
+               genes_alevin = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/alevin/genes/alevin/quants_mat.gz',
+               repeats_alevin = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/alevin/repeats/alevin/quants_mat.gz')
 
 ```
 
@@ -154,6 +160,7 @@ d$genes_cellranger <- CreateSeuratObject(counts = Read10X(data.dir = path),
                                                            'genes_cellranger'),
                                          min.cells = 0,
                                          min.features = 0)
+
 ```
 
 ```{r}
@@ -355,6 +362,7 @@ d$repeats_bowtie_unique <- CreateSeuratObject(
 
 rm(tmp)
     
+
 ```
 
 ```{r}
@@ -385,6 +393,87 @@ rm(tmp)
 
 ```
 
+## Alevin
+
+
+
+```{r}
+
+d$genes_alevin <- tximeta::tximeta(coldata = data.frame(
+                                       names = "genes",
+                                       files = params$genes_alevin,
+                                       stringsAsFactors = FALSE
+                                   ), type = "alevin")
+                                  
+
+counts <-  assays(d$genes_alevin)$counts
+d$genes_alevin <- NULL
+
+annot <- list()
+
+annot$ids <- rownames(counts)
+
+annot$filters = "ensembl_gene_id_version"
+annot$attributes = c(annot$filters, "external_gene_name", "chromosome_name", 
+                     "gene_biotype", "start_position", "end_position")
+annot$biomart = "ENSEMBL_MART_ENSEMBL" 
+annot$dataset = "hsapiens_gene_ensembl"
+annot$host = "ensembl.org"
+annot$bmart <- biomaRt::useMart(biomart = annot$biomart, dataset = annot$dataset, 
+                                host = annot$host)
+
+feature_info <- biomaRt::getBM(attributes = annot$attributes,
+                               filters = annot$filters, 
+                               values = annot$ids, mart = annot$bmart)
+
+
+tmp <- merge(data.frame(ensembl_gene_id_version = rownames(counts)),
+             by = 'ensembl_gene_id_version', feature_info, all.x = TRUE)
+
+rownames(tmp) <- tmp$ensembl_gene_id_version
+tmp <- tmp[rownames(counts),]
+
+stopifnot(rownames(counts) == tmp$ensembl_gene_id_version)
+
+rownames(counts) <- sprintf('%s_%s', tmp$ensembl_gene_id_version, tmp$external_gene_name)
+
+
+d$genes_alevin <- CreateSeuratObject(counts =  counts,
+                                     project = 'genes_alevin')
+
+
+
+```
+
+```{r}
+d$repeats_alevin <- tximeta::tximeta(coldata = data.frame(
+                                       names = "repeats",
+                                       files = params$repeats_alevin,
+                                       stringsAsFactors = FALSE
+                                     ), type = "alevin")
+
+d$repeats_alevin <- CreateSeuratObject(counts =  assays(d$repeats_alevin)$counts,
+                                     project = 'repeats_alevin')
+
+```
+
+
+```{r}
+cells <- intersect(colnames(d$repeats_alevin), colnames(d$genes_alevin))
+
+d$both_alevin <- CreateSeuratObject(counts =  rbind(as.matrix(GetAssayData(d$genes_alevin,
+                                                          slot = 'counts'))[,cells],
+                                            as.matrix(GetAssayData(d$repeats_alevin,
+                                                          slot = 'counts'))[,cells]),
+                             project = 'both_alevin')
+
+## stopifnot(ncol(d$both) == ncol(d$genes_alevin))
+rm(cells)
+```
+
+```{r}
+
+```
 
 
 
@@ -2222,7 +2311,7 @@ oned_cor <- as.data.frame(as.matrix(oned_cor))
 colnames(oned_cor) <-  grep('repeats', names(d), value = TRUE)
 rownames(oned_cor) <- colnames(oned_cor)
 head(oned_cor)
-hc_cor <- hclust(d = as.dist(oned_cor), method = 'ward.D')
+hc_cor <- hclust(d = as.dist(oned_cor))
 
 
 plot(hc_cor)
@@ -2252,3 +2341,4 @@ sessionInfo()
 devtools::session_info()
 
 ```
+
