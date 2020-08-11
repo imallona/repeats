@@ -248,18 +248,23 @@ rule knit_report_chromium:
             BASE, "runs", RUN_NAME,
             'bowtie_repeatome',
             'unique_reads',
-            'all_cells_repeats.counts.gz')        
+            'all_cells_repeats.counts.gz'),
+        genes_alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin',
+                               'quants_mat.gz'),
+        repeats_alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin',
+                                 'quants_mat.gz')
+        
             
     params:
-        rmd = 'summarize_cellranger_run_pbmcs.Rmd',
+        rmd = 'summarize_chromium_run_pbmcs.Rmd',
         run_name = RUN_NAME
     output:
-        html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_cellranger_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-        rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_cellranger_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
         aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
         cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
     log:
-        op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_cellranger_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
+        op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_chromium_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
     shell: """
         {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
           output_file = \"{output.html}\", 
@@ -276,6 +281,8 @@ rule knit_report_chromium:
                      regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
                      repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
                      repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\", 
+                     genes_alevin = \"{input.genes_alevin}\",
+                     repeats_alevin = \"{input.repeats_alevin}\",
                      cobra_output = \"{output.cobra}\"))' &> {log}
         """
 

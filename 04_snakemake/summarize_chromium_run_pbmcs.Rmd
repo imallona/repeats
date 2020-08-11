@@ -1,5 +1,5 @@
 ---
-title: "Within sample report: PBMC, cellranger"
+title: "Within sample report: PBMC, cellranger + bowtie + alevin"
 author: "Izaskun Mallona at Robinsonlab"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
@@ -126,20 +126,20 @@ ac <- function(col, alpha=1){
 ##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/SRR10974769/count_repeats_on_cellranger_standard/SRR10974769_repeats.counts.gz",
 ##                identifier = 'test')
 
-params <- list(identifier = "frozen_pbmc_donor_a",
-               genes_cellranger = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
-               repeats_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-               repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/multimappers/frozen_pbmc_donor_a_repeats.counts.gz",
-               repeats_only_featurecounts_control_multi = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers/frozen_pbmc_donor_a_repeats_not_overlapping_genes.counts.gz",
-               repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/unique_reads/frozen_pbmc_donor_a_repeats.counts.gz",
-               repeats_only_featurecounts_control_unique = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/frozen_pbmc_donor_a_repeats_not_overlapping_genes.counts.gz",
+params <- list(identifier = "5k_pbmc_v3",
+               genes_cellranger = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
+               repeats_cellranger = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+               repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard/multimappers/5k_pbmc_v3_repeats.counts.gz",
+               repeats_only_featurecounts_control_multi = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers/5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz",
+               repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard/unique_reads/5k_pbmc_v3_repeats.counts.gz",
+               repeats_only_featurecounts_control_unique = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz",
                seurat_output = "/home/imallona/tmp/test.rds",
                regress_genes_nCount = FALSE,
                regress_genes_nFeatures = FALSE,
-               repeats_bowtie_unique = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/bowtie_repeatome/unique_reads/all_cells_repeats.counts.gz',
-               repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/bowtie_repeatome/multimappers/all_cells_repeats.counts.gz',
-               genes_alevin = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/alevin/genes/alevin/quants_mat.gz',
-               repeats_alevin = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/alevin/repeats/alevin/quants_mat.gz')
+               repeats_bowtie_unique = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/bowtie_repeatome/unique_reads/all_cells_repeats.counts.gz',
+               repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/bowtie_repeatome/multimappers/all_cells_repeats.counts.gz',
+               genes_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/genes/alevin/quants_mat.gz',
+               repeats_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/repeats/alevin/quants_mat.gz')
 
 ```
 
@@ -437,6 +437,7 @@ stopifnot(rownames(counts) == tmp$ensembl_gene_id_version)
 
 rownames(counts) <- sprintf('%s_%s', tmp$ensembl_gene_id_version, tmp$external_gene_name)
 
+colnames(counts) <- paste0(colnames(counts), '-1')
 
 d$genes_alevin <- CreateSeuratObject(counts =  counts,
                                      project = 'genes_alevin')
@@ -452,6 +453,8 @@ d$repeats_alevin <- tximeta::tximeta(coldata = data.frame(
                                        stringsAsFactors = FALSE
                                      ), type = "alevin")
 
+colnames(d$repeats_alevin) <- paste0(colnames(d$repeats_alevin), '-1')
+
 d$repeats_alevin <- CreateSeuratObject(counts =  assays(d$repeats_alevin)$counts,
                                      project = 'repeats_alevin')
 
@@ -466,6 +469,13 @@ d$both_alevin <- CreateSeuratObject(counts =  rbind(as.matrix(GetAssayData(d$gen
                                             as.matrix(GetAssayData(d$repeats_alevin,
                                                           slot = 'counts'))[,cells]),
                              project = 'both_alevin')
+
+```
+
+Are they equivalent?
+
+```{r}
+
 
 ## stopifnot(ncol(d$both) == ncol(d$genes_alevin))
 rm(cells)
@@ -695,6 +705,7 @@ for (item in names(d)) {
     d[[item]] <- subset(d[[item]], cells = selected_cells)
 }
 
+(d)
 ```
 
 ```{r, results = 'asis', fig.width = 8, fig.height = 4}
@@ -1077,6 +1088,12 @@ table(named$cell_labels)
 ##                 signatures = pos_markers2, results = named)
 ```
 
+Maybe do the same with alevin?
+
+```{r}
+print('predict celltypes with alevin')
+```
+
 Add the SCINA outputs to the different SO objects
 
 ```{r, cache = FALSE}
@@ -1090,7 +1107,7 @@ rownames(d$genes_cellranger@meta.data) <- d$genes_cellranger@meta.data$cell
 
 ## still, the annotation can also be transfered to repeats/featurecounts
 
-for (item in c(grep('repeats|both', names(d), value = TRUE))) {
+for (item in c(grep('repeats|both|alevin', names(d), value = TRUE))) {
     rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
 
     tmp <- merge(data.frame(cell = d[[item]]@meta.data$cell),
@@ -1881,7 +1898,7 @@ print(aris)
 ```
 
 
-# Diferential repeat expression by SCINA identity {.tabset}
+# Differential repeat expression by SCINA identity {.tabset}
 
 ```{r does_not_work, eval = FALSE}
 for (item in names(d)) {
@@ -1889,7 +1906,7 @@ for (item in names(d)) {
     
     Idents(d[[item]]) <- 'scina'
 
-    ## find markers for every scina identity (discarding the unplaced); report only positives   
+    ## find markers for every scina identity (discarding the unplaced); report only positives    
     markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
                               only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
 
@@ -2249,9 +2266,9 @@ Compare per-cell concatenated counts.
 
 
 repeats_shared <- Reduce(intersect, sapply(d[grep('repeats', names(d))], rownames))
-## cells_shared <- Reduce(intersect, sapply(d[grep('repeats', names(d))], colnames))
+cells_shared <- Reduce(intersect, sapply(d[grep('repeats', names(d))], colnames))
 ## rather, use old variable from the qc step
-cells_shared <- selected_cells
+## cells_shared <- selected_cells
 
 stopifnot(length(repeats_shared) > 0)
 
@@ -2311,7 +2328,7 @@ oned_cor <- as.data.frame(as.matrix(oned_cor))
 colnames(oned_cor) <-  grep('repeats', names(d), value = TRUE)
 rownames(oned_cor) <- colnames(oned_cor)
 head(oned_cor)
-hc_cor <- hclust(d = as.dist(oned_cor))
+hc_cor <- hclust(d = as.dist(1- oned_cor))
 
 
 plot(hc_cor)
