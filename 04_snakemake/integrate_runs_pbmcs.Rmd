@@ -12,18 +12,19 @@ output:
     df_print: kable
     theme: lumen
     always_allow_html: yes
-params:
-  chromium1: ""
-  chromium2: ""
-  chromium3: ""
-  smartseq1: ""
+
 ---
 
+<!-- params: -->
+<!--   chromium1: "" -->
+<!--   chromium2: "" -->
+<!--   chromium3: "" -->
+<!--   smartseq1: "" -->
 
 Rendered for samples:
 
 ```{r}
-print(params)
+## print(params)
 ```
 # Config
 
@@ -52,6 +53,7 @@ library(reshape2)
 ## library(mclust)
 library(viridis)
 library(UpSetR)
+library(ggplot2)
 
 })
 ```
@@ -150,7 +152,7 @@ coef_var <- function(x){
 
 # Data load Seurat objects
 
-```{r justfordebugging, eval = FALSE}
+```{r justfordebugging, eval = TRUE}
 ## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
 ##                repeats_cellranger= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
 ##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz")
@@ -162,9 +164,9 @@ coef_var <- function(x){
 ##                run3 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a/summarize_cellranger_run_regress_nCount_FALSE_nFeature_FALSE.rds',
 ##                run4 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds')
 
-params <- list( chromium1 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds',
-        chromium2 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds',
-        chromium3 = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds',
+params <- list( chromium1 = '/home/imallona/repeats_sc/runs/pbmc8k/pbmc8k_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
+        chromium2 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
+        ## chromium3 = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
         smartseq1 = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/pbmcs_smartseq2_ding_pmbc_smartseq2_regress_nCount_FALSE_nFeature_FALSE.rds')
 ```
 
@@ -209,8 +211,8 @@ for (run in names(d)[sapply(d, function(x) return('repeats_cellranger' %in% name
         
     repeats_cellranger$cell <- rownames(repeats_cellranger)
         
-    d[[run]]$genes@meta.data$cell <- rownames(d[[run]]$genes@meta.data)
-    repeats_cellranger <- merge(d[[run]]$genes@meta.data[, c(res, 'cell') ],
+    d[[run]]$genes_cellranger@meta.data$cell <- rownames(d[[run]]$genes_cellranger@meta.data)
+    repeats_cellranger <- merge(d[[run]]$genes_cellranger@meta.data[, c(res, 'cell') ],
                      repeats_cellranger, by = 'cell', all.x = TRUE)
     
     rownames(repeats_cellranger) <- repeats_cellranger$cell
@@ -966,6 +968,9 @@ print(ggplot(aris_df,
       theme(axis.text.x = element_text(angle = 90, hjust = 1)))
 ```
 
+# ARIs flavours vs SCINA
+
+
 # All variable features and all repeats methods at once, using scina {.tabset}
 
 ## With repeats including control not overlapping genes
@@ -1203,6 +1208,8 @@ ggplot(data = cobra,
 
 ```
 
+
+# New analysis August 2020
 
 # Timestamp
 

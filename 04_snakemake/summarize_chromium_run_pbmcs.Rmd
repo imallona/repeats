@@ -261,7 +261,6 @@ rm(tmp)
 
 
 ```{r}
-
 ## without multimappers
 tmp <- data.table::fread(params$repeats_only_featurecounts_control_unique, sep = '\t', header = TRUE,
                          drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
@@ -289,12 +288,9 @@ rm(tmp)
 
 ```
 
-
 Mixed (genes + uniquely mapping repeats not overlapping genes) object generation
 
-
 ```{r}
-
 common_cells <- intersect(colnames(d$genes_cellranger), colnames(d$control_repeats_only_unique))
 ## length(common_cells)
 d$both_unique <- CreateSeuratObject(
@@ -313,9 +309,7 @@ rm(common_cells)
 
 Mixed: genes + multimapping repeats not overlapping genes
 
-
 ```{r}
-
 common_cells <- intersect(colnames(d$genes_cellranger), colnames(d$control_repeats_only_multi))
 ## length(common_cells)
 d$both_multi <- CreateSeuratObject(
@@ -330,14 +324,11 @@ d$both_multi <- CreateSeuratObject(
 
 
 rm(common_cells)
-
 ```
 
 Bowtie data
 
-
 ```{r}
-
 tmp <- data.table::fread(params$repeats_bowtie_unique, sep = '\t', header = TRUE,
                          drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
 rownames(tmp) <- tmp$Geneid ## here
@@ -362,11 +353,9 @@ d$repeats_bowtie_unique <- CreateSeuratObject(
 
 rm(tmp)
     
-
 ```
 
 ```{r}
-
 tmp <- data.table::fread(params$repeats_bowtie_multi, sep = '\t', header = TRUE,
                          drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
 rownames(tmp) <- tmp$Geneid ## here
@@ -393,12 +382,9 @@ rm(tmp)
 
 ```
 
-## Alevin
-
-
+Alevin
 
 ```{r}
-
 d$genes_alevin <- tximeta::tximeta(coldata = data.frame(
                                        names = "genes",
                                        files = params$genes_alevin,
@@ -442,8 +428,6 @@ colnames(counts) <- paste0(colnames(counts), '-1')
 d$genes_alevin <- CreateSeuratObject(counts =  counts,
                                      project = 'genes_alevin')
 
-
-
 ```
 
 ```{r}
@@ -457,7 +441,6 @@ colnames(d$repeats_alevin) <- paste0(colnames(d$repeats_alevin), '-1')
 
 d$repeats_alevin <- CreateSeuratObject(counts =  assays(d$repeats_alevin)$counts,
                                      project = 'repeats_alevin')
-
 ```
 
 
@@ -471,22 +454,6 @@ d$both_alevin <- CreateSeuratObject(counts =  rbind(as.matrix(GetAssayData(d$gen
                              project = 'both_alevin')
 
 ```
-
-Are they equivalent?
-
-```{r}
-
-
-## stopifnot(ncol(d$both) == ncol(d$genes_alevin))
-rm(cells)
-```
-
-```{r}
-
-```
-
-
-
 
 # Read assignment descriptive
 
@@ -605,14 +572,12 @@ ggplot(data=as.data.frame(sm), aes(x=id, y=pct, col = cell, group = cell)) +
 ## QC before filtering {.tabset}
 
 ```{r}
-
 d$genes_cellranger[["percent.mt"]] <- PercentageFeatureSet(d$genes_cellranger, pattern = "^MT-")
 
 ```
 
 
 ```{r}
-
 ## QC is based upon genes 
 item <- 'genes_cellranger'
 
@@ -698,7 +663,6 @@ DT::datatable(summarized)
 
 Filtering out cells according to the repeats expression, and forwarding the selection to other layers
 
-
 ```{r}
 ## the subsetting applies to all slots, even though the metrics come from genes only
 for (item in names(d)) {
@@ -762,8 +726,6 @@ colnames(summarized) <- c('dataset','filter', 'ncells',
 ```{r}
 DT::datatable(summarized)
 ```
-
-
 
 ## Variable features {.tabset}
 
@@ -868,7 +830,6 @@ for (item in names(d)) {
 ## Dimred UMAP and tSNE {.tabset}
 
 ```{r fig.width = 8, fig.height = 5, results = 'asis', cache = FALSE, warning = FALSE}
-
 for (item in names(d)) {
     cat("### ", item, "\n\n")
     
@@ -1091,7 +1052,7 @@ table(named$cell_labels)
 Maybe do the same with alevin?
 
 ```{r}
-print('predict celltypes with alevin')
+print('@todo predict celltypes with alevin')
 ```
 
 Add the SCINA outputs to the different SO objects
@@ -1595,10 +1556,51 @@ At a given resolution, compare both clusterings.
 
 Color scale depicts Rand Index.
 
+
+```{r}
+aris <- list()
+aris_stored <- list()
+```
+
+## All vs SCINA
+
+Not plotted, kept for further analysis
+
+```{r}
+
+for (flavour in names(d)) {
+    aris <- list()
+    i <- 1
+
+    for (flavour_res in seq(0.2, 2, 0.2)) {
+        flavour_res <- sprintf('RNA_snn_res.%s', flavour_res)
+        rownames(d[[flavour]]@meta.data) <- d[[flavour]]@meta.data$cell
+        known <- rownames(d[[flavour]]@meta.data[d[[flavour]]@meta.data$scina != 'unknown',])
+
+        aris[[i]] <- c(sprintf('%s_%s (n=%s)', flavour, flavour_res,
+                               length(unique(d[[flavour]]@meta.data[known, flavour_res]))),
+                       sprintf('scina_%s (n=%s)', 'scina',
+                               length(unique(d[[flavour]]@meta.data[known, 'scina']))),
+                       adjustedRandIndex(d[[flavour]]@meta.data[known, flavour_res],
+                                         d[[flavour]]@meta.data[known, 'scina']))
+        
+        i <- i +1
+    }    
+
+    aris <- do.call(rbind.data.frame, aris)
+    colnames(aris) <- c(sprintf('%s_res', flavour), 'scina', 'ari')
+    aris$ari <- as.numeric(as.character(aris$ari))
+    print(aris)
+    
+    aris_stored[[sprintf('%s__scina', flavour)]] <- aris
+
+}
+```
+
+
 ## Genes vs repeats (cellranger)
 
 ```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
-aris <- list()
 i <- 1
 for (genes_res in seq(0.2, 2, 0.2)) {
     genes_res <- sprintf('RNA_snn_res.%s', genes_res)
@@ -1637,7 +1639,7 @@ pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
 ```
 
 ```{r store_aris}
-aris_stored <- list()
+## aris_stored <- list()
 aris_stored[['genes__repeats_cr']] <- aris
 ```
 
@@ -1895,6 +1897,7 @@ aris <- do.call(rbind.data.frame, aris)
 colnames(aris) <- c('genes_res', 'scina', 'ari')
 aris$ari <- as.numeric(as.character(aris$ari))
 print(aris)
+
 ```
 
 
@@ -2220,7 +2223,7 @@ DT::datatable(as.data.frame(cobra %>%
 ````
 
 
-```{r, fig.height = 6, fig.width = 8}
+```{r, fig.height = 8, fig.width = 10}
 ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
     geom_point() +
     facet_grid(flavour~res, margins = FALSE) +
@@ -2234,12 +2237,15 @@ ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
     geom_point() +
     facet_wrap(~flavour) + 
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) +
+    labs(x = 'resolution')
 
 ```
 
-```{r, fig.height = 5, fig.width = 8}
-ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) +
+```{r, fig.height = 7, fig.width = 10}
+
+cobra$resolution <- gsub('RNA_snn_res_', '', cobra$res)
+ggplot(data = cobra, aes(x = re, y =  F1, group=resolution, col =cell)) +
     geom_point() +
     facet_grid(flavour~res) + 
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
@@ -2248,6 +2254,16 @@ ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) +
 ```
 
 ```{r, fig.width = 5, fig.height = 5}
+## sorting in a more sensible way
+maxF1$flavour <- factor(maxF1$flavour,
+                        levels = c('genes_cellranger', 'genes_alevin',
+                                   'both_unique', 'both_multi', 'both_alevin',
+                                   'repeats_cellranger', 'repeats_alevin',
+                                   'repeats_bowtie_unique', 'repeats_bowtie_multi',
+                                   'repeats_featurecounts_unique', 'repeats_featurecounts_multi',
+                                   'control_repeats_only_unique', 'control_repeats_only_multi'))
+                                          
+
 ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
     geom_point() +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
@@ -2257,16 +2273,102 @@ ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
 
 # Comparison across techniques
 
-## Euclidean distance
 
-Compare per-cell concatenated counts.
+<!-- ## For genes -->
+
+
+<!-- ## Euclidean distance -->
+
+
+<!-- ```{r} -->
+
+
+<!-- genes_shared <- Reduce(intersect, sapply(d[grep('genes', names(d))], rownames)) -->
+<!-- cells_shared <- Reduce(intersect, sapply(d[grep('genes', names(d))], colnames)) -->
+<!-- ## rather, use old variable from the qc step -->
+<!-- ## cells_shared <- selected_cells -->
+
+<!-- stopifnot(length(genes_shared) > 0) -->
+
+
+
+<!-- stopifnot(length(cells_shared) > 0) -->
+          
+    
+<!-- ## oned <- lapply(d, function(x) as.vector(as.matrix( -->
+<!--                                   ## GetAssayData(d[[x]])[genes_shared, cells_shared], 'counts'))) -->
+
+
+<!-- oned <- list() -->
+<!-- for (item in grep('repeats', names(d), value = TRUE)) { -->
+<!--       oned[[item]] <- as.vector(as.matrix( -->
+<!--           GetAssayData(d[[item]], 'counts')[genes_shared, cells_shared])) -->
+<!-- } -->
+
+<!-- ## oned_df <- setNames(object = do.call(rbind.data.frame, oned), -->
+<!-- ##                     c(NULL,  grep('repeats', names(d), value = TRUE))) -->
+
+<!-- oned_df <- t(simplify2array(oned)) -->
+
+<!-- rm(oned) -->
+
+<!-- oned_dist <- dist(oned_df,  method = 'euclidean') -->
+
+<!-- oned_dist <- as.data.frame(as.matrix(oned_dist)) -->
+
+<!-- colnames(oned_dist) <-  grep('repeats', names(d), value = TRUE) -->
+<!-- rownames(oned_dist) <- colnames(oned_dist) -->
+<!-- head(oned_dist) -->
+<!-- hc_dist <- hclust(d = as.dist(oned_dist), method = 'ward.D') -->
+
+
+<!-- plot(hc_dist) -->
+
+<!-- ``` -->
+
+<!-- Plus pheatmap-like representation.. of the distances maybe? -->
+
+<!-- ```{r, fig.width = 8, fig.height = 8} -->
+<!-- pheatmap(oned_dist, cluster_rows = hc_dist, cluster_cols = hc_dist) -->
+<!-- ``` -->
+
+
+
+<!-- ### Correlations -->
+
+<!-- Similarly, for Spearman's correlations (it's not angular distances! 1 - rho value here). -->
+
+<!-- ```{r} -->
+<!-- oned_cor <- cor(t(oned_df), method = 'spearman') -->
+
+<!-- oned_cor <- as.data.frame(as.matrix(oned_cor)) -->
+
+<!-- colnames(oned_cor) <-  grep('repeats', names(d), value = TRUE) -->
+<!-- rownames(oned_cor) <- colnames(oned_cor) -->
+<!-- head(oned_cor) -->
+<!-- hc_cor <- hclust(d = as.dist(1- oned_cor)) -->
+
+
+<!-- plot(hc_cor) -->
+<!-- ``` -->
+
+
+
+<!-- ```{r, fig.width = 8, fig.height = 8} -->
+<!-- pheatmap(oned_cor, cluster_rows = hc_cor, cluster_cols = hc_cor, display_numbers = TRUE ) -->
+<!-- ``` -->
+
+## For repeats
+
+
+## Euclidean distance
 
 
 ```{r}
 
 
-repeats_shared <- Reduce(intersect, sapply(d[grep('repeats', names(d))], rownames))
-cells_shared <- Reduce(intersect, sapply(d[grep('repeats', names(d))], colnames))
+repeats_shared <- Reduce(intersect, sapply(d[grep('repeats|both', names(d))], rownames))
+cells_shared <- Reduce(intersect, sapply(d[grep('repeats|both', names(d))], colnames))
 ## rather, use old variable from the qc step
 ## cells_shared <- selected_cells
 
@@ -2310,15 +2412,15 @@ plot(hc_dist)
 
 Plus pheatmap-like representation.. of the distances maybe?
 
-```{r}
+```{r, fig.width = 8, fig.height = 8}
 pheatmap(oned_dist, cluster_rows = hc_dist, cluster_cols = hc_dist)
 ```
 
 
 
-## Correlations
+### Correlations
 
-Similarly, for Spearman's correlations (it's angular distances! directly the rho value as distance).
+Similarly, for Spearman's correlations (it's not angular distances! 1 - rho value here).
 
 ```{r}
 oned_cor <- cor(t(oned_df), method = 'spearman')
@@ -2333,13 +2435,6 @@ hc_cor <- hclust(d = as.dist(1- oned_cor))
 
 plot(hc_cor)
 ```
-
-
-
-```{r}
-pheatmap(oned_cor, cluster_rows = hc_cor, cluster_cols = hc_cor, display_numbers = TRUE )
-```
-
 
 # Export objects
 

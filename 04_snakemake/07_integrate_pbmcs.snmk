@@ -40,3 +40,4 @@ rule integration_pbmcs_10x_plus_smartseq2:
              chromium3 = \"{input.c3}\",
              smartseq1 = \"{input.s1}\"))' &> {log}
         """
+
