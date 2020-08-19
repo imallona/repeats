@@ -91,8 +91,8 @@ rule all:
         # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html'),
         # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report_genes_regressed_out.html'),
         # op.join(BASE, 'runs', 'pbmc_integration_test.html'),
-        # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_cellranger_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
-        #                regress_nfeature = ['TRUE', 'FALSE']),
+        expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_chromium_no_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
+                       regress_nfeature = ['TRUE', 'FALSE']),
         #  expand(op.join(BASE, "runs", RUN_NAME,
         #                 "count_repeats_on_cellranger_standard",
         #                 "{multimappers}",
@@ -134,6 +134,72 @@ rule all:
 #         {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output.html}\", params = list(run1 = \"{input.run1}\", run2= \"{input.run2}\", run3 = \"{input.run3}\"))' &> {log}
 #         """
 
+
+rule knit_report_chromium_no_alevin:
+    input:
+        genes = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+        repeats = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+        featurecounts_multi = op.join(BASE, "runs", RUN_NAME,
+                                      'count_repeats_on_cellranger_standard',
+                                      'multimappers',
+                                      RUN_NAME + "_repeats.counts.gz"),
+        featurecounts_unique = op.join(BASE, "runs", RUN_NAME,
+                                      'count_repeats_on_cellranger_standard',
+                                      'unique_reads',
+                                      RUN_NAME + "_repeats.counts.gz"),
+        repeats_only_featurecounts_control_multi = op.join(
+            BASE, "runs", RUN_NAME,
+            'count_repeats_on_cellranger_standard_not_overlapping_genes',
+            'multimappers',
+            RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+        repeats_only_featurecounts_control_unique = op.join(
+            BASE, "runs", RUN_NAME,
+            'count_repeats_on_cellranger_standard_not_overlapping_genes',
+            'unique_reads',
+            RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+        repeats_bowtie_multi = op.join(
+            BASE, "runs", RUN_NAME,
+            'bowtie_repeatome',
+            'multimappers',
+            'all_cells_repeats.counts.gz'),
+        repeats_bowtie_unique = op.join(
+            BASE, "runs", RUN_NAME,
+            'bowtie_repeatome',
+            'unique_reads',
+            'all_cells_repeats.counts.gz')
+        
+    params:
+        rmd = 'summarize_chromium_run_pbmcs.Rmd',
+        run_name = RUN_NAME
+    output:
+        html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_chromium_no_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+    log:
+        op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_chromium_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
+    shell: """
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+          output_file = \"{output.html}\", 
+          params = list(identifier = \"{params.run_name}\", 
+                     genes_cellranger = \"{input.genes}\", 
+                     repeats_cellranger = \"{input.repeats}\", 
+                     repeats_featurecounts_multi = \"{input.featurecounts_multi}\", 
+                     repeats_featurecounts_unique = \"{input.featurecounts_unique}\",
+                     repeats_only_featurecounts_control_multi = \"{input.repeats_only_featurecounts_control_multi}\", 
+                     repeats_only_featurecounts_control_unique = \"{input.repeats_only_featurecounts_control_unique}\",
+                     seurat_output = \"{output.rds}\", 
+                     aris_output = \"{output.aris}\", 
+                     regress_genes_nCount = \"{wildcards.regress_ncount}\", 
+                     regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
+                     repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
+                     repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\", 
+                     genes_alevin = \"None\",
+                     repeats_alevin = \"None\",
+                     cobra_output = \"{output.cobra}\"))' &> {log}
+        """
+
+    
     
 rule get_frozen_pbmc_data:
     output:

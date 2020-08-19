@@ -178,280 +178,303 @@ d$repeats_cellranger <- CreateSeuratObject(counts = Read10X(data.dir = path),
 ```
 
 ```{r}
-## Featurecounts-based repeats with multimappers
-tmp <- data.table::fread(params$repeats_featurecounts_multi, sep = '\t', header = TRUE,
-                         drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
-rownames(tmp) <- tmp$Geneid ## here
-colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
-## tmp <- tmp[,7:ncol(tmp)]
 
-tmp <- as.data.frame(tmp)
-rownames(tmp) <- tmp$Geneid
-tmp <- tmp[,-1]
+if (params$repeats_featurecounts_multi != "None") {
+    ## Featurecounts-based repeats with multimappers
+    tmp <- data.table::fread(params$repeats_featurecounts_multi, sep = '\t', header = TRUE,
+                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+    rownames(tmp) <- tmp$Geneid ## here
+    colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
+    ## tmp <- tmp[,7:ncol(tmp)]
 
-d$repeats_featurecounts_multi <- CreateSeuratObject(
-    tmp,
-    project =  sprintf('%s_%s', params$identifier, 'repeats\nfeaturecounts\nmulti'),
-    assay = "RNA",
-    min.cells = 0,
-    min.features = 0,
-    names.field = 1,
-    names.delim = "_",
-    meta.data = NULL)
+    tmp <- as.data.frame(tmp)
+    rownames(tmp) <- tmp$Geneid
+    tmp <- tmp[,-1]
 
-rm(tmp)
+    d$repeats_featurecounts_multi <- CreateSeuratObject(
+        tmp,
+        project =  sprintf('%s_%s', params$identifier, 'repeats\nfeaturecounts\nmulti'),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
+
+    rm(tmp)
+}
 
 ```
 
 ```{r}
-## Featurecounts-based repeats without multimappers
-tmp <- data.table::fread(params$repeats_featurecounts_unique, sep = '\t', header = TRUE,
-                         drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
-rownames(tmp) <- tmp$Geneid ## here
-colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
-## tmp <- tmp[,7:ncol(tmp)]
+if (params$repeats_featurecounts_unique != "None") {
+    ## Featurecounts-based repeats without multimappers
+    tmp <- data.table::fread(params$repeats_featurecounts_unique, sep = '\t', header = TRUE,
+                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+    rownames(tmp) <- tmp$Geneid ## here
+    colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
+    ## tmp <- tmp[,7:ncol(tmp)]
 
-tmp <- as.data.frame(tmp)
-rownames(tmp) <- tmp$Geneid
-tmp <- tmp[,-1]
+    tmp <- as.data.frame(tmp)
+    rownames(tmp) <- tmp$Geneid
+    tmp <- tmp[,-1]
 
-d$repeats_featurecounts_unique <- CreateSeuratObject(
-    tmp,
-    project =  sprintf('%s_%s', params$identifier, 'repeats\nfeaturecounts\nunique'),
-    assay = "RNA",
-    min.cells = 0,
-    min.features = 0,
-    names.field = 1,
-    names.delim = "_",
-    meta.data = NULL)
+    d$repeats_featurecounts_unique <- CreateSeuratObject(
+        tmp,
+        project =  sprintf('%s_%s', params$identifier, 'repeats\nfeaturecounts\nunique'),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
 
-rm(tmp)
+    rm(tmp)
+}
 
 ```
 
 Featurecounts control data read
 
 ```{r}
+if (params$repeats_only_featurecounts_control_multi != "None") {
+    ## with multimappers
+    tmp <- data.table::fread(params$repeats_only_featurecounts_control_multi, sep = '\t', header = TRUE,
+                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+    rownames(tmp) <- tmp$Geneid ## here
 
-## with multimappers
-tmp <- data.table::fread(params$repeats_only_featurecounts_control_multi, sep = '\t', header = TRUE,
-                         drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
-rownames(tmp) <- tmp$Geneid ## here
+    colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
+    ## tmp <- tmp[,7:ncol(tmp)]
 
-colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
-## tmp <- tmp[,7:ncol(tmp)]
-
-tmp <- as.data.frame(tmp)
-rownames(tmp) <- tmp$Geneid
-tmp <- tmp[,-1]
+    tmp <- as.data.frame(tmp)
+    rownames(tmp) <- tmp$Geneid
+    tmp <- tmp[,-1]
 
 
-d$control_repeats_only_multi <- CreateSeuratObject(
-    tmp,
-    project =  sprintf('%s_%s', params$identifier, 'repeats_control\nfeaturecounts\nmulti'),
-    assay = "RNA",
-    min.cells = 0,
-    min.features = 0,
-    names.field = 1,
-    names.delim = "_",
-    meta.data = NULL)
+    d$control_repeats_only_multi <- CreateSeuratObject(
+        tmp,
+        project =  sprintf('%s_%s', params$identifier, 'repeats_control\nfeaturecounts\nmulti'),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
 
-rm(tmp)
+    rm(tmp)
+}
 ```
 
 
 ```{r}
-## without multimappers
-tmp <- data.table::fread(params$repeats_only_featurecounts_control_unique, sep = '\t', header = TRUE,
-                         drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
-rownames(tmp) <- tmp$Geneid ## here
+if (params$repeats_only_featurecounts_control_unique != "None") {
+    
+    ## without multimappers
+    tmp <- data.table::fread(params$repeats_only_featurecounts_control_unique, sep = '\t', header = TRUE,
+                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+    rownames(tmp) <- tmp$Geneid ## here
 
-colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
-## tmp <- tmp[,7:ncol(tmp)]
+    colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
+    ## tmp <- tmp[,7:ncol(tmp)]
 
-tmp <- as.data.frame(tmp)
-rownames(tmp) <- tmp$Geneid
-tmp <- tmp[,-1]
+    tmp <- as.data.frame(tmp)
+    rownames(tmp) <- tmp$Geneid
+    tmp <- tmp[,-1]
 
 
-d$control_repeats_only_unique <- CreateSeuratObject(
-    tmp,
-    project =  sprintf('%s_%s', params$identifier, 'repeats_control\nfeaturecounts\nunique'),
-    assay = "RNA",
-    min.cells = 0,
-    min.features = 0,
-    names.field = 1,
-    names.delim = "_",
-    meta.data = NULL)
+    d$control_repeats_only_unique <- CreateSeuratObject(
+        tmp,
+        project =  sprintf('%s_%s', params$identifier, 'repeats_control\nfeaturecounts\nunique'),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
 
-rm(tmp)
-
+    rm(tmp)
+}
 ```
 
 Mixed (genes + uniquely mapping repeats not overlapping genes) object generation
 
 ```{r}
-common_cells <- intersect(colnames(d$genes_cellranger), colnames(d$control_repeats_only_unique))
-## length(common_cells)
-d$both_unique <- CreateSeuratObject(
-    rbind(as.matrix(GetAssayData(d$genes_cellranger, slot = 'counts'))[,common_cells],
-          as.matrix(GetAssayData(d$control_repeats_only_unique, slot = 'counts'))[,common_cells]),
-    assay = "RNA",
-    min.cells = 0,
-    min.features = 0,
-    names.field = 1,
-    names.delim = "_",
-    meta.data = NULL)
+if (params$repeats_only_featurecounts_control_unique != "None") {
+    
+    common_cells <- intersect(colnames(d$genes_cellranger), colnames(d$control_repeats_only_unique))
+    ## length(common_cells)
+    d$both_unique <- CreateSeuratObject(
+        rbind(as.matrix(GetAssayData(d$genes_cellranger, slot = 'counts'))[,common_cells],
+              as.matrix(GetAssayData(d$control_repeats_only_unique, slot = 'counts'))[,common_cells]),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
 
 
-rm(common_cells)
+    rm(common_cells)
+}
 ```
 
 Mixed: genes + multimapping repeats not overlapping genes
 
 ```{r}
-common_cells <- intersect(colnames(d$genes_cellranger), colnames(d$control_repeats_only_multi))
-## length(common_cells)
-d$both_multi <- CreateSeuratObject(
-    rbind(as.matrix(GetAssayData(d$genes_cellranger, slot = 'counts'))[,common_cells],
-          as.matrix(GetAssayData(d$control_repeats_only_multi, slot = 'counts'))[,common_cells]),
-    assay = "RNA",
-    min.cells = 0,
-    min.features = 0,
-    names.field = 1,
-    names.delim = "_",
-    meta.data = NULL)
+if (params$repeats_only_featurecounts_control_multi != "None") {
+    
+    common_cells <- intersect(colnames(d$genes_cellranger), colnames(d$control_repeats_only_multi))
+    ## length(common_cells)
+    d$both_multi <- CreateSeuratObject(
+        rbind(as.matrix(GetAssayData(d$genes_cellranger, slot = 'counts'))[,common_cells],
+              as.matrix(GetAssayData(d$control_repeats_only_multi, slot = 'counts'))[,common_cells]),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
 
 
-rm(common_cells)
+    rm(common_cells)
+}
 ```
 
 Bowtie data
 
 ```{r}
-tmp <- data.table::fread(params$repeats_bowtie_unique, sep = '\t', header = TRUE,
-                         drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
-rownames(tmp) <- tmp$Geneid ## here
+if (params$repeats_bowtie_unique != "None") { 
+    tmp <- data.table::fread(params$repeats_bowtie_unique, sep = '\t', header = TRUE,
+                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+    rownames(tmp) <- tmp$Geneid ## here
 
-colnames(tmp) <- gsub(".*:([A-Z]+-1)_bowtie.bam","\\1", colnames(tmp))
-## tmp <- tmp[,7:ncol(tmp)]
+    colnames(tmp) <- gsub(".*:([A-Z]+-1)_bowtie.bam","\\1", colnames(tmp))
+    ## tmp <- tmp[,7:ncol(tmp)]
 
-tmp <- as.data.frame(tmp)
-rownames(tmp) <- tmp$Geneid
-tmp <- tmp[,-1]
+    tmp <- as.data.frame(tmp)
+    rownames(tmp) <- tmp$Geneid
+    tmp <- tmp[,-1]
 
 
-d$repeats_bowtie_unique <- CreateSeuratObject(
-    tmp,
-    project =  sprintf('%s_%s', params$identifier, 'repeats\nbowtie\nunique'),
-    assay = "RNA",
-    min.cells = 0,
-    min.features = 0,
-    names.field = 1,
-    names.delim = "_",
-    meta.data = NULL)
+    d$repeats_bowtie_unique <- CreateSeuratObject(
+        tmp,
+        project =  sprintf('%s_%s', params$identifier, 'repeats\nbowtie\nunique'),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
 
-rm(tmp)
-    
+    rm(tmp)
+}  
 ```
 
 ```{r}
-tmp <- data.table::fread(params$repeats_bowtie_multi, sep = '\t', header = TRUE,
-                         drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
-rownames(tmp) <- tmp$Geneid ## here
+if (params$repeats_bowtie_multi != "None") {
+    
+    tmp <- data.table::fread(params$repeats_bowtie_multi, sep = '\t', header = TRUE,
+                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+    rownames(tmp) <- tmp$Geneid ## here
 
-colnames(tmp) <- gsub(".*:([A-Z]+-1)_bowtie.bam","\\1", colnames(tmp))
-## tmp <- tmp[,7:ncol(tmp)]
+    colnames(tmp) <- gsub(".*:([A-Z]+-1)_bowtie.bam","\\1", colnames(tmp))
+    ## tmp <- tmp[,7:ncol(tmp)]
 
-tmp <- as.data.frame(tmp)
-rownames(tmp) <- tmp$Geneid
-tmp <- tmp[,-1]
+    tmp <- as.data.frame(tmp)
+    rownames(tmp) <- tmp$Geneid
+    tmp <- tmp[,-1]
 
 
-d$repeats_bowtie_multi <- CreateSeuratObject(
-    tmp,
-    project =  sprintf('%s_%s', params$identifier, 'repeats\nbowtie\nmulti'),
-    assay = "RNA",
-    min.cells = 0,
-    min.features = 0,
-    names.field = 1,
-    names.delim = "_",
-    meta.data = NULL)
+    d$repeats_bowtie_multi <- CreateSeuratObject(
+        tmp,
+        project =  sprintf('%s_%s', params$identifier, 'repeats\nbowtie\nmulti'),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
 
-rm(tmp)
-
+    rm(tmp)
+}
 ```
 
 Alevin
 
 ```{r}
-d$genes_alevin <- tximeta::tximeta(coldata = data.frame(
-                                       names = "genes",
-                                       files = params$genes_alevin,
-                                       stringsAsFactors = FALSE
-                                   ), type = "alevin")
-                                  
+if (params$genes_alevin != "None") {
+    d$genes_alevin <- tximeta::tximeta(coldata = data.frame(
+                                           names = "genes",
+                                           files = params$genes_alevin,
+                                           stringsAsFactors = FALSE
+                                       ), type = "alevin")
+    
 
-counts <-  assays(d$genes_alevin)$counts
-d$genes_alevin <- NULL
+    counts <-  assays(d$genes_alevin)$counts
+    d$genes_alevin <- NULL
 
-annot <- list()
+    annot <- list()
 
-annot$ids <- rownames(counts)
+    annot$ids <- rownames(counts)
 
-annot$filters = "ensembl_gene_id_version"
-annot$attributes = c(annot$filters, "external_gene_name", "chromosome_name", 
-                     "gene_biotype", "start_position", "end_position")
-annot$biomart = "ENSEMBL_MART_ENSEMBL" 
-annot$dataset = "hsapiens_gene_ensembl"
-annot$host = "ensembl.org"
-annot$bmart <- biomaRt::useMart(biomart = annot$biomart, dataset = annot$dataset, 
-                                host = annot$host)
+    annot$filters = "ensembl_gene_id_version"
+    annot$attributes = c(annot$filters, "external_gene_name", "chromosome_name", 
+                         "gene_biotype", "start_position", "end_position")
+    annot$biomart = "ENSEMBL_MART_ENSEMBL" 
+    annot$dataset = "hsapiens_gene_ensembl"
+    annot$host = "ensembl.org"
+    annot$bmart <- biomaRt::useMart(biomart = annot$biomart, dataset = annot$dataset, 
+                                    host = annot$host)
 
-feature_info <- biomaRt::getBM(attributes = annot$attributes,
-                               filters = annot$filters, 
-                               values = annot$ids, mart = annot$bmart)
+    feature_info <- biomaRt::getBM(attributes = annot$attributes,
+                                   filters = annot$filters, 
+                                   values = annot$ids, mart = annot$bmart)
 
 
-tmp <- merge(data.frame(ensembl_gene_id_version = rownames(counts)),
-             by = 'ensembl_gene_id_version', feature_info, all.x = TRUE)
+    tmp <- merge(data.frame(ensembl_gene_id_version = rownames(counts)),
+                 by = 'ensembl_gene_id_version', feature_info, all.x = TRUE)
 
-rownames(tmp) <- tmp$ensembl_gene_id_version
-tmp <- tmp[rownames(counts),]
+    rownames(tmp) <- tmp$ensembl_gene_id_version
+    tmp <- tmp[rownames(counts),]
 
-stopifnot(rownames(counts) == tmp$ensembl_gene_id_version)
+    stopifnot(rownames(counts) == tmp$ensembl_gene_id_version)
 
-rownames(counts) <- sprintf('%s_%s', tmp$ensembl_gene_id_version, tmp$external_gene_name)
+    rownames(counts) <- sprintf('%s_%s', tmp$ensembl_gene_id_version, tmp$external_gene_name)
 
-colnames(counts) <- paste0(colnames(counts), '-1')
+    colnames(counts) <- paste0(colnames(counts), '-1')
 
-d$genes_alevin <- CreateSeuratObject(counts =  counts,
-                                     project = 'genes_alevin')
-
+    d$genes_alevin <- CreateSeuratObject(counts =  counts,
+                                         project = 'genes_alevin')
+}
 ```
 
 ```{r}
-d$repeats_alevin <- tximeta::tximeta(coldata = data.frame(
-                                       names = "repeats",
-                                       files = params$repeats_alevin,
-                                       stringsAsFactors = FALSE
-                                     ), type = "alevin")
+if (params$repeats_alevin != "None") {
+    d$repeats_alevin <- tximeta::tximeta(coldata = data.frame(
+                                             names = "repeats",
+                                             files = params$repeats_alevin,
+                                             stringsAsFactors = FALSE
+                                         ), type = "alevin")
 
-colnames(d$repeats_alevin) <- paste0(colnames(d$repeats_alevin), '-1')
+    colnames(d$repeats_alevin) <- paste0(colnames(d$repeats_alevin), '-1')
 
-d$repeats_alevin <- CreateSeuratObject(counts =  assays(d$repeats_alevin)$counts,
-                                     project = 'repeats_alevin')
+    d$repeats_alevin <- CreateSeuratObject(counts =  assays(d$repeats_alevin)$counts,
+                                           project = 'repeats_alevin')
+}
 ```
 
 
 ```{r}
-cells <- intersect(colnames(d$repeats_alevin), colnames(d$genes_alevin))
+if (params$repeats_alevin != "None" & params$genes_alevin != "None") {
+    cells <- intersect(colnames(d$repeats_alevin), colnames(d$genes_alevin))
 
-d$both_alevin <- CreateSeuratObject(counts =  rbind(as.matrix(GetAssayData(d$genes_alevin,
-                                                          slot = 'counts'))[,cells],
-                                            as.matrix(GetAssayData(d$repeats_alevin,
-                                                          slot = 'counts'))[,cells]),
-                             project = 'both_alevin')
+    d$both_alevin <- CreateSeuratObject(
+        counts =  rbind(as.matrix(GetAssayData(d$genes_alevin,
+                                               slot = 'counts'))[,cells],
+                        as.matrix(GetAssayData(d$repeats_alevin,
+                                               slot = 'counts'))[,cells]),
+        project = 'both_alevin')
+}
 
 ```
 
@@ -586,6 +609,7 @@ feature.drop <- isOutlier(d$genes_cellranger$nFeature_RNA, nmads = 3, type = "bo
 mito.drop <- isOutlier(d$genes_cellranger$percent.mt, nmads = 3, type = "higher")
 
 selected_cells <- colnames(d$genes_cellranger)[!(libsize.drop | feature.drop | mito.drop)]
+
 ```
 
 
@@ -624,6 +648,7 @@ for (item in names(d)) {
     
     cat('\n\n')
 }
+
 ```
 
 ## Basic stats pre-QC
@@ -691,6 +716,7 @@ for (item in names(d)) {
           ggtitle(sprintf('%s', item)))
     cat('\n\n')
 }
+
 ```
 
 ## Basic stats post-QC
@@ -760,6 +786,8 @@ for (item in names(d)) {
     cat('\n\n')
 }
 
+
+
 ```
 
 ## Dimred PCA {.tabset}
@@ -806,6 +834,7 @@ for (item in names(d)) {
 
     cat('\n\n')
 }
+
 
 ```
 
@@ -1006,6 +1035,7 @@ Platelet	SPARC	+
 Platelet	RGS18	+
 Platelet	MYL9	+
 Platelet	GNG11	+', header = TRUE, sep = '\t', stringsAsFactors = FALSE)
+
 ```
 
 
@@ -1068,7 +1098,8 @@ rownames(d$genes_cellranger@meta.data) <- d$genes_cellranger@meta.data$cell
 
 ## still, the annotation can also be transfered to repeats/featurecounts
 
-for (item in c(grep('repeats|both|alevin', names(d), value = TRUE))) {
+## for (item in c(grep('repeats|both|alevin', names(d), value = TRUE))) {
+for (item in c(grep('genes_cellranger', names(d), value = TRUE, invert = TRUE))){
     rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
 
     tmp <- merge(data.frame(cell = d[[item]]@meta.data$cell),
@@ -1242,6 +1273,7 @@ for (flavour1 in names(d)) {
         cat('\n\n')
     }
 }
+
 
 
 ```
@@ -1601,23 +1633,24 @@ for (flavour in names(d)) {
 ## Genes vs repeats (cellranger)
 
 ```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
+aris <- list()
 i <- 1
 for (genes_res in seq(0.2, 2, 0.2)) {
-    genes_res <- sprintf('RNA_snn_res.%s', genes_res)
+    genes_res_tag <- sprintf('RNA_snn_res.%s', genes_res)
     
     for (repeats_res in seq(0.2, 2, 0.2)) {
-        repeats_res <- sprintf('RNA_snn_res.%s', repeats_res)
+        repeats_res_tag <- sprintf('RNA_snn_res.%s', repeats_res)
 
         cells <- intersect(rownames(d$genes_cellranger@meta.data), rownames(d$repeats_cellranger@meta.data))
         
    
 
         aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
-                               length(unique(d$genes_cellranger@meta.data[cells, genes_res]))),
+                               length(unique(d$genes_cellranger@meta.data[cells, genes_res_tag]))),
                        sprintf('repeats_cr_%s (n=%s)', repeats_res,
-                               length(unique(d$repeats_cellranger@meta.data[cells, repeats_res]))),
-                       adjustedRandIndex(d$genes_cellranger@meta.data[cells,genes_res],
-                                         d$repeats_cellranger@meta.data[cells,repeats_res]))
+                               length(unique(d$repeats_cellranger@meta.data[cells, repeats_res_tag]))),
+                       adjustedRandIndex(d$genes_cellranger@meta.data[cells,genes_res_tag],
+                                         d$repeats_cellranger@meta.data[cells,repeats_res_tag]))
         i <- i +1
     }    
 }

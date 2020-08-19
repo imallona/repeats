@@ -12,14 +12,15 @@ output:
     df_print: kable
     theme: lumen
     always_allow_html: yes
+params:
+  chromium1: ""
+  chromium2: ""
+  chromium3: ""
+  smartseq1: ""
 
 ---
 
-<!-- params: -->
-<!--   chromium1: "" -->
-<!--   chromium2: "" -->
-<!--   chromium3: "" -->
-<!--   smartseq1: "" -->
+
 
 Rendered for samples:
 
@@ -152,7 +153,7 @@ coef_var <- function(x){
 
 # Data load Seurat objects
 
-```{r justfordebugging, eval = TRUE}
+```{r justfordebugging, eval = FALSE}
 ## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
 ##                repeats_cellranger= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
 ##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz")
@@ -848,9 +849,9 @@ summary(aris_df)
 rm(parsed, curr)
 ```
 
-Extract resolutions and n
+Extract resolutions and n for clustering
 
-```{r}
+```{r notscina, eval = TRUE}
 parsed <- strcapture(
     pattern = "(.*)_RNA_snn_res.(.*) \\(n=(.*)\\)",
     x = aris_df$set1,
@@ -874,6 +875,20 @@ rm(parsed)
 ## head(aris_df)
 ```
 
+Extract resolutions and n for scina
+
+```{r eval = TRUE}
+parsed <- strcapture(
+    pattern = "scina_scina \\(n=(.*)\\)",
+    x = aris_df$set2,
+    proto = list(size_scina = numeric()))
+
+aris_df <- cbind(aris_df, parsed)
+rm(parsed)
+
+
+## head(aris_df)
+```
 
 
 
@@ -969,6 +984,28 @@ print(ggplot(aris_df,
 ```
 
 # ARIs flavours vs SCINA
+
+
+```{r}
+
+print(ggplot(aris_df[grep('scina', aris_df$origin),],
+             aes(x = res1, y = ari, col = as.factor(regressed_out) )) +
+      geom_point() +
+      facet_grid(sample~id1) +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+
+```
+
+
+```{r}
+
+print(ggplot(aris_df[grep('scina', aris_df$origin),],
+             aes(x = res1, y = size1, col = as.factor(regressed_out) )) +
+      geom_point() +
+      facet_grid(sample~id1) +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+
+```
 
 
 # All variable features and all repeats methods at once, using scina {.tabset}
