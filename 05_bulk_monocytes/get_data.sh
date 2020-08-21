@@ -42,13 +42,13 @@ do
 
     echo $sample
     
-    # $FASTQDUMP -I --gzip --split-files $sample
-    $(dirname $FASTQDUMP)/prefetch $sample --output-file ./"$sample".sra
+  
+    #   $(dirname $FASTQDUMP)/prefetch $sample --output-file ./"$sample".sra
 
-    $(dirname $FASTQDUMP)/vdb-validate ./"$sample".sra > "$sample"_vdbvalidation.log
+    $(dirname $FASTQDUMP)/vdb-validate ./"$sample".sra &> "$sample"_vdbvalidation.log
     
     if [[ -e "${sample}.sra" ]]; then
-        ${FASTQDUMP}  --gzip --split-files -s ${sample}.sra
+        ${FASTQDUMP}  --gzip --split-files  ${sample}.sra
     fi
 
     echo 'remove the sra'

@@ -48,7 +48,7 @@ library(Matrix)
 library(knitr)
 library(Seurat)
 library(dplyr)
-## library(scater)
+library(scater)
 library(dplyr)
 library(data.table)
 ## library(SingleCellExperiment)
@@ -99,9 +99,9 @@ ac <- function(col, alpha=1){
                        rgb(x[1], x[2], x[3], alpha=alpha))  
 }
 
-coef_var <- function(x){
-        (sd(x)/mean(x))*100
-}
+## coef_var <- function(x){
+##         (sd(x)/mean(x))*100
+## }
 
 ```
 
@@ -192,18 +192,32 @@ featurecounts_to_seurat <- function(fn, identifier, add_gene_symbols = FALSE, re
 ##                regress_genes_nFeatures = FALSE)
 
 
-params <- list(identifier = "",
-               genes_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/genes/pbmcs_smartseq2_ding_star_genes.counts.gz',
-               repeats_star_unique = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/unique_reads/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz',
-               repeats_star_multi = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/multimappers/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz',
-               repeats_bowtie_unique = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/unique_reads/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz',
-               repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/multimappers/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz',
-               repeats_only_unique = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/unique_reads/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz',
-               repeats_only_multi = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/multimappers/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz',
-               seurat_output = "/home/imallona/tmp/test.rds",
-               cobra_output = '/home/imallona/tmp/cobra.rds'
-               regress_genes_nCount = FALSE,
-               regress_genes_nFeatures = FALSE)
+## params <- list(identifier = "pbmcs_smartseq2_ding",
+##                genes_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/genes/pbmcs_smartseq2_ding_star_genes.counts.gz',
+##                repeats_star_unique = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/unique_reads/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz',
+##                repeats_star_multi = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/multimappers/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz',
+##                repeats_bowtie_unique = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/unique_reads/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz',
+##                repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/multimappers/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz',
+##                repeats_only_unique = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/unique_reads/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz',
+##                repeats_only_multi = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/multimappers/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz',
+##                seurat_output = "/home/imallona/tmp/test.rds",
+##                cobra_output = '/home/imallona/tmp/cobra.rds',
+##                regress_genes_nCount = FALSE,
+##                regress_genes_nFeatures = FALSE)
+
+params <- list(identifier = "pbmcs_smartseq2_ding", 
+          genes_star = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/genes/pbmcs_smartseq2_ding_star_genes.counts.gz", 
+          repeats_star_unique = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/unique_reads/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz", 
+          repeats_star_multi = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/multimappers/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz", 
+          repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/unique_reads/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz", 
+          repeats_bowtie_multi = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/multimappers/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz", 
+          repeats_only_unique = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats_no_overlap/unique_reads/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz",
+          repeats_only_multi = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats_no_overlap/multimappers/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz",
+          seurat_output = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/pbmcs_smartseq2_ding_pmbc_smartseq2_regress_nCount_FALSE_nFeature_TRUE.rds", 
+          aris_output = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/pbmcs_smartseq2_ding_aris_regress_nCount_FALSE_nFeature_TRUE.rds", 
+          cobra_output = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/pbmcs_smartseq2_ding_cobra_regress_nCount_FALSE_nFeature_TRUE.rds",
+     regress_genes_nCount = "FALSE",
+     regress_genes_nFeature = "TRUE")
 
 
 ```
@@ -211,21 +225,21 @@ params <- list(identifier = "",
 ```{r}
 d <- list()
 
-for (item in setdiff(names(params), 'identifier') {
+
+for (item in setdiff(names(params),
+                     c('identifier', 'seurat_output', 'cobra_output', 'aris_output',
+                       'regress_genes_nCount', 'regress_genes_nFeature'))){
 
     d[[item]] <- featurecounts_to_seurat(
     params[[item]],
-    identifier = sprintf('%s_%s', params$identifier, params[[item]]
+    identifier = sprintf('%s_%s', params$identifier, params[[item]]),
     add_gene_symbols = grepl('genes', item))
+}
 
+(d)
 ```
 
 
-```{r}
-
-stop('recoded till here')
-
-```
 
 # Read assignment descriptive
 
@@ -239,6 +253,19 @@ Four cells selected randomly.
 ## summaries
 
 base <- file.path('/home/imallona', 'repeats_sc', 'runs')
+
+## summaries <- list()
+## for (item in  setdiff(names(params), 'identifier')) {
+##     file.path(base, params$identifier)
+##     list.files(file.path(base, params$identifier), pattern = "*csv", recursive = TRUE)
+
+##     summaries[[item]] <- list.files(file.path(
+##                       base, params$identifier, item),
+##                       pattern = '*summary.png_barplot.csv')
+## }
+
+
+
 summaries <- list(repeats_bowtie = file.path(
                       base, params$identifier, 'bowtie_repeatome',
                       paste0(params$identifier, '_bowtie_repeats.counts.summary.png_barplot.csv')),
@@ -300,13 +327,47 @@ ggplot(data=as.data.frame(sm), aes(x=id, y=pct, col = cell, group = cell)) +
 
 ## QC before filtering {.tabset}
 
+```{r}
+d$genes_star[["percent.mt"]] <- PercentageFeatureSet(d$genes_star, pattern = "-MT-")
+summary(d$genes_star$percent.mt)
+```
+
+
+```{r}
+## QC is based upon genes 
+item <- 'genes_star'
+
+libsize.drop <- isOutlier(d$genes_star$nCount_RNA, nmads = 3, type = "both", log = TRUE)
+feature.drop <- isOutlier(d$genes_star$nFeature_RNA, nmads = 3, type = "both", log = TRUE)
+mito.drop <- isOutlier(d$genes_star$percent.mt, nmads = 3, type = "higher")
+
+selected_cells <- colnames(d$genes_star)[!(libsize.drop | feature.drop | mito.drop)]
+
+```
+
+
+Outlier tagging results
+
+```{r}
+print(data.frame(ByLibSize = sum(libsize.drop),
+                 ByFeature = sum(feature.drop), 
+                 ByMito = sum(mito.drop),
+                 Remaining = length(selected_cells)))
+```
+
 ```{r, results = 'asis', fig.width = 8, fig.height = 4}
+
+
 for (item in names(d)) {
     cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
     if (item == 'genes_star') {
-        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
-        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
+        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "-MT-")
+
+        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt") +
+              geom_vline(xintercept = attributes(libsize.drop)$thresholds) +
+              geom_hline(yintercept = attributes(mito.drop)$thresholds))
+        
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
                       ncol = 3))
 
@@ -314,11 +375,17 @@ for (item in names(d)) {
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2))
     
     }
-    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+
+    d[[item]]@meta.data$qc_pass <- rownames(d[[item]]@meta.data) %in% selected_cells
+    
+    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA",
+                         group.by = 'qc_pass', shape.by = 'qc_pass'))
+    
     cat('\n\n')
 }
-```
 
+
+```
 
 ## Basic stats pre-QC
 
@@ -333,9 +400,9 @@ for (item in names(d)) {
         mean(d[[item]]@meta.data$nCount_RNA), sd(d[[item]]@meta.data$nCount_RNA),
         mean(d[[item]]@meta.data$nFeature_RNA), sd(d[[item]]@meta.data$nFeature_RNA))
 
-    if ('pct_mt_mean' %in% colnames(d[[item]]@meta.data)) {
+    if ('percent.mt' %in% colnames(d[[item]]@meta.data)) {
         summarized[[item]] <- c(summarized[[item]],
-                                mean(d[[item]]@meta.data@percent.mt, na.rm = TRUE))
+                                mean(d[[item]]@meta.data$percent.mt, na.rm = TRUE))
     }
     else {
         summarized[[item]] <- c(summarized[[item]], NA)
@@ -346,8 +413,11 @@ for (item in names(d)) {
 summarized <- as.data.frame(do.call(rbind.data.frame, summarized))
 colnames(summarized) <- c('dataset','filter', 'ncells',
                           'ncount_mean', 'ncount_sd', 'nfeature_mean', 'nfeature_sd',
-                          'percent.mt')
-print(summarized)
+                          'mito_pct_mean')
+```
+
+```{r}
+DT::datatable(summarized)
 ```
 
 ## QC after filtering {.tabset}
@@ -355,35 +425,35 @@ print(summarized)
 Filtering out cells according to the repeats expression, and forwarding the selection to other layers
 
 ```{r}
-d$genes_star <- subset(d$genes_star, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & (percent.mt < 10 | is.na(percent.mt)))
-## d$genes_star <- subset(d$genes_star, subset = nFeature_RNA > 200 & (percent.mt < 10 | is.na(percent.mt)))
-selected_cells <- colnames(d$genes_star)
-
+## the subsetting applies to all slots, even though the metrics come from genes only
 for (item in names(d)) {
     d[[item]] <- subset(d[[item]], cells = selected_cells)
 }
 
+(d)
 ```
 
 ```{r, results = 'asis', fig.width = 8, fig.height = 4}
 for (item in names(d)) {
     cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
-    if (item == 'genes') {
-        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
+    if (item == 'genes_star') {
+        ## d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
         print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
                       ncol = 3))
 
     } else {
-        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2))
+        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2) +
+              ggtitle(item))
     
     }
-    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA") +
+          ggtitle(sprintf('%s', item)))
     cat('\n\n')
 }
-```
 
+```
 
 ## Basic stats post-QC
 
@@ -398,9 +468,9 @@ for (item in names(d)) {
         mean(d[[item]]@meta.data$nCount_RNA), sd(d[[item]]@meta.data$nCount_RNA),
         mean(d[[item]]@meta.data$nFeature_RNA), sd(d[[item]]@meta.data$nFeature_RNA))
 
-    if ('pct_mt_mean' %in% colnames(d[[item]]@meta.data)) {
+    if ('percent.mt' %in% colnames(d[[item]]@meta.data)) {
         summarized[[item]] <- c(summarized[[item]],
-                                mean(d[[item]]@meta.data@percent.mt, na.rm = TRUE))
+                                mean(d[[item]]@meta.data$percent.mt, na.rm = TRUE))
     }
     else {
         summarized[[item]] <- c(summarized[[item]], NA)
@@ -411,12 +481,17 @@ for (item in names(d)) {
 summarized <- as.data.frame(do.call(rbind.data.frame, summarized))
 colnames(summarized) <- c('dataset','filter', 'ncells',
                           'ncount_mean', 'ncount_sd', 'nfeature_mean', 'nfeature_sd',
-                          'percent.mt')
-print(summarized)
+                          'mito_pct_mean')
 
 ```
 
+```{r}
+DT::datatable(summarized)
+```
+
 ## Variable features {.tabset}
+
+We take the top 10% of the features for genes or genes + repeats, but 25% for repeats.
 
 ```{r, message = FALSE, fig.width =8, fig.height = 4, results= 'asis'}
 for (item in names(d)) {
@@ -425,9 +500,18 @@ for (item in names(d)) {
     d[[item]] <- NormalizeData(object = d[[item]],
                                normalization.method = "LogNormalize",
                                scale.factor = 10000)
-    
-    d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst", nfeatures = 2000)
 
+    ## if repeats, we take half of them
+    ## else if genes, then the top 10 pct
+    if (grepl('repeats', item)) {
+        d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst",
+                                          nfeatures = round(nrow(d[[item]])/4))
+    }
+    else {
+        d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst",
+                                          nfeatures = round(nrow(d[[item]])/10))
+    }
+    
     ## Identify the 10 most highly variable genes
     top10 <- head(VariableFeatures(d[[item]]), 10)
 
@@ -441,6 +525,7 @@ for (item in names(d)) {
 
 
 ```
+
 
 ## Dimred PCA {.tabset}
 
@@ -1364,6 +1449,43 @@ ggplot(data = maxF1, aes(x= cell, y = max_F1, col = flavour, group = flavour)) +
     theme(axis.text.x = element_text(angle = 90, hjust = 1))
        
 ```
+
+# Aris 
+
+
+Not plotted, kept for further analysis
+
+```{r}
+
+for (flavour in names(d)) {
+    aris <- list()
+    i <- 1
+
+    for (flavour_res in seq(0.2, 2, 0.2)) {
+        flavour_res <- sprintf('RNA_snn_res.%s', flavour_res)
+        rownames(d[[flavour]]@meta.data) <- d[[flavour]]@meta.data$cell
+        known <- rownames(d[[flavour]]@meta.data[d[[flavour]]@meta.data$scina != 'unknown',])
+
+        aris[[i]] <- c(sprintf('%s_%s (n=%s)', flavour, flavour_res,
+                               length(unique(d[[flavour]]@meta.data[known, flavour_res]))),
+                       sprintf('scina_%s (n=%s)', 'scina',
+                               length(unique(d[[flavour]]@meta.data[known, 'scina']))),
+                       adjustedRandIndex(d[[flavour]]@meta.data[known, flavour_res],
+                                         d[[flavour]]@meta.data[known, 'scina']))
+        
+        i <- i +1
+    }    
+
+    aris <- do.call(rbind.data.frame, aris)
+    colnames(aris) <- c(sprintf('%s_res', flavour), 'scina', 'ari')
+    aris$ari <- as.numeric(as.character(aris$ari))
+    print(aris)
+    
+    aris_stored[[sprintf('%s__scina', flavour)]] <- aris
+
+}
+```
+
 
 
 
