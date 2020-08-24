@@ -52,9 +52,16 @@ do
     fi
 
     echo 'remove the sra'
+    rm -f  ${sample}.sra
+    
 done < monocytes.conf
 
 # map directly without adaptor etc trimming
 
+mkdir -p ~/repeats_sc/data/bulk_GSE80095
 
-# bash map_against_repeats.sh
+mv "$WD"/fastqs/*gz ~/repeats_sc/data/bulk_GSE80095
+mv "$WD/"*conf ~/repeats_sc/data/bulk_GSE80095
+mv "$WD"/*log ~/repeats_sc/data/bulk_GSE80095
+
+bash map_against_repeats.sh
