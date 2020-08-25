@@ -9,4 +9,4 @@
 
 # maybe snakemake made?
 
-snakemake -j 10 -s bulk_rnaseq.snmk
+snakemake -j 20 -s bulk_rnaseq.snmk

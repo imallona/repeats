@@ -25,7 +25,7 @@ print('this comes from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE132
 # samples = pd.read_csv(config["samples"], sep = '\t').set_index("id", drop=False)
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
-NTHREADS = 20
+NTHREADS = 5
 LOCAL_MEM_GB = 100
 
 RUN_NAME  = 'pbmcs_smartseq2_ding'
@@ -115,15 +115,15 @@ rule all:
         expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
                        RUN_NAME + "_bowtie_repeats.counts.gz"),
                 multimappers = ['multimappers', 'unique_reads']),
-        expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-               regress_ncount = ['TRUE', 'FALSE'],
-               regress_nfeature = ['TRUE', 'FALSE']),
+        # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        #        regress_ncount = ['TRUE', 'FALSE'],
+        #        regress_nfeature = ['TRUE', 'FALSE']),
         expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
-                       "{multimappers}", RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+                       "{multimappers}", RUN_NAME + "_repeats_no_overlap_genes.counts.gz"),
                multimappers = ['multimappers', 'unique_reads']),
         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
                        "{multimappers}",
-                       RUN_NAME + "_repeats_no_overlap.counts.summary.png"),
+                       RUN_NAME + "_repeats_no_overlap_genes.counts.summary.png"),
                multimappers = ['multimappers', 'unique_reads']),
         op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
                      RUN_NAME + "_genes.counts.summary.png"),
@@ -283,7 +283,7 @@ rule profile_featurecounts_run_repeats_no_overlap_on_transcriptome:
     input:        
         summary = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
                           "{multimappers}",
-                          RUN_NAME + "_repeats_not_overlapping_genes.counts.summary")
+                          RUN_NAME + "_repeats_no_overlap_genes.counts.summary")
     params:
         path = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
                        "{multimappers}"),
@@ -292,7 +292,7 @@ rule profile_featurecounts_run_repeats_no_overlap_on_transcriptome:
     output:
         png = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
                       "{multimappers}",
-                     RUN_NAME + "_repeats_no_overlap.counts.summary.png")
+                     RUN_NAME + "_repeats_no_overlap_genes.counts.summary.png")
     threads: 1
     shell:
        """
@@ -314,12 +314,12 @@ rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
         path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome')
     output:
         counts  = temp(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
-                               "{multimappers}", RUN_NAME + "_repeats_not_overlapping_genes.counts")),
+                               "{multimappers}", RUN_NAME + "_repeats_no_overlap_genes.counts")),
         gz_counts = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
                             "{multimappers}", RUN_NAME + "_repeats_no_overlap_genes.counts.gz"),
         summary = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
                           "{multimappers}",
-                          RUN_NAME + "_repeats_not_overlapping_genes.counts.summary")        
+                          RUN_NAME + "_repeats_no_overlap_genes.counts.summary")        
     log :
         log = op.join(BASE, "runs",  RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', "{multimappers}",
                       'feature_counts_not_overlapping_genes.log'),
@@ -347,6 +347,7 @@ rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
            cd {params.path}
 
            {FEATURECOUNTS} -T {threads} \
+           -p \
            -t exon \
            -g gene_id \
            -a {input.gtf} \
@@ -365,6 +366,7 @@ rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
            cd {params.path}
 
            {FEATURECOUNTS} -T {threads} \
+           -p \
            -t exon \
            -g gene_id \
            -a {input.gtf} \
@@ -492,9 +494,10 @@ rule featurecounts_repeats_repeatome_pe:
            cd {params.path}
 
            {FEATURECOUNTS} -T {threads} \
+           -p \
            -t exon \
            -g gene_id \
-           -a {input.gtf} \
+           -a {input.fake_repeatome_gtf} \
            -o  {output.counts} \
            -M \
            --fraction \
@@ -510,9 +513,10 @@ rule featurecounts_repeats_repeatome_pe:
            cd {params.path}
 
            {FEATURECOUNTS} -T {threads} \
+           -p \
            -t exon \
            -g gene_id \
-           -a {input.gtf} \
+           -a {input.fake_repeatome_gtf} \
            -o  {output.counts} \
            {params.path}/*bam  2>&1 > {log}
 
@@ -577,6 +581,7 @@ rule featurecounts_repeats_transcriptome_pe:
            cd {params.path}
 
            {FEATURECOUNTS} -T {threads} \
+           -p \
            -t exon \
            -g gene_id \
            -a {input.gtf} \
@@ -595,6 +600,7 @@ rule featurecounts_repeats_transcriptome_pe:
            cd {params.path}
 
            {FEATURECOUNTS} -T {threads} \
+           -p \
            -t exon \
            -g gene_id \
            -a {input.gtf} \
