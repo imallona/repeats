@@ -100,69 +100,48 @@ rule all:
         expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome",
                        "{srr}.bam"), srr = get_samples(CONFIG2)),
         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome",
-                       "{srr}_Aligned.sortedByCoord.out.bam"), srr = get_samples(CONFIG2))
+                       "{srr}_Aligned.sortedByCoord.out.bam"), srr = get_samples(CONFIG2)),
+        op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_edger.html')
 
-# rule featurecounts_repeats_repeatome:
-#     input:
-#         bam = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{srr}.bam"),
-#         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
-#         fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
-#     output:
-#         counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}", "counts")),
-#         gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}", "counts.gz")
-#     log :
-#         op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}", "featurecounts.log"),
-#     threads:
-#         NTHREADS
-#     # shell:
-#     #    """
-#     #    ## note multimappers are counted
-#     #    {FEATURECOUNTS} -T {threads} \
-#     #    -t exon \
-#     #    -g gene_id \
-#     #    -a {input.fake_repeatome_gtf} \
-#     #    -o  {output.counts} \
-#     #    -M \
-#     #    {input.bam}  &> {log}
-
-#     #    {PIGZ} --keep  -p {threads} {output.counts}
-#     #    """
-#     run:
-#         if wildcards.multimappers == 'multimappers':
-#            shell("""
-#            echo multimappers allowed
-
-#            cd {params.path}
-
-#            {FEATURECOUNTS} -T {threads} \
-#            -t exon \
-#            -g gene_id \
-#            -a {input.gtf} \
-#            -o  {output.counts} \
-#            -M \
-#            --fraction \
-#            {params.path}/*bam  2>&1 > {log}
-
-#            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
-
-#            """)
-#         elif wildcards.multimappers == 'unique_reads':
-#            shell("""
-#            echo unique only
-
-#            cd {params.path}
-
-#            {FEATURECOUNTS} -T {threads} \
-#            -t exon \
-#            -g gene_id \
-#            -a {input.gtf} \
-#            -o  {output.counts} \
-#            {params.path}/*bam  2>&1 > {log}
-
-#            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
-#            """)
-
-       
+rule knit:
+    input:
+        genes_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'genes',
+                             RUN_NAME + '_star_genes.counts.gz'),
+        repeats_star_unique = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats',
+                                      "unique_reads", RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
+        repeats_star_multi = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats',
+                                      "multimappers", RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
+        repeats_only_unique = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
+                                      "unique_reads", RUN_NAME + '_repeats_no_overlap_genes.counts.gz'),
+        repeats_only_multi = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
+                                      "multimappers", RUN_NAME + '_repeats_no_overlap_genes.counts.gz'),
+        repeats_bowtie_unique = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome',
+                                        'unique_reads', RUN_NAME + '_bowtie_repeats.counts.gz'),
+        repeats_bowtie_multi = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome',
+                                        'multimappers', RUN_NAME + '_bowtie_repeats.counts.gz')
+    params:
+        rmd = 'bulk_rnaseq_monocytes.Rmd',
+        run_name = RUN_NAME
+    output:
+        html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_edger.html'),
+        de = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_de.rds')
+    log:
+        op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_edger.log')
+    shell:
+        """
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+          output_file = \"{output.html}\", 
+          params = list(identifier = \"{params.run_name}\", 
+          genes_star = \"{input.genes_star}\", 
+          repeats_star_unique = \"{input.repeats_star_unique}\", 
+          repeats_star_multi = \"{input.repeats_star_multi}\", 
+          repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\", 
+          repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\", 
+          repeats_only_unique = \"{input.repeats_only_unique}\",
+          repeats_only_multi = \"{input.repeats_only_multi}\",
+          de_output = \"{output.de}\"))' &> {log}
+        """
+    
 rule fake_gtf_repeatome_in_repeats_coordinates:
     input:
         fa = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.gz')
@@ -186,7 +165,7 @@ rule fake_gtf_repeatome_in_repeats_coordinates:
         
         """
 
-rule feature_counts_repeats_not_overlapping_genes_spawned_bams:
+rule feature_counts_repeats_no_overlap_genes_spawned_bams:
     input:
         expand(op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', "{srr}.bam"),
                srr = get_samples(CONFIG)),
@@ -205,7 +184,7 @@ rule feature_counts_repeats_not_overlapping_genes_spawned_bams:
                           RUN_NAME + "_repeats_no_overlap_genes.counts.summary")        
     log :
         log = op.join(BASE, "runs",  RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', "{multimappers}",
-                      'feature_counts_not_overlapping_genes.log'),
+                      'feature_counts_no_overlap_genes.log'),
     threads:
         NTHREADS
     run:

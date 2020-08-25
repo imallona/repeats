@@ -1,5 +1,5 @@
 ---
-title: "Within sample report: PBMC, smartseq2"
+title: "Within sample report: bulk monocytes"
 author: "Izaskun Mallona at Robinsonlab"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
@@ -21,6 +21,7 @@ params:
   repeats_only_unique: ""
   repeats_only_multi: ""
   genes_star: ""
+  de_output: ""
 ---
 
 # Config
@@ -165,15 +166,15 @@ read_featurecounts <- function(fn, identifier, add_gene_symbols = FALSE, remove_
 
 # Data load
 
-```{r}
+```{r, eval = FALSE}
 params <- list(identifier = "bulk_GSE80095", 
           genes_star = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/genes/bulk_GSE80095_star_genes.counts.gz", 
           repeats_star_unique = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/repeats/unique_reads/bulk_GSE80095_star_transcriptome_repeats.counts.gz", 
           repeats_star_multi = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/repeats/multimappers/bulk_GSE80095_star_transcriptome_repeats.counts.gz", 
           repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bowtie_repeatome/unique_reads/bulk_GSE80095_bowtie_repeats.counts.gz", 
           repeats_bowtie_multi = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bowtie_repeatome/multimappers/bulk_GSE80095_bowtie_repeats.counts.gz", 
-          repeats_only_unique = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/repeats_no_overlap/unique_reads/bulk_GSE80095_repeats_not_overlapping_genes.counts.gz",
-          repeats_only_multi = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/repeats_no_overlap/multimappers/bulk_GSE80095_repeats_not_overlapping_genes.counts.gz",
+          repeats_only_unique = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/repeats_no_overlap/unique_reads/bulk_GSE80095_repeats_no_overlap_genes.counts.gz",
+          repeats_only_multi = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/repeats_no_overlap/multimappers/bulk_GSE80095_repeats_no_overlap_genes.counts.gz",
           seurat_output = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_pmbc_smartseq2_regress_nCount_FALSE_nFeature_TRUE.rds", 
           aris_output = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_aris_regress_nCount_FALSE_nFeature_TRUE.rds", 
           cobra_output = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_cobra_regress_nCount_FALSE_nFeature_TRUE.rds",
@@ -183,24 +184,50 @@ params <- list(identifier = "bulk_GSE80095",
 
 ```
 
-Annotation
+Annotation for monocytes
 
 ```{r}
-annot <- read.table('/home/imallona/repeats_sc/data/bulk_GSE80095//monocytes.conf',
-                    header = FALSE, sep = ',')
+annot1 <- read.table('/home/imallona/repeats_sc/data/bulk_GSE80095/monocytes.conf',
+                     header = FALSE, sep = ',',
+                     stringsAsFactors = FALSE)
 
-colnames(annot)[1] <- c('srr')
-colnames(annot)[9] <- 'sample'
+colnames(annot1)[1] <- c('srr')
+colnames(annot1)[9] <- 'sample'
 
-annot[17] <- 'gender'
-rownames(annot) <- annot$srr
+rownames(annot1) <- annot1$srr
+```
+
+Annotation for outgroup
+
+```{r}
+annot2 <- read.table('/home/imallona/repeats_sc/data/bulk_GSE80095/tcells.conf',
+                     header = FALSE, sep = ',',
+                     stringsAsFactors = FALSE)
+
+colnames(annot2)[1] <- c('srr')
+colnames(annot2)[8] <- 'sample'
+
+rownames(annot2) <- annot2$srr
+```
+
+```{r}
+annot <- data.frame(srr = c(annot1$srr, annot2$srr),
+                    sample = c(annot1$sample, annot2$sample),
+                    stringsAsFactors = FALSE,
+                    row.names = 1)
+
+table(annot$sample)
+annot[annot$sample == 'CD14-Positive Monocytes cells', 'sample'] <- 'monocyte'
+annot[annot$sample == 'CD3+ Lymphocytes', 'sample'] <- 'tcell'
+table(annot$sample)
+
 ```
 
 ```{r}
 d <- list()
 
 
-for (item in setdiff(names(params), c('identifier'))){
+for (item in setdiff(names(params), c('identifier', 'de_output'))){
 
     d[[item]] <- read_featurecounts(
     params[[item]],
@@ -211,6 +238,7 @@ for (item in setdiff(names(params), c('identifier'))){
 }
 
 str(d)
+
 ```
 
 
@@ -220,26 +248,85 @@ Normalization factors
 
 ```{r edgeR-dge-generate}
 d <- lapply(d,  function(x) edgeR::calcNormFactors(x))
-dge0$genes <- as.data.frame(rowRanges(sg))
+
 ```
 
 ## logCPMs
 
 ```{r logcpm}
-d <- lapply(d, function(x) edgeR::cpm(x, log = TRUE))
+logcpms <- lapply(d, function(x) edgeR::cpm(x, log = TRUE))
 ```
 
-# remove nonexpressed genes and re-normalize
+# design
+
+```{r}
+des <- model.matrix(as.formula('~ 0 + sample'), data = annot)
+print(des)
+```
+
+Mind the re-calculation of normalization factors
 
 ```{r}
 for (item in names(d)) {
-    keep <- edgeR::filterByExpr(dge0, design = des)
-    dge <- dge0[keep, ]
-    dge <- calcNormFactors(dge)
+    keep <- edgeR::filterByExpr(d[[item]], design = des)
+    d[[item]] <- d[[item]][keep, ]
+    d[[item]] <- calcNormFactors(d[[item]])
 }
 ```
 
-# design 
+# Estimate dispersion and fit QL model
 
-Using the gender? or rather add another dataset (not monocytes), like T cells, here
+
+```{r }
+
+d <- lapply(d, function(x) estimateDisp(x, design = des))
+
+fit <- list()
+fit <- lapply(d, function(x) glmQLFit(x, design = des))
+
+lapply(d, function(x) plotBCV(x))
+```
+
+# Define contrasts 
+
+```{r edgeR-define-contrasts}
+(conts <- as.data.frame(
+    makeContrasts(
+        contrasts = 'samplemonocyte-sampletcell',
+        levels = des)))
+```
+
+# DGE
+
+```{r dge}
+res <- list()
+for (item in names(d)) {
+    res[[item]] <- lapply(conts, function(x) {
+        qlf <- glmQLFTest(fit[[item]], contrast = x)
+        tt <- topTags(qlf, n = Inf, sort.by = "PValue")$table
+    })
+}
+```
+
+```{r}
+lapply(res, function(x) head(x[[1]], 10)) 
+```
+
+
+# Trace
+
+## Save outputs
+
+
+```{r}
+saveRDS(object = res, file = params$de_output)
+```
+
+## Session info
+
+```{r}
+devtools::session_info()
+
+date()
+```
 
