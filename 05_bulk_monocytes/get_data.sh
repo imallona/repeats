@@ -6,6 +6,7 @@
 # may 19 aug 2020
 # GPL
 ## https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE80095
+# t cells https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE101497
 
 export HOME=/home/imallona
 export TASK="repeats_sc"
@@ -63,5 +64,46 @@ mkdir -p ~/repeats_sc/data/bulk_GSE80095
 mv "$WD"/fastqs/*gz ~/repeats_sc/data/bulk_GSE80095
 mv "$WD/"*conf ~/repeats_sc/data/bulk_GSE80095
 mv "$WD"/*log ~/repeats_sc/data/bulk_GSE80095
+
+
+
+
+# also do this with an external group
+
+cd ~/repeats_sc/data/bulk_GSE80095
+
+
+# Run,Assay Type,AvgSpotLen,Bases,BioProject,BioSample,Bytes,Cell_type,Center Name,Consent,DATASTORE filetype,DATASTORE provider,DATASTORE region,Donor,Experiment,GEO_Accession (exp),Instrument,LibraryLayout,LibrarySelection,LibrarySource,Organism,Platform,ReleaseDate,Sample Name,source_name,source,SRA Study,tissue,treatment
+cat << EOF >> tcells.conf
+SRR5831539,RNA-Seq,200,2210956200,PRJNA394680,SAMN07357224,1019690213,CD3+ Lymphocytes,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",264,SRX3008845,GSM2705024,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2017-11-10T00:00:00Z,GSM2705024,Human peripheral blood,Primary cells,SRP112521,Peripheral blood,Vehicle
+SRR5831542,RNA-Seq,200,2312165400,PRJNA394680,SAMN07357230,1060754609,CD3+ Lymphocytes,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",265,SRX3008848,GSM2705027,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2017-11-10T00:00:00Z,GSM2705027,Human peripheral blood,Primary cells,SRP112521,Peripheral blood,Vehicle
+SRR5831545,RNA-Seq,200,2225017200,PRJNA394680,SAMN07357227,1063839824,CD3+ Lymphocytes,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",266,SRX3008851,GSM2705030,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2017-11-10T00:00:00Z,GSM2705030,Human peripheral blood,Primary cells,SRP112521,Peripheral blood,Vehicle
+EOF
+
+
+while IFS='' read -r line || [[ -n "$line" ]]
+do
+
+    cd ~/repeats_sc/data/bulk_GSE80095
+
+    sample=$(echo $line | cut -f1 -d ',')
+
+    echo $sample
+    
+  
+    $(dirname $FASTQDUMP)/prefetch $sample --output-file ./"$sample".sra
+
+    $(dirname $FASTQDUMP)/vdb-validate ./"$sample".sra &> "$sample"_vdbvalidation.log
+    
+    if [[ -e "${sample}.sra" ]]; then
+        ${FASTQDUMP}  --gzip --split-files  ${sample}.sra
+    fi
+
+    echo 'remove the sra'
+    rm -f  ${sample}.sra
+    
+done < tcells.conf
+
+
 
 bash map_against_repeats.sh
