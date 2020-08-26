@@ -103,6 +103,9 @@ ac <- function(col, alpha=1){
 ##         (sd(x)/mean(x))*100
 ## }
 
+
+
+
 ```
 
 
@@ -240,88 +243,133 @@ for (item in setdiff(names(params),
 ```
 
 
-
-# Read assignment descriptive
-
-@todo add paths explicitly (not recursive from `params$identifier`)
-
-Four cells selected randomly.
+Mixed (genes + uniquely mapping repeats not overlapping genes) object generation
 
 ```{r}
-## summaries <- list.files(file.path('/home/imallona', 'repeats_sc', 'runs', params$identifier),
-##                         pattern = '.*summary.*csv', recursive = TRUE)
-## summaries
-
-base <- file.path('/home/imallona', 'repeats_sc', 'runs')
-
-## summaries <- list()
-## for (item in  setdiff(names(params), 'identifier')) {
-##     file.path(base, params$identifier)
-##     list.files(file.path(base, params$identifier), pattern = "*csv", recursive = TRUE)
-
-##     summaries[[item]] <- list.files(file.path(
-##                       base, params$identifier, item),
-##                       pattern = '*summary.png_barplot.csv')
-## }
+if (params$repeats_only_unique != "None") {
+    
+    common_cells <- intersect(colnames(d$genes_star), colnames(d$repeats_only_unique))
+    ## length(common_cells)
+    d$both_unique <- CreateSeuratObject(
+        rbind(as.matrix(GetAssayData(d$genes_star, slot = 'counts'))[,common_cells],
+              as.matrix(GetAssayData(d$repeats_only_unique, slot = 'counts'))[,common_cells]),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
 
 
-
-summaries <- list(repeats_bowtie = file.path(
-                      base, params$identifier, 'bowtie_repeatome',
-                      paste0(params$identifier, '_bowtie_repeats.counts.summary.png_barplot.csv')),
-                  genes_star = file.path(
-                      base, params$identifier, 'star_transcriptome/genes',
-                      paste0(params$identifier, '_genes.counts.summary.png_barplot.csv')),             
-                  repeats_star = file.path(
-                      base, params$identifier, 'star_transcriptome/repeats',
-                      paste0(params$identifier, '_repeats.counts.summary.png_barplot.csv')),
-                  repeats_no_overlap_star =  file.path(
-                      base, params$identifier, 'star_transcriptome/repeats_no_overlap',
-                      paste0(params$identifier, '_repeats_no_overlap.counts.summary.png_barplot.csv')))
-
-sm <- list()
-for (su in names(summaries)) {
-    sm[[su]] <- data.table::fread(summaries[[su]], header = TRUE)
-    sm[[su]]$id <- su
-
+    rm(common_cells)
 }
-sm <- do.call(rbind.data.frame, sm)
-
-## ggplot(sm, aes(x=Status, y = pct)) +
-##     geom_bar(stat="identity") +
-##     facet_wrap(~id) +
-##     geom_text(aes(label=sprintf('%.2g', count)), size=3,
-##               vjust = -0.5) +
-##     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-##     ylab ('read assignments (%)') +
-##     ggtitle(sprintf('GTF %s', opt$id))
-sm <- as.data.frame(sm)
-## str(sm)
-## table(sm$Status)
-
-sm <- sm[sm$Status %in% c('Assigned', 'Unassigned_MultiMapping', 'Unassigned_NoFeatures',
-                          'Unassigned_Ambiguity'),]
-
-sm$id <- factor(sm$id)
-
-## head(sm)
-## table(sm$bam)
-sm$cell <- gsub('_Aligned.sortedByCoord.out', '', sm$bam)
-sm$cell <- gsub('.bam', '', sm$cell)
-
 ```
 
-```{r, fig.width = 10, fig.height = 6}
-ggplot(data=as.data.frame(sm), aes(x=id, y=pct, col = cell, group = cell)) +
-    geom_point() + geom_line()+
-    facet_wrap(~Status, ncol = 4)+
-    geom_text(aes(label=sprintf('%.2g', count)), size=3,
-              vjust = -0.5) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    ylab ('read assignments (%; text indicate counts)') +
-    xlab('status') + ggtitle(params$identifier)
+Mixed: genes + multimapping repeats not overlapping genes
 
-```    
+```{r}
+if (params$repeats_only_multi != "None") {
+    
+    common_cells <- intersect(colnames(d$genes_star), colnames(d$repeats_only_multi))
+    ## length(common_cells)
+    d$both_multi <- CreateSeuratObject(
+        rbind(as.matrix(GetAssayData(d$genes_star, slot = 'counts'))[,common_cells],
+              as.matrix(GetAssayData(d$repeats_only_multi, slot = 'counts'))[,common_cells]),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
+
+
+    rm(common_cells)
+}
+```
+
+
+
+<!-- # Read assignment descriptive -->
+
+<!-- @todo add paths explicitly (not recursive from `params$identifier`) -->
+
+<!-- Four cells selected randomly. -->
+
+<!-- ```{r} -->
+<!-- ## summaries <- list.files(file.path('/home/imallona', 'repeats_sc', 'runs', params$identifier), -->
+<!-- ##                         pattern = '.*summary.*csv', recursive = TRUE) -->
+<!-- ## summaries -->
+
+<!-- base <- file.path('/home/imallona', 'repeats_sc', 'runs') -->
+
+<!-- ## summaries <- list() -->
+<!-- ## for (item in  setdiff(names(params), 'identifier')) { -->
+<!-- ##     file.path(base, params$identifier) -->
+<!-- ##     list.files(file.path(base, params$identifier), pattern = "*csv", recursive = TRUE) -->
+
+<!-- ##     summaries[[item]] <- list.files(file.path( -->
+<!-- ##                       base, params$identifier, item), -->
+<!-- ##                       pattern = '*summary.png_barplot.csv') -->
+<!-- ## } -->
+
+
+
+<!-- summaries <- list(repeats_bowtie = file.path( -->
+<!--                       base, params$identifier, 'bowtie_repeatome', -->
+<!--                       paste0(params$identifier, '_bowtie_repeats.counts.summary.png_barplot.csv')), -->
+<!--                   genes_star = file.path( -->
+<!--                       base, params$identifier, 'star_transcriptome/genes', -->
+<!--                       paste0(params$identifier, '_genes.counts.summary.png_barplot.csv')),              -->
+<!--                   repeats_star = file.path( -->
+<!--                       base, params$identifier, 'star_transcriptome/repeats', -->
+<!--                       paste0(params$identifier, '_repeats.counts.summary.png_barplot.csv')), -->
+<!--                   repeats_no_overlap_star =  file.path( -->
+<!--                       base, params$identifier, 'star_transcriptome/repeats_no_overlap', -->
+<!--                       paste0(params$identifier, '_repeats_no_overlap.counts.summary.png_barplot.csv'))) -->
+
+<!-- sm <- list() -->
+<!-- for (su in names(summaries)) { -->
+<!--     sm[[su]] <- data.table::fread(summaries[[su]], header = TRUE) -->
+<!--     sm[[su]]$id <- su -->
+
+<!-- } -->
+<!-- sm <- do.call(rbind.data.frame, sm) -->
+
+<!-- ## ggplot(sm, aes(x=Status, y = pct)) + -->
+<!-- ##     geom_bar(stat="identity") + -->
+<!-- ##     facet_wrap(~id) + -->
+<!-- ##     geom_text(aes(label=sprintf('%.2g', count)), size=3, -->
+<!-- ##               vjust = -0.5) + -->
+<!-- ##     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!-- ##     ylab ('read assignments (%)') + -->
+<!-- ##     ggtitle(sprintf('GTF %s', opt$id)) -->
+<!-- sm <- as.data.frame(sm) -->
+<!-- ## str(sm) -->
+<!-- ## table(sm$Status) -->
+
+<!-- sm <- sm[sm$Status %in% c('Assigned', 'Unassigned_MultiMapping', 'Unassigned_NoFeatures', -->
+<!--                           'Unassigned_Ambiguity'),] -->
+
+<!-- sm$id <- factor(sm$id) -->
+
+<!-- ## head(sm) -->
+<!-- ## table(sm$bam) -->
+<!-- sm$cell <- gsub('_Aligned.sortedByCoord.out', '', sm$bam) -->
+<!-- sm$cell <- gsub('.bam', '', sm$cell) -->
+
+<!-- ``` -->
+
+<!-- ```{r, fig.width = 10, fig.height = 6} -->
+<!-- ggplot(data=as.data.frame(sm), aes(x=id, y=pct, col = cell, group = cell)) + -->
+<!--     geom_point() + geom_line()+ -->
+<!--     facet_wrap(~Status, ncol = 4)+ -->
+<!--     geom_text(aes(label=sprintf('%.2g', count)), size=3, -->
+<!--               vjust = -0.5) + -->
+<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--     ylab ('read assignments (%; text indicate counts)') + -->
+<!--     xlab('status') + ggtitle(params$identifier) -->
+
+<!-- ```     -->
 
 # Basic Seurat processing
 
@@ -842,7 +890,7 @@ rownames(d$genes_star@meta.data) <- d$genes_star@meta.data$cell
 
 ## still, the annotation can also be transfered to repeats/featurecounts
 
-for (item in grep('repeats', names(d), value = TRUE)) {
+for (item in grep('repeats|both', names(d), value = TRUE)) {
     rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
 
     tmp <- merge(data.frame(cell = d[[item]]@meta.data$cell),
@@ -907,46 +955,46 @@ for (item in names(d)) {
 }
 ```
 
-# boxplots by identity {.tabset}
+<!-- # boxplots by identity {.tabset} -->
 
-```{r fig.height = 6, fig.width = 16, results = 'asis'}
-## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11')
-for (slot in c('repeats_star')) {
-    cat("## ", slot, "\n\n")
-    selected <- c(names(head(sort(apply(GetAssayData(d[[slot]]),1, coef_var),
-                                  decreasing = TRUE),
-                             5)),
-                  c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a'))
+<!-- ```{r fig.height = 6, fig.width = 16, results = 'asis'} -->
+<!-- ## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11') -->
+<!-- for (slot in c('repeats_star')) { -->
+<!--     cat("## ", slot, "\n\n") -->
+<!--     selected <- c(names(head(sort(apply(GetAssayData(d[[slot]]),1, coef_var), -->
+<!--                                   decreasing = TRUE), -->
+<!--                              5)), -->
+<!--                   c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a')) -->
 
 
-    repeats <- as.data.frame(FetchData(d[[slot]], vars = selected, slot = 'data'))
-    repeats$cell <- rownames(repeats)
+<!--     repeats <- as.data.frame(FetchData(d[[slot]], vars = selected, slot = 'data')) -->
+<!--     repeats$cell <- rownames(repeats) -->
 
     
-    d$genes_star@meta.data$cell <- rownames(d$genes_star@meta.data)
-    repeats <- merge(d$genes_star@meta.data[, c('scina', 'cell') ],
-                     repeats, by = 'cell', all.x = TRUE)
+<!--     d$genes_star@meta.data$cell <- rownames(d$genes_star@meta.data) -->
+<!--     repeats <- merge(d$genes_star@meta.data[, c('scina', 'cell') ], -->
+<!--                      repeats, by = 'cell', all.x = TRUE) -->
 
-    rownames(repeats) <- repeats$cell
+<!--     rownames(repeats) <- repeats$cell -->
     
-    repeats <- melt(repeats, id.vars = c('cell', 'scina'))
+<!--     repeats <- melt(repeats, id.vars = c('cell', 'scina')) -->
 
-    colnames(repeats) <- c('cell', 'scina', 'repfamily', 'data')
+<!--     colnames(repeats) <- c('cell', 'scina', 'repfamily', 'data') -->
     
-    print(ggplot(repeats,
-           aes(x = scina, y = data)) + 
-          geom_boxplot(outlier.size=1) +
-          scale_y_continuous(trans='log10') +
-        scale_fill_discrete(drop=FALSE) +
-        facet_wrap(~ factor(repfamily), ncol = 10) +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-        ylab('repeat expression [ncount]') +
-        xlab('SCINA identity') + ggtitle(sprintf('%s %s\n%s', slot, 'repeats', 'scina')))
+<!--     print(ggplot(repeats, -->
+<!--            aes(x = scina, y = data)) +  -->
+<!--           geom_boxplot(outlier.size=1) + -->
+<!--           scale_y_continuous(trans='log10') + -->
+<!--         scale_fill_discrete(drop=FALSE) + -->
+<!--         facet_wrap(~ factor(repfamily), ncol = 10) + -->
+<!--         theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--         ylab('repeat expression [ncount]') + -->
+<!--         xlab('SCINA identity') + ggtitle(sprintf('%s %s\n%s', slot, 'repeats', 'scina'))) -->
 
-    rm(repeats)
-    cat('\n\n')
-}
-```
+<!--     rm(repeats) -->
+<!--     cat('\n\n') -->
+<!-- } -->
+<!-- ``` -->
 
 # Descriptive (clustering) {.tabset}
 
@@ -955,8 +1003,8 @@ Tabset: coloring according to the clustering results.
 ```{r descriptive, results = 'asis', fig.width =8, fig.height = 8}
 
 res <- 'RNA_snn_res.0.2'
-common_cells <- intersect(intersect(colnames(d$genes_star), colnames(d$repeats_star)), colnames(d$repeats_bowtie))
-
+## common_cells <- intersect(intersect(colnames(d$genes_star), colnames(d$repeats_star)), colnames(d$repeats_bowtie))
+common_cells <- colnames(d[[1]])
 
 for (item_clust in names(d)) {
     tag <- sprintf('%s\n%s', item_clust, res)
@@ -1025,37 +1073,7 @@ plot(merged, pch = 20, cex = 0.5, col = ac(pal[merged$scina, 'color'], 0.1))
 rm(merged)
 ```
 
-## Genes vs SCINA
 
-Removed the unassigned class in SCINA
-
-```{r}
-aris <- list()
-i <- 1
-for (genes_res in seq(0.2, 2, 0.2)) {
-    genes_res <- sprintf('RNA_snn_res.%s', genes_res)
-    rownames(d$genes_star@meta.data) <- d$genes_star@meta.data$cell
-    known <- rownames(d$genes_star@meta.data[d$genes_star@meta.data$scina != 'unknown',])
-
-    aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
-                           length(unique(d$genes_star@meta.data[known, genes_res]))),
-                   sprintf('scina_%s (n=%s)', 'scina',
-                           length(unique(d$genes_star@meta.data[known, 'scina']))),
-                   adjustedRandIndex(d$genes_star@meta.data[known, genes_res],
-                                     d$genes_star@meta.data[known, 'scina']))
-                                     
-    i <- i +1
-}    
-
-aris <- do.call(rbind.data.frame, aris)
-colnames(aris) <- c('genes_res', 'scina', 'ari')
-aris$ari <- as.numeric(as.character(aris$ari))
-print(aris)
-```
-
-```{r}
-aris_stored <- list(aris)
-```
 
 
 
@@ -1140,61 +1158,6 @@ for (item in names(d)) {
 ml <- list()
 ```
 
-## genes_star
-
-```{r}
-item <- 'genes_star'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
-
-## repeats_star
-
-```{r}
-item <- 'repeats_star'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
-
-
-## repeats_bowtie
-
-```{r}
-item <- 'repeats_bowtie'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
-
-## repeats_no_overlap_star
-
-```{r}
-item <- 'repeats_no_overlap_star'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
 
 
 # F1-based
@@ -1361,6 +1324,96 @@ for (flavour in names(d)) {
 
 ```
 
+<!-- ```{r} -->
+
+<!-- cobra <- list() -->
+<!-- i <- 1 -->
+<!-- for (flavour in names(hung)) { -->
+<!--     for (res in names(hung[[flavour]])) { -->
+<!--     cobra[[i]] <- data.frame(cell = names(hung[[flavour]][[res]]$pr), -->
+<!--                              pr = hung[[flavour]][[res]]$pr, -->
+<!--                              re = hung[[flavour]][[res]]$re, -->
+<!--                              F1 = hung[[flavour]][[res]]$F1, -->
+<!--                              res = res, -->
+<!--                              flavour = flavour) -->
+<!--     i = i +1 -->
+<!--     } -->
+<!-- } -->
+
+<!-- cobra <- do.call(rbind.data.frame, cobra) -->
+<!-- cobra$id <- params$identifier -->
+
+<!-- ``` -->
+
+<!-- ```{r, fig.height = 4, fig.width = 7} -->
+<!-- ggplot(data = cobra, aes(x = pr, y =  re, group = res, col = res)) + -->
+<!--     geom_point() + -->
+<!--     facet_grid(flavour~cell, margins = FALSE) + -->
+<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) -->
+
+<!-- ``` -->
+
+<!-- ```{r, fig.height = 4, fig.width = 8} -->
+<!-- ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) + -->
+<!--     geom_point() + -->
+<!--     facet_grid(flavour~res, margins = FALSE) + -->
+<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) -->
+
+<!-- ``` -->
+
+<!-- ```{r, fig.height = 4, fig.width = 7} -->
+<!-- ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) + -->
+<!--     geom_point() + -->
+<!--     facet_wrap(~flavour) +  -->
+<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) -->
+
+<!-- ``` -->
+
+<!-- ```{r, fig.height = 4, fig.width = 8} -->
+<!-- ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) + -->
+<!--     geom_point() + -->
+<!--     facet_grid(flavour~res) +  -->
+<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) -->
+
+<!-- ``` -->
+
+<!-- For each cell type, get the max F1 stratifying by flavour *regardless of the resolution*. -->
+
+<!-- ```{r} -->
+
+<!-- ## cobra <- cobra[order(cobra$F1, cobra$cell, decreasing = TRUE),] -->
+<!-- ## maxf1 <- cobra[0,] -->
+<!-- maxF1 <- list() -->
+
+<!-- for (flavour in levels(cobra$flavour)) { -->
+<!--     for (cell in levels(cobra$cell)) { -->
+<!--         maxF1[[paste(flavour, cell)]] <- c(flavour, cell, max(cobra[cobra$flavour == flavour & -->
+<!--                                                                     cobra$cell == cell, 'F1'])) -->
+<!--     } -->
+    
+<!-- } -->
+
+
+<!-- maxF1 <- do.call(rbind.data.frame, maxF1) -->
+<!-- colnames(maxF1) <- c('flavour', 'cell', 'max_F1') -->
+<!-- maxF1$max_F1 <- as.numeric(as.character(maxF1$max_F1)) -->
+      
+<!-- maxF1$cell <- factor(as.character(maxF1$cell), levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)]))) -->
+<!-- maxF1$id <- params$identifier -->
+
+<!-- ``` -->
+
+<!-- ```{r, fig.width = 7, fig.height = 7} -->
+<!-- ggplot(data = maxF1, aes(x= cell, y = max_F1, col = flavour, group = flavour)) + -->
+<!--     geom_point() + -->
+<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) -->
+       
+<!-- ``` -->
+
+
 ```{r}
 
 cobra <- list()
@@ -1379,43 +1432,8 @@ for (flavour in names(hung)) {
 
 cobra <- do.call(rbind.data.frame, cobra)
 cobra$id <- params$identifier
-
 ```
 
-```{r, fig.height = 4, fig.width = 7}
-ggplot(data = cobra, aes(x = pr, y =  re, group = res, col = res)) +
-    geom_point() +
-    facet_grid(flavour~cell, margins = FALSE) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
-
-```
-
-```{r, fig.height = 4, fig.width = 8}
-ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
-    geom_point() +
-    facet_grid(flavour~res, margins = FALSE) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
-
-```
-
-```{r, fig.height = 4, fig.width = 7}
-ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
-    geom_point() +
-    facet_wrap(~flavour) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
-
-```
-
-```{r, fig.height = 4, fig.width = 8}
-ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) +
-    geom_point() +
-    facet_grid(flavour~res) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
-
-```
 
 For each cell type, get the max F1 stratifying by flavour *regardless of the resolution*.
 
@@ -1438,22 +1456,76 @@ maxF1 <- do.call(rbind.data.frame, maxF1)
 colnames(maxF1) <- c('flavour', 'cell', 'max_F1')
 maxF1$max_F1 <- as.numeric(as.character(maxF1$max_F1))
       
-maxF1$cell <- factor(as.character(maxF1$cell), levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)])))
-maxF1$id <- params$identifier
+maxF1$cell <- factor(as.character(maxF1$cell),
+                     levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)])))
 
 ```
 
-```{r, fig.width = 7, fig.height = 7}
-ggplot(data = maxF1, aes(x= cell, y = max_F1, col = flavour, group = flavour)) +
+```{r}
+DT::datatable(as.data.frame(cobra %>%
+              group_by(flavour, cell) %>%
+              summarize(max(F1)) %>%
+              arrange(desc(`max(F1)`))))
+````
+
+
+```{r, fig.height = 8, fig.width = 10}
+ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
     geom_point() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+    facet_grid(flavour~res, margins = FALSE) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+```
+
+```{r, fig.height = 8, fig.width = 8}
+ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
+    geom_point() +
+    facet_wrap(~flavour) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) +
+    labs(x = 'resolution')
+
+```
+
+```{r, fig.height = 7, fig.width = 10}
+
+cobra$resolution <- gsub('RNA_snn_res_', '', cobra$res)
+ggplot(data = cobra, aes(x = re, y =  F1, group=resolution, col =cell)) +
+    geom_point() +
+    facet_grid(flavour~res) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+```
+
+```{r, fig.width = 5, fig.height = 5}
+## sorting in a more sensible way
+maxF1$flavour <- factor(maxF1$flavour,
+                        levels = c('genes_cellranger', 'genes_alevin',
+                                   'both_unique', 'both_multi', 'both_alevin',
+                                   'repeats_cellranger', 'repeats_alevin',
+                                   'repeats_bowtie_unique', 'repeats_bowtie_multi',
+                                   'repeats_featurecounts_unique', 'repeats_featurecounts_multi',
+                                   'control_repeats_only_unique', 'control_repeats_only_multi'))
+                                          
+
+ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
+    geom_point() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
        
 ```
+
 
 # Aris 
 
 
 Not plotted, kept for further analysis
+
+```{r}
+aris_stored <- list()
+```
 
 ```{r}
 
