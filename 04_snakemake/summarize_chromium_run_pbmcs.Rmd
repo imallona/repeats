@@ -26,6 +26,7 @@ params:
   seurat_output: ""
   aris_output: ""
   cobra_output: ""
+  markers_output: ""
   regress_genes_nCount: ""
   regress_genes_nFeature: ""
 ---
@@ -45,36 +46,37 @@ print(params)
 
 ```{r}
 suppressPackageStartupMessages({
-library(Matrix)
+    library(Matrix)
 
-library(knitr)
-library(Seurat)
-library(dplyr)
-library(scater)
-## library(scater)
-library(data.table)
-## library(SingleCellExperiment)
-## library(scran)
-## library(org.Mm.eg.db)
-## suppressPackageStartupMessages(library(dplyr))
-## suppressPackageStartupMessages(library(DT))
-## library(pheatmap)
-## library(Cairo)
-## library(RColorBrewer)
-## library(corrplot)
-library(ggplot2)
-## library(GGally)
-library(reshape2)
-## library(xtable)
-library(mclust)
-library(pheatmap)
-library(SCINA)
-library(DT)
-library(clue)
-## library(iCOBRA)
-library(RColorBrewer)
-library(tximeta)
-library(SummarizedExperiment)
+    library(knitr)
+    library(Seurat)
+    library(dplyr)
+    library(scater)
+    ## library(scater)
+    library(data.table)
+    ## library(SingleCellExperiment)
+    ## library(scran)
+    ## library(org.Mm.eg.db)
+    ## suppressPackageStartupMessages(library(dplyr))
+    ## suppressPackageStartupMessages(library(DT))
+    ## library(pheatmap)
+    ## library(Cairo)
+    ## library(RColorBrewer)
+    ## library(corrplot)
+    library(ggplot2)
+    ## library(GGally)
+    library(reshape2)
+    ## library(xtable)
+    library(mclust)
+    library(pheatmap)
+    library(SCINA)
+    library(DT)
+    library(clue)
+    ## library(iCOBRA)
+    library(RColorBrewer)
+    library(tximeta)
+    library(SummarizedExperiment)
+    library(biomaRt)
 })
 ```
 
@@ -417,6 +419,8 @@ if (params$genes_alevin != "None") {
 
     annot$ids <- rownames(counts)
 
+    ## biomartCacheClear()
+    
     annot$filters = "ensembl_gene_id_version"
     annot$attributes = c(annot$filters, "external_gene_name", "chromosome_name", 
                          "gene_biotype", "start_position", "end_position")
@@ -1936,104 +1940,26 @@ print(aris)
 
 # Differential repeat expression by SCINA identity {.tabset}
 
-```{r does_not_work, eval = FALSE}
+```{r}
+## marker list
+ml <- list()
+```
+
+```{r datatable_does_not_render, eval = TRUE}
 for (item in names(d)) {
     cat('## ', item, '\n\n')
     
     Idents(d[[item]]) <- 'scina'
 
     ## find markers for every scina identity (discarding the unplaced); report only positives    
-    markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
+    ml[[item]] <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
                               only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
 
-    DT::datatable(markers)
+    ## DT::datatable(ml[[item]])
+    print(head(ml[[item]]))
+    
     cat('\n\n')
 }
-
-```
-
-```{r}
-ml <- list()
-```
-
-## genes_cellranger
-
-
-```{r}
-item <- 'genes_cellranger'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
-
-## repeats_cellranger
-
-```{r}
-item <- 'repeats_cellranger'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
-
-
-## repeats_featurecounts unique
-
-```{r}
-item <- 'repeats_featurecounts_unique'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
-
-
-## repeats_featurecounts multimappers
-
-```{r}
-item <- 'repeats_featurecounts_multi'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
-
-## control_repeats_only unique 
-
-```{r}
-item <- 'control_repeats_only_unique'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
-
-## control_repeats_only multimappers
-
-```{r}
-item <- 'control_repeats_only_multi'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-ml[[item]] <- markers
-DT::datatable(markers)
 
 ```
 
@@ -2225,27 +2151,27 @@ cobra$id <- params$identifier
 For each cell type, get the max F1 stratifying by flavour *regardless of the resolution*.
 
 ```{r}
+tryCatch({
+    ## cobra <- cobra[order(cobra$F1, cobra$cell, decreasing = TRUE),]
+    ## maxf1 <- cobra[0,]
+    maxF1 <- list()
 
-## cobra <- cobra[order(cobra$F1, cobra$cell, decreasing = TRUE),]
-## maxf1 <- cobra[0,]
-maxF1 <- list()
-
-for (flavour in levels(cobra$flavour)) {
-    for (cell in levels(cobra$cell)) {
-        maxF1[[paste(flavour, cell)]] <- c(flavour, cell, max(cobra[cobra$flavour == flavour &
-                                                                    cobra$cell == cell, 'F1']))
+    for (flavour in levels(cobra$flavour)) {
+        for (cell in levels(cobra$cell)) {
+            maxF1[[paste(flavour, cell)]] <- c(flavour, cell, max(cobra[cobra$flavour == flavour &
+                                                                        cobra$cell == cell, 'F1']))
+        }
+        
     }
+
+
+    maxF1 <- do.call(rbind.data.frame, maxF1)
+    colnames(maxF1) <- c('flavour', 'cell', 'max_F1')
+    maxF1$max_F1 <- as.numeric(as.character(maxF1$max_F1))
     
-}
-
-
-maxF1 <- do.call(rbind.data.frame, maxF1)
-colnames(maxF1) <- c('flavour', 'cell', 'max_F1')
-maxF1$max_F1 <- as.numeric(as.character(maxF1$max_F1))
-      
-maxF1$cell <- factor(as.character(maxF1$cell),
-                     levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)])))
-
+    maxF1$cell <- factor(as.character(maxF1$cell),
+                         levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)])))
+}, error = function(x) print(x))
 ```
 
 ```{r}
@@ -2287,21 +2213,23 @@ ggplot(data = cobra, aes(x = re, y =  F1, group=resolution, col =cell)) +
 ```
 
 ```{r, fig.width = 5, fig.height = 5}
-## sorting in a more sensible way
-maxF1$flavour <- factor(maxF1$flavour,
-                        levels = c('genes_cellranger', 'genes_alevin',
-                                   'both_unique', 'both_multi', 'both_alevin',
-                                   'repeats_cellranger', 'repeats_alevin',
-                                   'repeats_bowtie_unique', 'repeats_bowtie_multi',
-                                   'repeats_featurecounts_unique', 'repeats_featurecounts_multi',
-                                   'control_repeats_only_unique', 'control_repeats_only_multi'))
-                                          
 
-ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
-    geom_point() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
-       
+tryCatch({
+    ## sorting in a more sensible way
+    maxF1$flavour <- factor(maxF1$flavour,
+                            levels = c('genes_cellranger', 'genes_alevin',
+                                       'both_unique', 'both_multi', 'both_alevin',
+                                       'repeats_cellranger', 'repeats_alevin',
+                                       'repeats_bowtie_unique', 'repeats_bowtie_multi',
+                                       'repeats_featurecounts_unique', 'repeats_featurecounts_multi',
+                                       'control_repeats_only_unique', 'control_repeats_only_multi'))
+    
+
+    ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
+        geom_point() +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+        scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+}, error = function(x) print(x)))       
 ```
 
 # Comparison across techniques
@@ -2472,10 +2400,12 @@ plot(hc_cor)
 # Export objects
 
 List of seurat objects
+
 ```{r}
 saveRDS(object = d, file = params$seurat_output)
 saveRDS(object = aris_stored, file = params$aris_output)
 saveRDS(object = cobra, file = params$cobra_output)
+saveRDS(object = ml, file = params$markers_output)
 ```
 
 # Timestamp

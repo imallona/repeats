@@ -151,7 +151,9 @@ rule knit_report_smartseq:
         html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
         rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
         aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-        cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
+        cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        markers = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
+        
     log:
         op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_smartseq2_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
     shell:
@@ -168,6 +170,7 @@ rule knit_report_smartseq:
           repeats_only_multi = \"{input.repeats_only_multi}\",
           seurat_output = \"{output.rds}\", 
           aris_output = \"{output.aris}\", 
+          markers_output = \"{output.markers}\", 
           cobra_output = \"{output.cobra}\",
           regress_genes_nCount = \"{wildcards.regress_ncount}\", \
           regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}

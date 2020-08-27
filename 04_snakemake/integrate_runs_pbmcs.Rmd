@@ -1381,6 +1381,56 @@ ggplot(data = cobra[cobra$cell %in% c('CD14+_monocyte', 'CD16+_monocyte', 'Cytot
     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) 
 ```
 
+# Markers
+
+For each sample, each flavour, and each celltype, get the top 5 markers. Then, look for overlaps.
+
+
+```{r}
+markers <- list()
+
+for (rds in params) {
+    ## the params are RDS objects from Seurat
+    ## aris[[sapply(strsplit(dirname(rds), .Platform$file.sep),
+    ##       function(x) return(x[6]))]] <- list()
+    fns <- list.files(dirname(rds), pattern = 'markers.*rds')
+    for (fn in fns) {
+        curr_nest <- readRDS(file.path(dirname(rds), fn))
+        for (item in names(curr_nest)) {
+            curr_nest[[item]]$flavour <- item
+            curr_nest[[item]]$dataset <- sapply(strsplit(dirname(rds), '/'),
+                                                function(x) return(x[6]))
+        }
+
+        ## get only the top 5 per celltype
+        curr_nest <- lapply(curr_nest, function(x) x %>%
+                                                   group_by(cluster) %>%
+                                                   top_n(n = 5,
+                                                         wt = avg_logFC))
+        
+        markers[[fn]] <- do.call(rbind.data.frame, curr_nest)
+    }
+}
+markers <- do.call(rbind.data.frame, markers)
+
+
+colnames(markers)
+table(markers$cluster)
+table(markers$flavour)
+table(markers$dataset)
+```
+
+```{r}
+
+for (celltype in unique(markers$cluster)) {
+    
+}
+
+listInput <- list(
+    one = c(1, 2, 3, 5, 7, 8, 11, 12, 13),
+    two = c(1, 2, 4, 5, 10), three = c(1, 5, 6, 7, 8, 9, 10, 12, 13))
+
+```
 
 # Timestamp
 
