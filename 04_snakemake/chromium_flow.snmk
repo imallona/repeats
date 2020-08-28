@@ -192,32 +192,32 @@ rule profile_featurecounts_run_repeats_not_genes:
        """    
 
        
-rule knit_report_alevin:
-    input:
-        genes =  op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
-        repeats = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
-    params:
-        rmd = 'summarize_alevin_run_pbmcs.Rmd',
-        run_name = RUN_NAME
-    output:
-        html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-        rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-        aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-        markers = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')    
-    log:
-        op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_alevin_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
-    shell: """
-        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
-           output_file = \"{output.html}\", 
-           params = list(identifier = \"{params.run_name}\", 
-                         genes_alevin = \"{input.genes}\", 
-                         repeats_alevin = \"{input.repeats}\", 
-                         seurat_output = \"{output.rds}\", 
-                         aris_output = \"{output.aris}\", 
-                         markers_output = \"{output.markers}\", 
-                         regress_genes_nCount = \"{wildcards.regress_ncount}\", 
-                         regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}
-        """
+# rule knit_report_alevin:
+#     input:
+#         genes =  op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
+#         repeats = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
+#     params:
+#         rmd = 'summarize_alevin_run_pbmcs.Rmd',
+#         run_name = RUN_NAME
+#     output:
+#         html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+#         rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+#         aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+#         markers = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')    
+#     log:
+#         op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_alevin_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
+#     shell: """
+#         {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+#            output_file = \"{output.html}\", 
+#            params = list(identifier = \"{params.run_name}\", 
+#                          genes_alevin = \"{input.genes}\", 
+#                          repeats_alevin = \"{input.repeats}\", 
+#                          seurat_output = \"{output.rds}\", 
+#                          aris_output = \"{output.aris}\", 
+#                          markers_output = \"{output.markers}\", 
+#                          regress_genes_nCount = \"{wildcards.regress_ncount}\", 
+#                          regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}
+#         """
 
 rule knit_report_chromium:
     input:
@@ -265,6 +265,7 @@ rule knit_report_chromium:
         rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
         aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
         cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        markers = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
     log:
         op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_chromium_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
     shell: """
@@ -273,6 +274,7 @@ rule knit_report_chromium:
           params = list(identifier = \"{params.run_name}\", 
                      genes_cellranger = \"{input.genes}\", 
                      repeats_cellranger = \"{input.repeats}\", 
+                     markers_output = \"{output.markers}\", 
                      repeats_featurecounts_multi = \"{input.featurecounts_multi}\", 
                      repeats_featurecounts_unique = \"{input.featurecounts_unique}\",
                      repeats_only_featurecounts_control_multi = \"{input.repeats_only_featurecounts_control_multi}\", 

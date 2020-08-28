@@ -419,7 +419,7 @@ if (params$genes_alevin != "None") {
 
     annot$ids <- rownames(counts)
 
-    ## biomartCacheClear()
+    biomartCacheClear()
     
     annot$filters = "ensembl_gene_id_version"
     annot$attributes = c(annot$filters, "external_gene_name", "chromosome_name", 
@@ -432,7 +432,8 @@ if (params$genes_alevin != "None") {
 
     feature_info <- biomaRt::getBM(attributes = annot$attributes,
                                    filters = annot$filters, 
-                                   values = annot$ids, mart = annot$bmart)
+                                   values = annot$ids, mart = annot$bmart,
+                                   useCache = FALSE)
 
 
     tmp <- merge(data.frame(ensembl_gene_id_version = rownames(counts)),
@@ -2229,7 +2230,7 @@ tryCatch({
         geom_point() +
         theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
         scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
-}, error = function(x) print(x)))       
+}, error = function(x) print(x)) 
 ```
 
 # Comparison across techniques

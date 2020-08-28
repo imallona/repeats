@@ -815,7 +815,7 @@ for (run in names(d)) {
 }
 ```
 
-Maybe add the markers of some celltypes on top?
+
 
 
 # ARIS
@@ -1381,19 +1381,19 @@ ggplot(data = cobra[cobra$cell %in% c('CD14+_monocyte', 'CD16+_monocyte', 'Cytot
     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) 
 ```
 
-# Markers
+# Markers {.tabset}
 
-For each sample, each flavour, and each celltype, get the top 5 markers. Then, look for overlaps.
+For each sample, each flavour, and each celltype, get the top 100 markers. Then, look for overlaps.
 
 
 ```{r}
 markers <- list()
 
-for (rds in params) {
+for (rds in params) {    
     ## the params are RDS objects from Seurat
     ## aris[[sapply(strsplit(dirname(rds), .Platform$file.sep),
     ##       function(x) return(x[6]))]] <- list()
-    fns <- list.files(dirname(rds), pattern = 'markers.*rds')
+    fns <- list.files(dirname(rds), pattern = 'markers.*TRUE.*TRUE.*rds')
     for (fn in fns) {
         curr_nest <- readRDS(file.path(dirname(rds), fn))
         for (item in names(curr_nest)) {
@@ -1402,10 +1402,10 @@ for (rds in params) {
                                                 function(x) return(x[6]))
         }
 
-        ## get only the top 5 per celltype
+        ## get only the top 50 per celltype
         curr_nest <- lapply(curr_nest, function(x) x %>%
                                                    group_by(cluster) %>%
-                                                   top_n(n = 5,
+                                                   top_n(n = 100,
                                                          wt = avg_logFC))
         
         markers[[fn]] <- do.call(rbind.data.frame, curr_nest)
@@ -1422,13 +1422,68 @@ table(markers$dataset)
 
 ```{r}
 
+markers <- as.data.frame(markers)
+
+
 for (celltype in unique(markers$cluster)) {
-    
+    cat('## ', celltype, '\n\n')
+    ul <- list()
+    for (dataset in unique(markers[markers$cluster == celltype, 'dataset'])) {
+        print(dataset)
+        for (flavour in unique(markers[ markers$cluster == celltype &
+                                        markers$dataset == dataset, 'flavour'])) {
+                    
+            ul[[paste(celltype, dataset, flavour, sep = "_")]] <- markers[
+                markers$cluster == celltype &
+                markers$dataset == dataset &
+                markers$flavour == flavour, 'gene']
+        }
+    }
+    print(upset(fromList(ul)))
+    rm(ul)
+    cat('\n\n')
+
 }
 
-listInput <- list(
-    one = c(1, 2, 3, 5, 7, 8, 11, 12, 13),
-    two = c(1, 2, 4, 5, 10), three = c(1, 5, 6, 7, 8, 9, 10, 12, 13))
+
+## str(ul)
+
+
+```
+
+# Markers II {.tabset}
+
+Per celltype, concordance
+
+```{r}
+
+ul <- list()
+for (celltype in unique(markers$cluster)) {
+    cat('## ', celltype, '\n\n')
+
+    ul <- list()
+    for (dataset in unique(markers[markers$cluster == celltype, 'dataset'])) {
+
+
+            
+        ul[[paste(celltype, dataset, sep = "_")]] <- markers[ markers$cluster == celltype &
+                                                              markers$dataset == dataset, 'gene']
+    }
+    ## str(ul)
+    print(upset(fromList(ul), nintersects = NA))
+
+    ul <- list()
+    for (flavour in unique(markers[markers$cluster == celltype, 'flavour'])) {
+
+        ul[[paste(celltype, flavour, sep = "_")]] <- markers[ markers$cluster == celltype &
+                                                              markers$flavour == flavour, 'gene']
+    }
+    ## str(ul)
+    print(upset(fromList(ul), nintersects = NA))
+    cat('\n\n')
+
+}
+
 
 ```
 
