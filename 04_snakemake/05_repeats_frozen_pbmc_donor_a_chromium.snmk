@@ -176,6 +176,7 @@ rule knit_report_chromium_no_alevin:
         rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
         aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
         cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        markers = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
     log:
         op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_chromium_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
     shell: """
@@ -195,7 +196,8 @@ rule knit_report_chromium_no_alevin:
                      repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
                      repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\", 
                      genes_alevin = \"None\",
-                     repeats_alevin = \"None\",
+                     repeats_alevin = \"None\", 
+                     markers_output = \"{output.markers}\",
                      cobra_output = \"{output.cobra}\"))' &> {log}
         """
 
