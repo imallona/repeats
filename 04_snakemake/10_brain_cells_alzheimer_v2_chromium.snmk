@@ -163,6 +163,29 @@ rule all:
 
 #         """
 
+
+# [imallona@imlsportmacquarie SRR8847571]$ zcat *1.fastq.gz | head -4
+# @SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=8
+# GAGGATCT
+# +SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=8
+# FFFFFFFF
+# [imallona@imlsportmacquarie SRR8847571]$ zcat *2.fastq.gz | head -4
+# @SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=26
+# CCATTCGGTCGTTGTATTCGTTTAGG
+# +SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=26
+# FFFFFFFFFFFFFFFFFFFFFFFFFF
+# [imallona@imlsportmacquarie SRR8847571]$ zcat *3.fastq.gz | head -4
+# @SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=96
+# CGATAATATCAGGATCACAAAAGATACCTTTTCACATTACTTTTAATTTCCTCTCTGTATTTTATCCAATAGCGTAAGACAATAAGAAGATAAAGT
+# +SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=96
+# FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF::FFFFFFFF:FFFF
+
+# read 1 should contain the cell barcode and UMI tag -> 2.fastq.gz here
+# read 2 should contain cDNA sequence -> 3.fastq.gz here
+# i1 should contain the sample index -> 1.fastq.gz here
+
+# the index reads contain the sample index
+
 rule get_data:
     priority:
         100
@@ -191,8 +214,8 @@ rule get_data:
         cd {params.path_data}
         ln -s {params.srr}_1.fastq.gz {params.srr}_S1_L001_I1_001.fastq.gz
 
-        ln -s {params.srr}_2.fastq.gz {params.srr}_S1_L001_R2_001.fastq.gz
-        ln -s {params.srr}_3.fastq.gz {params.srr}_S1_L001_R1_001.fastq.gz
+        ln -s {params.srr}_2.fastq.gz {params.srr}_S1_L001_R1_001.fastq.gz
+        ln -s {params.srr}_3.fastq.gz {params.srr}_S1_L001_R2_001.fastq.gz
 
         """
 
@@ -203,8 +226,8 @@ rule map_salmon_repeats_chromium:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
-        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
-        r = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
+        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
+        r = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
     output:
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
     threads:
@@ -213,8 +236,8 @@ rule map_salmon_repeats_chromium:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
         processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats'),
         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
-        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
-        r = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
+        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
+        r = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
     log:
         op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium.log')
     shell:
@@ -239,8 +262,8 @@ rule map_salmon_genes_chromium:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'duplicate_clusters.tsv'),
-        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
-        r = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz')        
+        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
+        r = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz')        
     output:
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz')
     threads:
@@ -249,8 +272,8 @@ rule map_salmon_genes_chromium:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
         processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes'),
         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon'),
-        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
-        r = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz')  
+        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
+        r = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz')  
     log:
         op.join(BASE, 'runs', RUN_NAME, 'run_salmon_genes_chromium.log')
     shell:
