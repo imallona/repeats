@@ -8,8 +8,10 @@
 import os.path as op
 from glob import glob
 
-RUN_NAME  = 'SRR8847571'
- # 3' v2 according to https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM4286760
+# RUN_NAME  = 'SRR10974769' this is dko
+# https://www.ncbi.nlm.nih.gov/sra?term=SRX7639834 this is wt
+# https://www.ncbi.nlm.nih.gov/sra?term=SRX7639819
+RUN_NAME = 'SRR10974767'
 CHEMISTRY = 'SC3Pv2'
 DEMUX = False
 GENOME = 'GRCh38'
@@ -18,7 +20,7 @@ GENOME = 'GRCh38'
 
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
-NTHREADS = 35
+NTHREADS = 40
 LOCAL_MEM_GB = 100
 
 ## @FIXME to be moved to config
@@ -103,7 +105,7 @@ include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow.snmk"
 
 def get_samples(fn):
    # samples = ['SRR10974768', 'SRR10974769'] # 68 is MARS-Seq
-   samples = ['SRR8847571']
+   samples = ['SRR10974767']
    return(samples)
  
 rule all:
@@ -117,8 +119,8 @@ rule all:
         # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html'),
         # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report_genes_regressed_out.html')
         # op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'Log.out'),
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
+        # op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
+        # op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
         # op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz"),
          # op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard",  RUN_NAME + "_transcriptome_repeats.counts.summary.png"),
         # op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes",  RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
@@ -144,49 +146,8 @@ rule all:
         
 
 
-# rule get_colon_cancer_lines_GSE144357:    
-#     params:
-#         path = op.join(BASE, 'runs', 'colon_cancer_lines_GSE144357'),
-#         path_data = op.join(BASE, 'data', 'SRR10974769')
-#     output:
-#         op.join(BASE, 'runs', 'colon_cancer_lines_GSE144357', '{srr}_1.fastq.gz')
-#     shell:
-#         """
-#         mkdir -p {params.path}
-#         cd {params.path}
-#         {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
 
-#         cd {params.path_data}
-#         ln -s SRR10974769_1.fastq.gz SRR10974769_S1_L001_R2_001.fastq.gz
-#         ln -s SRR10974769_2.fastq.gz SRR10974769_S1_L001_R1_001.fastq.gz
-#         ln -s SRR10974769_3.fastq.gz SRR10974769_S1_L001_I1_001.fastq.gz
-
-#         """
-
-
-# [imallona@imlsportmacquarie SRR8847571]$ zcat *1.fastq.gz | head -4
-# @SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=8
-# GAGGATCT
-# +SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=8
-# FFFFFFFF
-# [imallona@imlsportmacquarie SRR8847571]$ zcat *2.fastq.gz | head -4
-# @SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=26
-# CCATTCGGTCGTTGTATTCGTTTAGG
-# +SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=26
-# FFFFFFFFFFFFFFFFFFFFFFFFFF
-# [imallona@imlsportmacquarie SRR8847571]$ zcat *3.fastq.gz | head -4
-# @SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=96
-# CGATAATATCAGGATCACAAAAGATACCTTTTCACATTACTTTTAATTTCCTCTCTGTATTTTATCCAATAGCGTAAGACAATAAGAAGATAAAGT
-# +SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=96
-# FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF::FFFFFFFF:FFFF
-
-# read 1 should contain the cell barcode and UMI tag -> 2.fastq.gz here
-# read 2 should contain cDNA sequence -> 3.fastq.gz here
-# i1 should contain the sample index -> 1.fastq.gz here
-
-# the index reads contain the sample index
-
-rule get_data:
+rule get_colon_cancer_hct_wt:
     priority:
         100
     params:
@@ -194,10 +155,10 @@ rule get_data:
         path_data = op.join(BASE, 'data', RUN_NAME),
         srr = RUN_NAME
     output:
-        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
-        r = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
-        i1 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_I1_001.fastq.gz'),
-        tmp = temp(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '.sra'))
+        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
+        r2 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
+        tmp = temp(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '.sra')),
+        i = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_I1_001.fastq.gz')
     shell:
         """
         mkdir -p {params.path}
@@ -211,11 +172,14 @@ rule get_data:
             
         {FASTQDUMP}  --gzip --split-files  {params.srr}.sra
   
-        cd {params.path_data}
-        ln -s {params.srr}_1.fastq.gz {params.srr}_S1_L001_I1_001.fastq.gz
+     # read 1 should contain the cell barcode and UMI tag -> 1.fastq.gz here
+     # read 2 should contain cDNA sequence -> 2.fastq.gz here
+     # i1 should contain the sample index -> 3.fastq.gz here
 
-        ln -s {params.srr}_2.fastq.gz {params.srr}_S1_L001_R1_001.fastq.gz
-        ln -s {params.srr}_3.fastq.gz {params.srr}_S1_L001_R2_001.fastq.gz
+        cd {params.path_data}
+        ln -s {params.srr}_1.fastq.gz {params.srr}_S1_L001_R1_001.fastq.gz
+        ln -s {params.srr}_2.fastq.gz {params.srr}_S1_L001_R2_001.fastq.gz
+        ln -s {params.srr}_3.fastq.gz {params.srr}_S1_L001_I1_001.fastq.gz
 
         """
 
@@ -226,8 +190,8 @@ rule map_salmon_repeats_chromium:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
-        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
-        r = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
+        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
+        r2 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
     output:
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
     threads:
@@ -236,8 +200,8 @@ rule map_salmon_repeats_chromium:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
         processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats'),
         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
-        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
-        r = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
+        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
+        r2 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
     log:
         op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium.log')
     shell:
@@ -248,7 +212,7 @@ rule map_salmon_repeats_chromium:
     ({SALMON} alevin \
     -l ISR \
     -1 {params.cb} \
-    -2 {params.r} \
+    -2 {params.r2} \
     --chromium  \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
@@ -259,11 +223,13 @@ rule map_salmon_repeats_chromium:
     
 
 rule map_salmon_genes_chromium:
+    priority:
+        99
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'duplicate_clusters.tsv'),
-        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
-        r = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz')        
+        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
+        r2 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz')        
     output:
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz')
     threads:
@@ -272,8 +238,8 @@ rule map_salmon_genes_chromium:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
         processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes'),
         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon'),
-        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
-        r = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz')  
+        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
+        r2 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz')  
     log:
         op.join(BASE, 'runs', RUN_NAME, 'run_salmon_genes_chromium.log')
     shell:
@@ -284,7 +250,7 @@ rule map_salmon_genes_chromium:
     ({SALMON} alevin \
     -l ISR \
     -1 {params.cb} \
-    -2 {params.r} \
+    -2 {params.r2} \
     --chromium  \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
@@ -296,7 +262,7 @@ rule map_salmon_genes_chromium:
 ## salmon end
 
 
-## chromium start
+# cellranger start
 
 
 rule run_cellranger_repeats:
@@ -365,5 +331,5 @@ rule run_cellranger_standard:
           --localmem={params.local_mem_gb}
         """
 
-        
-## chromium end
+
+## cellranger end
