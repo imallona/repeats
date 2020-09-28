@@ -1,0 +1,40 @@
+#!/usr/bin/env snakemake -s
+## 
+## Started 28 sept 2020
+##
+## Izaskun Mallona
+## GPLv3
+
+import os.path as op
+from glob import glob
+
+# 01_repeats_SRR10974769_chromium.snmk dko
+# 11_hct_wt_10x_SRR10974767.snmk
+ 
+BASE = op.join('/home', 'imallona', 'repeats_sc')
+NTHREADS = 40
+LOCAL_MEM_GB = 100
+Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
+
+rule all:
+    input:
+        op.join(BASE, 'runs', 'pbmc_integration.html')
+
+## files: just two files, from the many generated during the process
+rule integration_hct:
+    input:
+        c1 = '/home/imallona/repeats_sc/runs/SRR10974769/SRR10974769_chromium_regress_nCount_FALSE_nFeature_FALSE',
+        c2 = '/home/imallona/repeats_sc/runs/SRR10974767/SRR10974767_chromium_regress_nCount_FALSE_nFeature_FALSE'
+    params:
+        rmd = 'integrate_runs_hct.Rmd'
+    output:
+        html = op.join(BASE, 'runs', 'hct_integration.html')
+    log:
+        op.join(BASE, 'runs', 'hct_integration.log')
+    shell:
+        """
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+          output_file = \"{output.html}\", 
+          params = list(chromium1 = \"{input.c1}\", 
+             chromium2= \"{input.c2}\"
+        """

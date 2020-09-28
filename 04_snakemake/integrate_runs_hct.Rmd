@@ -1,5 +1,5 @@
 ---
-title: "Across samples report"
+title: "Across samples report - HCT116"
 author: "Izaskun Mallona at Robinsonlab"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
@@ -15,10 +15,6 @@ output:
 params:
   chromium1: ""
   chromium2: ""
-  chromium3: ""
-  chromium4: ""
-  smartseq1: ""
-
 ---
 
 
@@ -57,7 +53,6 @@ library(viridis)
 library(UpSetR)
 library(ggplot2)
 library(grid)
-
 })
 ```
 
@@ -183,13 +178,10 @@ coef_var <- function(x){
 ##                run3 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a/summarize_cellranger_run_regress_nCount_FALSE_nFeature_FALSE.rds',
 ##                run4 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds')
 
-params <- list( chromium1 = '/home/imallona/repeats_sc/runs/pbmc8k/pbmc8k_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
-        chromium2 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
-        chromium3 = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
-        smartseq1 = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/pbmcs_smartseq2_ding_pmbc_smartseq2_regress_nCount_FALSE_nFeature_FALSE.rds',
-        chromium4 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds')
-```
+params <- list(chromium1 = '/home/imallona/repeats_sc/runs/SRR10974767/SRR10974767_chromium_regress_nCount_FALSE_nFeature_FALSE',
+               chromium2 = '/home/imallona/repeats_sc/runs/SRR10974769/SRR10974769_chromium_regress_nCount_FALSE_nFeature_FALSE
 
+```
 
 ```{r}
 d <- list()
@@ -208,6 +200,91 @@ for (rds in params) {
                function(x) return(x[6]))]] <- readRDS(file = rds)
 }
 ```
+
+# Seurat integration? Worth it?
+
+Merge the two datasets, and plot them without integration
+
+```{r}
+combined <- list()
+
+for (item in names(d[[1]])) {
+    combined[[item]] <- merge(d[[1]]$item, y = d[[2]]$item,
+                              add.cell.ids = c(names(d)[1],
+                                               names(d)[2]),
+                              project = "hct_dnmts")
+
+    combined[[item]] <- NormalizeData(combined[[item]],
+                                      normalization.method = "LogNormalize", 
+                                      scale.factor = 10000)
+                               scale.factor = 10000)
+
+    ## if repeats, we take half of them
+    ## else if genes, then the top 10 pct
+    if (grepl('repeats', item)) {
+        d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst",
+                                          nfeatures = round(nrow(d[[item]])/4))
+    }
+    else {
+        d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst",
+                                          nfeatures = round(nrow(d[[item]])/10))
+    }
+
+                                      
+    NUM_PCS <- 1:20
+    cat("### ", item, "\n\n")
+
+    to_regress <- NULL
+    if (as.logical(params$regress_genes_nCount)) {
+        to_regress <- c(to_regress, 'nCount_RNA')
+    }
+    if (as.logical(params$regress_genes_nFeature)) {
+        to_regress <- c(to_regress, 'nFeature_RNA')
+        
+    }
+    
+    if (item == 'genes_cellranger') {
+        d[[item]] <- ScaleData(d[[item]], vars.to.regress = to_regress)
+    } else {
+        ## in this case, the variables to regress come from the genes!
+        ## e.g. is the genes library size the one to normalize the repets'
+        tmp <- d$genes_cellranger@meta.data
+        tmp$cell <- rownames(tmp)
+        d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
+        d[[item]]@meta.data <- merge(d[[item]]@meta.data, tmp, by = 'cell',
+                                     suffixes = c('', '_genes'))
+        rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
+
+
+        d[[item]] <- ScaleData(d[[item]],
+                               vars.to.regress = if(is.null(to_regress)) NULL else paste0(to_regress, '_genes'))
+        
+        rm(tmp) 
+    }
+    
+    d[[item]] <- RunPCA(d[[item]], features = VariableFeatures(object = d[[item]]))
+    
+    DimPlot(d[[item]], reduction = "pca")
+    
+    print(ElbowPlot(d[[item]]) + ggtitle(item))
+
+
+    cat('\n\n')
+}
+
+
+                               
+
+}
+
+
+
+```
+
+```{r}
+knit_exit()
+```
+
 
 # Most variable repeats cellranger {.tabset}
 
