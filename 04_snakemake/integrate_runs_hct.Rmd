@@ -178,8 +178,10 @@ coef_var <- function(x){
 ##                run3 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a/summarize_cellranger_run_regress_nCount_FALSE_nFeature_FALSE.rds',
 ##                run4 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds')
 
-params <- list(chromium1 = '/home/imallona/repeats_sc/runs/SRR10974767/SRR10974767_chromium_regress_nCount_FALSE_nFeature_FALSE',
-               chromium2 = '/home/imallona/repeats_sc/runs/SRR10974769/SRR10974769_chromium_regress_nCount_FALSE_nFeature_FALSE
+params <- list(chromium1 = '/home/imallona/repeats_sc/runs/SRR10974767/SRR10974767_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
+               chromium2 = '/home/imallona/repeats_sc/runs/SRR10974769/SRR10974769_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
+               regress_genes_nCount = FALSE,
+               regress_genes_nFeature = FALSE)
 
 ```
 
@@ -190,14 +192,14 @@ d <- list()
 ```{r}
 ## cr cellranger
 ## fc featurecounts
-for (rds in params) {
+for (rds in grep('regress', names(params), invert = TRUE, value = TRUE)) {
     
     ## d[[run]] <- list()
     ## d[[run]]$genes_cr <- load_standard_cellranger_genes(run_name = run)
     ## d[[run]]$reps_cr <- load_cellranger_repeats(run_name = run)
     ## d[[run]]$reps_fc <- load_featurecounts_repeats(run_name = run)
-    d[[sapply(strsplit(dirname(rds), .Platform$file.sep),
-               function(x) return(x[6]))]] <- readRDS(file = rds)
+    d[[sapply(strsplit(dirname(params[[rds]]), .Platform$file.sep),
+               function(x) return(x[6]))]] <- readRDS(file = params[[rds]])
 }
 ```
 
@@ -208,26 +210,26 @@ Merge the two datasets, and plot them without integration
 ```{r}
 combined <- list()
 
-for (item in names(d[[1]])) {
-    combined[[item]] <- merge(d[[1]]$item, y = d[[2]]$item,
+for (flavour in names(d[[1]])) {
+    combined[[flavour]] <- merge(d[[1]][[flavour]], y = d[[2]][[flavour]],
                               add.cell.ids = c(names(d)[1],
                                                names(d)[2]),
                               project = "hct_dnmts")
 
-    combined[[item]] <- NormalizeData(combined[[item]],
+    combined[[flavour]] <- NormalizeData(combined[[flavour]],
                                       normalization.method = "LogNormalize", 
                                       scale.factor = 10000)
-                               scale.factor = 10000)
+}
 
+for (item in names(combined)) {
     ## if repeats, we take half of them
     ## else if genes, then the top 10 pct
     if (grepl('repeats', item)) {
-        d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst",
-                                          nfeatures = round(nrow(d[[item]])/4))
-    }
-    else {
-        d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst",
-                                          nfeatures = round(nrow(d[[item]])/10))
+        combined[[item]] <- FindVariableFeatures(combined[[item]], selection.method = "vst",
+                                          nfeatures = round(nrow(combined[[item]])/4))
+    } else {
+        combined[[item]] <- FindVariableFeatures(combined[[item]], selection.method = "vst",
+                                          nfeatures = round(nrow(combined[[item]])/10))
     }
 
                                       
@@ -244,42 +246,38 @@ for (item in names(d[[1]])) {
     }
     
     if (item == 'genes_cellranger') {
-        d[[item]] <- ScaleData(d[[item]], vars.to.regress = to_regress)
+        combined[[item]] <- ScaleData(combined[[item]], vars.to.regress = to_regress)
     } else {
         ## in this case, the variables to regress come from the genes!
         ## e.g. is the genes library size the one to normalize the repets'
-        tmp <- d$genes_cellranger@meta.data
+        tmp <- combined$genes_cellranger@meta.data
         tmp$cell <- rownames(tmp)
-        d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
-        d[[item]]@meta.data <- merge(d[[item]]@meta.data, tmp, by = 'cell',
+        combined[[item]]@meta.data$cell <- rownames(combined[[item]]@meta.data)
+        combined[[item]]@meta.data <- merge(combined[[item]]@meta.data, tmp, by = 'cell',
                                      suffixes = c('', '_genes'))
-        rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
+        rownames(combined[[item]]@meta.data) <- combined[[item]]@meta.data$cell
 
 
-        d[[item]] <- ScaleData(d[[item]],
+        combined[[item]] <- ScaleData(combined[[item]],
                                vars.to.regress = if(is.null(to_regress)) NULL else paste0(to_regress, '_genes'))
         
         rm(tmp) 
     }
     
-    d[[item]] <- RunPCA(d[[item]], features = VariableFeatures(object = d[[item]]))
+    combined[[item]] <- RunPCA(combined[[item]], features = VariableFeatures(object = combined[[item]]))
     
-    DimPlot(d[[item]], reduction = "pca")
+
+    print(ElbowPlot(combined[[item]]) + ggtitle(item))
+
+    print(DimPlot(combined[[item]], reduction = "pca", group.by = 'orig.ident'))
     
-    print(ElbowPlot(d[[item]]) + ggtitle(item))
-
-
     cat('\n\n')
 }
 
 
-                               
-
-}
-
-
-
 ```
+
+both unique is all red
 
 ```{r}
 knit_exit()
