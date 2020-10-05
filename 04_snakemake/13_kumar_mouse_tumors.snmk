@@ -126,14 +126,33 @@ def get_cbs(path):
 def get_reads(path):
    return(' '.join([ op.join(path, item) + '_S1_L001_R1_001.fastq.gz' for item in get_samples()]))
 
+# print(get_samples())
 
 rule all:
     input:
         expand(op.join(BASE, 'data', RUN_NAME, '{srr}' + '_S1_L001_R1_001.fastq.gz'),
                srr = get_samples()),
-        expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-               regress_ncount = ['TRUE', 'FALSE'],
-               regress_nfeature = ['TRUE', 'FALSE'])
+         expand(op.join(BASE, "runs", RUN_NAME,
+                       "count_repeats_on_cellranger_standard",
+                       "{multimappers}",
+                       RUN_NAME + "_transcriptome_repeats.counts.summary.png"),
+               multimappers = ['multimappers', 'unique_reads']),
+        expand(op.join(BASE, "runs", RUN_NAME,
+                       "count_repeats_on_cellranger_standard_not_overlapping_genes",
+                       "{multimappers}",
+                       RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
+               multimappers = ['multimappers', 'unique_reads']),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
+        expand(op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome',
+                       '{multimappers}',
+                       "all_cells_repeats.counts.gz"),
+               multimappers = ['multimappers', 'unique_reads'])
+        # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        #        regress_ncount = ['TRUE', 'FALSE'],
+        #        regress_nfeature = ['TRUE', 'FALSE'])
        
         
 # read 1 should contain the cell barcode and UMI tag -> _2.fastq here
@@ -178,8 +197,8 @@ rule map_salmon_repeats_chromium:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
-        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
-        r = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
+        flag = op.join(BASE, 'data', RUN_NAME, SRRS[-1] + '_S1_L001_R2_001.fastq.gz')
+
     output:
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
     threads:
@@ -216,8 +235,7 @@ rule map_salmon_genes_chromium:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'duplicate_clusters.tsv'),
-        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
-        r = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz')        
+        flag = op.join(BASE, 'data', RUN_NAME, SRRS[-1] + '_S1_L001_R2_001.fastq.gz')
     output:
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz')
     threads:
@@ -255,12 +273,12 @@ rule map_salmon_genes_chromium:
 
 rule run_cellranger_repeats:
     input:
-        flag = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_I1_001.fastq.gz'),
+        flag = op.join(BASE, 'data', RUN_NAME, SRRS[-1] + '_S1_L001_R2_001.fastq.gz'),
         transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME,
                                 'repeats_' + GENOME)
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        sample_name = RUN_NAME,
+        # sample_name = RUN_NAME,
         local_mem_gb = LOCAL_MEM_GB,
         processing_path = op.join(BASE, 'runs', RUN_NAME)
     output:
@@ -282,19 +300,18 @@ rule run_cellranger_repeats:
           --jobmode=local \
           --localcores={threads} \
           --chemistry={CHEMISTRY} \
-          --sample={params.sample_name} \
           --localmem={params.local_mem_gb}
         """
         
 rule run_cellranger_standard:
     input:
-        flag = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_I1_001.fastq.gz'),
+        flag = op.join(BASE, 'data', RUN_NAME, SRRS[-1] + '_S1_L001_R2_001.fastq.gz'),
         transcriptome = op.join(BASE, 'indices', 'cellranger',
                                            CELLRANGER_DB_ID, 'reference.json')
     params:
         transcriptome = op.join(BASE, 'indices', 'cellranger', CELLRANGER_DB_ID),
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        sample_name = RUN_NAME,
+        # sample_name = RUN_NAME,
         local_mem_gb = LOCAL_MEM_GB,
         processing_path = op.join(BASE, 'runs', RUN_NAME)
     output:
@@ -317,7 +334,6 @@ rule run_cellranger_standard:
           --jobmode=local \
           --localcores={threads} \
           --chemistry={CHEMISTRY} \
-          --sample={params.sample_name} \
           --localmem={params.local_mem_gb}
         """
 
