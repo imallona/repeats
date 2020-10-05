@@ -344,6 +344,7 @@ for (item in names(combined)) {
 
     markers[[item]] <- markers[[item]][markers[[item]]$p_val_adj < 0.05,]
     markers[[item]] <- markers[[item]][order(markers[[item]]$avg_logFC, decreasing = TRUE),]
+    markers[[item]]$flavour <- item
     print(nrow(markers[[item]]))
     print(head(markers[[item]]))
 
@@ -351,8 +352,43 @@ for (item in names(combined)) {
 }
 
 
+markers <- do.call(rbind.data.frame, markers)
+```
+
+# Upset plots
+
+## Within SRR
+
+```{r, fig.height = 6, fig.width = 12}
+markers <- as.data.frame(markers)
+
+
+for (srr in unique(markers$cluster)) {
+    cat('## ', srr, '\n\n')
+    ul <- list()
+    for (flavour in unique(markers[markers$cluster == srr, 'flavour'])) {
+
+        for (flavour in grep('repeats', unique(markers[ markers$cluster == srr &
+                                                        markers$flavour == flavour, 'flavour']),
+                             value = TRUE)) {
+                    
+            ul[[paste(srr, flavour, flavour, sep = "_")]] <- markers[
+                markers$cluster == srr &
+                markers$flavour == flavour &
+                markers$flavour == flavour, 'gene']
+        }
+    }
+    print(upset(fromList(ul), nsets = 10,  text.scale = 0.8))
+    grid.text(paste(srr) ,x = 0.65, y=0.95, gp=gpar(fontsize = 10))
+    
+    ## rm(ul)
+    cat('\n\n')
+
+}
 
 ```
+
+
 
 <!-- # Most variable repeats cellranger {.tabset} -->
 

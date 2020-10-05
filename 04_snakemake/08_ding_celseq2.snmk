@@ -291,7 +291,7 @@ rule run_alevin_celseq2_repeats:
     -l ISR \
     -1 {params.cb} \
     -2 {params.r2} \
-    --celseq2  \
+    --celseq \
     --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
@@ -329,7 +329,7 @@ rule run_alevin_celseq2_genes:
     -l ISR \
     -1 {params.cb} \
     -2 {params.r2} \
-    --celseq2  \
+    --celseq \
     --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \

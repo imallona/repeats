@@ -802,7 +802,8 @@ rule index_cellranger_repeats:
     output:
         uncompressed_gtf = temp(op.join(BASE, 'annotation', op.splitext(op.basename(REP_GTF_URL))[0])),
         flag = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME, 'Log.out'),
-        uncompressed_fa = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0]))
+        uncompressed_fa = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])),
+        idx = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME,'repeats_' + GENOME)
     shell:
        """ 
        mkdir -p {params.path}
@@ -943,54 +944,79 @@ rule get_cellranger_data:
     priority:
         100
     params:
-        url = CELLRANGER_HG38_URL,
+        url = CELLRANGER_DB_URL,
         path = op.join(BASE, 'indices', 'cellranger')
     output:
-        cellranger_gz = op.join(BASE, 'indices', 'cellranger', op.basename(CELLRANGER_HG38_URL)),
-        uncomp = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0', 'reference.json')
+        cellranger_gz = op.join(BASE, 'indices', 'cellranger', op.basename(CELLRANGER_DB_URL)),
+        uncomp = op.join(BASE, 'indices', 'cellranger', CELLRANGER_DB_ID, 'reference.json')
     shell:
         """
         mkdir -p {params.path}
         cd {params.path}
 
-        curl -s -L -C - {params.url} -o {output.gtf}
+        curl -s -L -C - {params.url} -o {output.cellranger_gz}
         
         tar xzvf {output.cellranger_gz}
         """
 
         
-## @todo move to indices retrieval
-rule get_cellranger_grch38_genome:
-    params:
-        url = 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-GRCh38-3.0.0.tar.gz'
-    output:
-        path = op.join(BASE, 'indices', 'cellranger'),
-        fn = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0.tar.gz'),
-        uncompressed = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0', 'reference.json')
-    shell:
-        """    
-        mkdir -p {output.path}
-        cd {output.path}
-        curl -s -L -C - {params.url} -O {output.fn}
-        tar xzvf {output.fn}
-        """
+# ## @todo move to indices retrieval
+# rule get_cellranger_grch38_genome:
+#     params:
+#         url = 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-GRCh38-3.0.0.tar.gz'
+#     output:
+#         path = op.join(BASE, 'indices', 'cellranger'),
+#         fn = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0.tar.gz'),
+#         uncompressed = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0', 'reference.json')
+#     shell:
+#         """    
+#         mkdir -p {output.path}
+#         cd {output.path}
+#         curl -s -L -C - {params.url} -O {output.fn}
+#         tar xzvf {output.fn}
+#         """
  
-## @todo move to indices retrieval
-rule get_cellranger_mm10_genome:
-    params:
-        url = 'https://cf.10xgenomics.com/supp/cell-exp/refdata-gex-mm10-2020-A.tar.gz'
-    output:
-        path = op.join(BASE, 'indices', 'cellranger'),
-        fn = op.join(BASE, 'indices', 'cellranger', 'refdata-gex-mm10-2020-A.tar.gz'),
-        uncompressed = op.join(BASE, 'indices', 'cellranger', 'refdata-gex-mm10-2020-A', 'reference.json')
-    shell:
-        """    
-        mkdir -p {output.path}
-        cd {output.path}
-        curl -s -L -C - {params.url} -O {output.fn}
-        tar xzvf {output.fn}
-        """
+# ## @todo move to indices retrieval
+# rule get_cellranger_mm10_genome:
+#     params:
+#         url = 'https://cf.10xgenomics.com/supp/cell-exp/refdata-gex-mm10-2020-A.tar.gz'
+#     output:
+#         path = op.join(BASE, 'indices', 'cellranger'),
+#         fn = op.join(BASE, 'indices', 'cellranger', 'refdata-gex-mm10-2020-A.tar.gz'),
+#         uncompressed = op.join(BASE, 'indices', 'cellranger', 'refdata-gex-mm10-2020-A', 'reference.json')
+#     shell:
+#         """    
+#         mkdir -p {output.path}
+#         cd {output.path}
+#         curl -s -L -C - {params.url} -O {output.fn}
+#         tar xzvf {output.fn}
+#         """
 
 
 
 ## Genome, transcriptome and repeatome retrieval end   ---------------------------------------- ##
+
+
+       
+rule fake_gtf_repeatome_in_repeats_coordinates:
+    input:
+        fa = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.gz')
+    output:
+        fai = temp(op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.fai')),
+        fauncomp = temp(op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa')),
+        fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
+    params:
+        rscript = GTF_MAKING_SCRIPT,
+        path = op.join(BASE, 'annotation')
+    threads:
+        NTHREADS
+    shell:
+        """
+        cd {params.path}
+        {PIGZ} -k --decompress -p {threads} {input.fa}
+
+        samtools faidx {output.fauncomp}
+        
+        {Rscript} {params.rscript} -f {output.fai} | {PIGZ} -c -p {threads} > {output.fake_repeatome_gtf}
+        
+        """
