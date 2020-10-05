@@ -211,6 +211,7 @@ for (rds in grep('regress', names(params), invert = TRUE, value = TRUE)) {
 setdiff(names(d[[1]]), names(d[[2]]))
 stopifnot(names(d[[1]]) == names(d[[2]]))
 ```
+
 # Seurat integration? Worth it?
 
 Merge the two datasets, and plot them without integration
@@ -329,6 +330,29 @@ for (item in names(combined)) {
 }
 ```
 
+# Differential expression WT vs DKO {.tabset}
+
+```{r}
+
+markers <- list()
+
+for (item in names(combined)) {
+    cat('## , item\n')
+    print(item)
+    Idents(combined[[item]]) <- 'srr'
+    markers[[item]] <- FindAllMarkers(object = combined[[item]])
+
+    markers[[item]] <- markers[[item]][markers[[item]]$p_val_adj < 0.05,]
+    markers[[item]] <- markers[[item]][order(markers[[item]]$avg_logFC, decreasing = TRUE),]
+    print(nrow(markers[[item]]))
+    print(head(markers[[item]]))
+
+    cat('\n\n')
+}
+
+
+
+```
 
 <!-- # Most variable repeats cellranger {.tabset} -->
 

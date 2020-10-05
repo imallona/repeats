@@ -669,11 +669,17 @@ rule spawn_cellranger_bam_file_by_cell:
 
         samtools view -@ {threads} -H {input.bam} > {output.header}
 
-        ## buffer size in sort due to https://superuser.com/questions/938558/sort-parallel-isnt-parallelizing
+        # ## buffer size in sort due to https://superuser.com/questions/938558/sort-parallel-isnt-parallelizing
+        # ( samtools view -@ {threads} {input.bam} | cut -f 1-15 | \
+        # paste - {output.rgs} | \
+        #   sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
+        ## updated 2 oct to handle SRR8847571
         ( samtools view -@ {threads} {input.bam} | cut -f 1-15 | \
         paste - {output.rgs} | \
+          fgrep "RG:Z" | \
           sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
-        
+
+
         {PIGZ} --decompress -p {threads} --keep --stdout {output.body} | cat {output.header} - | samtools view -@ {threads} -Sb - > {output.shortened_bam}
         
         python3 split_by_cell_barcode_in_sorted_bam.py {output.shortened_bam} -outdir {params.split_path} -barcodes {input.barcodes} &> {log.log2}
@@ -789,13 +795,13 @@ rule index_cellranger_repeats:
        compressed_gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
     params:
        local_mem_gb = LOCAL_MEM_GB,
-       path =  op.join(BASE, 'indices', 'cellranger', 'repeats_hg38'),
-       genome = 'repeats_hg38'
+       path =  op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME),
+       genome = 'repeats_' + GENOME
     threads:
         NTHREADS
     output:
         uncompressed_gtf = temp(op.join(BASE, 'annotation', op.splitext(op.basename(REP_GTF_URL))[0])),
-        flag = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'Log.out'),
+        flag = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME, 'Log.out'),
         uncompressed_fa = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0]))
     shell:
        """ 
@@ -969,6 +975,22 @@ rule get_cellranger_grch38_genome:
         tar xzvf {output.fn}
         """
  
+## @todo move to indices retrieval
+rule get_cellranger_mm10_genome:
+    params:
+        url = 'https://cf.10xgenomics.com/supp/cell-exp/refdata-gex-mm10-2020-A.tar.gz'
+    output:
+        path = op.join(BASE, 'indices', 'cellranger'),
+        fn = op.join(BASE, 'indices', 'cellranger', 'refdata-gex-mm10-2020-A.tar.gz'),
+        uncompressed = op.join(BASE, 'indices', 'cellranger', 'refdata-gex-mm10-2020-A', 'reference.json')
+    shell:
+        """    
+        mkdir -p {output.path}
+        cd {output.path}
+        curl -s -L -C - {params.url} -O {output.fn}
+        tar xzvf {output.fn}
+        """
+
 
 
 ## Genome, transcriptome and repeatome retrieval end   ---------------------------------------- ##

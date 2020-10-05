@@ -8,11 +8,11 @@
 import os.path as op
 from glob import glob
 
-RUN_NAME  = 'SRR8847571'
- # 3' v2 according to https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM4286760
+RUN_NAME  = 'GSE121861_kumar_mouse'
+# https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE121861
 CHEMISTRY = 'SC3Pv2'
 DEMUX = False
-GENOME = 'GRCh38'
+GENOME = 'mm10'
 
 ## Folder structure start --------------------------------------------------------------------- ##
 
@@ -22,17 +22,20 @@ NTHREADS = 50
 LOCAL_MEM_GB = 100
 
 ## @FIXME to be moved to config
-GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
-# GENES_GTF_URL =  'ftp://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz'
-GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
-REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
-# REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/mm10_rmsk_TE.gtf.gz'
-DFAM_EMBL_URL = 'https://www.dfam.org/releases/current/families/Dfam.embl.gz'
+GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-99/fasta/mus_musculus/dna/Mus_musculus.GRCm38.dna.primary_assembly.fa.gz'
+
+GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M24/gencode.vM24.annotation.gtf.gz'
+
+REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/mm10_rmsk_TE.gtf.gz'
+
+# DFAM_EMBL_URL = 'https://www.dfam.org/releases/current/families/Dfam.embl.gz'
 # TRANSCRIPTOME_URL= 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh38.cdna.all.fa.gz'
-TRANSCRIPTOME_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.pc_transcripts.fa.gz'
+# TRANSCRIPTOME_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.pc_transcripts.fa.gz'
+TRANSCRIPTOME_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M24/gencode.vM24.pc_transcripts.fa.gz'
 
-CELLRANGER_HG38_URL = 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-GRCh38-3.0.0.tar.gz'
-
+# this is actually mouse not hg38! @todo rename
+CELLRANGER_HG38_URL = 'https://cf.10xgenomics.com/supp/cell-exp/refdata-gex-mm10-2020-A.tar.gz'
+CELLRANGER_DB_ID = 'refdata-gex-mm10-2020-A'
 
 ## 
 
@@ -66,7 +69,17 @@ VDBVALIDATE= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate' # f
 
 BEDOPS='~/soft/bedops/bedops-2.4.39/bin/bedops'
 
-GSE144357_srr = ['SRR10974769', 'SRR10974768']
+# https://www.ncbi.nlm.nih.gov/Traces/study/?query_key=8&WebEnv=MCID_5f7acd5b7a1fbfa3a968b8a2&o=protocol_sam_s%3Ad
+# SRRS = ['SRR8165390', 'SRR8165391', 'SRR8165392', 'SRR8165393', 'SRR8165394', 'SRR8165395',
+#         'SRR8165396', 'SRR8165397', 'SRR8165398', 'SRR8165399', 'SRR8165400', 'SRR8165401',
+#         'SRR8165402', 'SRR8165404', 'SRR8165405', 'SRR8165406', 'SRR8165407', 'SRR8165408',
+#         'SRR8165409', 'SRR8165410', 'SRR8165411', 'SRR8165412', 'SRR8165413', 'SRR8165414',
+#         'SRR8165415', 'SRR8165416', 'SRR8165417', 'SRR8165418', 'SRR8165419', 'SRR8165420',
+#         'SRR8165421', 'SRR8165422', 'SRR8165423', 'SRR8165424', 'SRR8165425', 'SRR8165426',
+#         'SRR8165427', 'SRR8165428', 'SRR8165429', 'SRR8165430', 'SRR8165431', 'SRR8165432',
+#         'SRR8165433', 'SRR8165434', 'SRR8165435', 'SRR8165436', 'SRR8165437', 'SRR8165438']
+
+SRRS_PROOF_OF_CONCEPT = ['SRR8165390', 'SRR8165391']
 
 ## config file start ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -101,90 +114,22 @@ for item in ['bowtie', 'star', 'salmon']:
 
 include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow.snmk"
 
-def get_samples(fn):
-   # samples = ['SRR10974768', 'SRR10974769'] # 68 is MARS-Seq
-   samples = ['SRR8847571']
-   return(samples)
+def get_samples():
+   return(SRRS_PROOF_OF_CONCEPT)
+
  
 rule all:
     input:
-        # op.join(BASE, 'indices', 'bowtie', 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt'),
-        # op.join(BASE, 'indices', 'star', 'repeatome', 'chrName.txt'),
-        # op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt'),
-        # op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]+ '.fa.gz'),
-        # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html'),
-        # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report_genes_regressed_out.html')
-        # op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'Log.out'),
-        expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-               regress_ncount = ['TRUE', 'FALSE'],
-               regress_nfeature = ['TRUE', 'FALSE']),
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
-        # op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz"),
-         # op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard",  RUN_NAME + "_transcriptome_repeats.counts.summary.png"),
-        # op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes",  RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
-        op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split.flag'),
-        # expand(op.join(BASE, "runs", RUN_NAME,
-        #                "count_repeats_on_cellranger_standard",
-        #                "{multimappers}",
-        #                RUN_NAME + "_transcriptome_repeats.counts.summary.png"),
-        #        multimappers = ['multimappers', 'unique_reads']),
-        # expand(op.join(BASE, "runs", RUN_NAME,
-        #                "count_repeats_on_cellranger_standard_not_overlapping_genes",
-        #                "{multimappers}",
-        #                RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
-        #        multimappers = ['multimappers', 'unique_reads']),
-        # op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
-        # op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
-        # # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-        # #        regress_ncount = ['TRUE', 'FALSE'],
-        # #        regress_nfeature = ['TRUE', 'FALSE']),
-        # expand(op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome',
-        #                '{multimappers}',
-        #                "all_cells_repeats.counts.gz"),
-        #        multimappers = ['multimappers', 'unique_reads'])
+        expand(op.join(BASE, 'data', RUN_NAME, '{srr}' + '_S1_L001_R1_001.fastq.gz'),
+               srr = get_samples())
+        # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        #        regress_ncount = ['TRUE', 'FALSE'],
+               # regress_nfeature = ['TRUE', 'FALSE'])
+       
         
-
-
-# rule get_colon_cancer_lines_GSE144357:    
-#     params:
-#         path = op.join(BASE, 'runs', 'colon_cancer_lines_GSE144357'),
-#         path_data = op.join(BASE, 'data', 'SRR10974769')
-#     output:
-#         op.join(BASE, 'runs', 'colon_cancer_lines_GSE144357', '{srr}_1.fastq.gz')
-#     shell:
-#         """
-#         mkdir -p {params.path}
-#         cd {params.path}
-#         {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
-
-#         cd {params.path_data}
-#         ln -s SRR10974769_1.fastq.gz SRR10974769_S1_L001_R2_001.fastq.gz
-#         ln -s SRR10974769_2.fastq.gz SRR10974769_S1_L001_R1_001.fastq.gz
-#         ln -s SRR10974769_3.fastq.gz SRR10974769_S1_L001_I1_001.fastq.gz
-
-#         """
-
-
-# [imallona@imlsportmacquarie SRR8847571]$ zcat *1.fastq.gz | head -4
-# @SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=8
-# GAGGATCT
-# +SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=8
-# FFFFFFFF
-# [imallona@imlsportmacquarie SRR8847571]$ zcat *2.fastq.gz | head -4
-# @SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=26
-# CCATTCGGTCGTTGTATTCGTTTAGG
-# +SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=26
-# FFFFFFFFFFFFFFFFFFFFFFFFFF
-# [imallona@imlsportmacquarie SRR8847571]$ zcat *3.fastq.gz | head -4
-# @SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=96
-# CGATAATATCAGGATCACAAAAGATACCTTTTCACATTACTTTTAATTTCCTCTCTGTATTTTATCCAATAGCGTAAGACAATAAGAAGATAAAGT
-# +SRR8847571.1 A00454:60:HGT75DMXX:1:1101:2076:1016 length=96
-# FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF::FFFFFFFF:FFFF
-
-# read 1 should contain the cell barcode and UMI tag -> 2.fastq.gz here
-# read 2 should contain cDNA sequence -> 3.fastq.gz here
-# i1 should contain the sample index -> 1.fastq.gz here
+# read 1 should contain the cell barcode and UMI tag -> 
+# read 2 should contain cDNA sequence -> 
+# i1 should contain the sample index -> 
 
 # the index reads contain the sample index
 
@@ -194,35 +139,31 @@ rule get_data:
     params:
         path = op.join(BASE, 'data', RUN_NAME),
         path_data = op.join(BASE, 'data', RUN_NAME),
-        srr = RUN_NAME
+        # srr = '{wildcards.srr}'
     output:
-        cb = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R2_001.fastq.gz'),
-        r = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_R1_001.fastq.gz'),
-        i1 = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_I1_001.fastq.gz'),
-        tmp = temp(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '.sra'))
+        cb = op.join(BASE, 'data', RUN_NAME, '{srr}' + '_S1_L001_R2_001.fastq.gz'),
+        r = op.join(BASE, 'data', RUN_NAME,  '{srr}' + '_S1_L001_R1_001.fastq.gz'),
+        i1 = op.join(BASE, 'data', RUN_NAME,  '{srr}' + '_S1_L001_I1_001.fastq.gz'),
+        tmp = temp(op.join(BASE, 'data', RUN_NAME,  '{srr}' + '.sra'))
     shell:
         """
         mkdir -p {params.path}
         cd {params.path}
 
-        #{FASTQDUMP} -I --gzip --split-files {params.srr}
-        
-        {PREFETCH} {params.srr} --output-file {params.srr}.sra
+        {PREFETCH} {wildcards.srr} --output-file {wildcards.srr}.sra &> \
+               {wildcards.srr}_prefetch.log
 
-        {VDBVALIDATE} {params.srr}.sra &> {params.srr}_vdbvalidation.log
+        {VDBVALIDATE} {wildcards.srr}.sra &> {wildcards.srr}_vdbvalidation.log
             
-        {FASTQDUMP}  --gzip --split-files  {params.srr}.sra
+        {FASTQDUMP}  --gzip --split-files  {wildcards.srr}.sra
   
         cd {params.path_data}
-        ln -s {params.srr}_1.fastq.gz {params.srr}_S1_L001_I1_001.fastq.gz
+        ln -s {wildcards.srr}_1.fastq.gz {wildcards.srr}_S1_L001_I1_001.fastq.gz
 
-        ln -s {params.srr}_2.fastq.gz {params.srr}_S1_L001_R1_001.fastq.gz
-        ln -s {params.srr}_3.fastq.gz {params.srr}_S1_L001_R2_001.fastq.gz
+        ln -s {wildcards.srr}_2.fastq.gz {wildcards.srr}_S1_L001_R1_001.fastq.gz
+        ln -s {wildcards.srr}_3.fastq.gz {wildcards.srr}_S1_L001_R2_001.fastq.gz
 
         """
-
-## salmon start
-# print(sorted(glob(op.join(BASE, 'data', RUN_NAME, RUN_NAME + '*R1*fastq.gz'))))
 
 rule map_salmon_repeats_chromium:
     input:        
@@ -304,7 +245,8 @@ rule map_salmon_genes_chromium:
 rule run_cellranger_repeats:
     input:
         flag = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_I1_001.fastq.gz'),
-        transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
+        transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME,
+                                'repeats_' + GENOME)
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
         sample_name = RUN_NAME,
@@ -337,7 +279,7 @@ rule run_cellranger_standard:
     input:
         flag = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_I1_001.fastq.gz'),
         transcriptome = op.join(BASE, 'indices', 'cellranger',
-                                'refdata-cellranger-GRCh38-3.0.0')
+                                CELLRANGER_DB_ID)
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
         sample_name = RUN_NAME,
