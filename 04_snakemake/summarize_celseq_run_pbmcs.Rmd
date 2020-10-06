@@ -225,12 +225,17 @@ annot$attributes = c(annot$filters, "external_gene_name", "chromosome_name",
 annot$biomart = "ENSEMBL_MART_ENSEMBL" 
 annot$dataset = "hsapiens_gene_ensembl"
 annot$host = "ensembl.org"
+
+## biomartCacheClear()
+
+
 annot$bmart <- biomaRt::useMart(biomart = annot$biomart, dataset = annot$dataset, 
                                 host = annot$host)
 
 feature_info <- biomaRt::getBM(attributes = annot$attributes,
                                filters = annot$filters, 
-                               values = annot$ids, mart = annot$bmart)
+                               values = annot$ids, mart = annot$bmart,
+                               useCache = FALSE)
 
 
 tmp <- merge(data.frame(ensembl_gene_id_version = rownames(counts)),
@@ -517,7 +522,7 @@ for (item in names(d)) {
 
     d[[item]] <- RunUMAP(d[[item]], dims = NUM_PCS)
         
-    d[[item]] <- RunTSNE(d[[item]], dims = NUM_PCS)
+    d[[item]] <- RunTSNE(d[[item]], dims = NUM_PCS, check_duplicates = FALSE)
 }
 
 ## stop('check here')

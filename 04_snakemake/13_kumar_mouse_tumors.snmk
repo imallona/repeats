@@ -119,6 +119,9 @@ include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow.snmk"
 def get_samples():
    return(SRRS)
 
+def get_samples_comma():
+   return(','.join(SRRS))
+
 def get_cbs(path):
    return(' '.join([ op.join(path, item) + '_S1_L001_R2_001.fastq.gz' for item in get_samples()]))
 
@@ -278,7 +281,7 @@ rule run_cellranger_repeats:
                                 'repeats_' + GENOME)
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        # sample_name = RUN_NAME,
+        sample_name = get_samples_comma(),
         local_mem_gb = LOCAL_MEM_GB,
         processing_path = op.join(BASE, 'runs', RUN_NAME)
     output:
@@ -297,6 +300,7 @@ rule run_cellranger_repeats:
         {CELLRANGER} count --id=cellranger_repeats \
           --fastqs={params.fastqs_path} \
           --transcriptome={input.transcriptome} \
+          --sample={params.sample_name},
           --jobmode=local \
           --localcores={threads} \
           --chemistry={CHEMISTRY} \
@@ -311,7 +315,7 @@ rule run_cellranger_standard:
     params:
         transcriptome = op.join(BASE, 'indices', 'cellranger', CELLRANGER_DB_ID),
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        # sample_name = RUN_NAME,
+        sample_name = get_samples_comma(),
         local_mem_gb = LOCAL_MEM_GB,
         processing_path = op.join(BASE, 'runs', RUN_NAME)
     output:
@@ -331,6 +335,7 @@ rule run_cellranger_standard:
         {CELLRANGER} count --id=cellranger_standard \
           --fastqs={params.fastqs_path} \
           --transcriptome={params.transcriptome} \
+          --sample={params.sample_name},
           --jobmode=local \
           --localcores={threads} \
           --chemistry={CHEMISTRY} \

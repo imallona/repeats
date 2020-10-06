@@ -2,6 +2,13 @@
 ## 
 ## Started 12 May
 ##
+## Warning fastqs are misannotated in GEO
+## https://trace.ncbi.nlm.nih.gov/Traces/sra/?run=SRR9169209
+# https://trace.ncbi.nlm.nih.gov/Traces/sra/?run=SRR9169439 . 
+# one has three reads 31, 50 and 8 in length
+# the other one has 50, 50 and 10 nt
+
+##
 ## Izaskun Mallona
 ## GPLv3
 
@@ -58,9 +65,12 @@ CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
 BIOAWK = '~/soft/bioawk/bioawk'
 BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
 Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
-FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.5-ubuntu64/bin/fastq-dump' #
-FASTERQDUMP= '~/soft/sra-toools/sratoolkit.2.10.5-ubuntu64/bin/fasterq-dump' #
-VDB_VALIDATE = '~/soft/sra-toools/sratoolkit.2.10.5-ubuntu64/bin/vdb-validate'
+FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
+PREFETCH= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/prefetch' # fastq-dump : 2.10.4
+VDBVALIDATE= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate' # fastq-dump : 2.10.4
+# FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.5-ubuntu64/bin/fastq-dump' #
+# FASTERQDUMP= '~/soft/sra-toools/sratoolkit.2.10.5-ubuntu64/bin/fasterq-dump' #
+# VDB_VALIDATE = '~/soft/sra-toools/sratoolkit.2.10.5-ubuntu64/bin/vdb-validate'
 BEDOPS = '~/soft/bedops/bedops-2.4.39/bin/'
 ## FASTQS, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}.fastq.gz"))
 
@@ -81,6 +91,17 @@ for item in ['bowtie', 'star', 'salmon']:
       print(err)
 
 ## Folder structure end ----------------------------------------------------------------------- ##
+# Run,Assay Type,AvgSpotLen,Bases,BioProject,BioSample,Bytes,Center Name,Consent,DATASTORE filetype,DATASTORE provider,DATASTORE region,Experiment,Instrument,LibraryLayout,LibrarySelection,LibrarySource,Organism,Platform,ReleaseDate,Sample Name,SRA Study,GEO_Accession (exp),library_construction,sex,source_name,Age,Strain
+# SRR9169178,RNA-Seq,110,9510936380,PRJNA545730,SAMN11914029,5330011518,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943297,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836749,SRP200058,GSM3836749,CEL-Seq2,male,Peripheral blood mononuclear cell,,
+# SRR9169206,RNA-Seq,110,6805595170,PRJNA545730,SAMN11915422,3943989627,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943564,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837160,SRP200058,GSM3837160,CEL-Seq2,female,Peripheral blood mononuclear cell,,
+# SRR9169441,RNA-Seq,89,1094064184,PRJNA545730,SAMN11914622,682967510,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943796,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837176,SRP200058,GSM3837176,CEL-Seq2,female,Peripheral blood mononuclear cell,,
+# SRR9169176,RNA-Seq,110,11582704980,PRJNA545730,SAMN11914031,6482204508,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943295,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836747,SRP200058,GSM3836747,CEL-Seq2,male,Peripheral blood mononuclear cell,,
+# SRR9169177,RNA-Seq,110,11177876710,PRJNA545730,SAMN11914030,6265372740,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943296,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836748,SRP200058,GSM3836748,CEL-Seq2,male,Peripheral blood mononuclear cell,,
+# SRR9169179,RNA-Seq,110,10050127010,PRJNA545730,SAMN11914028,5629020517,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943298,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836750,SRP200058,GSM3836750,CEL-Seq2,male,Peripheral blood mononuclear cell,,
+# SRR9169207,RNA-Seq,110,5795080830,PRJNA545730,SAMN11915421,3372693142,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943565,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837161,SRP200058,GSM3837161,CEL-Seq2,female,Peripheral blood mononuclear cell,,
+# SRR9169208,RNA-Seq,110,7223219080,PRJNA545730,SAMN11915420,4177497322,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943782,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837162,SRP200058,GSM3837162,CEL-Seq2,female,Peripheral blood mononuclear cell,,
+# SRR9169209,RNA-Seq,110,6537207160,PRJNA545730,SAMN11915424,3788826571,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943783,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837163,SRP200058,GSM3837163,CEL-Seq2,female,Peripheral blood mononuclear cell,,
+
 
 def get_samples(fn):
     # samples = pd.read_table(fn)
@@ -92,7 +113,7 @@ def get_samples(fn):
 
 rule all:
     input:
-        # op.join(BASE, "data", RUN_NAME, 'celseq2_ding.conf'),
+        op.join(BASE, "data", RUN_NAME, 'celseq2_ding.conf'),
         expand(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
         expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),  srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
@@ -209,6 +230,7 @@ rule knit_report_celseq_ad_hoc_ding:
 """
 564 cells to be expected! treat runs separately
 https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE132044
+https://www.ncbi.nlm.nih.gov/Traces/study/?acc=PRJNA545730&o=acc_s%3Aa
 
 [imallona@neutral Downloads]$ less GSE132044_pbmc_hg38_cell.tsv | grep CEL  | grep PBM  | wc -l
 564
@@ -226,8 +248,7 @@ https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE132044
 
 def get_samples_srrs(subset):
    male = ['SRR9169176', 'SRR9169177', 'SRR9169178', 'SRR9169179']
-   female = ['SRR9169206', 'SRR9169207', 'SRR9169208', 'SRR9169209',
-             'SRR9169439', 'SRR9169440', 'SRR9169441','SRR9169442']
+   female = ['SRR9169206', 'SRR9169207', 'SRR9169208', 'SRR9169209']
    if (subset == 'male'):
       return(male)
    elif(subset == 'female'):
@@ -291,7 +312,7 @@ rule run_alevin_celseq2_repeats:
     -l ISR \
     -1 {params.cb} \
     -2 {params.r2} \
-    --celseq \
+    --celseq2 \
     --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
@@ -329,7 +350,7 @@ rule run_alevin_celseq2_genes:
     -l ISR \
     -1 {params.cb} \
     -2 {params.r2} \
-    --celseq \
+    --celseq2 \
     --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
@@ -806,7 +827,7 @@ rule get_data:
         # r2_uncomp = temp(op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq")),
         r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
         r2 = op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq.gz"),
-        r3 = temp(op.join(BASE, "data", RUN_NAME, "{srr}_3.fastq.gz"))
+        r3 = op.join(BASE, "data", RUN_NAME, "{srr}_3.fastq.gz")
     params:
         path = op.join(BASE, "data", RUN_NAME)
     threads:
@@ -816,13 +837,22 @@ rule get_data:
         mkdir -p {params.path}
         cd {params.path}
 
-        {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
+        # {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
+        
+        {PREFETCH} {wildcards.srr} --output-file {wildcards.srr}.sra &> \
+               {wildcards.srr}_prefetch.log
+
+        {VDBVALIDATE} {wildcards.srr}.sra &> {wildcards.srr}_vdbvalidation.log
+            
+        {FASTQDUMP}  --gzip --split-files  {wildcards.srr}.sra
 
         """
 
 ## runme first!
 
 rule get_srr_identifiers:
+    priority:
+        100
     output:
         conf = op.join(BASE, "data", RUN_NAME, 'celseq2_ding.conf')
     params:
@@ -844,10 +874,6 @@ SRR9169206,RNA-Seq,110,6805595170,PRJNA545730,SAMN11915422,3943989627,GEO,public
 SRR9169207,RNA-Seq,110,5795080830,PRJNA545730,SAMN11915421,3372693142,GEO,public,"fastq,sra","s3,ncbi,gs","s3.us-east-1,ncbi.public,gs.US",SRX5943565,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837161,SRP200058,GSM3837161,CEL-Seq2,female,Peripheral blood mononuclear cell,,
 SRR9169208,RNA-Seq,110,7223219080,PRJNA545730,SAMN11915420,4177497322,GEO,public,"sra,fastq","gs,s3,ncbi","ncbi.public,s3.us-east-1,gs.US",SRX5943782,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837162,SRP200058,GSM3837162,CEL-Seq2,female,Peripheral blood mononuclear cell,,
 SRR9169209,RNA-Seq,110,6537207160,PRJNA545730,SAMN11915424,3788826571,GEO,public,"sra,fastq","ncbi,s3,gs","gs.US,s3.us-east-1,ncbi.public",SRX5943783,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837163,SRP200058,GSM3837163,CEL-Seq2,female,Peripheral blood mononuclear cell,,
-SRR9169439,RNA-Seq,89,1040755142,PRJNA545730,SAMN11914624,649516457,GEO,public,"sra,fastq","gs,s3,ncbi","s3.us-east-1,gs.US,ncbi.public",SRX5943794,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837174,SRP200058,GSM3837174,CEL-Seq2,female,Peripheral blood mononuclear cell,,
-SRR9169440,RNA-Seq,89,876917445,PRJNA545730,SAMN11914623,549907095,GEO,public,"sra,fastq","gs,ncbi,s3","s3.us-east-1,gs.US,ncbi.public",SRX5943795,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837175,SRP200058,GSM3837175,CEL-Seq2,female,Peripheral blood mononuclear cell,,
-SRR9169441,RNA-Seq,89,1094064184,PRJNA545730,SAMN11914622,682967510,GEO,public,"sra,fastq","s3,gs,ncbi","gs.US,ncbi.public,s3.us-east-1",SRX5943796,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837176,SRP200058,GSM3837176,CEL-Seq2,female,Peripheral blood mononuclear cell,,
-SRR9169442,RNA-Seq,89,406444488,PRJNA545730,SAMN11914621,254766791,GEO,public,"sra,fastq","s3,gs,ncbi","gs.US,s3.us-east-1,ncbi.public",SRX5943797,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837177,SRP200058,GSM3837177,CEL-Seq2,female,Peripheral blood mononuclear cell,,
 EOF
 
         """
