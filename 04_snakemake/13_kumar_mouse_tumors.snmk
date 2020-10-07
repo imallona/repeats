@@ -18,7 +18,7 @@ GENOME = 'mm10'
 
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
-NTHREADS = 50
+NTHREADS = 1
 LOCAL_MEM_GB = 100
 
 ## @FIXME to be moved to config
