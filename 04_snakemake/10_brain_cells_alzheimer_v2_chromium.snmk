@@ -111,6 +111,9 @@ def get_samples(fn):
  
 rule all:
     input:
+        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                            "all_cells_repeats.counts.gz"),
+               multimappers = ['unique_reads', 'multimappers']),
         # op.join(BASE, 'indices', 'bowtie', 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt'),
         # op.join(BASE, 'indices', 'star', 'repeatome', 'chrName.txt'),
         # op.join(BASE, 'indices', 'star', 'transcriptome', 'chrName.txt'),

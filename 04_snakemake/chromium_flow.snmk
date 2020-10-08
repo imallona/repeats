@@ -561,127 +561,34 @@ rule map_bowtie_by_cell:
         touch {output.flag_map_bowtie}
         """
 
-
-# rule featurecounts_bowtie_repeats_repeatome:
-#     input:
-#         # bam = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam"),
-#         flag_map_bowtie =  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
-#         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
-#         fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
-#     output:
-#         counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
-#                                "all_cells_repeats.counts")),
-#         gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
-#                             "all_cells_repeats.counts.gz")
-#     params:
-#         bam_path = op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome'),
-#         processing_path = op.join(BASE, "runs", RUN_NAME, "{multimappers}", 'bowtie_repeatome')
-#     log :
-#         op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}", "all_cell_featurecounts.log"),
-#     threads:
-#         NTHREADS
-#     # shell:
-#     #    """
-#     #    ## note multimappers are counted
-
-#     #    mkdir -p {params.processing_path}
-
-#     #    cd {params.processing_path}
-       
-#     #    {FEATURECOUNTS} -T {threads} \
-#     #    -t exon \
-#     #    -g gene_id \
-#     #    -a {input.fake_repeatome_gtf} \
-#     #    -o  {output.counts} \
-#     #    -M \
-#     #    {params.bam_path}/*bam  &> {log}
-
-#     #    {PIGZ} --keep  -p {threads} {output.counts}
-#     #    """
-#     run:
-#         if wildcards.multimappers == 'multimappers':
-#             shell("""
-#             echo multimappers allowed
-
-#             mkdir -p {params.processing_path}
-
-#             cd {params.processing_path}
-            
-#             {FEATURECOUNTS} -T {threads} \
-#             -t exon \
-#             -g gene_id \
-#             -a {input.fake_repeatome_gtf} \
-#             -o  {output.counts} \
-#             -M --fraction \
-#             {params.bam_path}/*bam  &> {log}
-
-#             {PIGZ} --keep  -p {threads} {output.counts}
-#          """)
-#         elif wildcards.multimappers == 'unique_reads':
-#             shell("""
-#             echo unique only
-
-#             mkdir -p {params.processing_path}
-
-#             cd {params.processing_path}
-            
-#             {FEATURECOUNTS} -T {threads} \
-#             -t exon \
-#             -g gene_id \
-#             -a {input.fake_repeatome_gtf} \
-#             -o  {output.counts} \
-#             {params.bam_path}/*bam  &> {log}
-
-#             {PIGZ} --keep  -p {threads} {output.counts}
-
-#             """)
-
-
-# def list_bowtie_bams(wildcards):
-#     return expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
-#                           "{bam}.bam"),
-#                   multimappers = wildcards.multimappers,
-#                   bam = glob_wildcards(op.join(BASE, "runs", RUN_NAME,
-#                                                "bowtie_repeatome", "{bam}.bam")))
-#     # return glob(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome","*.bam"))
-
-# print(list_bowtie_bams(wildcards))
-
 rule featurecounts_bowtie_repeats_repeatome_per_bam:
     input:
-        # bam = op.join(BASE, "runs", RUN_NAME,
-        #               "bowtie_repeatome",
-        #                      "{bam}.bam"),
-        # bam = "{bam}.bam",
+        bam = op.join(BASE, "runs", RUN_NAME,
+                      "bowtie_repeatome",
+                             "{bam}.bam"),
         flag_map_bowtie =  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
         fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
     output:
-        # counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
-        #                        "{bam}_repeats.counts")),
-        # gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
-        #                     "{bam}_repeats.counts.gz")
-        flag_loop_featurecounts = op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome',
-                                          "{multimappers}",
-                                          'featurecounts_loop.flag')
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                               "{bam}_repeats.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                            "{bam}_repeats.counts.gz")
     params:
         bam_path = op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome'),
         processing_path = op.join(BASE, "runs", RUN_NAME,  'bowtie_repeatome', "{multimappers}")
     log :
         op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
-                "featurecounts_loop.log"),
+                "{bam}_featurecounts.log"),
     threads:
-        NTHREADS
+        1 # this rather single-core
     run:
         if wildcards.multimappers == 'multimappers': 
            shell("""
 
-            echo multimappers allowed
+            # echo multimappers allowed
 
-           for fn in $(find {params.bam_path} -name "*bam")
-           do
-              echo "$fn"
-
+           
               mkdir -p {params.processing_path}
 
               cd {params.processing_path}
@@ -690,22 +597,15 @@ rule featurecounts_bowtie_repeats_repeatome_per_bam:
               -t exon \
               -g gene_id \
               -a {input.fake_repeatome_gtf} \
-              -o "$(basename $fn).counts"  \
+              -o {output.counts}  \
               -M --fraction \
-              {params.bam_path}/"$(basename $fn)"  &>> {log}
+              {input.bam}  &> {log}
 
-              {PIGZ} --keep  -p {threads} "$(basename $fn).counts"
-           done
-           
-           touch {output.flag_loop_featurecounts}
+              {PIGZ} --keep  -p {threads} {output.counts}
             """)
         elif wildcards.multimappers == 'unique_reads':
             shell("""
-            echo unique only
- 
-           for fn in $(find {params.bam_path} -name "*bam")
-           do
-              echo "$fn"
+            # echo unique only
               mkdir -p {params.processing_path}
 
               cd {params.processing_path}
@@ -714,38 +614,24 @@ rule featurecounts_bowtie_repeats_repeatome_per_bam:
               -t exon \
               -g gene_id \
               -a {input.fake_repeatome_gtf} \
-              -o  "$(basename $fn).counts"  \
-              {params.bam_path}/"$basename $fn"  &>> {log}
+              -o  {output.counts}  \
+              {input.bam}  &> {log}
   
-              {PIGZ} --keep  -p {threads} "$(basename $fn).counts" 
-            done
-           touch {output.flag_loop_featurecounts}
+              {PIGZ} --keep  -p {threads} {output.counts}
+  
             """)
 
+def list_cells():
+    return [op.basename(op.splitext(x)[0])
+            for x in glob(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome","*.bam"))]
 
-# def aggregate_bowtie_featurecounts(wildcards):
-#     return expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
-#                                    "{bam}_repeats.counts.part.gz"),
-#                   multimappers = wildcards.multimappers,
-#                   bam = glob_wildcards(op.join(BASE, "runs", RUN_NAME,
-#                                                 "bowtie_repeatome",
-#                                                 "{bam}.bam")))
-#     # return  glob(op.join(BASE, "runs", RUN_NAME,
-#     #                                "bowtie_repeatome", "{wildcards.multimappers}",
-#     #                                "*_repeats.counts.gz"))
 
 rule aggregate_featurecounts_bowtie_repeats_repeatome:
     input:
-        # # count_per_cell = aggregate_bowtie_featurecounts
-        # expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
-        #                             "{bam}_repeats.counts.gz"),
-        #            multimappers = ['multimappers', 'unique_reads'],
-        #            bam = [op.splitext(op.basename(item))[0] for item in glob(op.join(BASE, "runs", RUN_NAME,
-        #                                          "bowtie_repeatome",
-        #                                          "*.bam"))])
-        flag_loop_featurecounts = op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome',
-                                          "multimappers",
-                                          'featurecounts_loop.flag')
+        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                               "{bam}_repeats.counts"),
+               multimappers = ['unique_reads', 'multimappers'],
+               bam = list_cells())
     output:
         counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
                                "all_cells_repeats.counts")),
@@ -760,8 +646,8 @@ rule aggregate_featurecounts_bowtie_repeats_repeatome:
         if wildcards.multimappers == 'multimappers':
             shell("""
             echo multimappers allowed
-            ls -1  {params.counts_path}.counts.txt.gz | parallel 'zcat {} | sed '1d' | cut -f7 {} > {/.}_clean.txt' 
-            ls -1   {params.counts_path}.counts.txt.gz | zcat | head -1 | xargs cut -f1 > genes.txt
+            ls -1  {params.counts_path}*counts.txt.gz | parallel 'zcat {} | sed '1d' | cut -f7 {} > {/.}_clean.txt' 
+            ls -1   {params.counts_path}*counts.txt.gz | zcat | head -1 | xargs cut -f1 > genes.txt
             paste genes.txt *_clean.txt > {output.counts}
             rm genes.txt
             rm *clean.txt
