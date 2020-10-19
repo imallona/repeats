@@ -18,7 +18,7 @@ GENOME = 'GRCh38'
 
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
-NTHREADS = 50
+NTHREADS = 25
 LOCAL_MEM_GB = 100
 
 ## @FIXME to be moved to config
@@ -306,7 +306,6 @@ rule map_salmon_genes_chromium:
 
 ## chromium start
 
-
 rule run_cellranger_repeats:
     input:
         flag = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '_S1_L001_I1_001.fastq.gz'),
@@ -372,6 +371,3 @@ rule run_cellranger_standard:
           --sample={params.sample_name} \
           --localmem={params.local_mem_gb}
         """
-
-        
-## chromium end
