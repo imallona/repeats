@@ -103,6 +103,11 @@ for item in ['bowtie', 'star', 'salmon']:
 # SRR9169209,RNA-Seq,110,6537207160,PRJNA545730,SAMN11915424,3788826571,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943783,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837163,SRP200058,GSM3837163,CEL-Seq2,female,Peripheral blood mononuclear cell,,
 
 
+""" for testing purposes let's reduce to """
+# Run,Assay Type,AvgSpotLen,Bases,BioProject,BioSample,Bytes,Center Name,Consent,DATASTORE filetype,DATASTORE provider,DATASTORE region,Experiment,GEO_Accession (exp),Instrument,library_construction,LibraryLayout,LibrarySelection,LibrarySource,Organism,Platform,ReleaseDate,Sample Name,sex,source_name,SRA Study
+# SRR9169439,RNA-Seq,89,1040755142,PRJNA545730,SAMN11914624,649516457,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943794,GSM3837174,Illumina HiSeq 2500,CEL-Seq2,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837174,female,Peripheral blood mononuclear cell,SRP200058
+
+
 def get_samples(fn):
     # samples = pd.read_table(fn)
    samples = []
@@ -136,10 +141,12 @@ rule all:
                regress_ncount = ['TRUE', 'FALSE'],
                regress_nfeature = ['TRUE', 'FALSE']),
         expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  "{subset}", 'alevin',
-                       'quants_mat.gz'), subset = ['male', 'female']),
+                       'quants_mat.gz'), subset = [ 'female']),
         expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{subset}", 'alevin',
-                       'quants_mat.gz'), subset = ['male', 'female'])
-        
+                       'quants_mat.gz'), subset = [ 'female']),
+        expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+                regress_ncount = ['TRUE', 'FALSE'],
+                regress_nfeature = ['TRUE', 'FALSE']),
         # op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', RUN_NAME + "_star_genes.counts.gz"),
         # expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "{srr}_bowtie_repeats.counts.gz"), srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf')))
         # op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
@@ -163,9 +170,9 @@ rule knit_report_celseq_ad_hoc_ding:
         # genes_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'genes', 'SRR9169209_Aligned.sortedByCoord.out.bam.counts.gz'),
         # repeats_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome/repeats/SRR9169209_Aligned.sortedByCoord.out.bam.counts.gz'),
         # repeats_bowtie =  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome/SRR9169209_bowtie_repeats.counts.gz')
-        genes_alevin1 = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  "male", 'alevin', 'quants_mat.gz'),
+        # genes_alevin1 = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  "male", 'alevin', 'quants_mat.gz'),
         genes_alevin2 = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  "female", 'alevin', 'quants_mat.gz'),
-        repeats_alevin1 = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats',  "male", 'alevin', 'quants_mat.gz'),
+        # repeats_alevin1 = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats',  "male", 'alevin', 'quants_mat.gz'),
         repeats_alevin2 = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats',  "female", 'alevin', 'quants_mat.gz')
     params:
         rmd = 'summarize_celseq_run_pbmcs.Rmd',
@@ -246,13 +253,25 @@ https://www.ncbi.nlm.nih.gov/Traces/study/?acc=PRJNA545730&o=acc_s%3Aa
     307 PBMC2.CEL
 """
 
+# def get_samples_srrs(subset):
+#    male = ['SRR9169176', 'SRR9169177', 'SRR9169178', 'SRR9169179']
+#    female = ['SRR9169206', 'SRR9169207', 'SRR9169208', 'SRR9169209']
+#    if (subset == 'male'):
+#       return(male)
+#    elif(subset == 'female'):
+#       return(female)
+
+print('reduced and duplicated the srr to the one with 31 nt in read 1!')
+
 def get_samples_srrs(subset):
-   male = ['SRR9169176', 'SRR9169177', 'SRR9169178', 'SRR9169179']
-   female = ['SRR9169206', 'SRR9169207', 'SRR9169208', 'SRR9169209']
+   male = ['']
+   female = ['SRR9169439', 'SRR9169442', 'SRR9169441', 'SRR9169215', 'SRR9169443']
    if (subset == 'male'):
       return(male)
    elif(subset == 'female'):
       return(female)
+
+# SRR9169439
 
 # def list_cbs(fastqs_path, subset):
 #    # fns = sorted(filter(re.compile('SR.*[0-9]_1.fastq.gz').match, os.listdir(fastqs_path)))
