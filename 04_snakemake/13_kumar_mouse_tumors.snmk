@@ -135,26 +135,30 @@ rule all:
     input:
         expand(op.join(BASE, 'data', RUN_NAME, '{sample}' + '_S1_L001_R1_001.fastq.gz'),
                sample = get_samples()),
-        #  expand(op.join(BASE, "runs", RUN_NAME,
-        #                "count_repeats_on_cellranger_standard",
-        #                "{multimappers}",
-        #                RUN_NAME + "_transcriptome_repeats.counts.summary.png"),
-        #        multimappers = ['multimappers', 'unique_reads']),
-        # expand(op.join(BASE, "runs", RUN_NAME,
-        #                "count_repeats_on_cellranger_standard_not_overlapping_genes",
-        #                "{multimappers}",
-        #                RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
-        #        multimappers = ['multimappers', 'unique_reads']),
         expand(op.join(BASE, 'runs', RUN_NAME, "{sample}", 'cellranger_standard', 'outs', 'web_summary.html'),
           sample = get_samples()),
         expand(op.join(BASE, 'runs', RUN_NAME, "{sample}", 'cellranger_repeats', 'outs', 'web_summary.html'),
           sample = get_samples()),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
-        # expand(op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome',
-        #                '{multimappers}',
-        #                "all_cells_repeats.counts.gz"),
-        #        multimappers = ['multimappers', 'unique_reads'])
+        expand(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                       'bowtie_repeatome', "{sample}"
+                       '{multimappers}',
+                       "all_cells_repeats.counts.gz"),
+               sample = get_samples(),
+               multimappers = ['multimappers', 'unique_reads']),
+        expand(op.join(BASE, "runs", RUN_NAME, '{sample}', 
+                       "count_repeats_on_cellranger_standard",
+                       "{multimappers}",
+                       RUN_NAME + "_transcriptome_repeats.counts.summary.png"),
+               multimappers = ['multimappers', 'unique_reads'],
+               sample = get_samples()),
+        expand(op.join(BASE, "runs", RUN_NAME, '{sample}',
+                       "count_repeats_on_cellranger_standard_not_overlapping_genes",
+                       "{multimappers}",
+                       RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
+               multimappers = ['multimappers', 'unique_reads'],
+               sample = get_samples()),
         # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
         #        regress_ncount = ['TRUE', 'FALSE'],
         #        regress_nfeature = ['TRUE', 'FALSE'])
@@ -309,7 +313,7 @@ rule map_salmon_genes_chromium:
 #           --localmem={params.local_mem_gb}
 #         """
 
-rule run_cellranger_repeats:
+rule run_cellranger_repeats_by_sample:
     input:
         sample = op.join(BASE, 'data', RUN_NAME, "{sample}_S1_L001_R2_001.fastq.gz"),
         transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME,
@@ -414,3 +418,380 @@ rule run_cellranger_standard:
         
         
 ## chromium end
+
+## counts, per sample start
+
+
+rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams_by_sample:
+    input:
+        flag = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard', 'split.flag'),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL) + '_minus_' + op.basename(GENES_GTF_URL))
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard', 'split')
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                               'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                               '{multimappers}',
+                               RUN_NAME + "_repeats_not_overlapping_genes.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                            '{multimappers}',
+                            RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                          '{multimappers}',
+                           RUN_NAME + "_repeats_not_overlapping_genes.counts.summary")
+    log :
+        log = op.join(BASE, "runs",  RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                      '{multimappers}'
+                      'feature_counts_not_overlapping_genes.log'),
+    threads:
+        NTHREADS
+    # shell: """
+    # cd {params.path}
+
+    # {FEATURECOUNTS} -T {threads} \
+    # -t exon \
+    # -g gene_id \
+    # -a {input.gtf} \
+    # -o  {output.counts} \
+    # {params.path}/*bam  2>&1 > {log}
+
+    # {PIGZ} --keep -p {threads} {output.counts}
+    # """
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            cd {params.path}
+
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            -M \
+            --fraction \
+            {params.path}/*bam  2>&1 > {log}
+
+            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+            """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            cd {params.path}
+
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            {params.path}/*bam  2>&1 > {log}
+
+            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+            """)
+        
+    
+## test run bowtie start
+## to avoid explicitly handling the cell barcodes, we take the cellranger output as correct
+##   (e.g. splitting the cells by CB from the cellranger standard output)
+rule map_bowtie_by_cell_by_sample:
+    input:
+        flag = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard', 'split.flag')
+    output:
+        flag_map_bowtie =  op.join(BASE, "runs", RUN_NAME, "{sample}", 'bowtie_repeatome', 'split_bowtie.flag')
+    params:
+        split_bam_path = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard', 'split'),
+        split_fastq_path = op.join(BASE, "runs", RUN_NAME, "{sample}", 'bowtie_repeatome'),
+        repeatome = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0])
+    threads:
+        NTHREADS
+    shell:
+        """
+        mkdir -p {params.split_fastq_path}
+        cd {params.split_fastq_path}
+
+        for fn in $(find {params.split_bam_path} -name "*bam")
+        do
+           echo "$fn"
+           
+           {BEDTOOLS} bamtofastq -i "$fn" -fq "$(basename $fn .bam).fastq"
+        
+           ( {BOWTIE} -q \
+            -v 2 \
+            --threads {threads} \
+            -a -k 10 --best --strata \
+            --sam \
+            --chunkmbs 128 {params.repeatome} "$(basename $fn .bam).fastq" | \
+              samtools view -@ {threads} -bS - > "$(basename $fn .bam)_bowtie.bam" ) 2> \
+              "$(basename $fn .bam)_bowtie.log"
+
+            ## removing the fastq
+            rm "$fn"
+        done
+
+        touch {output.flag_map_bowtie}
+        """
+
+# multimappers with ifelse?
+rule featurecounts_bowtie_repeats_repeatome_by_sample:
+    input:
+        # bam = op.join(BASE, "runs", RUN_NAME, "{sample}", "bowtie_repeatome", "{fastq}.bam"),
+        flag_map_bowtie =  op.join(BASE, "runs", RUN_NAME, "{sample}", 'bowtie_repeatome', 'split_bowtie.flag'),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
+        fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "{sample}", "bowtie_repeatome", "{multimappers}",
+                               "all_cells_repeats.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "{sample}", "bowtie_repeatome", "{multimappers}",
+                            "all_cells_repeats.counts.gz")
+    params:
+        bam_path = op.join(BASE, "runs", RUN_NAME, "{sample}", 'bowtie_repeatome'),
+        processing_path = op.join(BASE, "runs", RUN_NAME, "{sample}", "{multimappers}", 'bowtie_repeatome')
+    log :
+        op.join(BASE, "runs", RUN_NAME, "{sample}", "bowtie_repeatome", "{multimappers}", "all_cell_featurecounts.log"),
+    threads:
+        NTHREADS
+    # shell:
+    #    """
+    #    ## note multimappers are counted
+
+    #    mkdir -p {params.processing_path}
+
+    #    cd {params.processing_path}
+       
+    #    {FEATURECOUNTS} -T {threads} \
+    #    -t exon \
+    #    -g gene_id \
+    #    -a {input.fake_repeatome_gtf} \
+    #    -o  {output.counts} \
+    #    -M \
+    #    {params.bam_path}/*bam  &> {log}
+
+    #    {PIGZ} --keep  -p {threads} {output.counts}
+    #    """
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            mkdir -p {params.processing_path}
+
+            cd {params.processing_path}
+            
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.fake_repeatome_gtf} \
+            -o  {output.counts} \
+            -M --fraction \
+            {params.bam_path}/*bam  &> {log}
+
+            {PIGZ} --keep  -p {threads} {output.counts}
+         """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            mkdir -p {params.processing_path}
+
+            cd {params.processing_path}
+            
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.fake_repeatome_gtf} \
+            -o  {output.counts} \
+            {params.bam_path}/*bam  &> {log}
+
+            {PIGZ} --keep  -p {threads} {output.counts}
+
+            """)
+    
+
+## test run bowtie end
+
+rule spawn_cellranger_bam_file_by_cell_by_sample:
+    input:
+        bam = op.join(BASE, 'runs', RUN_NAME, "{sample}", 'cellranger_standard',
+                      'outs', 'possorted_genome_bam.bam'),
+        barcodes = op.join(BASE, 'runs', RUN_NAME, "{sample}",'cellranger_standard',
+                           'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+    output:
+        rgs = temp(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                           'count_repeats_on_cellranger_standard', 'rgs.txt')),
+        header = temp(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                              'count_repeats_on_cellranger_standard', 'header.txt')),
+        body = temp(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                            'count_repeats_on_cellranger_standard', 'body.txt.gz')),
+        shortened_bam = temp(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                                     'count_repeats_on_cellranger_standard', 'shortened.bam')),
+        flag = op.join(BASE, "runs", RUN_NAME, "{sample}",
+                       'count_repeats_on_cellranger_standard', 'split.flag'),
+        path = directory(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                                 'count_repeats_on_cellranger_standard', 'split'))
+    threads:
+        NTHREADS
+    params:
+        barcodes_script = 'get_cell_barcodes.py',
+        split_script = 'split_by_cell_barcode_in_sorted_bam.py',
+        split_path = op.join(BASE, "runs", RUN_NAME, "{sample}",
+                             'count_repeats_on_cellranger_standard', 'split')
+    log:
+        log1 = op.join(BASE, "runs", RUN_NAME, "{sample}",
+                       'count_repeats_on_cellranger_standard', 'split_add_rg.log'),
+        log2 = op.join(BASE, "runs", RUN_NAME, "{sample}",
+                       'count_repeats_on_cellranger_standard', 'split_pick.log'),
+    shell:
+        """
+        mkdir -p {output.path}
+        
+        # python3 {params.barcodes_script} {input.bam} | {PIGZ} -p {threads} > {output.rgs}
+
+        python3 {params.barcodes_script} {input.bam}  > {output.rgs}
+
+        samtools view -@ {threads} -H {input.bam} > {output.header}
+
+        # ## buffer size in sort due to https://superuser.com/questions/938558/sort-parallel-isnt-parallelizing
+        # ( samtools view -@ {threads} {input.bam} | cut -f 1-15 | \
+        # paste - {output.rgs} | \
+        #   sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
+        ## updated 2 oct to handle SRR8847571
+        ( samtools view -@ {threads} {input.bam} | cut -f 1-15 | \
+        paste - {output.rgs} | \
+          fgrep "RG:Z" | \
+          sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
+
+
+        {PIGZ} --decompress -p {threads} --keep --stdout {output.body} | cat {output.header} - | samtools view -@ {threads} -Sb - > {output.shortened_bam}
+        
+        python3 split_by_cell_barcode_in_sorted_bam.py {output.shortened_bam} -outdir {params.split_path} -barcodes {input.barcodes} &> {log.log2}
+
+        touch {output.flag}
+
+        """
+
+        
+rule profile_featurecounts_run_repeats_by_sample:
+    input:        
+        summary = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard',
+                          "{multimappers}",
+                          RUN_NAME + "_repeats.counts.summary")
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "{sample}", "count_repeats_on_cellranger_standard",
+                       "{multimappers}"),
+        script = FEATURECOUNTS_RSCRIPT,
+        gtf = 'cellranger_repeats'
+    output:
+        png = op.join(BASE, "runs", RUN_NAME, "{sample}", "count_repeats_on_cellranger_standard",
+                      "{multimappers}",
+                      RUN_NAME + "_transcriptome_repeats.counts.summary.png")
+    threads: 1
+    shell:
+       """
+       cd {params.path}
+       
+       {Rscript} {params.script} --summary {input.summary} --output {output.png} \
+           --identifier {params.gtf}
+       """
+
+## potentially broken, multimappers wildcard missing
+rule profile_featurecounts_run_repeats_not_genes_by_sample:
+    input:        
+        summary = op.join(BASE, "runs", RUN_NAME, "{sample}",
+                          'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                          "{multimappers}",
+                          RUN_NAME + "_repeats_not_overlapping_genes.counts.summary")
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "{sample}",                       
+                       "count_repeats_on_cellranger_standard_not_overlapping_genes",
+                       "{multimappers}"),
+        script = FEATURECOUNTS_RSCRIPT,
+        gtf = 'cellranger_repeats_not_genes'
+    output:
+        png = op.join(BASE, "runs", RUN_NAME, "{sample}",
+                      "count_repeats_on_cellranger_standard_not_overlapping_genes",
+                      "{multimappers}",
+                      RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png")
+    threads: 1
+    shell:
+       """
+       cd {params.path}
+       
+       {Rscript} {params.script} --summary {input.summary} --output {output.png} \
+          --identifier {params.gtf}
+       """    
+
+       
+rule run_featurecounts_spawned_bams_by_sample:
+    input:
+        flag = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard', 'split.flag'),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard', 'split')        
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard',
+                               '{multimappers}',
+                               RUN_NAME + "_repeats.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard',
+                            '{multimappers}',
+                            RUN_NAME + "_repeats.counts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard',
+                          '{multimappers}',
+                            RUN_NAME + "_repeats.counts.summary")
+    log :
+        log = op.join(BASE, "runs",  RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard',
+                      '{multimappers}',                      
+                      'feature_counts.log'),
+    threads:
+        NTHREADS
+    # shell: """
+    # cd {params.path}
+
+    # {FEATURECOUNTS} -T {threads} \
+    # -t exon \
+    # -g gene_id \
+    # -a {input.gtf} \
+    # -o  {output.counts} \
+    # {params.path}/*bam  2>&1 > {log}
+
+    # {PIGZ} --keep -p {threads} {output.counts}
+    # """
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            cd {params.path}
+
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            -M \
+            --fraction \
+            {params.path}/*bam  2>&1 > {log}
+
+            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+            """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            cd {params.path}
+
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            {params.path}/*bam  2>&1 > {log}
+
+            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+            """)
+
+        
+## counts, per sample end
