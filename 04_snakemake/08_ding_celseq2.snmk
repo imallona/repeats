@@ -108,7 +108,8 @@ SRR9169441,RNA-Seq,89,1094064184,PRJNA545730,SAMN11914622,682967510,GEO,public,"
 
 def get_samples(fn):
     # samples = pd.read_table(fn)
-   write_config(fn)
+   if not op.isfile(fn):
+      write_config(fn)
    samples = []
    with open(fn) as fh:
     for line in fh: 
@@ -117,42 +118,33 @@ def get_samples(fn):
 
 rule all:
     input:
-        expand(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
-               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
-        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),  srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
-        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
-               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
-        # expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"), srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
-        # expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"), srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),        
-        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_star_transcriptome_genes.counts.summary.png"), 
-               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
-        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_Aligned.sortedByCoord.out.bam.counts.summary"), 
-               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
-        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_star_transcriptome_repeats.counts.summary.png"), 
-               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
-        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
-                       "{srr}_repeats_no_overlap.counts.summary.png"), 
-               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
-        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{srr}_bowtie_repeats.counts.summary.png"),
-               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
-        expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-               regress_ncount = ['TRUE', 'FALSE'],
-               regress_nfeature = ['TRUE', 'FALSE']),
+        # expand(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
+        #        srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
+        # expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),  srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
+        # expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
+        #        srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),  
+        # expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_star_transcriptome_genes.counts.summary.png"), 
+        #        srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
+        # expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_Aligned.sortedByCoord.out.bam.counts.summary"), 
+        #        srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
+        # expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{srr}_star_transcriptome_repeats.counts.summary.png"), 
+        #        srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
+        # expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
+        #                "{srr}_repeats_no_overlap.counts.summary.png"), 
+        #        srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
+        # expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{srr}_bowtie_repeats.counts.summary.png"),
+        #        srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
+        # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        #        regress_ncount = ['TRUE', 'FALSE'],
+        #        regress_nfeature = ['TRUE', 'FALSE']),
         expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin',
                        'quants_mat.gz')),
         expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin',
                        'quants_mat.gz')),
-        expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-                regress_ncount = ['TRUE', 'FALSE'],
-                regress_nfeature = ['TRUE', 'FALSE']),
-        # op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', RUN_NAME + "_star_genes.counts.gz"),
-        # expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "{srr}_bowtie_repeats.counts.gz"), srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf')))
-        # op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
-        # op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
-        # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-        #        regress_ncount = ['TRUE', 'FALSE'],
-        #        regress_nfeature = ['TRUE', 'FALSE'])
-      
+        # expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        #         regress_ncount = ['TRUE', 'FALSE'],
+        #         regress_nfeature = ['TRUE', 'FALSE']),
+
 
 ruleorder: deal_with_umis_r1 > deal_with_umis_r2 > get_data
 
@@ -219,7 +211,7 @@ print('reduced and duplicated the srr to the one with 31 nt in read 1!')
 def list_cbs(wildcards):
    fastqs_path = op.join(BASE, 'data', RUN_NAME)
    # fns = sorted(filter(re.compile('SR.*[0-9]_1.fastq.gz').match, os.listdir(fastqs_path)))
-   fns = [x + '_1.fastq.gz' for x in get_samples(CONF)]
+   fns = [x + '_1_trim.fastq.gz' for x in get_samples(CONF)]
    return([op.join(fastqs_path, x) for x in fns])
 
 
@@ -767,6 +759,23 @@ rule deal_with_umis_r1:
 
     """
 
+    
+## because structure is 6 CB + 6 UMI and then an oligodt or something else follows
+rule trim_r1s_to_12:
+    input:
+        r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz")
+    output:
+        r1_trim = temp(op.join(BASE, "data", RUN_NAME, "{srr}_1_trim.fastq.gz"))
+    threads:
+        1
+    shell:  """
+    {PIGZ} -p {threads} --decompress --stdout {input.r1} | sed 's/.1 / /g' | \
+      awk 'NR%4==1{{a=$0;}} 
+      NR%4==2{{take=substr($0,1,12)}} 
+      NR%4==3{{c=$0}} 
+      NR%4==0{{d=substr($0,1,12); print a"\\n"take"\\n+\\n"d;}}' | {PIGZ} -p {threads} --stdout > {output.r1_trim}
+    """
+    
 rule get_data:
     input:
         conf = op.join(BASE, "data", RUN_NAME, 'celseq2_ding.conf')
@@ -785,15 +794,22 @@ rule get_data:
         mkdir -p {params.path}
         cd {params.path}
 
-        # {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
-        
-        {PREFETCH} {wildcards.srr} --output-file {wildcards.srr}.sra &> \
-               {wildcards.srr}_prefetch.log
-
-        {VDBVALIDATE} {wildcards.srr}.sra &> {wildcards.srr}_vdbvalidation.log
+        if [ -f "{output.r1}" ]
+        then
+           echo "skipped download"
+           touch {output.r1}
+           touch {output.r2}
+           touch {output.r3}
+        else 
+            # {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
             
-        {FASTQDUMP}  --gzip --split-files  {wildcards.srr}.sra
-
+            {PREFETCH} {wildcards.srr} --output-file {wildcards.srr}.sra &> \
+                   {wildcards.srr}_prefetch.log
+    
+            {VDBVALIDATE} {wildcards.srr}.sra &> {wildcards.srr}_vdbvalidation.log
+            
+            {FASTQDUMP}  --gzip --split-files  {wildcards.srr}.sra
+        fi
         """
 
 ## runme first!

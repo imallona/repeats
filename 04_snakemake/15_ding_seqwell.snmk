@@ -30,10 +30,10 @@ BASE = op.join('/home', 'imallona', 'repeats_sc')
 NTHREADS = 30
 LOCAL_MEM_GB = 100
 
-RUN_NAME  = 'ding_dropseq'
-RUN_TECH = 'dropseq'
+RUN_NAME  = 'ding_seqwell'
+RUN_TECH = 'seqwell'
 GENOME = 'GRCh38'
-CONF = op.join(BASE, "data", RUN_NAME, 'dropseq_ding.conf')
+CONF = op.join(BASE, "data", RUN_NAME, 'seqwell_ding.conf')
 
 GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
 GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
@@ -82,40 +82,37 @@ for item in ['bowtie', 'star', 'salmon']:
    except OSError as err:
       print(err)
 
-def write_config(fn):
-        conf = CONF
-        path = op.join(BASE, "data", RUN_NAME)
-        if not op.exists(path):
-           os.makedirs(path)
-        
-        with open(conf, "w+") as fh:
-           fh.writelines("""SRR9169180,RNA-Seq,110,28398733000,PRJNA545730,SAMN11914027,15835644128,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943299,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836751,SRP200058,GSM3836751,Drop-seq,male,Peripheral blood mononuclear cell,,
-SRR9169210,RNA-Seq,110,25352865010,PRJNA545730,SAMN11915423,14277929705,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943784,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837164,SRP200058,GSM3837164,Drop-seq,female,Peripheral blood mononuclear cell,,
-SRR9169415,RNA-Seq,210,32321089080,PRJNA545730,SAMN11913239,21950806399,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943530,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836766,SRP200058,GSM3836766,inDrops,male,Peripheral blood mononuclear cell,,
-SRR9169215,RNA-Seq,89,37492211111,PRJNA545730,SAMN11914629,16510170453,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943789,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-09T00:00:00Z,GSM3837169,SRP200058,GSM3837169,Drop-seq,female,Peripheral blood mononuclear cell,,
-SRR9169211,RNA-Seq,120,25196884440,PRJNA545730,SAMN11915470,14111257743,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943785,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837165,SRP200058,GSM3837165,inDrops,female,Peripheral blood mononuclear cell,,
-SRR9169421,RNA-Seq,85,13470075630,PRJNA545730,SAMN11913233,11224339745,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943535,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836771,SRP200058,GSM3836771,inDrops,male,Peripheral blood mononuclear cell,,
-SRR9169444,RNA-Seq,85,5102566490,PRJNA545730,SAMN11914619,4199653296,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943799,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837179,SRP200058,GSM3837179,inDrops,female,Peripheral blood mononuclear cell,,
-SRR9169443,RNA-Seq,89,4636831826,PRJNA545730,SAMN11914620,2933786676,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943798,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837178,SRP200058,GSM3837178,Drop-seq,female,Peripheral blood mononuclear cell,,
-SRR9169446,RNA-Seq,85,5827594390,PRJNA545730,SAMN11914618,4762203750,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943800,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837180,SRP200058,GSM3837180,inDrops,female,Peripheral blood mononuclear cell,,
-SRR9169417,RNA-Seq,85,5217517685,PRJNA545730,SAMN11913237,4256305482,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943532,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836768,SRP200058,GSM3836768,inDrops,male,Peripheral blood mononuclear cell,,
-SRR9169447,RNA-Seq,85,16153542630,PRJNA545730,SAMN11914617,13425739982,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943801,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837181,SRP200058,GSM3837181,inDrops,female,Peripheral blood mononuclear cell,,
-SRR9169181,RNA-Seq,89,20401685024,PRJNA545730,SAMN11914026,12541390623,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943300,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836752,SRP200058,GSM3836752,Drop-seq,male,Peripheral blood mononuclear cell,,
-SRR9169416,RNA-Seq,85,5113493835,PRJNA545730,SAMN11913238,4203620726,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943531,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836767,SRP200058,GSM3836767,inDrops,male,Peripheral blood mononuclear cell,,""")
 
-   
+# https://www.ncbi.nlm.nih.gov/Traces/study/?acc=PRJNA545730&o=acc_s%3Aa
+def write_config(fn):
+   conf = CONF
+   path = op.join(BASE, "data", RUN_NAME)
+   if not op.exists(path):
+      os.makedirs(path)
+        
+   with open(conf, "w+") as fh:
+      fh.writelines("""SRR9169186,RNA-Seq,89,5674919104,PRJNA545730,SAMN11913213,3536490842,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943521,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836757,SRP200058,GSM3836757,Seq-Well,male,Peripheral blood mononuclear cell,,
+SRR9169418,RNA-Seq,78,7001443410,PRJNA545730,SAMN11913235,6176815135,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943533,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836769,SRP200058,GSM3836769,Seq-Well,male,Peripheral blood mononuclear cell,,
+SRR9169419,RNA-Seq,78,6402295926,PRJNA545730,SAMN11913234,5626965876,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943534,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836770,SRP200058,GSM3836770,Seq-Well,male,Peripheral blood mononuclear cell,,
+SRR9169212,RNA-Seq,110,6190217220,PRJNA545730,SAMN11915469,3539712376,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943786,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837166,SRP200058,GSM3837166,Seq-Well,female,Peripheral blood mononuclear cell,,
+SRR9169213,RNA-Seq,110,6063418680,PRJNA545730,SAMN11915468,3469243262,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943787,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837167,SRP200058,GSM3837167,Seq-Well,female,Peripheral blood mononuclear cell,,
+SRR9169214,RNA-Seq,110,7132052620,PRJNA545730,SAMN11915467,4091672046,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943788,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837168,SRP200058,GSM3837168,Seq-Well,female,Peripheral blood mononuclear cell,,
+""")
+
+
+
 def get_samples(fn):
     # samples = pd.read_table(fn)
    if not op.isfile(fn):
       write_config(fn)
-   
+      
    samples = []
    with open(fn) as fh:
     for line in fh: 
         samples.append(line.split(',')[0].strip())
     return(samples)
 
-
+ 
 def list_cbs(wildcards):
    fastqs_path = op.join(BASE, 'data', RUN_NAME)
    # fns = sorted(filter(re.compile('SR.*[0-9]_1.fastq.gz').match, os.listdir(fastqs_path)))
@@ -134,28 +131,12 @@ rule all:
     input:
         CONF,
         expand(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
-               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'dropseq_ding.conf'))),
+               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'seqwell_ding.conf'))),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
 
 
-## because structure is 12 CB +8 UMI and then an oligodt follows
-rule trim_r1s_to_20:
-    input:
-        r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz")
-    output:
-        r1_trim = temp(op.join(BASE, "data", RUN_NAME, "{srr}_1_trim.fastq.gz"))
-    threads:
-        1
-    shell:  """
-    {PIGZ} -p {threads} --decompress --stdout {input.r1} | sed 's/.1 / /g' | \
-      awk 'NR%4==1{{a=$0;}} 
-      NR%4==2{{take=substr($0,1,20)}} 
-      NR%4==3{{c=$0}} 
-      NR%4==0{{d=substr($0,1,20); print a"\\n"take"\\n+\\n"d;}}' | {PIGZ} -p {threads} --stdout > {output.r1_trim}
-    """
-    
-rule run_alevin_dropseq_repeats:
+rule run_alevin_seqwell_repeats:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
@@ -184,7 +165,7 @@ rule run_alevin_dropseq_repeats:
     -l ISR \
     -1 {params.cb} \
     -2 {params.r2} \
-    --dropseq \
+    --end 3 --umiLength 12 --barcodeLength 8 \
     --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
@@ -193,8 +174,23 @@ rule run_alevin_dropseq_repeats:
     touch -c {output}
         """
 
-
-rule run_alevin_dropseq_genes:
+## because structure is 12 CB +8 UMI and then an oligodt follows
+rule trim_r1s_to_20:
+    input:
+        r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz")
+    output:
+        r1_trim = temp(op.join(BASE, "data", RUN_NAME, "{srr}_1_trim.fastq.gz"))
+    threads:
+        1
+    shell:  """
+    {PIGZ} -p {threads} --decompress --stdout {input.r1} | sed 's/.1 / /g' | \
+      awk 'NR%4==1{{a=$0;}} 
+      NR%4==2{{take=substr($0,1,20)}} 
+      NR%4==3{{c=$0}} 
+      NR%4==0{{d=substr($0,1,20); print a"\\n"take"\\n+\\n"d;}}' | {PIGZ} -p {threads} --stdout > {output.r1_trim}
+    """
+    
+rule run_alevin_seqwell_genes:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'duplicate_clusters.tsv'),
@@ -223,7 +219,7 @@ rule run_alevin_dropseq_genes:
     -l ISR \
     -1 {params.cb} \
     -2 {params.r2} \
-    --dropseq \
+    --end 3 --umiLength 12 --barcodeLength 8 \
     --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
@@ -260,6 +256,9 @@ rule get_data:
         # {VDBVALIDATE} {wildcards.srr}.sra &> {wildcards.srr}_vdbvalidation.log
             
         # {FASTQDUMP}  --gzip --split-files  {wildcards.srr}.sra
+       
+        mkdir -p {params.path}
+        cd {params.path}
 
         if [ -f "{output.r1}" ]
         then
@@ -270,8 +269,6 @@ rule get_data:
         else 
             # {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
             
-            mkdir -p {params.path}
-            cd {params.path}
             {PREFETCH} {wildcards.srr} --output-file {wildcards.srr}.sra &> \
                    {wildcards.srr}_prefetch.log
     
@@ -284,14 +281,6 @@ rule get_data:
 
 ## runme first!
 
-def get_samples(fn):
-    # samples = pd.read_table(fn)
-   samples = []
-   with open(fn) as fh:
-    for line in fh: 
-        samples.append(line.split(',')[0].strip())
-    return(samples)
- 
 # rule get_srr_identifiers:
 #     priority:
 #         100
