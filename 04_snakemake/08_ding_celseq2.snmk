@@ -171,52 +171,51 @@ rule all:
         expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}", 'alevin',
                        'quants_mat.gz'),
                srr = get_samples(CONF)),
-        # expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-        #         regress_ncount = ['TRUE', 'FALSE'],
-        #         regress_nfeature = ['TRUE', 'FALSE']),
+        expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+                regress_ncount = ['TRUE', 'FALSE'],
+                regress_nfeature = ['TRUE', 'FALSE'])
 
 
 
 
-# rule knit_report_celseq_ad_hoc_ding:
-#     input:
-#         # genes_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'genes', RUN_NAME + '_star_genes.counts.gz'),
-#         # repeats_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
-#         # repeats_bowtie = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', RUN_NAME + '_bowtie_repeats.counts.gz'),
-#         # repeats_no_overlap_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', RUN_NAME + "_repeats_not_overlapping_genes.counts.gz")
-#         # repeats_no_overlap_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome/repeats_no_overlap/SRR9169209_repeats_no_overlap.counts.gz'),
-#         # genes_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'genes', 'SRR9169209_Aligned.sortedByCoord.out.bam.counts.gz'),
-#         # repeats_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome/repeats/SRR9169209_Aligned.sortedByCoord.out.bam.counts.gz'),
-#         # repeats_bowtie =  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome/SRR9169209_bowtie_repeats.counts.gz')
-#         # genes_alevin1 = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  "male", 'alevin', 'quants_mat.gz'),
-#         genes_alevin2 = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'male', 'alevin', 'quants_mat.gz'),
-#         genes_alevin1 = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'female', 'alevin', 'quants_mat.gz'),
-#         # repeats_alevin1 = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats',  "male", 'alevin', 'quants_mat.gz'),
-#         repeats_alevin2 = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'male', 'alevin', 'quants_mat.gz'),
-#         repeats_alevin1 = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'female', 'alevin', 'quants_mat.gz')
-#     params:
-#         rmd = 'summarize_celseq_run_pbmcs.Rmd',
-#         run_name = RUN_NAME
-#     output:
-#         html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-#         rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-#         aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
-#     log:
-#         op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_celseq2_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
-#     shell:
-#         """
-#         {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
-#           output_file = \"{output.html}\", 
-#           params = list(identifier = \"{params.run_name}\", 
-#           genes_alevin2 = \"{input.genes_alevin2}\",
-#           repeats_alevin2 = \"{input.repeats_alevin2}\",
-#           genes_alevin1 = \"{input.genes_alevin1}\",
-#           repeats_alevin1 = \"{input.repeats_alevin1}\",
-#           seurat_output = \"{output.rds}\", 
-#           aris_output = \"{output.aris}\", 
-#           regress_genes_nCount = \"{wildcards.regress_ncount}\", \
-#           regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}
-#         """
+rule knit_report_celseq_ad_hoc_ding:
+    input:
+        # genes_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'genes', RUN_NAME + '_star_genes.counts.gz'),
+        # repeats_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
+        # repeats_bowtie = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', RUN_NAME + '_bowtie_repeats.counts.gz'),
+        # repeats_no_overlap_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', RUN_NAME + "_repeats_not_overlapping_genes.counts.gz")
+        # repeats_no_overlap_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome/repeats_no_overlap/SRR9169209_repeats_no_overlap.counts.gz'),
+        # genes_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'genes', 'SRR9169209_Aligned.sortedByCoord.out.bam.counts.gz'),
+        # repeats_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome/repeats/SRR9169209_Aligned.sortedByCoord.out.bam.counts.gz'),
+        # repeats_bowtie =  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome/SRR9169209_bowtie_repeats.counts.gz')
+        # genes_alevin1 = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  "male", 'alevin', 'quants_mat.gz'),
+        genes_alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes'),
+        repeats_alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats')
+    params:
+        rmd = 'summarize_alevin_multiple_samples.Rmd',
+        run_name = RUN_NAME
+    output:
+        html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        cobra =  op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        markers  = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
+    log:
+        op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_celseq2_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
+    shell:
+        """
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+          output_file = \"{output.html}\", 
+          params = list(identifier = \"{params.run_name}\", 
+          genes_alevin = \"{input.genes_alevin}\",
+          repeats_alevin = \"{input.repeats_alevin}\",
+          seurat_output = \"{output.rds}\", 
+          aris_output = \"{output.aris}\", 
+          cobra_output = \"{output.cobra}\", 
+          markers_output = \"{output.markers}\", 
+          regress_genes_nCount = \"{wildcards.regress_ncount}\", \
+          regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}
+        """
 
 """
 564 cells to be expected! treat runs separately
