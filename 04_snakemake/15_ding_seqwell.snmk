@@ -448,7 +448,6 @@ rule featurecounts_repeats_repeatome_bowtie:
        """
        ## note multimappers are counted
        {FEATURECOUNTS} -T {threads} \
-       -p \
        -t exon \
        -g gene_id \
        -a {input.fake_repeatome_gtf} \
@@ -615,13 +614,12 @@ rule get_repeats_not_overlapping_genes_gtf:
         """
 
  
-rule map_bowtie_repeatome_pe:
+rule map_bowtie_repeatome_se:
     params:
         repeatome = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0]),
         sample = RUN_NAME,
         path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome")
     input:
-        fastq1 = op.join(BASE, "data", RUN_NAME, "{fastq}_1_umi.fastq.gz"),
         fastq2 = op.join(BASE, "data", RUN_NAME, "{fastq}_2_umi.fastq.gz"),
         repeatome_tag_file = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt')
     output:
@@ -634,23 +632,20 @@ rule map_bowtie_repeatome_pe:
         """
         mkdir -p {params.path}
 
-        ( {BOWTIE} -q \
-        -1 <( {PIGZ} --keep --processes {threads} --to-stdout --decompress {input.fastq1} ) \
-        -2 <( {PIGZ} --keep --processes {threads} --to-stdout --decompress {input.fastq2} ) \
-        -v 2 \
+        ( {BOWTIE}  -v 2 \
         --threads {threads} \
         -k 2 --best --strata \
         --sam \
-        --chunkmbs 128 {params.repeatome} |  samtools view -@ {threads} -bS - > {output} ) 2> {log}
+        --chunkmbs 128 {params.repeatome} \
+        -q  <( {PIGZ} --keep --processes {threads} --to-stdout --decompress {input.fastq2} ) | samtools view -@ {threads} -bS - > {output} ) 2> {log}
         """
         
 # #@untested @todo @current
 # ## fix to take into account the different indices to map against
 # ## fix the cutadapt sickle thing
-rule map_star_transcriptome_pe:
+rule map_star_transcriptome_se:
     input:
-        star_index_flag = op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrName.txt'), 
-        fastq1 = op.join(BASE, "data", RUN_NAME, "{fastq}_1_umi.fastq.gz"),
+        star_index_flag = op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrName.txt'),
         fastq2 = op.join(BASE, "data", RUN_NAME,  "{fastq}_2_umi.fastq.gz"),
     params:
         star_index = op.join(BASE, 'indices', 'star', GENOME, 'transcriptome'),
@@ -671,7 +666,7 @@ rule map_star_transcriptome_pe:
         cd {params.path}
         
         {STAR} --genomeDir {params.star_index} \
-        --readFilesIn {input.fastq1} {input.fastq2} \
+        --readFilesIn {input.fastq2} \
         --runThreadN {threads} \
         --outFileNamePrefix {params.prefix} \
         --outSAMtype BAM SortedByCoordinate \
