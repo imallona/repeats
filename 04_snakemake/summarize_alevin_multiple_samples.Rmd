@@ -124,6 +124,12 @@ params <- list(identifier = "",
                seurat_output = "/home/imallona/tmp/test.rds",
                repeats_alevin = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/repeats',
                genes_alevin = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/genes',
+               repeats_star_unique = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/unique_reads/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz", 
+               repeats_star_multi = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/multimappers/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz", 
+               repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/unique_reads/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz", 
+               repeats_bowtie_multi = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/multimappers/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz", 
+               repeats_only_unique = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats_no_overlap/unique_reads/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz",
+               repeats_only_multi = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats_no_overlap/multimappers/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz",
                regress_genes_nCount = FALSE,
                regress_genes_nFeatures = FALSE)
 

@@ -68,6 +68,7 @@ BEDOPS = '~/soft/bedops/bedops-2.4.39/bin/'
 
 
 ## include: "/home/imallona/src/repeats_sc/04_snakemake/rnaseq_like_human_paired_end.snmk"
+include: "/home/imallona/src/repeats_sc/04_snakemake/not_chromium_per_sample_flow.snmk"
 
 try:
    if not op.exists(op.dirname(op.join(BASE, 'annotation'))):
@@ -91,17 +92,9 @@ def write_config(fn):
         with open(conf, "w+") as fh:
            fh.writelines("""SRR9169180,RNA-Seq,110,28398733000,PRJNA545730,SAMN11914027,15835644128,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943299,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836751,SRP200058,GSM3836751,Drop-seq,male,Peripheral blood mononuclear cell,,
 SRR9169210,RNA-Seq,110,25352865010,PRJNA545730,SAMN11915423,14277929705,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943784,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837164,SRP200058,GSM3837164,Drop-seq,female,Peripheral blood mononuclear cell,,
-SRR9169415,RNA-Seq,210,32321089080,PRJNA545730,SAMN11913239,21950806399,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943530,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836766,SRP200058,GSM3836766,inDrops,male,Peripheral blood mononuclear cell,,
 SRR9169215,RNA-Seq,89,37492211111,PRJNA545730,SAMN11914629,16510170453,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943789,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-09T00:00:00Z,GSM3837169,SRP200058,GSM3837169,Drop-seq,female,Peripheral blood mononuclear cell,,
-SRR9169211,RNA-Seq,120,25196884440,PRJNA545730,SAMN11915470,14111257743,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943785,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837165,SRP200058,GSM3837165,inDrops,female,Peripheral blood mononuclear cell,,
-SRR9169421,RNA-Seq,85,13470075630,PRJNA545730,SAMN11913233,11224339745,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943535,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836771,SRP200058,GSM3836771,inDrops,male,Peripheral blood mononuclear cell,,
-SRR9169444,RNA-Seq,85,5102566490,PRJNA545730,SAMN11914619,4199653296,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943799,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837179,SRP200058,GSM3837179,inDrops,female,Peripheral blood mononuclear cell,,
 SRR9169443,RNA-Seq,89,4636831826,PRJNA545730,SAMN11914620,2933786676,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943798,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837178,SRP200058,GSM3837178,Drop-seq,female,Peripheral blood mononuclear cell,,
-SRR9169446,RNA-Seq,85,5827594390,PRJNA545730,SAMN11914618,4762203750,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943800,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837180,SRP200058,GSM3837180,inDrops,female,Peripheral blood mononuclear cell,,
-SRR9169417,RNA-Seq,85,5217517685,PRJNA545730,SAMN11913237,4256305482,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943532,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836768,SRP200058,GSM3836768,inDrops,male,Peripheral blood mononuclear cell,,
-SRR9169447,RNA-Seq,85,16153542630,PRJNA545730,SAMN11914617,13425739982,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943801,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837181,SRP200058,GSM3837181,inDrops,female,Peripheral blood mononuclear cell,,
-SRR9169181,RNA-Seq,89,20401685024,PRJNA545730,SAMN11914026,12541390623,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943300,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836752,SRP200058,GSM3836752,Drop-seq,male,Peripheral blood mononuclear cell,,
-SRR9169416,RNA-Seq,85,5113493835,PRJNA545730,SAMN11913238,4203620726,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943531,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836767,SRP200058,GSM3836767,inDrops,male,Peripheral blood mononuclear cell,,""")
+SRR9169181,RNA-Seq,89,20401685024,PRJNA545730,SAMN11914026,12541390623,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943300,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836752,SRP200058,GSM3836752,Drop-seq,male,Peripheral blood mononuclear cell,,""")
 
    
 def get_samples(fn):
@@ -133,14 +126,40 @@ def get_samples(fn):
 rule all:
     input:
         CONF,
-        expand(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
-               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'dropseq_ding.conf'))),
+        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 
+                       "{srr}_Aligned.sortedByCoord.out.bam"),
+               srr = get_samples(CONF)),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
+                       "{multimappers}",
+                       "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
+               srr = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers']),  
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
+                       "{srr}_star_transcriptome_genes.counts.summary.png"), 
+               srr = get_samples(CONF)),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',
+                       "{multimappers}", "{srr}_Aligned.sortedByCoord.out.bam.counts.summary"), 
+               srr = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers']),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',
+                       "{multimappers}", "{srr}_star_transcriptome_repeats.counts.summary.png"), 
+               srr = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers']),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
+                       "{multimappers}",
+                       "{srr}_repeats_no_overlap.counts.summary.png"), 
+               srr = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers']),
+        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                       "{srr}_bowtie_repeats.counts.summary.png"),
+               srr = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers']),
         expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', "{srr}", 'alevin',
                        'quants_mat.gz'),
                srr = get_samples(CONF)),
         expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}", 'alevin',
                        'quants_mat.gz'),
-               srr = get_samples(CONF)),
+               srr = get_samples(CONF)),      
         expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_dropseq_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
                 regress_ncount = ['TRUE', 'FALSE'],
                 regress_nfeature = ['TRUE', 'FALSE'])
@@ -161,148 +180,188 @@ rule trim_r1s_to_20:
       NR%4==3{{c=$0}} 
       NR%4==0{{d=substr($0,1,20); print a"\\n"take"\\n+\\n"d;}}' | {PIGZ} -p {threads} --stdout > {output.r1_trim}
     """
+
     
-rule run_alevin_dropseq_repeats:
-    input:        
-        tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
-        idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
-        # cb = list_cbs,
-        # r2 = list_r2s
-        cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
-        r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
-        
-    output:
-        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}",  'alevin', 'quants_mat.gz')
-    threads:
-        NTHREADS
-    params:
-        fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}"),
-        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
-        # cb = list_cbs,
-        # r2 = list_r2s
-        cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
-        r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
-    log:
-        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_dropseq_{srr}.log')
-    shell:
-        """
-    mkdir -p {params.processing_path}
-    cd {params.processing_path}
-
-    ({SALMON} alevin \
-    -l ISR \
-    -1 {params.cb} \
-    -2 {params.r2} \
-    --dropseq \
-    --dumpFeatures \
-    -i {params.salmon_idx} \
-    -p {threads} -o {params.processing_path} \
-    --tgMap {input.tgmap} ) 2> {log}
-
-    touch -c {output}
-        """
-
-
-rule run_alevin_dropseq_genes:
-    input:        
-        tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'txp2gene.tsv'),
-        idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'duplicate_clusters.tsv'),
-        # cb = list_cbs,
-        # r2 = list_r2s,
-        cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
-        r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")       
-    output:
-        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  "{srr}",  'alevin',  'quants_mat.gz')
-    threads:
-        NTHREADS
-    params:
-        fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  "{srr}"),
-        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon'),
-        # cb = list_cbs,
-        # r2 = list_r2s
-        cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
-        r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
-    log:
-        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_genes_dropseq_{srr}.log')
-    shell:
-        """
-    mkdir -p {params.processing_path}
-    cd {params.processing_path}
-
-    ({SALMON} alevin \
-    -l ISR \
-    -1 {params.cb} \
-    -2 {params.r2} \
-    --dropseq \
-    --dumpFeatures \
-    -i {params.salmon_idx} \
-    -p {threads} -o {params.processing_path} \
-    --tgMap {input.tgmap} ) 2> {log}
-
-    touch -c {output}
-        """
-
-
-
-rule get_data:
+## we assume the first 20 reads from read1 are the umis + CB
+## CB1 from 1 to 12
+## UMI from 13 to 20
+rule deal_with_umis_r2:
     input:
-        conf = CONF
-    output:
-        # r1_uncomp = temp(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq")),
-        # r2_uncomp = temp(op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq")),
         r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
-        r2 = op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq.gz"),
-        r3 = op.join(BASE, "data", RUN_NAME, "{srr}_3.fastq.gz")
-    params:
-        path = op.join(BASE, "data", RUN_NAME)
+        r2 = op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq.gz")
+    output:
+        r2_umi = temp(op.join(BASE, "data", RUN_NAME, "{srr}_2_umi.fastq.gz"))
     threads:
         1
-    shell:
-        """
-        mkdir -p {params.path}
-        cd {params.path}
+    shell: """
+    join <(zcat {input.r2} | sed 's/.2 / /g' | awk '{{OFS=FS=" "; print $1}}' | nl)  \
+       <(zcat {input.r1} | awk '{{OFS=FS=" "; print $1}}' | nl ) | \
+       awk '(NR%4==1){{a=$2;}}(NR%4==2){{cb=substr($3,0,12);umi=substr($3,13,8); b=$2}}(NR%4==3){{c=$2}}(NR%4==0){{d=$2;print a"_"cb"_"umi".2\\n"b"\\n+\\n"d;}}' | {PIGZ} -p {threads} --stdout > {output.r2_umi}
 
-        # # {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
-        
-        # {PREFETCH} {wildcards.srr} --output-file {wildcards.srr}.sra &> \
-        #        {wildcards.srr}_prefetch.log
+    """
 
-        # {VDBVALIDATE} {wildcards.srr}.sra &> {wildcards.srr}_vdbvalidation.log
-            
-        # {FASTQDUMP}  --gzip --split-files  {wildcards.srr}.sra
 
-        if [ -f "{output.r1}" ]
-        then
-           echo "skipped download"
-           touch {output.r1}
-           touch {output.r2}
-           touch {output.r3}
-        else 
-            # {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
-            
-            mkdir -p {params.path}
-            cd {params.path}
-            {PREFETCH} --max_size 50G  {wildcards.srr} --output-file {wildcards.srr}.sra &> \
-                   {wildcards.srr}_prefetch.log
+## we assume the first 20 reads from read1 are the umis + CB
+## CB1 from 1 to 12
+## UMI from 13 to 20
+rule deal_with_umis_r1:
+    input:
+        r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz")
+    output:
+        r1_umi = temp(op.join(BASE, "data", RUN_NAME, "{srr}_1_umi.fastq.gz"))
+    threads:
+        1
+    shell:  """
+    {PIGZ} -p {threads} --decompress --stdout {input.r1} | sed 's/.1 / /g' | \
+      awk 'NR%4==1{{a=$1;}} 
+      NR%4==2{{cb=substr($0,0,12);umi=substr($0,13,8);b_without=substr($0,20)}} 
+      NR%4==3{{c=$0}} 
+      NR%4==0{{d=substr($0,13); print a"_"cb"_"umi".1\\n"b_without"\\n+\\n"d;}}' | {PIGZ} -p {threads} --stdout > {output.r1_umi}
+
+    """
+
     
-            {VDBVALIDATE} {wildcards.srr}.sra &> {wildcards.srr}_vdbvalidation.log
+# rule run_alevin_dropseq_repeats:
+#     input:        
+#         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
+#         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
+#         # cb = list_cbs,
+#         # r2 = list_r2s
+#         cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
+#         r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
+        
+#     output:
+#         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}",  'alevin', 'quants_mat.gz')
+#     threads:
+#         NTHREADS
+#     params:
+#         fastqs_path = op.join(BASE, 'data', RUN_NAME),
+#         processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}"),
+#         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
+#         # cb = list_cbs,
+#         # r2 = list_r2s
+#         cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
+#         r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
+#     log:
+#         op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_dropseq_{srr}.log')
+#     shell:
+#         """
+#     mkdir -p {params.processing_path}
+#     cd {params.processing_path}
+
+#     ({SALMON} alevin \
+#     -l ISR \
+#     -1 {params.cb} \
+#     -2 {params.r2} \
+#     --dropseq \
+#     --dumpFeatures \
+#     -i {params.salmon_idx} \
+#     -p {threads} -o {params.processing_path} \
+#     --tgMap {input.tgmap} ) 2> {log}
+
+#     touch -c {output}
+#         """
+
+
+# rule run_alevin_dropseq_genes:
+#     input:        
+#         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'txp2gene.tsv'),
+#         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'duplicate_clusters.tsv'),
+#         # cb = list_cbs,
+#         # r2 = list_r2s,
+#         cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
+#         r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")       
+#     output:
+#         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  "{srr}",  'alevin',  'quants_mat.gz')
+#     threads:
+#         NTHREADS
+#     params:
+#         fastqs_path = op.join(BASE, 'data', RUN_NAME),
+#         processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  "{srr}"),
+#         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon'),
+#         # cb = list_cbs,
+#         # r2 = list_r2s
+#         cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
+#         r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
+#     log:
+#         op.join(BASE, 'runs', RUN_NAME, 'run_salmon_genes_dropseq_{srr}.log')
+#     shell:
+#         """
+#     mkdir -p {params.processing_path}
+#     cd {params.processing_path}
+
+#     ({SALMON} alevin \
+#     -l ISR \
+#     -1 {params.cb} \
+#     -2 {params.r2} \
+#     --dropseq \
+#     --dumpFeatures \
+#     -i {params.salmon_idx} \
+#     -p {threads} -o {params.processing_path} \
+#     --tgMap {input.tgmap} ) 2> {log}
+
+#     touch -c {output}
+#         """
+
+
+
+# rule get_data:
+#     input:
+#         conf = CONF
+#     output:
+#         # r1_uncomp = temp(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq")),
+#         # r2_uncomp = temp(op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq")),
+#         r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
+#         r2 = op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq.gz"),
+#         r3 = op.join(BASE, "data", RUN_NAME, "{srr}_3.fastq.gz")
+#     params:
+#         path = op.join(BASE, "data", RUN_NAME)
+#     threads:
+#         1
+#     shell:
+#         """
+#         mkdir -p {params.path}
+#         cd {params.path}
+
+#         # # {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
+        
+#         # {PREFETCH} {wildcards.srr} --output-file {wildcards.srr}.sra &> \
+#         #        {wildcards.srr}_prefetch.log
+
+#         # {VDBVALIDATE} {wildcards.srr}.sra &> {wildcards.srr}_vdbvalidation.log
             
-            {FASTQDUMP}  --gzip --split-files  {wildcards.srr}.sra
-        fi
+#         # {FASTQDUMP}  --gzip --split-files  {wildcards.srr}.sra
 
-        """
+#         if [ -f "{output.r1}" ]
+#         then
+#            echo "skipped download"
+#            touch {output.r1}
+#            touch {output.r2}
+#            touch {output.r3}
+#         else 
+#             # {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
+            
+#             mkdir -p {params.path}
+#             cd {params.path}
+#             {PREFETCH} --max_size 50G  {wildcards.srr} --output-file {wildcards.srr}.sra &> \
+#                    {wildcards.srr}_prefetch.log
+    
+#             {VDBVALIDATE} {wildcards.srr}.sra &> {wildcards.srr}_vdbvalidation.log
+            
+#             {FASTQDUMP}  --gzip --split-files  {wildcards.srr}.sra
+#         fi
 
-## runme first!
+#         """
 
-def get_samples(fn):
-    # samples = pd.read_table(fn)
-   samples = []
-   with open(fn) as fh:
-    for line in fh: 
-        samples.append(line.split(',')[0].strip())
-    return(samples)
+# ## runme first!
+
+# def get_samples(fn):
+#     # samples = pd.read_table(fn)
+#    samples = []
+#    with open(fn) as fh:
+#     for line in fh: 
+#         samples.append(line.split(',')[0].strip())
+#     return(samples)
  
 
 
