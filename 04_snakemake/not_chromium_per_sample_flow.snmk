@@ -257,7 +257,8 @@ rule featurecounts_repeats_repeatome_bowtie:
        ## any CB:UMI pair that was seen is removed from the output (awk array)
        grep 'Assigned' {output.detailed} | \
          awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' | {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}  
             """)
@@ -276,7 +277,8 @@ rule featurecounts_repeats_repeatome_bowtie:
        ## any CB:UMI pair that was seen is removed from the output (awk array)
        grep 'Assigned' {output.detailed} | \
          awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' | {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}  
           
@@ -288,8 +290,8 @@ rule feature_counts_repeats_not_overlapping_genes:
         bam=op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL) + '_minus_' + op.basename(GENES_GTF_URL))
     params:
-        path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', '{multimappers}'),
-        subpath = 'repeats_no_overlap'
+        path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome'),
+        subpath = op.join('repeats_no_overlap', '{multimappers}')
     output:
         counts  = temp(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
                                '{multimappers}', "{srr}_repeats_no_overlap.counts")),
@@ -320,13 +322,14 @@ rule feature_counts_repeats_not_overlapping_genes:
        -o  {output.counts} \
        -M \
        -R CORE \
-       --Rpath {params.path} \
+       --Rpath {params.path}/{params.subpath} \
        {input.bam}  &> {log}
 
        ## any CB:UMI pair that was seen is removed from the output (awk array)
        grep 'Assigned' {output.detailed} | \
          awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' | {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}  
             """)
@@ -339,13 +342,14 @@ rule feature_counts_repeats_not_overlapping_genes:
        -a {input.gtf} \
        -o  {output.counts} \
        -R CORE \
-       --Rpath {params.path} \
+       --Rpath {params.path}/{params.subpath} \
        {input.bam}  &> {log}
 
        ## any CB:UMI pair that was seen is removed from the output (awk array)
        grep 'Assigned' {output.detailed} | \
          awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' | {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}            
             """)
@@ -379,9 +383,13 @@ rule featurecounts_genes:
        --Rpath {params.path}/{params.subpath} \
        {input.bam}  &> {log}
  
-       ## any CB:UMI pair that was seen is removed from the output (awk array)
-       grep 'Assigned' {output.genes_detailed} | \
-       awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
+       # ## any CB:UMI pair that was seen is removed from the output (awk array)
+       # grep 'Assigned' {output.genes_detailed} | \
+       # awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | cut -f2,3,6 | \
+       # {PIGZ} --keep  -p {threads} --stdout > {output.genes_gz_detailed}
+
+
+       grep 'Assigned' {output.genes_detailed} |  awk -F'[_.\t]' '{{OFS="\t"; print $3,$4, $8}}' | \
        {PIGZ} --keep  -p {threads} --stdout > {output.genes_gz_detailed}
 
        {PIGZ} --keep -p {threads} {output.genes_counts}
@@ -409,8 +417,8 @@ rule featurecounts_repeats_from_star:
                           '{multimappers}',
                           "{srr}_Aligned.sortedByCoord.out.bam.counts.summary")
     params:
-        path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', '{multimappers}'),
-        subpath = 'repeats'
+        path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome'),
+        subpath = op.join('repeats', '{multimappers}')
     log :
         op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', '{multimappers}',
                 "{srr}_star_repeats_featurecounts.log"),
@@ -426,13 +434,14 @@ rule featurecounts_repeats_from_star:
        -o  {output.counts} \
        -M \
        -R CORE \
-       --Rpath {params.path} \
+       --Rpath {params.path}/{params.subpath} \
        {input.bam}  &> {log}
 
        ## any CB:UMI pair that was seen is removed from the output (awk array)
        grep 'Assigned' {output.detailed} | \
          awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' | {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}  
             """)
@@ -445,13 +454,14 @@ rule featurecounts_repeats_from_star:
        -a {input.gtf} \
        -o  {output.counts} \
        -R CORE \
-       --Rpath {params.path} \
+       --Rpath {params.path}/{params.subpath} \
        {input.bam}  &> {log}
 
        ## any CB:UMI pair that was seen is removed from the output (awk array)
        grep 'Assigned' {output.detailed} | \
          awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' | {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}            
             """)
