@@ -149,8 +149,8 @@ def get_samples(fn):
  
 rule all:
     input:
-        # expand(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
-        #        srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
+        expand(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
+               srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
         expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 
                        "{srr}_Aligned.sortedByCoord.out.bam"),
                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf'))),
@@ -179,9 +179,6 @@ rule all:
                        "{srr}_bowtie_repeats.counts.summary.png"),
                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf')),
                multimappers = ['unique_reads', 'multimappers']),
-        # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-        #        regress_ncount = ['TRUE', 'FALSE'],
-        #        regress_nfeature = ['TRUE', 'FALSE']),
         expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', "{srr}", 'alevin',
                        'quants_mat.gz'),
                srr = get_samples(CONF)),
@@ -190,24 +187,24 @@ rule all:
                srr = get_samples(CONF)),
         expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
                 regress_ncount = ['TRUE', 'FALSE'],
-                regress_nfeature = ['TRUE', 'FALSE'])
+                regress_nfeature = ['TRUE', 'FALSE']),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
+               srr = get_samples(CONF))
 
 
 
 
 rule knit_report_celseq_ad_hoc_ding:
     input:
-        # genes_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'genes', RUN_NAME + '_star_genes.counts.gz'),
-        # repeats_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
-        # repeats_bowtie = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', RUN_NAME + '_bowtie_repeats.counts.gz'),
-        # repeats_no_overlap_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', RUN_NAME + "_repeats_not_overlapping_genes.counts.gz")
-        # repeats_no_overlap_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome/repeats_no_overlap/SRR9169209_repeats_no_overlap.counts.gz'),
-        # genes_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'genes', 'SRR9169209_Aligned.sortedByCoord.out.bam.counts.gz'),
-        # repeats_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome/repeats/SRR9169209_Aligned.sortedByCoord.out.bam.counts.gz'),
-        # repeats_bowtie =  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome/SRR9169209_bowtie_repeats.counts.gz')
-        # genes_alevin1 = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  "male", 'alevin', 'quants_mat.gz'),
-        genes_alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes'),
-        repeats_alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats')
+        genes_featurecounts = directory(op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome')),
+        repeats_star_multi = directory(op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats', 'multimappers')),
+        repeats_star_unique = directory(op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats', 'unique_reads')),
+        repeats_bowtie_multi = directory(op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', 'multimappers')),
+        repeats_bowtie_unique = directory(op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', 'unique_reads')),        
+        repeats_only_multi = directory(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', "multimappers")),
+        repeats_only_unique = directory(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', 'unique_reads')),        
+        genes_alevin = directory(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes')),
+        repeats_alevin = directory(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats'))
     params:
         rmd = 'summarize_alevin_multiple_samples.Rmd',
         run_name = RUN_NAME
@@ -226,6 +223,13 @@ rule knit_report_celseq_ad_hoc_ding:
           params = list(identifier = \"{params.run_name}\", 
           genes_alevin = \"{input.genes_alevin}\",
           repeats_alevin = \"{input.repeats_alevin}\",
+          repeats_star_unique = \"{input.repeats_star_unique}\",
+          repeats_star_multi = \"{input.repeats_star_multi}\",
+          repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\",
+          repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
+          repeats_only_unique = \"{input.repeats_only_unique}\",
+          repeats_only_multi = \"{input.repeats_only_multi}\",
+          genes_featurecounts = \"{input.genes_featurecounts}\",
           seurat_output = \"{output.rds}\", 
           aris_output = \"{output.aris}\", 
           cobra_output = \"{output.cobra}\", 

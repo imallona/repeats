@@ -15,6 +15,13 @@ params:
   identifier: ""   
   genes_alevin: ""
   repeats_alevin: ""
+  repeats_star_unique: ""
+  repeats_star_multi: ""
+  repeats_bowtie_unique: ""
+  repeats_bowtie_multi: ""
+  repeats_only_unique: ""
+  repeats_only_multi: ""
+  genes_featurecounts: ""               
   seurat_output: ""
   aris_output: ""
   cobra_output: ""
@@ -124,14 +131,16 @@ params <- list(identifier = "",
                seurat_output = "/home/imallona/tmp/test.rds",
                repeats_alevin = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/repeats',
                genes_alevin = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/genes',
-               repeats_star_unique = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/unique_reads/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz", 
-               repeats_star_multi = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/multimappers/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz", 
-               repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/unique_reads/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz", 
-               repeats_bowtie_multi = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/multimappers/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz", 
-               repeats_only_unique = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats_no_overlap/unique_reads/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz",
-               repeats_only_multi = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats_no_overlap/multimappers/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz",
+               repeats_star_unique = "/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats/unique_reads", 
+               repeats_star_multi = "/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats/multimappers", 
+               repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/ding_celseq2/bowtie_repeatome/unique_reads", 
+               repeats_bowtie_multi = "/home/imallona/repeats_sc/runs/ding_celseq2/bowtie_repeatome/multimappers", 
+               repeats_only_unique = "/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats_no_overlap/unique_reads",
+               repeats_only_multi = "/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats_no_overlap/multimappers",
+               genes_featurecounts = "/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/genes",
                regress_genes_nCount = FALSE,
                regress_genes_nFeatures = FALSE)
+
 
 ```
 
@@ -277,12 +286,30 @@ rm(counts, genes)
 
 ```{r}
 
-process_featurecounts_grouped_by_cb_umi <- function(fn, annotate_genes = FALSE) {
+process_featurecounts_grouped_by_cb_umi <- function(fn, id = "",
+                                                    annotate_genes = FALSE,
+                                                    accepted_barcodes = 'all') {
      ## Featurecounts-based repeats
     counts <- data.table::fread(fn, sep = '\t', header = FALSE)
     ## cb first, umi second
 
-    colnames(counts) <- c('cb', 'umi', 'gene')
+    tryCatch({
+        colnames(counts) <- c('cb', 'umi', 'gene')
+    }, error = function(x) print(paste(head(counts, 1), collapse = ";")))
+
+    counts$cb <- gsub('[[:digit:].]+', '', counts$cb)
+    counts$cb <- paste(id, counts$cb, sep = "_")
+
+    if (length(accepted_barcodes) > 1) {
+        counts2 <- counts[counts$cb %in% accepted_barcodes,]
+        if (nrow(counts2) < 1) stop(sprintf('item %s\n%s\nacceptedbarcode: %s\nbarcode in count table: %s',
+                                           'something went wrong with the barcodes subsetting',
+                                           item,
+                                           accepted_barcodes[1],
+                                           counts$cb[1]))
+        counts <- counts2
+        rm(counts2)
+    }
     wide <- reshape2::dcast(counts  %>% 
                             group_by(cb, gene) %>%
                             summarise(count = length(unique(umi))),
@@ -298,7 +325,7 @@ process_featurecounts_grouped_by_cb_umi <- function(fn, annotate_genes = FALSE) 
 
         annot$ids <- unique(rownames(wide))
 
-        annot$filters = "ensembl_gene_id_version"
+        annot$filters = "ensembl_gene_id" # not ensembl_gene_id_version
         annot$attributes = c(annot$filters, "external_gene_name", "chromosome_name", 
                              "gene_biotype", "start_position", "end_position")
         annot$biomart = "ENSEMBL_MART_ENSEMBL" 
@@ -316,15 +343,15 @@ process_featurecounts_grouped_by_cb_umi <- function(fn, annotate_genes = FALSE) 
                                        useCache = FALSE)
 
 
-        tmp <- merge(data.frame(ensembl_gene_id_version = rownames(wide)),
-                     by = 'ensembl_gene_id_version', feature_info, all.x = TRUE)
+        tmp <- merge(data.frame(ensembl_gene_id = rownames(wide)),
+                     by = 'ensembl_gene_id', feature_info, all.x = TRUE)
 
-        rownames(tmp) <- tmp$ensembl_gene_id_version
+        rownames(tmp) <- tmp$ensembl_gene_id
         tmp <- tmp[rownames(wide),]
 
-        stopifnot(rownames(wide) == tmp$ensembl_gene_id_version)
+        stopifnot(rownames(wide) == tmp$ensembl_gene_id)
 
-        rownames(wide) <- sprintf('%s_%s', tmp$ensembl_gene_id_version, tmp$external_gene_name)
+        rownames(wide) <- sprintf('%s_%s', tmp$ensembl_gene_id, tmp$external_gene_name)
 
     }
 
@@ -332,35 +359,81 @@ process_featurecounts_grouped_by_cb_umi <- function(fn, annotate_genes = FALSE) 
 }
 ```
 
-```{r}
-# test
-fn1 <-  file.path('/home/imallona/repeats_sc/runs',
-                  'ding_seqwell/bowtie_repeatome/multimappers/SRR9169418.bam.featureCounts.gz')
-
-(process_featurecounts_grouped_by_cb_umi(fn1, annotate_genes = FALSE))[1:10, 1:3]
-
-fn2 <- '/home/imallona/repeats_sc/runs/ding_seqwell/star_transcriptome/genes/SRR9169214_Aligned.sortedByCoord.out.bam.featureCounts.gz'
-
-process_featurecounts_grouped_by_cb_umi(fn2, annotate_genes = TRUE)[1:10, 1:3]
-
-```
-
 
 ```{r}
 
-for (item in grep('repeats|genes', grep('alevin', names(params), invert = TRUE))) {
+for (item in grep('repeats|genes',
+                  grep('alevin|regress', names(params), invert = TRUE, value = TRUE),
+                  value = TRUE)) {
+    fns <- list.files(params[[item]], pattern = '*featureCounts.gz',
+                                  recursive = TRUE)
+    d[[item]] <- list()
+    tmp <- list()
+    for (fn in fns) {
+        id <- sapply(strsplit(basename(fn), '[\\._]'), function(x) return(x[1]))
 
-    d[[item]] <- ''
+        ## stop(head(gsub(paste0(id, '_'), '', colnames(d$genes_alevin))))
+        
+        ## try({
+        ##     tmp[[id]] <- process_featurecounts_grouped_by_cb_umi(
+        ##         file.path(params[[item]], fn),
+        ##         annotate_genes = grepl('genes', item),
+        ##         accepted_barcodes = gsub(paste0(id, '_'), '', colnames(d$genes_alevin)))
+            
+        ##     colnames(tmp[[id]]) <- paste(id, colnames(tmp[[id]]), sep = '_')
+        ## })
+
+        ## let's try again, just in case, with the same cellbarcodes as in alevin
+        
+        tmp[[id]] <- process_featurecounts_grouped_by_cb_umi(
+            file.path(params[[item]], fn),
+            annotate_genes = grepl('genes', item),
+            accepted_barcodes = colnames(d$genes_alevin),
+            id = id)
+        
+        ## colnames(tmp[[id]]) <- paste(id, colnames(tmp[[id]]), sep = '_')
+        
+    }
+    ## merge them
+    d[[item]]  <- Reduce(
+        function(x, y) merge(x, y, by = "id", all = TRUE),
+        lapply(tmp, function(x) { x$id <- rownames(x); x }))
+
+    d[[item]][is.na(d[[item]])] <- 0
+
+    rownames(d[[item]]) <- d[[item]]$id
+    
+    d[[item]] <- CreateSeuratObject(
+        d[[item]][,-1],
+        project = item,
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
+    
+    rm(tmp)
+    
 }
+
 ```
+
+```{r}
+d
+```
+
 
 ```{r}
 GetAssayData(d$repeats_alevin)[1:3, 1:3]
 GetAssayData(d$genes_alevin)[1:3, 1:3]
-
+GetAssayData(d$genes_featurecounts)[1:3, 1:3]
+GetAssayData(d$repeats_star_unique)[1:3, 1:3]
 ```
 
 # Basic Seurat processing
+
+## Basic stats
 
 ## QC before filtering {.tabset}
 
@@ -587,6 +660,14 @@ for (item in names(d)) {
 
 ```{r, eval = FALSE}
 item <- 'repeats_alevin'
+
+print(DimPlot(d[[item]], reduction = "umap", group.by = 'orig.ident'))
+print(DimPlot(d[[item]], reduction = "umap", group.by = 'RNA_snn_res.2'))
+
+```
+
+```{r, eval = FALSE}
+item <- 'genes_alevin'
 
 print(DimPlot(d[[item]], reduction = "umap", group.by = 'orig.ident'))
 print(DimPlot(d[[item]], reduction = "umap", group.by = 'RNA_snn_res.2'))
@@ -1928,14 +2009,15 @@ ggplot(data = cobra, aes(x = re, y =  F1, group=resolution, col =cell)) +
 ```{r, fig.width = 5, fig.height = 5}
 
 tryCatch({
-    ## sorting in a more sensible way
-    maxF1$flavour <- factor(maxF1$flavour,
-                            levels = c('genes_cellranger', 'genes_alevin',
-                                       'both_unique', 'both_multi', 'both_alevin',
-                                       'repeats_cellranger', 'repeats_alevin',
-                                       'repeats_bowtie_unique', 'repeats_bowtie_multi',
-                                       'repeats_featurecounts_unique', 'repeats_featurecounts_multi',
-                                       'control_repeats_only_unique', 'control_repeats_only_multi'))
+    ## ## sorting in a more sensible way
+    ## @todo adapt to this run
+    ## maxF1$flavour <- factor(maxF1$flavour,
+    ##                         levels = c('genes_alevin', 'genes_featurecounts',
+    ##                                    'both_unique', 'both_multi', 'both_alevin',
+    ##                                    'repeats_alevin',
+    ##                                    'repeats_bowtie_unique', 'repeats_bowtie_multi',
+    ##                                    'repeats_featurecounts_unique', 'repeats_featurecounts_multi',
+    ##                                    'control_repeats_only_unique', 'control_repeats_only_multi'))
     
 
     ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +

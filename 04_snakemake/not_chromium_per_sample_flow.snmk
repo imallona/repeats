@@ -99,14 +99,14 @@ rule run_alevin_genes:
       
 rule profile_featurecounts_run_bowtie:
     input:        
-        summary = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome",
+        summary = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", '{multimappers}',
                           "{srr}_bowtie_repeats.counts.summary")
     params:
-        path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome"),
+        path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", '{multimappers}'),
         script = FEATURECOUNTS_RSCRIPT,
         gtf = 'bowtie_repeatome'
     output:
-        png = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome",
+        png = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome",  '{multimappers}',
                       "{srr}_bowtie_repeats.counts.summary.png")
     threads: 1
     shell:
@@ -141,7 +141,7 @@ rule profile_featurecounts_run_repeats_on_transcriptome:
         summary = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',
                           "{multimappers}", "{srr}_Aligned.sortedByCoord.out.bam.counts.summary")
     params:
-        path = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", "{multimappers}"),
+        path = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{multimappers}"),
         script = FEATURECOUNTS_RSCRIPT,
         gtf = 'star_transcriptome_repeats'
     output:
