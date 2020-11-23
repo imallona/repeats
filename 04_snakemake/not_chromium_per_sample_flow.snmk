@@ -542,7 +542,7 @@ rule map_star_transcriptome_se:
         bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
         star_tmp = temp(directory(op.join(BASE, 'runs', 'star_transcriptome', "{srr}_STARtmp")))
     threads:
-        NTHREADS
+        10
     log:
         op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_star.log")
     # benchmark:
