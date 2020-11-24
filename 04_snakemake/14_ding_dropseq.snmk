@@ -28,6 +28,7 @@ print('this comes from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE132
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
 NTHREADS = 40
+PER_TASK_MAX_THREADS = 10
 LOCAL_MEM_GB = 100
 
 RUN_NAME  = 'ding_dropseq'
@@ -240,7 +241,9 @@ rule knit_report_dropseq_ad_hoc_ding:
     output:
         html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_dropseq_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
         rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_dropseq_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-        aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
+        aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        markers = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
     log:
         op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_dropseq_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
     shell:
@@ -259,6 +262,8 @@ rule knit_report_dropseq_ad_hoc_ding:
           genes_featurecounts = \"{input.genes_featurecounts}\",
           seurat_output = \"{output.rds}\", 
           aris_output = \"{output.aris}\", 
+          cobra_output = \"{output.cobra}\", 
+          markers_output = \"{output.markers}\", 
           regress_genes_nCount = \"{wildcards.regress_ncount}\", \
           regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}
         """

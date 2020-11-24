@@ -10,8 +10,7 @@ from glob import glob
 
 
 
-
-rule run_alevin_repeats:
+rule run_alevin_repeats_celseq2:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
@@ -53,7 +52,7 @@ rule run_alevin_repeats:
         """
 
 
-rule run_alevin_genes:
+rule run_alevin_genes_celseq2:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'duplicate_clusters.tsv'),
@@ -220,7 +219,7 @@ rule featurecounts_repeats_repeatome_bowtie:
         op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", '{multimappers}',
                 "{srr}_bowtie_repeats_featurecounts.log"),
     threads:
-        NTHREADS
+        PER_TASK_MAX_THREADS
     # shell:
     #    """
     #    ## note multimappers are counted
@@ -311,7 +310,7 @@ rule feature_counts_repeats_not_overlapping_genes:
         log = op.join(BASE, "runs",  RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', '{multimappers}',
                       '{srr}_feature_counts_not_overlapping_genes.log'),
     threads:
-        NTHREADS
+        PER_TASK_MAX_THREADS
     run:
         if wildcards.multimappers == 'multimappers':
             shell("""      
@@ -371,7 +370,7 @@ rule featurecounts_genes:
     log :
         op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_star_genes_featurecounts.log"),
     threads:
-        NTHREADS
+        PER_TASK_MAX_THREADS
     shell:
        """
        {FEATURECOUNTS} -T {threads} \
@@ -423,7 +422,7 @@ rule featurecounts_repeats_from_star:
         op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', '{multimappers}',
                 "{srr}_star_repeats_featurecounts.log"),
     threads:
-        NTHREADS
+        PER_TASK_MAX_THREADS
     run:
         if wildcards.multimappers == 'multimappers':
            shell("""      

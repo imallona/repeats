@@ -39,6 +39,7 @@ print('this comes from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE132
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
 NTHREADS = 50
+PER_TASK_MAX_THREADS = 10
 LOCAL_MEM_GB = 100
 
 RUN_NAME  = 'ding_celseq2'

@@ -112,22 +112,8 @@ coef_var <- function(x){
 # Data load
 
 ```{r justfordebugging, eval = FALSE}
-## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-##                repeats_cellranger= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz")
-
-## SRR10974769
-
-## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/SRR10974769/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-##                repeats_cellranger= "/home/imallona/repeats_sc/runs/SRR10974769/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/SRR10974769/count_repeats_on_cellranger_standard/SRR10974769_repeats.counts.gz",
-##                identifier = 'test')
 
 params <- list(identifier = "",
-               ## repeats_bowtie = '/home/imallona/repeats_sc/runs/ding_celseq2/bowtie_repeatome/SRR9169177.bam.featureCounts.gz',
-               ## genes_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/genes/SRR9169177.bam.featureCounts.gz',
-               ## repeats_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats/SRR9169177.bam.featureCounts.gz',
-               ## repeats_no_overlap_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/SRR9169177.bam.featureCounts.gz',
                seurat_output = "/home/imallona/tmp/test.rds",
                repeats_alevin = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/repeats',
                genes_alevin = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/genes',
@@ -140,6 +126,21 @@ params <- list(identifier = "",
                genes_featurecounts = "/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/genes",
                regress_genes_nCount = FALSE,
                regress_genes_nFeatures = FALSE)
+
+params <- list(identifier = "seqwell",
+               seurat_output = "/home/imallona/tmp/test.rds",
+               repeats_alevin = '/home/imallona/repeats_sc/runs/ding_seqwell/alevin/repeats',
+               genes_alevin = '/home/imallona/repeats_sc/runs/ding_seqwell/alevin/genes',
+               repeats_star_unique = "/home/imallona/repeats_sc/runs/ding_seqwell/star_transcriptome/repeats/unique_reads", 
+               repeats_star_multi = "/home/imallona/repeats_sc/runs/ding_seqwell/star_transcriptome/repeats/multimappers", 
+               repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/ding_seqwell/bowtie_repeatome/unique_reads", 
+               repeats_bowtie_multi = "/home/imallona/repeats_sc/runs/ding_seqwell/bowtie_repeatome/multimappers", 
+               repeats_only_unique = "/home/imallona/repeats_sc/runs/ding_seqwell/star_transcriptome/repeats_no_overlap/unique_reads",
+               repeats_only_multi = "/home/imallona/repeats_sc/runs/ding_seqwell/star_transcriptome/repeats_no_overlap/multimappers",
+               genes_featurecounts = "/home/imallona/repeats_sc/runs/ding_seqwell/star_transcriptome/genes",
+               regress_genes_nCount = FALSE,
+               regress_genes_nFeatures = FALSE)
+
 
 
 ```
@@ -180,6 +181,12 @@ colnames(counts) <- gsub('quants_mat.gz.', '', basename(colnames(counts)))
 Annotate genes
 
 ```{r}
+
+## annot_fn <- tempfile(pattern = "file", tmpdir = tempdir(), fileext = "")
+## ## querying ensembl biomart only once
+## if (!exists(annot_fn)) {
+
+## }
 
 annot <- list()
 
@@ -387,7 +394,8 @@ for (item in grep('repeats|genes',
         
         tmp[[id]] <- process_featurecounts_grouped_by_cb_umi(
             file.path(params[[item]], fn),
-            annotate_genes = grepl('genes', item),
+            ## annotate_genes = grepl('genes', item),
+            annotate_genes = FALSE,
             accepted_barcodes = colnames(d$genes_alevin),
             id = id)
         
@@ -909,6 +917,8 @@ table(named$cell_labels)
 First, add the SCINA outputs to the different SO objects
 
 ```{r, cache = FALSE}
+
+## save(file = paste0(params$seurat_output, '_debug'), list = c('d', 'named'))
 labelling <- data.frame(cell = colnames(d$genes_alevin),
                         scina = named$cell_labels,
                         stringsAsFactors = FALSE)
@@ -923,9 +933,10 @@ rownames(d$genes_alevin@meta.data) <- d$genes_alevin@meta.data$cell
 
 ## still, the annotation can also be transfered to repeats/featurecounts
 
-for (item in grep('repeats', names(d), value = TRUE)) {
-    d[[item]]@meta.data$cell <-  rownames(d[[item]]@meta.data)
+for (item in setdiff(names(d), 'genes_alevin')) {
 
+    d[[item]]@meta.data$cell <-  rownames(d[[item]]@meta.data)
+    ## head(d[[item]]@meta.data)
     
     tmp <- merge(data.frame(cell = d[[item]]@meta.data$cell),
                  labelling, all.x = TRUE)
