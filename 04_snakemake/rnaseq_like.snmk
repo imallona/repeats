@@ -5,6 +5,9 @@
 ## Izaskun Mallona
 ## GPLv3
 
+
+print('apparently not in use by 06!')
+
 import os.path as op
 from glob import glob
 import re
@@ -93,6 +96,34 @@ for item in ['bowtie', 'star', 'salmon']:
 
 
 
+# # remeber the readgroup thing!
+# rule featurecounts_repeats_repeatome:
+#     input:
+#         bam = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam"),
+#         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
+#         fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
+#     output:
+#         counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.counts")),
+#         gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.counts.gz")
+#     log :
+#         op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}_featurecounts.log"),
+#     threads:
+#         NTHREADS
+#     shell:
+#        """
+#        ## note multimappers are counted
+#        {FEATURECOUNTS} -T {threads} \
+#        -t exon \
+#        -g gene_id \
+#        -a {input.fake_repeatome_gtf} \
+#        -o  {output.counts} \
+#        -M \
+#        {input.bam}  &> {log}
+
+#        {PIGZ} --keep  -p {threads} {output.counts}
+#        """
+
+
 # remeber the readgroup thing!
 rule featurecounts_repeats_repeatome:
     input:
@@ -100,25 +131,59 @@ rule featurecounts_repeats_repeatome:
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
         fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
     output:
-        counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.counts")),
-        gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.counts.gz")
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}", "{fastq}.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}", "{fastq}.counts.gz")
     log :
-        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}_featurecounts.log"),
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}", "{fastq}_featurecounts.log"),
     threads:
         NTHREADS
-    shell:
-       """
-       ## note multimappers are counted
-       {FEATURECOUNTS} -T {threads} \
-       -t exon \
-       -g gene_id \
-       -a {input.fake_repeatome_gtf} \
-       -o  {output.counts} \
-       -M \
-       {input.bam}  &> {log}
+    # shell:
+    #    """
+    #    ## note multimappers are counted
+    #    {FEATURECOUNTS} -T {threads} \
+    #    -t exon \
+    #    -g gene_id \
+    #    -a {input.fake_repeatome_gtf} \
+    #    -o  {output.counts} \
+    #    -M \
+    #    {input.bam}  &> {log}
 
-       {PIGZ} --keep  -p {threads} {output.counts}
-       """
+    #    {PIGZ} --keep  -p {threads} {output.counts}
+    #    """
+    run:
+        if wildcards.multimappers == 'multimappers':
+           shell("""
+           echo multimappers allowed
+
+           cd {params.path}
+
+           {FEATURECOUNTS} -T {threads} \
+           -t exon \
+           -g gene_id \
+           -a {input.gtf} \
+           -o  {output.counts} \
+           -M \
+           --fraction \
+           {params.path}/*bam  2>&1 > {log}
+
+           {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+           """)
+        elif wildcards.multimappers == 'unique_reads':
+           shell("""
+           echo unique only
+
+           cd {params.path}
+
+           {FEATURECOUNTS} -T {threads} \
+           -t exon \
+           -g gene_id \
+           -a {input.gtf} \
+           -o  {output.counts} \
+           {params.path}/*bam  2>&1 > {log}
+
+           {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+           """)
 
        
 rule fake_gtf_repeatome_in_repeats_coordinates:
@@ -145,29 +210,80 @@ rule fake_gtf_repeatome_in_repeats_coordinates:
         """
 
         
+# rule featurecounts_repeats_transcriptome:
+#     input:
+#         bam = op.join(BASE, "runs",RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
+#         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+#     output:
+#         counts  = temp(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', "{fastq}_repeats.counts")),
+#         gz_counts = op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', "{fastq}_repeats.counts.gz")
+#     log :
+#         op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{fastq}_repeats_featurecounts.log"),
+#     threads:
+#         NTHREADS
+#     shell:
+#        """
+#        {FEATURECOUNTS} -T {threads} \
+#        -t exon \
+#        -g gene_id \
+#        -a {input.gtf} \
+#        -o  {output.counts} \
+#        {input.bam}  &> {log}
+
+#        {PIGZ} --keep -p {threads} {output.counts}
+#        """
+
+        
 rule featurecounts_repeats_transcriptome:
     input:
         bam = op.join(BASE, "runs",RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
     output:
-        counts  = temp(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', "{fastq}_repeats.counts")),
-        gz_counts = op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', "{fastq}_repeats.counts.gz")
+        counts  = temp(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats',
+                               "{multimappers}", "{fastq}_repeats.counts")),
+        gz_counts = op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats',
+                            "{multimappers}", "{fastq}_repeats.counts.gz")
     log :
-        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{fastq}_repeats_featurecounts.log"),
+        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',
+                "{multimappers}", "{fastq}_repeats_featurecounts.log"),
     threads:
         NTHREADS
-    shell:
-       """
-       {FEATURECOUNTS} -T {threads} \
-       -t exon \
-       -g gene_id \
-       -a {input.gtf} \
-       -o  {output.counts} \
-       {input.bam}  &> {log}
+   run:
+       if wildcards.multimappers == 'multimappers':
+          shell("""
+          echo multimappers allowed
 
-       {PIGZ} --keep -p {threads} {output.counts}
-       """
-       
+          cd {params.path}
+
+          {FEATURECOUNTS} -T {threads} \
+          -t exon \
+          -g gene_id \
+          -a {input.gtf} \
+          -o  {output.counts} \
+          -M \
+          --fraction \
+          {params.path}/*bam  2>&1 > {log}
+
+          {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+          """)
+       elif wildcards.multimappers == 'unique_reads':
+          shell("""
+          echo unique only
+
+          cd {params.path}
+
+          {FEATURECOUNTS} -T {threads} \
+          -t exon \
+          -g gene_id \
+          -a {input.gtf} \
+          -o  {output.counts} \
+          {params.path}/*bam  2>&1 > {log}
+
+          {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+          """)
+
+
 rule featurecounts_genes_transcriptome:
     input:
         bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),

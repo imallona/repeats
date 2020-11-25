@@ -1,5 +1,5 @@
 ---
-title: "Within sample report: PBMC, cellranger"
+title: "Within sample report: PBMC, cellranger + bowtie + alevin"
 author: "Izaskun Mallona at Robinsonlab"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
@@ -21,9 +21,12 @@ params:
   repeats_only_featurecounts_control_unique: ""
   repeats_bowtie_multi: ""
   repeats_bowtie_unique: ""
+  genes_alevin: ""
+  repeats_alevin: ""
   seurat_output: ""
   aris_output: ""
   cobra_output: ""
+  markers_output: ""
   regress_genes_nCount: ""
   regress_genes_nFeature: ""
 ---
@@ -43,34 +46,37 @@ print(params)
 
 ```{r}
 suppressPackageStartupMessages({
-library(Matrix)
+    library(Matrix)
 
-library(knitr)
-library(Seurat)
-library(dplyr)
-library(scater)
-## library(scater)
-library(data.table)
-## library(SingleCellExperiment)
-## library(scran)
-## library(org.Mm.eg.db)
-## suppressPackageStartupMessages(library(dplyr))
-## suppressPackageStartupMessages(library(DT))
-## library(pheatmap)
-## library(Cairo)
-## library(RColorBrewer)
-## library(corrplot)
-library(ggplot2)
-## library(GGally)
-library(reshape2)
-## library(xtable)
-library(mclust)
-library(pheatmap)
-library(SCINA)
-library(DT)
-library(clue)
-library(iCOBRA)
-library(RColorBrewer)
+    library(knitr)
+    library(Seurat)
+    library(dplyr)
+    library(scater)
+    ## library(scater)
+    library(data.table)
+    ## library(SingleCellExperiment)
+    ## library(scran)
+    ## library(org.Mm.eg.db)
+    ## suppressPackageStartupMessages(library(dplyr))
+    ## suppressPackageStartupMessages(library(DT))
+    ## library(pheatmap)
+    ## library(Cairo)
+    ## library(RColorBrewer)
+    ## library(corrplot)
+    library(ggplot2)
+    ## library(GGally)
+    library(reshape2)
+    ## library(xtable)
+    library(mclust)
+    library(pheatmap)
+    library(SCINA)
+    library(DT)
+    library(clue)
+    ## library(iCOBRA)
+    library(RColorBrewer)
+    library(tximeta)
+    library(SummarizedExperiment)
+    library(biomaRt)
 })
 ```
 
@@ -122,6 +128,24 @@ ac <- function(col, alpha=1){
 ##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/SRR10974769/count_repeats_on_cellranger_standard/SRR10974769_repeats.counts.gz",
 ##                identifier = 'test')
 
+## params <- list(identifier = "5k_pbmc_v3",
+##                genes_cellranger = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
+##                repeats_cellranger = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard/multimappers/5k_pbmc_v3_repeats.counts.gz",
+##                repeats_only_featurecounts_control_multi = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers/5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz",
+##                repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard/unique_reads/5k_pbmc_v3_repeats.counts.gz",
+##                repeats_only_featurecounts_control_unique = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz",
+##                seurat_output = "/home/imallona/tmp/test.rds",
+##                regress_genes_nCount = FALSE,
+##                regress_genes_nFeatures = FALSE,
+##                repeats_bowtie_unique = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/bowtie_repeatome/unique_reads/all_cells_repeats.counts.gz',
+##                repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/bowtie_repeatome/multimappers/all_cells_repeats.counts.gz',
+##                genes_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/genes/alevin/quants_mat.gz',
+##                repeats_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/repeats/alevin/quants_mat.gz')
+
+
+
+
 params <- list(identifier = "frozen_pbmc_donor_a",
                genes_cellranger = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
                repeats_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
@@ -133,7 +157,10 @@ params <- list(identifier = "frozen_pbmc_donor_a",
                regress_genes_nCount = FALSE,
                regress_genes_nFeatures = FALSE,
                repeats_bowtie_unique = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/bowtie_repeatome/unique_reads/all_cells_repeats.counts.gz',
-                repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/bowtie_repeatome/multimappers/all_cells_repeats.counts.gz')
+               repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/bowtie_repeatome/multimappers/all_cells_repeats.counts.gz',
+               genes_alevin = 'None',
+               repeats_alevin = 'None')
+
 
 ```
 
@@ -154,6 +181,7 @@ d$genes_cellranger <- CreateSeuratObject(counts = Read10X(data.dir = path),
                                                            'genes_cellranger'),
                                          min.cells = 0,
                                          min.features = 0)
+
 ```
 
 ```{r}
@@ -171,223 +199,308 @@ d$repeats_cellranger <- CreateSeuratObject(counts = Read10X(data.dir = path),
 ```
 
 ```{r}
-## Featurecounts-based repeats with multimappers
-tmp <- data.table::fread(params$repeats_featurecounts_multi, sep = '\t', header = TRUE,
-                         drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
-rownames(tmp) <- tmp$Geneid ## here
-colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
-## tmp <- tmp[,7:ncol(tmp)]
 
-tmp <- as.data.frame(tmp)
-rownames(tmp) <- tmp$Geneid
-tmp <- tmp[,-1]
+if (params$repeats_featurecounts_multi != "None") {
+    ## Featurecounts-based repeats with multimappers
+    tmp <- data.table::fread(params$repeats_featurecounts_multi, sep = '\t', header = TRUE,
+                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+    rownames(tmp) <- tmp$Geneid ## here
+    colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
+    ## tmp <- tmp[,7:ncol(tmp)]
 
-d$repeats_featurecounts_multi <- CreateSeuratObject(
-    tmp,
-    project =  sprintf('%s_%s', params$identifier, 'repeats\nfeaturecounts\nmulti'),
-    assay = "RNA",
-    min.cells = 0,
-    min.features = 0,
-    names.field = 1,
-    names.delim = "_",
-    meta.data = NULL)
+    tmp <- as.data.frame(tmp)
+    rownames(tmp) <- tmp$Geneid
+    tmp <- tmp[,-1]
 
-rm(tmp)
+    d$repeats_featurecounts_multi <- CreateSeuratObject(
+        tmp,
+        project =  sprintf('%s_%s', params$identifier, 'repeats\nfeaturecounts\nmulti'),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
+
+    rm(tmp)
+}
 
 ```
 
 ```{r}
-## Featurecounts-based repeats without multimappers
-tmp <- data.table::fread(params$repeats_featurecounts_unique, sep = '\t', header = TRUE,
-                         drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
-rownames(tmp) <- tmp$Geneid ## here
-colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
-## tmp <- tmp[,7:ncol(tmp)]
+if (params$repeats_featurecounts_unique != "None") {
+    ## Featurecounts-based repeats without multimappers
+    tmp <- data.table::fread(params$repeats_featurecounts_unique, sep = '\t', header = TRUE,
+                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+    rownames(tmp) <- tmp$Geneid ## here
+    colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
+    ## tmp <- tmp[,7:ncol(tmp)]
 
-tmp <- as.data.frame(tmp)
-rownames(tmp) <- tmp$Geneid
-tmp <- tmp[,-1]
+    tmp <- as.data.frame(tmp)
+    rownames(tmp) <- tmp$Geneid
+    tmp <- tmp[,-1]
 
-d$repeats_featurecounts_unique <- CreateSeuratObject(
-    tmp,
-    project =  sprintf('%s_%s', params$identifier, 'repeats\nfeaturecounts\nunique'),
-    assay = "RNA",
-    min.cells = 0,
-    min.features = 0,
-    names.field = 1,
-    names.delim = "_",
-    meta.data = NULL)
+    d$repeats_featurecounts_unique <- CreateSeuratObject(
+        tmp,
+        project =  sprintf('%s_%s', params$identifier, 'repeats\nfeaturecounts\nunique'),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
 
-rm(tmp)
+    rm(tmp)
+}
 
 ```
 
 Featurecounts control data read
 
 ```{r}
+if (params$repeats_only_featurecounts_control_multi != "None") {
+    ## with multimappers
+    tmp <- data.table::fread(params$repeats_only_featurecounts_control_multi, sep = '\t', header = TRUE,
+                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+    rownames(tmp) <- tmp$Geneid ## here
 
-## with multimappers
-tmp <- data.table::fread(params$repeats_only_featurecounts_control_multi, sep = '\t', header = TRUE,
-                         drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
-rownames(tmp) <- tmp$Geneid ## here
+    colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
+    ## tmp <- tmp[,7:ncol(tmp)]
 
-colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
-## tmp <- tmp[,7:ncol(tmp)]
-
-tmp <- as.data.frame(tmp)
-rownames(tmp) <- tmp$Geneid
-tmp <- tmp[,-1]
+    tmp <- as.data.frame(tmp)
+    rownames(tmp) <- tmp$Geneid
+    tmp <- tmp[,-1]
 
 
-d$control_repeats_only_multi <- CreateSeuratObject(
-    tmp,
-    project =  sprintf('%s_%s', params$identifier, 'repeats_control\nfeaturecounts\nmulti'),
-    assay = "RNA",
-    min.cells = 0,
-    min.features = 0,
-    names.field = 1,
-    names.delim = "_",
-    meta.data = NULL)
+    d$control_repeats_only_multi <- CreateSeuratObject(
+        tmp,
+        project =  sprintf('%s_%s', params$identifier, 'repeats_control\nfeaturecounts\nmulti'),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
 
-rm(tmp)
+    rm(tmp)
+}
 ```
 
 
 ```{r}
+if (params$repeats_only_featurecounts_control_unique != "None") {
+    
+    ## without multimappers
+    tmp <- data.table::fread(params$repeats_only_featurecounts_control_unique, sep = '\t', header = TRUE,
+                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+    rownames(tmp) <- tmp$Geneid ## here
 
-## without multimappers
-tmp <- data.table::fread(params$repeats_only_featurecounts_control_unique, sep = '\t', header = TRUE,
-                         drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
-rownames(tmp) <- tmp$Geneid ## here
+    colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
+    ## tmp <- tmp[,7:ncol(tmp)]
 
-colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
-## tmp <- tmp[,7:ncol(tmp)]
-
-tmp <- as.data.frame(tmp)
-rownames(tmp) <- tmp$Geneid
-tmp <- tmp[,-1]
+    tmp <- as.data.frame(tmp)
+    rownames(tmp) <- tmp$Geneid
+    tmp <- tmp[,-1]
 
 
-d$control_repeats_only_unique <- CreateSeuratObject(
-    tmp,
-    project =  sprintf('%s_%s', params$identifier, 'repeats_control\nfeaturecounts\nunique'),
-    assay = "RNA",
-    min.cells = 0,
-    min.features = 0,
-    names.field = 1,
-    names.delim = "_",
-    meta.data = NULL)
+    d$control_repeats_only_unique <- CreateSeuratObject(
+        tmp,
+        project =  sprintf('%s_%s', params$identifier, 'repeats_control\nfeaturecounts\nunique'),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
 
-rm(tmp)
-
+    rm(tmp)
+}
 ```
-
 
 Mixed (genes + uniquely mapping repeats not overlapping genes) object generation
 
-
 ```{r}
+if (params$repeats_only_featurecounts_control_unique != "None") {
+    
+    common_cells <- intersect(colnames(d$genes_cellranger), colnames(d$control_repeats_only_unique))
+    ## length(common_cells)
+    d$both_unique <- CreateSeuratObject(
+        rbind(as.matrix(GetAssayData(d$genes_cellranger, slot = 'counts'))[,common_cells],
+              as.matrix(GetAssayData(d$control_repeats_only_unique, slot = 'counts'))[,common_cells]),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
 
-common_cells <- intersect(colnames(d$genes_cellranger), colnames(d$control_repeats_only_unique))
-## length(common_cells)
-d$both_unique <- CreateSeuratObject(
-    rbind(as.matrix(GetAssayData(d$genes_cellranger, slot = 'counts'))[,common_cells],
-          as.matrix(GetAssayData(d$control_repeats_only_unique, slot = 'counts'))[,common_cells]),
-    assay = "RNA",
-    min.cells = 0,
-    min.features = 0,
-    names.field = 1,
-    names.delim = "_",
-    meta.data = NULL)
 
-
-rm(common_cells)
+    rm(common_cells)
+}
 ```
 
 Mixed: genes + multimapping repeats not overlapping genes
 
-
 ```{r}
+if (params$repeats_only_featurecounts_control_multi != "None") {
+    
+    common_cells <- intersect(colnames(d$genes_cellranger), colnames(d$control_repeats_only_multi))
+    ## length(common_cells)
+    d$both_multi <- CreateSeuratObject(
+        rbind(as.matrix(GetAssayData(d$genes_cellranger, slot = 'counts'))[,common_cells],
+              as.matrix(GetAssayData(d$control_repeats_only_multi, slot = 'counts'))[,common_cells]),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
 
-common_cells <- intersect(colnames(d$genes_cellranger), colnames(d$control_repeats_only_multi))
-## length(common_cells)
-d$both_multi <- CreateSeuratObject(
-    rbind(as.matrix(GetAssayData(d$genes_cellranger, slot = 'counts'))[,common_cells],
-          as.matrix(GetAssayData(d$control_repeats_only_multi, slot = 'counts'))[,common_cells]),
-    assay = "RNA",
-    min.cells = 0,
-    min.features = 0,
-    names.field = 1,
-    names.delim = "_",
-    meta.data = NULL)
 
-
-rm(common_cells)
-
+    rm(common_cells)
+}
 ```
 
 Bowtie data
 
+```{r}
+if (params$repeats_bowtie_unique != "None") { 
+    tmp <- data.table::fread(params$repeats_bowtie_unique, sep = '\t', header = TRUE,
+                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+    rownames(tmp) <- tmp$Geneid ## here
+
+    colnames(tmp) <- gsub(".*:([A-Z]+-1)_bowtie.bam","\\1", colnames(tmp))
+    ## tmp <- tmp[,7:ncol(tmp)]
+
+    tmp <- as.data.frame(tmp)
+    rownames(tmp) <- tmp$Geneid
+    tmp <- tmp[,-1]
+
+
+    d$repeats_bowtie_unique <- CreateSeuratObject(
+        tmp,
+        project =  sprintf('%s_%s', params$identifier, 'repeats\nbowtie\nunique'),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
+
+    rm(tmp)
+}  
+```
 
 ```{r}
-
-tmp <- data.table::fread(params$repeats_bowtie_unique, sep = '\t', header = TRUE,
-                         drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
-rownames(tmp) <- tmp$Geneid ## here
-
-colnames(tmp) <- gsub(".*:([A-Z]+-1)_bowtie.bam","\\1", colnames(tmp))
-## tmp <- tmp[,7:ncol(tmp)]
-
-tmp <- as.data.frame(tmp)
-rownames(tmp) <- tmp$Geneid
-tmp <- tmp[,-1]
-
-
-d$repeats_bowtie_unique <- CreateSeuratObject(
-    tmp,
-    project =  sprintf('%s_%s', params$identifier, 'repeats\nbowtie\nunique'),
-    assay = "RNA",
-    min.cells = 0,
-    min.features = 0,
-    names.field = 1,
-    names.delim = "_",
-    meta.data = NULL)
-
-rm(tmp)
+if (params$repeats_bowtie_multi != "None") {
     
+    tmp <- data.table::fread(params$repeats_bowtie_multi, sep = '\t', header = TRUE,
+                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+    rownames(tmp) <- tmp$Geneid ## here
+
+    colnames(tmp) <- gsub(".*:([A-Z]+-1)_bowtie.bam","\\1", colnames(tmp))
+    ## tmp <- tmp[,7:ncol(tmp)]
+
+    tmp <- as.data.frame(tmp)
+    rownames(tmp) <- tmp$Geneid
+    tmp <- tmp[,-1]
+
+
+    d$repeats_bowtie_multi <- CreateSeuratObject(
+        tmp,
+        project =  sprintf('%s_%s', params$identifier, 'repeats\nbowtie\nmulti'),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
+
+    rm(tmp)
+}
+```
+
+Alevin
+
+```{r}
+if (params$genes_alevin != "None") {
+    d$genes_alevin <- tximeta::tximeta(coldata = data.frame(
+                                           names = "genes",
+                                           files = params$genes_alevin,
+                                           stringsAsFactors = FALSE
+                                       ), type = "alevin")
+    
+
+    counts <-  assays(d$genes_alevin)$counts
+    d$genes_alevin <- NULL
+
+    annot <- list()
+
+    annot$ids <- rownames(counts)
+
+    biomartCacheClear()
+    
+    annot$filters = "ensembl_gene_id_version"
+    annot$attributes = c(annot$filters, "external_gene_name", "chromosome_name", 
+                         "gene_biotype", "start_position", "end_position")
+    annot$biomart = "ENSEMBL_MART_ENSEMBL" 
+    annot$dataset = "hsapiens_gene_ensembl"
+    annot$host = "ensembl.org"
+    annot$bmart <- biomaRt::useMart(biomart = annot$biomart, dataset = annot$dataset, 
+                                    host = annot$host)
+
+    feature_info <- biomaRt::getBM(attributes = annot$attributes,
+                                   filters = annot$filters, 
+                                   values = annot$ids, mart = annot$bmart,
+                                   useCache = FALSE)
+
+
+    tmp <- merge(data.frame(ensembl_gene_id_version = rownames(counts)),
+                 by = 'ensembl_gene_id_version', feature_info, all.x = TRUE)
+
+    rownames(tmp) <- tmp$ensembl_gene_id_version
+    tmp <- tmp[rownames(counts),]
+
+    stopifnot(rownames(counts) == tmp$ensembl_gene_id_version)
+
+    rownames(counts) <- sprintf('%s_%s', tmp$ensembl_gene_id_version, tmp$external_gene_name)
+
+    colnames(counts) <- paste0(colnames(counts), '-1')
+
+    d$genes_alevin <- CreateSeuratObject(counts =  counts,
+                                         project = 'genes_alevin')
+}
 ```
 
 ```{r}
+if (params$repeats_alevin != "None") {
+    d$repeats_alevin <- tximeta::tximeta(coldata = data.frame(
+                                             names = "repeats",
+                                             files = params$repeats_alevin,
+                                             stringsAsFactors = FALSE
+                                         ), type = "alevin")
 
-tmp <- data.table::fread(params$repeats_bowtie_multi, sep = '\t', header = TRUE,
-                         drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
-rownames(tmp) <- tmp$Geneid ## here
+    colnames(d$repeats_alevin) <- paste0(colnames(d$repeats_alevin), '-1')
 
-colnames(tmp) <- gsub(".*:([A-Z]+-1)_bowtie.bam","\\1", colnames(tmp))
-## tmp <- tmp[,7:ncol(tmp)]
-
-tmp <- as.data.frame(tmp)
-rownames(tmp) <- tmp$Geneid
-tmp <- tmp[,-1]
-
-
-d$repeats_bowtie_multi <- CreateSeuratObject(
-    tmp,
-    project =  sprintf('%s_%s', params$identifier, 'repeats\nbowtie\nmulti'),
-    assay = "RNA",
-    min.cells = 0,
-    min.features = 0,
-    names.field = 1,
-    names.delim = "_",
-    meta.data = NULL)
-
-rm(tmp)
-
+    d$repeats_alevin <- CreateSeuratObject(counts =  assays(d$repeats_alevin)$counts,
+                                           project = 'repeats_alevin')
+}
 ```
 
 
+```{r}
+if (params$repeats_alevin != "None" & params$genes_alevin != "None") {
+    cells <- intersect(colnames(d$repeats_alevin), colnames(d$genes_alevin))
 
+    d$both_alevin <- CreateSeuratObject(
+        counts =  rbind(as.matrix(GetAssayData(d$genes_alevin,
+                                               slot = 'counts'))[,cells],
+                        as.matrix(GetAssayData(d$repeats_alevin,
+                                               slot = 'counts'))[,cells]),
+        project = 'both_alevin')
+}
 
+```
 
 # Read assignment descriptive
 
@@ -506,14 +619,12 @@ ggplot(data=as.data.frame(sm), aes(x=id, y=pct, col = cell, group = cell)) +
 ## QC before filtering {.tabset}
 
 ```{r}
-
 d$genes_cellranger[["percent.mt"]] <- PercentageFeatureSet(d$genes_cellranger, pattern = "^MT-")
 
 ```
 
 
 ```{r}
-
 ## QC is based upon genes 
 item <- 'genes_cellranger'
 
@@ -522,6 +633,7 @@ feature.drop <- isOutlier(d$genes_cellranger$nFeature_RNA, nmads = 3, type = "bo
 mito.drop <- isOutlier(d$genes_cellranger$percent.mt, nmads = 3, type = "higher")
 
 selected_cells <- colnames(d$genes_cellranger)[!(libsize.drop | feature.drop | mito.drop)]
+
 ```
 
 
@@ -560,6 +672,7 @@ for (item in names(d)) {
     
     cat('\n\n')
 }
+
 ```
 
 ## Basic stats pre-QC
@@ -599,13 +712,13 @@ DT::datatable(summarized)
 
 Filtering out cells according to the repeats expression, and forwarding the selection to other layers
 
-
 ```{r}
 ## the subsetting applies to all slots, even though the metrics come from genes only
 for (item in names(d)) {
     d[[item]] <- subset(d[[item]], cells = selected_cells)
 }
 
+(d)
 ```
 
 ```{r, results = 'asis', fig.width = 8, fig.height = 4}
@@ -627,6 +740,7 @@ for (item in names(d)) {
           ggtitle(sprintf('%s', item)))
     cat('\n\n')
 }
+
 ```
 
 ## Basic stats post-QC
@@ -663,8 +777,6 @@ colnames(summarized) <- c('dataset','filter', 'ncells',
 DT::datatable(summarized)
 ```
 
-
-
 ## Variable features {.tabset}
 
 We take the top 10% of the features for genes or genes + repeats, but 25% for repeats.
@@ -697,6 +809,8 @@ for (item in names(d)) {
     print(plot2 + ggtitle(item))
     cat('\n\n')
 }
+
+
 
 ```
 
@@ -745,6 +859,7 @@ for (item in names(d)) {
     cat('\n\n')
 }
 
+
 ```
 
 ```{r, message = FALSE, results = 'asis'}
@@ -768,7 +883,6 @@ for (item in names(d)) {
 ## Dimred UMAP and tSNE {.tabset}
 
 ```{r fig.width = 8, fig.height = 5, results = 'asis', cache = FALSE, warning = FALSE}
-
 for (item in names(d)) {
     cat("### ", item, "\n\n")
     
@@ -945,6 +1059,7 @@ Platelet	SPARC	+
 Platelet	RGS18	+
 Platelet	MYL9	+
 Platelet	GNG11	+', header = TRUE, sep = '\t', stringsAsFactors = FALSE)
+
 ```
 
 
@@ -988,6 +1103,12 @@ table(named$cell_labels)
 ##                 signatures = pos_markers2, results = named)
 ```
 
+Maybe do the same with alevin?
+
+```{r}
+print('@todo predict celltypes with alevin')
+```
+
 Add the SCINA outputs to the different SO objects
 
 ```{r, cache = FALSE}
@@ -1001,7 +1122,8 @@ rownames(d$genes_cellranger@meta.data) <- d$genes_cellranger@meta.data$cell
 
 ## still, the annotation can also be transfered to repeats/featurecounts
 
-for (item in c(grep('repeats|both', names(d), value = TRUE))) {
+## for (item in c(grep('repeats|both|alevin', names(d), value = TRUE))) {
+for (item in c(grep('genes_cellranger', names(d), value = TRUE, invert = TRUE))){
     rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
 
     tmp <- merge(data.frame(cell = d[[item]]@meta.data$cell),
@@ -1175,6 +1297,7 @@ for (flavour1 in names(d)) {
         cat('\n\n')
     }
 }
+
 
 
 ```
@@ -1489,27 +1612,69 @@ At a given resolution, compare both clusterings.
 
 Color scale depicts Rand Index.
 
+
+```{r}
+aris <- list()
+aris_stored <- list()
+```
+
+## All vs SCINA
+
+Not plotted, kept for further analysis
+
+```{r}
+
+for (flavour in names(d)) {
+    aris <- list()
+    i <- 1
+
+    for (flavour_res in seq(0.2, 2, 0.2)) {
+        flavour_res <- sprintf('RNA_snn_res.%s', flavour_res)
+        rownames(d[[flavour]]@meta.data) <- d[[flavour]]@meta.data$cell
+        known <- rownames(d[[flavour]]@meta.data[d[[flavour]]@meta.data$scina != 'unknown',])
+
+        aris[[i]] <- c(sprintf('%s_%s (n=%s)', flavour, flavour_res,
+                               length(unique(d[[flavour]]@meta.data[known, flavour_res]))),
+                       sprintf('scina_%s (n=%s)', 'scina',
+                               length(unique(d[[flavour]]@meta.data[known, 'scina']))),
+                       adjustedRandIndex(d[[flavour]]@meta.data[known, flavour_res],
+                                         d[[flavour]]@meta.data[known, 'scina']))
+        
+        i <- i +1
+    }    
+
+    aris <- do.call(rbind.data.frame, aris)
+    colnames(aris) <- c(sprintf('%s_res', flavour), 'scina', 'ari')
+    aris$ari <- as.numeric(as.character(aris$ari))
+    print(aris)
+    
+    aris_stored[[sprintf('%s__scina', flavour)]] <- aris
+
+}
+```
+
+
 ## Genes vs repeats (cellranger)
 
 ```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
 aris <- list()
 i <- 1
 for (genes_res in seq(0.2, 2, 0.2)) {
-    genes_res <- sprintf('RNA_snn_res.%s', genes_res)
+    genes_res_tag <- sprintf('RNA_snn_res.%s', genes_res)
     
     for (repeats_res in seq(0.2, 2, 0.2)) {
-        repeats_res <- sprintf('RNA_snn_res.%s', repeats_res)
+        repeats_res_tag <- sprintf('RNA_snn_res.%s', repeats_res)
 
         cells <- intersect(rownames(d$genes_cellranger@meta.data), rownames(d$repeats_cellranger@meta.data))
         
    
 
         aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
-                               length(unique(d$genes_cellranger@meta.data[cells, genes_res]))),
+                               length(unique(d$genes_cellranger@meta.data[cells, genes_res_tag]))),
                        sprintf('repeats_cr_%s (n=%s)', repeats_res,
-                               length(unique(d$repeats_cellranger@meta.data[cells, repeats_res]))),
-                       adjustedRandIndex(d$genes_cellranger@meta.data[cells,genes_res],
-                                         d$repeats_cellranger@meta.data[cells,repeats_res]))
+                               length(unique(d$repeats_cellranger@meta.data[cells, repeats_res_tag]))),
+                       adjustedRandIndex(d$genes_cellranger@meta.data[cells,genes_res_tag],
+                                         d$repeats_cellranger@meta.data[cells,repeats_res_tag]))
         i <- i +1
     }    
 }
@@ -1531,7 +1696,7 @@ pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
 ```
 
 ```{r store_aris}
-aris_stored <- list()
+## aris_stored <- list()
 aris_stored[['genes__repeats_cr']] <- aris
 ```
 
@@ -1789,109 +1954,32 @@ aris <- do.call(rbind.data.frame, aris)
 colnames(aris) <- c('genes_res', 'scina', 'ari')
 aris$ari <- as.numeric(as.character(aris$ari))
 print(aris)
+
 ```
 
 
-# Diferential repeat expression by SCINA identity {.tabset}
+# Differential repeat expression by SCINA identity {.tabset}
 
-```{r does_not_work, eval = FALSE}
+```{r}
+## marker list
+ml <- list()
+```
+
+```{r datatable_does_not_render, eval = TRUE}
 for (item in names(d)) {
     cat('## ', item, '\n\n')
     
     Idents(d[[item]]) <- 'scina'
 
-    ## find markers for every scina identity (discarding the unplaced); report only positives   
-    markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
+    ## find markers for every scina identity (discarding the unplaced); report only positives    
+    ml[[item]] <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
                               only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
 
-    DT::datatable(markers)
+    ## DT::datatable(ml[[item]])
+    print(head(ml[[item]]))
+    
     cat('\n\n')
 }
-
-```
-
-```{r}
-ml <- list()
-```
-
-## genes_cellranger
-
-
-```{r}
-item <- 'genes_cellranger'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
-
-## repeats_cellranger
-
-```{r}
-item <- 'repeats_cellranger'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
-
-
-## repeats_featurecounts unique
-
-```{r}
-item <- 'repeats_featurecounts_unique'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
-
-
-## repeats_featurecounts multimappers
-
-```{r}
-item <- 'repeats_featurecounts_multi'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
-
-## control_repeats_only unique 
-
-```{r}
-item <- 'control_repeats_only_unique'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
-
-## control_repeats_only multimappers
-
-```{r}
-item <- 'control_repeats_only_multi'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-ml[[item]] <- markers
-DT::datatable(markers)
 
 ```
 
@@ -2083,27 +2171,27 @@ cobra$id <- params$identifier
 For each cell type, get the max F1 stratifying by flavour *regardless of the resolution*.
 
 ```{r}
+tryCatch({
+    ## cobra <- cobra[order(cobra$F1, cobra$cell, decreasing = TRUE),]
+    ## maxf1 <- cobra[0,]
+    maxF1 <- list()
 
-## cobra <- cobra[order(cobra$F1, cobra$cell, decreasing = TRUE),]
-## maxf1 <- cobra[0,]
-maxF1 <- list()
-
-for (flavour in levels(cobra$flavour)) {
-    for (cell in levels(cobra$cell)) {
-        maxF1[[paste(flavour, cell)]] <- c(flavour, cell, max(cobra[cobra$flavour == flavour &
-                                                                    cobra$cell == cell, 'F1']))
+    for (flavour in levels(cobra$flavour)) {
+        for (cell in levels(cobra$cell)) {
+            maxF1[[paste(flavour, cell)]] <- c(flavour, cell, max(cobra[cobra$flavour == flavour &
+                                                                        cobra$cell == cell, 'F1']))
+        }
+        
     }
+
+
+    maxF1 <- do.call(rbind.data.frame, maxF1)
+    colnames(maxF1) <- c('flavour', 'cell', 'max_F1')
+    maxF1$max_F1 <- as.numeric(as.character(maxF1$max_F1))
     
-}
-
-
-maxF1 <- do.call(rbind.data.frame, maxF1)
-colnames(maxF1) <- c('flavour', 'cell', 'max_F1')
-maxF1$max_F1 <- as.numeric(as.character(maxF1$max_F1))
-      
-maxF1$cell <- factor(as.character(maxF1$cell),
-                     levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)])))
-
+    maxF1$cell <- factor(as.character(maxF1$cell),
+                         levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)])))
+}, error = function(x) print(x))
 ```
 
 ```{r}
@@ -2114,7 +2202,7 @@ DT::datatable(as.data.frame(cobra %>%
 ````
 
 
-```{r, fig.height = 6, fig.width = 8}
+```{r, fig.height = 8, fig.width = 10}
 ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
     geom_point() +
     facet_grid(flavour~res, margins = FALSE) +
@@ -2128,12 +2216,15 @@ ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
     geom_point() +
     facet_wrap(~flavour) + 
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) +
+    labs(x = 'resolution')
 
 ```
 
-```{r, fig.height = 5, fig.width = 8}
-ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) +
+```{r, fig.height = 7, fig.width = 10}
+
+cobra$resolution <- gsub('RNA_snn_res_', '', cobra$res)
+ggplot(data = cobra, aes(x = re, y =  F1, group=resolution, col =cell)) +
     geom_point() +
     facet_grid(flavour~res) + 
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
@@ -2142,25 +2233,123 @@ ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) +
 ```
 
 ```{r, fig.width = 5, fig.height = 5}
-ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
-    geom_point() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
-       
+
+tryCatch({
+    ## sorting in a more sensible way
+    maxF1$flavour <- factor(maxF1$flavour,
+                            levels = c('genes_cellranger', 'genes_alevin',
+                                       'both_unique', 'both_multi', 'both_alevin',
+                                       'repeats_cellranger', 'repeats_alevin',
+                                       'repeats_bowtie_unique', 'repeats_bowtie_multi',
+                                       'repeats_featurecounts_unique', 'repeats_featurecounts_multi',
+                                       'control_repeats_only_unique', 'control_repeats_only_multi'))
+    
+
+    ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
+        geom_point() +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+        scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+}, error = function(x) print(x)) 
 ```
 
 # Comparison across techniques
 
-## Euclidean distance
 
-Compare per-cell concatenated counts.
+<!-- ## For genes -->
+
+
+<!-- ## Euclidean distance -->
+
+
+<!-- ```{r} -->
+
+
+<!-- genes_shared <- Reduce(intersect, sapply(d[grep('genes', names(d))], rownames)) -->
+<!-- cells_shared <- Reduce(intersect, sapply(d[grep('genes', names(d))], colnames)) -->
+<!-- ## rather, use old variable from the qc step -->
+<!-- ## cells_shared <- selected_cells -->
+
+<!-- stopifnot(length(genes_shared) > 0) -->
+
+
+
+<!-- stopifnot(length(cells_shared) > 0) -->
+          
+    
+<!-- ## oned <- lapply(d, function(x) as.vector(as.matrix( -->
+<!--                                   ## GetAssayData(d[[x]])[genes_shared, cells_shared], 'counts'))) -->
+
+
+<!-- oned <- list() -->
+<!-- for (item in grep('repeats', names(d), value = TRUE)) { -->
+<!--       oned[[item]] <- as.vector(as.matrix( -->
+<!--           GetAssayData(d[[item]], 'counts')[genes_shared, cells_shared])) -->
+<!-- } -->
+
+<!-- ## oned_df <- setNames(object = do.call(rbind.data.frame, oned), -->
+<!-- ##                     c(NULL,  grep('repeats', names(d), value = TRUE))) -->
+
+<!-- oned_df <- t(simplify2array(oned)) -->
+
+<!-- rm(oned) -->
+
+<!-- oned_dist <- dist(oned_df,  method = 'euclidean') -->
+
+<!-- oned_dist <- as.data.frame(as.matrix(oned_dist)) -->
+
+<!-- colnames(oned_dist) <-  grep('repeats', names(d), value = TRUE) -->
+<!-- rownames(oned_dist) <- colnames(oned_dist) -->
+<!-- head(oned_dist) -->
+<!-- hc_dist <- hclust(d = as.dist(oned_dist), method = 'ward.D') -->
+
+
+<!-- plot(hc_dist) -->
+
+<!-- ``` -->
+
+<!-- Plus pheatmap-like representation.. of the distances maybe? -->
+
+<!-- ```{r, fig.width = 8, fig.height = 8} -->
+<!-- pheatmap(oned_dist, cluster_rows = hc_dist, cluster_cols = hc_dist) -->
+<!-- ``` -->
+
+
+
+<!-- ### Correlations -->
+
+<!-- Similarly, for Spearman's correlations (it's not angular distances! 1 - rho value here). -->
+
+<!-- ```{r} -->
+<!-- oned_cor <- cor(t(oned_df), method = 'spearman') -->
+
+<!-- oned_cor <- as.data.frame(as.matrix(oned_cor)) -->
+
+<!-- colnames(oned_cor) <-  grep('repeats', names(d), value = TRUE) -->
+<!-- rownames(oned_cor) <- colnames(oned_cor) -->
+<!-- head(oned_cor) -->
+<!-- hc_cor <- hclust(d = as.dist(1- oned_cor)) -->
+
+
+<!-- plot(hc_cor) -->
+<!-- ``` -->
+
+
+
+<!-- ```{r, fig.width = 8, fig.height = 8} -->
+<!-- pheatmap(oned_cor, cluster_rows = hc_cor, cluster_cols = hc_cor, display_numbers = TRUE ) -->
+<!-- ``` -->
+
+## For repeats
+
+
+## Euclidean distance
 
 
 ```{r}
 
 
-repeats_shared <- Reduce(intersect, sapply(d[grep('repeats', names(d))], rownames))
-## cells_shared <- Reduce(intersect, sapply(d[grep('repeats', names(d))], colnames))
+repeats_shared <- Reduce(intersect, sapply(d[grep('repeats|both', names(d))], rownames))
+## cells_shared <- Reduce(intersect, sapply(d[grep('repeats|both', names(d))], colnames))
 ## rather, use old variable from the qc step
 cells_shared <- selected_cells
 
@@ -2204,15 +2393,15 @@ plot(hc_dist)
 
 Plus pheatmap-like representation.. of the distances maybe?
 
-```{r}
+```{r, fig.width = 8, fig.height = 8}
 pheatmap(oned_dist, cluster_rows = hc_dist, cluster_cols = hc_dist)
 ```
 
 
 
-## Correlations
+### Correlations
 
-Similarly, for Spearman's correlations (it's angular distances! directly the rho value as distance).
+Similarly, for Spearman's correlations (it's not angular distances! 1 - rho value here).
 
 ```{r}
 oned_cor <- cor(t(oned_df), method = 'spearman')
@@ -2222,26 +2411,21 @@ oned_cor <- as.data.frame(as.matrix(oned_cor))
 colnames(oned_cor) <-  grep('repeats', names(d), value = TRUE)
 rownames(oned_cor) <- colnames(oned_cor)
 head(oned_cor)
-hc_cor <- hclust(d = as.dist(oned_cor), method = 'ward.D')
+hc_cor <- hclust(d = as.dist(1- oned_cor))
 
 
 plot(hc_cor)
 ```
 
-
-
-```{r}
-pheatmap(oned_cor, cluster_rows = hc_cor, cluster_cols = hc_cor, display_numbers = TRUE )
-```
-
-
 # Export objects
 
 List of seurat objects
+
 ```{r}
 saveRDS(object = d, file = params$seurat_output)
 saveRDS(object = aris_stored, file = params$aris_output)
 saveRDS(object = cobra, file = params$cobra_output)
+saveRDS(object = ml, file = params$markers_output)
 ```
 
 # Timestamp
@@ -2252,3 +2436,4 @@ sessionInfo()
 devtools::session_info()
 
 ```
+

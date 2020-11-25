@@ -41,7 +41,7 @@ library(Matrix)
 library(knitr)
 library(Seurat)
 library(dplyr)
-## library(scater)
+library(scater)
 library(dplyr)
 library(data.table)
 ## library(SingleCellExperiment)
@@ -194,22 +194,70 @@ d$repeats_alevin <- CreateSeuratObject(counts =  assays(d$repeats_alevin)$counts
 
 
 ```{r}
-GetAssayData(d$repeats_alevin)[1:3, 1:3]
-GetAssayData(d$genes_alevin)[1:3, 1:3]
+cells <- intersect(colnames(d$repeats_alevin), colnames(d$genes_alevin))
 
+d$both <- CreateSeuratObject(counts =  rbind(as.matrix(GetAssayData(d$genes_alevin,
+                                                          slot = 'counts'))[,cells],
+                                            as.matrix(GetAssayData(d$repeats_alevin,
+                                                          slot = 'counts'))[,cells]),
+                             project = 'both_alevin')
+
+## stopifnot(ncol(d$both) == ncol(d$genes_alevin))
+rm(cells)
 ```
+
+
+<!-- ```{r} -->
+<!-- GetAssayData(d$repeats_alevin)[1:3, 1:3] -->
+<!-- GetAssayData(d$genes_alevin)[1:3, 1:3] -->
+
+<!-- ``` -->
 # Basic Seurat processing
 
 ## QC before filtering {.tabset}
+
+
+```{r}
+
+d$genes_alevin[["percent.mt"]] <- PercentageFeatureSet(d$genes_alevin, pattern = "-MT-")
+
+```
+
+
+
+```{r}
+
+## QC is based upon genes 
+item <- 'genes_alevin'
+
+libsize.drop <- isOutlier(d$genes_alevin$nCount_RNA, nmads = 3, type = "both", log = TRUE)
+feature.drop <- isOutlier(d$genes_alevin$nFeature_RNA, nmads = 3, type = "both", log = TRUE)
+mito.drop <- isOutlier(d$genes_alevin$percent.mt, nmads = 3, type = "higher")
+
+selected_cells <- colnames(d$genes_alevin)[!(libsize.drop | feature.drop | mito.drop)]
+```
+
+
+Outlier tagging results
+
+```{r}
+print(data.frame(ByLibSize = sum(libsize.drop),
+                 ByFeature = sum(feature.drop), 
+                 ByMito = sum(mito.drop),
+                 Remaining = length(selected_cells)))
+```
 
 ```{r, results = 'asis', fig.width = 8, fig.height = 4}
 for (item in names(d)) {
     cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
     if (item == 'genes_alevin') {
-        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]],
-                                                          pattern = "ENS.*[0-9]+-MT-.*")
-        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
+        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
+
+        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt") +
+              geom_vline(xintercept = attributes(libsize.drop)$thresholds) +
+              geom_hline(yintercept = attributes(mito.drop)$thresholds))
+        
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
                       ncol = 3))
 
@@ -217,13 +265,19 @@ for (item in names(d)) {
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2))
     
     }
-    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+
+    d[[item]]@meta.data$qc_pass <- rownames(d[[item]]@meta.data) %in% selected_cells
+    
+    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA",
+                         group.by = 'qc_pass', shape.by = 'qc_pass'))
+    
     cat('\n\n')
 }
-
 ```
 
+
 ## Basic stats pre-QC
+
 
 ```{r}
 summarized <- list()
@@ -236,9 +290,9 @@ for (item in names(d)) {
         mean(d[[item]]@meta.data$nCount_RNA), sd(d[[item]]@meta.data$nCount_RNA),
         mean(d[[item]]@meta.data$nFeature_RNA), sd(d[[item]]@meta.data$nFeature_RNA))
 
-    if ('pct_mt_mean' %in% colnames(d[[item]]@meta.data)) {
+    if ('percent.mt' %in% colnames(d[[item]]@meta.data)) {
         summarized[[item]] <- c(summarized[[item]],
-                                mean(d[[item]]@meta.data@percent.mt, na.rm = TRUE))
+                                mean(d[[item]]@meta.data$percent.mt, na.rm = TRUE))
     }
     else {
         summarized[[item]] <- c(summarized[[item]], NA)
@@ -250,7 +304,10 @@ summarized <- as.data.frame(do.call(rbind.data.frame, summarized))
 colnames(summarized) <- c('dataset','filter', 'ncells',
                           'ncount_mean', 'ncount_sd', 'nfeature_mean', 'nfeature_sd',
                           'percent.mt')
-print(summarized)
+```
+
+```{r}
+DT::datatable(summarized)
 ```
 
 ## QC after filtering {.tabset}
@@ -258,23 +315,20 @@ print(summarized)
 Filtering out cells according to the repeats expression, and forwarding the selection to other layers
 
 ```{r subset}
-d$genes_alevin <- subset(d$genes_alevin, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & (percent.mt < 10 | is.na(percent.mt)))
-selected_cells <- colnames(d$genes_alevin)
-
+## the subsetting applies to all slots, even though the metrics come from genes only
 for (item in names(d)) {
     d[[item]] <- subset(d[[item]], cells = selected_cells)
 }
 
-
 ```
+
 
 ```{r, results = 'asis', fig.width = 8, fig.height = 4}
 for (item in names(d)) {
     cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
     if (item == 'genes_alevin') {
-        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]],
-                                                          pattern = "ENS.*[0-9]+-MT-.*")
+        ## d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
         print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
                       ncol = 3))
@@ -286,9 +340,6 @@ for (item in names(d)) {
     print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
     cat('\n\n')
 }
-
-
-
 ```
 
 ## Basic stats post-QC
@@ -304,9 +355,9 @@ for (item in names(d)) {
         mean(d[[item]]@meta.data$nCount_RNA), sd(d[[item]]@meta.data$nCount_RNA),
         mean(d[[item]]@meta.data$nFeature_RNA), sd(d[[item]]@meta.data$nFeature_RNA))
 
-    if ('pct_mt_mean' %in% colnames(d[[item]]@meta.data)) {
+    if ('percent.mt' %in% colnames(d[[item]]@meta.data)) {
         summarized[[item]] <- c(summarized[[item]],
-                                mean(d[[item]]@meta.data@percent.mt, na.rm = TRUE))
+                                mean(d[[item]]@meta.data$percent.mt, na.rm = TRUE))
     }
     else {
         summarized[[item]] <- c(summarized[[item]], NA)
@@ -317,14 +368,18 @@ for (item in names(d)) {
 summarized <- as.data.frame(do.call(rbind.data.frame, summarized))
 colnames(summarized) <- c('dataset','filter', 'ncells',
                           'ncount_mean', 'ncount_sd', 'nfeature_mean', 'nfeature_sd',
-                          'percent.mt')
-print(summarized)
+                          'mito_pct_mean')
 
 ```
 
+```{r}
+DT::datatable(summarized)
+```
 
 
 ## Variable features {.tabset}
+
+We take the top 10% of the features for genes or genes + repeats, but 25% for repeats.
 
 ```{r, message = FALSE, fig.width =8, fig.height = 4, results= 'asis'}
 for (item in names(d)) {
@@ -333,9 +388,18 @@ for (item in names(d)) {
     d[[item]] <- NormalizeData(object = d[[item]],
                                normalization.method = "LogNormalize",
                                scale.factor = 10000)
-    
-    d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst", nfeatures = 2000)
 
+    ## if repeats, we take half of them
+    ## else if genes, then the top 10 pct
+    if (grepl('repeats', item)) {
+        d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst",
+                                          nfeatures = round(nrow(d[[item]])/4))
+    }
+    else {
+        d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst",
+                                          nfeatures = round(nrow(d[[item]])/10))
+    }
+    
     ## Identify the 10 most highly variable genes
     top10 <- head(VariableFeatures(d[[item]]), 10)
 
@@ -346,8 +410,9 @@ for (item in names(d)) {
     cat('\n\n')
 }
 
-
 ```
+
+
 
 ## Dimred PCA {.tabset}
 
@@ -424,9 +489,11 @@ for (item in names(d)) {
 for (item in names(d)) {
     cat("### ", item, "\n\n")
 
-    
-    print(DimPlot(d[[item]], reduction = "umap", group.by = 'seurat_clusters'))
-    print(DimPlot(d[[item]], reduction = "tsne", group.by = 'seurat_clusters'))
+    p1 <- DimPlot(d[[item]], reduction = "umap")
+    p2 <- DimPlot(d[[item]], reduction = "tsne")
+
+    print(p1 + ggtitle(item))
+    print(p2 + ggtitle(item))
 
     cat('\n\n')
 
@@ -650,7 +717,7 @@ table(named$cell_labels)
 
 
 
-## Confusion matrices with clustering results {.tabset}
+<!-- ## Confusion matrices with clustering results {.tabset} -->
 
 First, add the SCINA outputs to the different SO objects
 
@@ -669,7 +736,7 @@ rownames(d$genes_alevin@meta.data) <- d$genes_alevin@meta.data$cell
 
 ## still, the annotation can also be transfered to repeats/featurecounts
 
-for (item in grep('repeats', names(d), value = TRUE)) {
+for (item in grep('repeats|both', names(d), value = TRUE)) {
     d[[item]]@meta.data$cell <-  rownames(d[[item]]@meta.data)
 
     
@@ -689,21 +756,21 @@ rm(labelling, tmp)
 
 ```
 
-```{r problemrendering, cache = FALSE, eval = FALSE}
-for (res in grep('RNA_snn', colnames(d$genes_alevin@meta.data), value = TRUE)) {
-    cat('### ', res, '\n\n')
+<!-- ```{r problemrendering, cache = FALSE, eval = FALSE} -->
+<!-- for (res in grep('RNA_snn', colnames(d$genes_alevin@meta.data), value = TRUE)) { -->
+<!--     cat('### ', res, '\n\n') -->
 
-    tmp <- as.data.frame.matrix(table(d$genes_alevin@meta.data[,res],
-                                      d$genes_alevin@meta.data$scina))
+<!--     tmp <- as.data.frame.matrix(table(d$genes_alevin@meta.data[,res], -->
+<!--                                       d$genes_alevin@meta.data$scina)) -->
 
-    ## print(t(tmp))
-    print(kable(tmp))
+<!--     ## print(t(tmp)) -->
+<!--     print(kable(tmp)) -->
     
-    cat('\n\n')
-    rm(tmp)
-}
+<!--     cat('\n\n') -->
+<!--     rm(tmp) -->
+<!-- } -->
 
-```
+<!-- ``` -->
 
 <!-- ## ARIs celltypes and SCINA outputs -->
 
@@ -726,10 +793,14 @@ for (item in names(d)) {
     d[[item]]@meta.data$scina <- as.factor(d[[item]]@meta.data$scina)
     ## Idents(d[[item]]) <- 'scina'
     print(DimPlot(d[[item]], reduction = "umap", group.by = 'scina',
-                  cols = setNames(pal$color, pal$identity)))
+                  cols = setNames(pal$color, pal$identity)) +
+          ggtitle(item))
+
 
     print(DimPlot(d[[item]], reduction = "tsne", group.by = 'scina', 
-                  cols = setNames(pal$color, pal$identity)))
+                  cols = setNames(pal$color, pal$identity)) +
+          ggtitle(item))
+
     
     ## print(CombinePlots(plots = list(p1, p2)) + ggtitle(item))
     cat('\n\n')
@@ -738,11 +809,12 @@ for (item in names(d)) {
 ```
 
 
+
 # Dimred PCA comparing modalities and SCINA {.tabset}
 
-Colour by SCINA
+Colour: SCINA-based celltype.
 
-```{r, fig.width = 5.1, fig.height = 5.1, results = 'asis'}
+```{r, fig.width = 10, fig.height = 10, results = 'asis'}
 
 for (flavour1 in names(d)) {
     ## d[[flavour]][["pca"]]
@@ -761,9 +833,12 @@ for (flavour1 in names(d)) {
 
         palette <- brewer.pal(n = nlevels(d[[flavour1]]@meta.data$scina), name = "Paired")
 
-        for (i in 1:5) {
-            for (j in 1:5) {
-                par(mar=c(5.1, 4.1, 7.1, 2.1))
+        par(mar=c(5.1, 4.1, 7.1, 2.1), mfrow = c(3,3)) ## here
+        for (i in 1:3) {
+            for (j in 1:3) {
+                ## cat ('### ', i, j, '\n\n')
+
+               
                 ## par(mfrow = c(5,5))
                 plot(x = Embeddings(d[[flavour1]], reduction = "pca")[common,i],
                      y = Embeddings(d[[flavour2]], reduction = "pca")[common,j],
@@ -785,6 +860,8 @@ for (flavour1 in names(d)) {
                            ncol = 2,
                            xpd = TRUE)
                 ## }
+
+                ## cat('\n\n')
             }
         }
 
@@ -796,46 +873,46 @@ for (flavour1 in names(d)) {
 ```
 
 
-# Descriptive (clustering) {.tabset}
+<!-- # Descriptive (clustering) {.tabset} -->
 
-Tabset: coloring according to the clustering results.
+<!-- Tabset: coloring according to the clustering results. -->
 
-```{r descriptive, results = 'asis', fig.width =8, fig.height = 8}
+<!-- ```{r descriptive, results = 'asis', fig.width =8, fig.height = 8} -->
 
-res <- 'RNA_snn_res.0.2'
-common_cells <- intersect(colnames(d$genes_alevin), colnames(d$repeats_alevin))
+<!-- res <- 'RNA_snn_res.0.2' -->
+<!-- common_cells <- intersect(colnames(d$genes_alevin), colnames(d$repeats_alevin)) -->
 
-for (item_clust in names(d)) {
-    tag <- sprintf('%s\n%s', item_clust, res)
-    cat('## ', tag, '\n\n')
+<!-- for (item_clust in names(d)) { -->
+<!--     tag <- sprintf('%s\n%s', item_clust, res) -->
+<!--     cat('## ', tag, '\n\n') -->
     
-    merged <- data.frame(cell = common_cells,
-                         percent.mt = d$genes_alevin@meta.data[common_cells, 'percent.mt'])
+<!--     merged <- data.frame(cell = common_cells, -->
+<!--                          percent.mt = d$genes_alevin@meta.data[common_cells, 'percent.mt']) -->
 
-    merged[,tag] <- d[[item_clust]]@meta.data[common_cells,res]
+<!--     merged[,tag] <- d[[item_clust]]@meta.data[common_cells,res] -->
 
-    for (item in names(d)) {
-        d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
+<!--     for (item in names(d)) { -->
+<!--         d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data) -->
 
-        merged <- merge(merged,
-                        d[[item]]@meta.data[c('cell', 'nCount_RNA', 'nFeature_RNA')],
-                        by = 'cell',
-                        all.x = TRUE,
-                        suffixes = c('', sprintf('\n%s', item)))
+<!--         merged <- merge(merged, -->
+<!--                         d[[item]]@meta.data[c('cell', 'nCount_RNA', 'nFeature_RNA')], -->
+<!--                         by = 'cell', -->
+<!--                         all.x = TRUE, -->
+<!--                         suffixes = c('', sprintf('\n%s', item))) -->
 
-        ## cat("### ", item, "\n\n")
+<!--         ## cat("### ", item, "\n\n") -->
 
-    }
-    rownames(merged) <- merged$cell
-    merged <- merged[,-1]
-    colnames(merged) <- gsub('_RNA', '', colnames(merged))
-    plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(merged[,tag]), 0.1))
-    cat('\n\n')
-}
+<!--     } -->
+<!--     rownames(merged) <- merged$cell -->
+<!--     merged <- merged[,-1] -->
+<!--     colnames(merged) <- gsub('_RNA', '', colnames(merged)) -->
+<!--     plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(merged[,tag]), 0.1)) -->
+<!--     cat('\n\n') -->
+<!-- } -->
 
-rm(res)
-rm(merged)
-```
+<!-- rm(res) -->
+<!-- rm(merged) -->
+<!-- ``` -->
 
 # Descriptive (with scina)
 
@@ -844,12 +921,14 @@ Tabset: coloring according to the clustering results.
 ```{r descriptive2, results = 'asis', fig.width =8, fig.height = 8}
 
 tag <- 'scina'
+## common_cells <- intersect(colnames(d$genes_alevin), colnames(d$repeats_alevin))
+common_cells <- colnames(d[[1]])
 
 merged <- data.frame(cell = common_cells,
                      percent.mt = d$genes_alevin@meta.data[common_cells, 'percent.mt'])
 
 ## merged[,tag] <- d[[item_clust]]@meta.data[common_cells,res]
-merged[,tag] <- d[[item]]@meta.data[common_cells, tag]
+merged[,tag] <- d$genes_alevin@meta.data[common_cells, tag]
 
 for (item in names(d)) {
         ## cat('## ', tag, '\n\n')
@@ -868,12 +947,77 @@ rownames(merged) <- merged$cell
 merged <- merged[,-1]
 colnames(merged) <- gsub('_RNA', '', colnames(merged))
 
+
 plot(merged, pch = 20, cex = 0.5, col = ac(pal[merged$scina, 'color'], 0.1))
 ## plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(as.factor(merged[,tag])), 1))
 ## cat('\n\n')
 
 rm(merged)
 ```
+
+
+# Descriptive with SCINA and PCs {.tabset}
+
+
+Comparing PCs to SCINA
+
+```{r descriptive3, results = 'asis', fig.width = 10, fig.height = 10}
+
+## common_cells <- Reduce(intersect, sapply(d, colnames))
+common_cells <- colnames(d[[1]])
+
+for (item in names(d)) {
+    cat('## ', item, '\n\n')
+
+    tag <- 'scina'
+
+    ## common_cells
+    ## head(rownames(d[[item]]@meta.data))
+
+    merged <- data.frame(cell = common_cells,
+                         percent.mt = d$genes_alevin@meta.data[common_cells, 'percent.mt'],
+                         nCount = d[[item]]@meta.data[common_cells, 'nCount_RNA'],
+                         nFeature = d[[item]]@meta.data[common_cells, 'nFeature_RNA'],
+                         stringsAsFactors = FALSE)
+
+    ## merged <- data.frame(cell = common_cells,
+    ##                      percent.mt = d$genes_alevin@meta.data[common_cells, 'percent.mt'],
+    ##                      Embeddings(d[[1]], reduction = "pca")[common_cells, 1:5])
+
+
+    ## merged[,tag] <- d[[item_clust]]@meta.data[common_cells,res]
+    merged[,tag] <- d[[item]]@meta.data[common_cells, tag]
+
+    d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
+    
+    merged <- cbind(merged,
+                   as.data.frame(Embeddings(d[[item]], reduction = "pca"))[merged$cell, 1:5])
+       
+    rownames(merged) <- merged$cell
+    merged <- merged[,-1]
+    colnames(merged) <- gsub('_RNA', '', colnames(merged))
+    ## print(dim(merged))
+    
+    plot(merged, pch = 20, cex = 0.5, col = ac(pal[merged$scina, 'color'], 0.1))
+    ## ggpairs(
+    ##     merged,
+    ##     upper = list(continuous = "density", combo = "box_no_facet"),
+    ##     lower = list(continuous = "points", combo = "dot_no_facet"),
+    ##     mapping = ggplot2::aes(color = merged$scina)) +
+    ##     ggplot2::scale_color_manual(pal[merged$scina, 'color'])
+
+    
+    ## plot(merged, pch = 20, cex = 0.5, col = ac(as.numeric(as.factor(merged[,tag])), 1))
+    ## cat('\n\n')
+
+    rm(merged)
+    cat("\n\n")
+}
+
+```
+
+
+
 
 
 # Confusion matrix clusters
@@ -923,9 +1067,56 @@ pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
          color = colorRampPalette(c("white","blue"))(20))
 ```
 
+```{r }
+aris_stored <- list()
+aris_stored[['genes__repeats_alevin']] <- aris
+```
+
+## Both vs genes (alevin)
+
+```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
+aris <- list()
+i <- 1
+for (both_res in seq(0.2, 2, 0.2)) {
+    both_res <- sprintf('RNA_snn_res.%s', both_res)
+    
+    for (genes_res in seq(0.2, 2, 0.2)) {
+        genes_res <- sprintf('RNA_snn_res.%s', genes_res)
+
+        cells <- intersect(rownames(d$both@meta.data), rownames(d$genes_alevin@meta.data))
+        
+   
+
+        aris[[i]] <- c(sprintf('both_%s (n=%s)', both_res,
+                               length(unique(d$both@meta.data[cells, both_res]))),
+                       sprintf('genes_cr_%s (n=%s)', genes_res,
+                               length(unique(d$genes_alevin@meta.data[cells, genes_res]))),
+                       adjustedRandIndex(d$both@meta.data[cells,both_res],
+                                         d$genes_alevin@meta.data[cells,genes_res]))
+        i <- i +1
+    }    
+}
+
+aris <- do.call(rbind.data.frame, aris)
+colnames(aris) <- c('both_res', 'genes_res', 'ari')
+aris$ari <- as.numeric(as.character(aris$ari))
+
+```
+
+
+```{r, fig.width = 6, fig.height = 6}
+aris_wide <- reshape2::dcast(aris, both_res~genes_res, value.var="ari")
+
+rownames(aris_wide)<- aris_wide$both_res
+aris_wide <- aris_wide[,-1]
+
+pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
+         color = colorRampPalette(c("white","blue"))(20))
+```
+
 ```{r store_aris}
 aris_stored <- list()
-aris_stored[['genes__repeats_cr']] <- aris
+aris_stored[['both__genes_alevin']] <- aris
 ```
 
 ## Genes vs SCINA
@@ -955,6 +1146,7 @@ colnames(aris) <- c('genes_res', 'scina', 'ari')
 aris$ari <- as.numeric(as.character(aris$ari))
 print(aris)
 ```
+
 
 
 # Diferential repeat expression by SCINA identity {.tabset}
@@ -1007,7 +1199,8 @@ DT::datatable(markers)
 ```
 
 
-# F1-based
+
+# F1 scores unsupervised clustering : SCINA cell types
 
 Largely derived from Lukas Weber's https://github.com/lmweber/cytometry-clustering-comparison/blob/master/helpers/helper_match_evaluate_multiple.R (Hungarian algorithm)
 
@@ -1164,8 +1357,7 @@ for (flavour in names(d)) {
         hung[[flavour]][[res]] <- hungarian_weber_with_labels(d[[flavour]]@meta.data[known, res],
                                                          d[[flavour]]@meta.data[known, 'scina'])
 
-    }
-    
+    }    
 }
 
 ```
@@ -1187,40 +1379,9 @@ for (flavour in names(hung)) {
 }
 
 cobra <- do.call(rbind.data.frame, cobra)
-
+cobra$id <- params$identifier
 ```
 
-```{r, fig.height = 4, fig.width = 7}
-ggplot(data = cobra, aes(x = pr, y =  re, group = res, col = res)) +
-    geom_point() +
-    facet_grid(flavour~cell, margins = FALSE) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
-
-```
-
-```{r, fig.height = 4, fig.width = 8}
-ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
-    geom_point() +
-    facet_grid(flavour~res, margins = FALSE) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
-
-```
-
-```{r, fig.height = 4, fig.width = 7}
-ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
-    geom_point() +
-    facet_wrap(~flavour) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
-
-```
-
-```{r, fig.height = 4, fig.width = 8}
-ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) +
-    geom_point() +
-    facet_grid(flavour~res) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
-
-```
 
 For each cell type, get the max F1 stratifying by flavour *regardless of the resolution*.
 
@@ -1243,14 +1404,51 @@ maxF1 <- do.call(rbind.data.frame, maxF1)
 colnames(maxF1) <- c('flavour', 'cell', 'max_F1')
 maxF1$max_F1 <- as.numeric(as.character(maxF1$max_F1))
       
-maxF1$cell <- factor(as.character(maxF1$cell), levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)])))
+maxF1$cell <- factor(as.character(maxF1$cell),
+                     levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)])))
 
 ```
 
-```{r, fig.width = 7, fig.height = 7}
-ggplot(data = maxF1, aes(x= cell, y = max_F1, col = flavour, group = flavour)) +
+```{r}
+DT::datatable(as.data.frame(cobra %>%
+              group_by(flavour, cell) %>%
+              summarize(max(F1)) %>%
+              arrange(desc(`max(F1)`))))
+````
+
+
+```{r, fig.height = 6, fig.width = 8}
+ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
     geom_point() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+    facet_grid(flavour~res, margins = FALSE) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+```
+
+```{r, fig.height = 8, fig.width = 8}
+ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
+    geom_point() +
+    facet_wrap(~flavour) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+```
+
+```{r, fig.height = 5, fig.width = 8}
+ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) +
+    geom_point() +
+    facet_grid(flavour~res) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+```
+
+```{r, fig.width = 5, fig.height = 5}
+ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
+    geom_point() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
        
 ```
 
@@ -1261,10 +1459,6 @@ List of seurat objects
 ```{r}
 saveRDS(object = d, file = params$seurat_output)
 saveRDS(object = aris_stored, file = params$aris_output)
-```
-# Test
-
-```{r child = 'summarize_pbmcs_functions.Rmd'}
 ```
 
 # Timestamp

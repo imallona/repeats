@@ -25,7 +25,7 @@ print('this comes from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE132
 # samples = pd.read_csv(config["samples"], sep = '\t').set_index("id", drop=False)
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
-NTHREADS = 40
+NTHREADS = 5
 LOCAL_MEM_GB = 100
 
 RUN_NAME  = 'pbmcs_smartseq2_ding'
@@ -86,32 +86,64 @@ def get_samples(fn):
 
 rule all:
     input:
+        # expand(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
+        #        srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_male.conf'))),
+        # expand(op.join(BASE,  "data", RUN_NAME, "{srr}_2.fastq.gz"),
+        #        srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_female.conf'))),
+        # op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', RUN_NAME + "_star_genes.counts.gz"),
+        # op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
+        # op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.gz"),
+        expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+               regress_ncount = ['TRUE', 'FALSE'],
+               regress_nfeature = ['TRUE', 'FALSE']),
+        ##
         expand(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_male.conf'))),
         expand(op.join(BASE,  "data", RUN_NAME, "{srr}_2.fastq.gz"),
                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_female.conf'))),
         op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', RUN_NAME + "_star_genes.counts.gz"),
-        op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
-        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.gz"),
-        expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-               regress_ncount = ['TRUE', 'FALSE'],
-               regress_nfeature = ['TRUE', 'FALSE']),
-        op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
-        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
-                     RUN_NAME + "_repeats_no_overlap.counts.summary.png"),
+        expand(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', "{multimappers}",
+                       RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
+               multimappers = ['multimappers', 'unique_reads']),
+        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                       RUN_NAME + "_bowtie_repeats.counts.gz"),
+                multimappers = ['multimappers', 'unique_reads']),
+        # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        #        regress_ncount = ['TRUE', 'FALSE'],
+        #        regress_nfeature = ['TRUE', 'FALSE']),
+        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
+                       "{multimappers}", RUN_NAME + "_repeats_no_overlap_genes.counts.gz"),
+               multimappers = ['multimappers', 'unique_reads']),
+        # expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
+        #                "{multimappers}",
+        #                RUN_NAME + "_repeats_no_overlap_genes.counts.summary.png"),
+        #        multimappers = ['multimappers', 'unique_reads']),
         op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
                      RUN_NAME + "_genes.counts.summary.png"),
-        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{multimappers}",
                      RUN_NAME + "_repeats.counts.summary.png"),
-        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.summary.png")
+               multimappers = ['multimappers', 'unique_reads']),
+        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome",
+                       "{multimappers}", RUN_NAME + "_bowtie_repeats.counts.summary.png"),
+               multimappers = ['multimappers', 'unique_reads'])
         
 
 rule knit_report_smartseq:
     input:
-        genes_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'genes', RUN_NAME + '_star_genes.counts.gz'),
-        repeats_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
-        repeats_bowtie = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', RUN_NAME + '_bowtie_repeats.counts.gz'),
-        repeats_no_overlap_star = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', RUN_NAME + "_repeats_not_overlapping_genes.counts.gz")
+        genes_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'genes',
+                             RUN_NAME + '_star_genes.counts.gz'),
+        repeats_star_unique = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats',
+                                      "unique_reads", RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
+        repeats_star_multi = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats',
+                                      "multimappers", RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
+        repeats_only_unique = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
+                                      "unique_reads", RUN_NAME + '_repeats_no_overlap_genes.counts.gz'),
+        repeats_only_multi = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
+                                      "multimappers", RUN_NAME + '_repeats_no_overlap_genes.counts.gz'),
+        repeats_bowtie_unique = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome',
+                                        'unique_reads', RUN_NAME + '_bowtie_repeats.counts.gz'),
+        repeats_bowtie_multi = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome',
+                                        'multimappers', RUN_NAME + '_bowtie_repeats.counts.gz')
     params:
         rmd = 'summarize_smartseq2_run_pbmcs.Rmd',
         run_name = RUN_NAME
@@ -119,7 +151,9 @@ rule knit_report_smartseq:
         html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
         rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
         aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-        cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
+        cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        markers = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
+        
     log:
         op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_smartseq2_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
     shell:
@@ -128,11 +162,15 @@ rule knit_report_smartseq:
           output_file = \"{output.html}\", 
           params = list(identifier = \"{params.run_name}\", 
           genes_star = \"{input.genes_star}\", 
-          repeats_star = \"{input.repeats_star}\", 
-          repeats_bowtie = \"{input.repeats_bowtie}\", 
-          repeats_no_overlap_star = \"{input.repeats_no_overlap_star}\",
+          repeats_star_unique = \"{input.repeats_star_unique}\", 
+          repeats_star_multi = \"{input.repeats_star_multi}\", 
+          repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\", 
+          repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\", 
+          repeats_only_unique = \"{input.repeats_only_unique}\",
+          repeats_only_multi = \"{input.repeats_only_multi}\",
           seurat_output = \"{output.rds}\", 
           aris_output = \"{output.aris}\", 
+          markers_output = \"{output.markers}\", 
           cobra_output = \"{output.cobra}\",
           regress_genes_nCount = \"{wildcards.regress_ncount}\", \
           regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}
@@ -179,77 +217,85 @@ rule knit_report_smartseq:
 #         """
 
 
-rule profile_featurecounts_repeats_bowtie:
-    input:        
-        summary = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.summary")
-    params:
-        path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome"),
-        script = FEATURECOUNTS_RSCRIPT,
-        gtf = 'bowtie_repeatome_genes'
-    output:
-        png = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.summary.png")
-    threads: 1
-    shell:
-       """
-       cd {params.path}
+# rule profile_featurecounts_repeats_bowtie:
+#     input:        
+#         summary = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+#                           RUN_NAME + "_bowtie_repeats.counts.summary")
+#     params:
+#         path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}"),
+#         script = FEATURECOUNTS_RSCRIPT,
+#         gtf = 'bowtie_repeatome_genes'
+#     output:
+#         png = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+#                       RUN_NAME + "_bowtie_repeats.counts.summary.png")
+#     threads: 1
+#     shell:
+#        """
+#        cd {params.path}
        
-       {Rscript} {params.script} --summary {input.summary} --output {output.png} --identifier {params.gtf}
-       """
+#        {Rscript} {params.script} --summary {input.summary} --output {output.png} --identifier {params.gtf}
+#        """
 
     
-rule profile_featurecounts_run_genes_on_transcriptome:
-    input:        
-        summary = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'genes', RUN_NAME + "_star_genes.counts.summary")
-    params:
-        path = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes'),
-        script = FEATURECOUNTS_RSCRIPT,
-        gtf = 'star_transcriptome_genes'
-    output:
-        png = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
-                     RUN_NAME + "_genes.counts.summary.png")
-    threads: 1
-    shell:
-       """
-       cd {params.path}
+# rule profile_featurecounts_run_genes_on_transcriptome:
+#     input:        
+#         summary = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'genes', RUN_NAME + "_star_genes.counts.summary")
+#     params:
+#         path = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes'),
+#         script = FEATURECOUNTS_RSCRIPT,
+#         gtf = 'star_transcriptome_genes'
+#     output:
+#         png = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
+#                      RUN_NAME + "_genes.counts.summary.png")
+#     threads: 1
+#     shell:
+#        """
+#        cd {params.path}
        
-       {Rscript} {params.script} --summary {input.summary} --output {output.png} --identifier {params.gtf}
-       """
+#        {Rscript} {params.script} --summary {input.summary} --output {output.png} --identifier {params.gtf}
+#        """
 
-rule profile_featurecounts_run_repeats_on_transcriptome:
-    input:        
-        summary = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats', RUN_NAME + "_star_transcriptome_repeats.counts.summary")
-    params:
-        path = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats'),
-        script = FEATURECOUNTS_RSCRIPT,
-        gtf = 'star_transcriptome_repeats'
-    output:
-        png = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',
-                     RUN_NAME + "_repeats.counts.summary.png")
-    threads: 1
-    shell:
-       """
-       cd {params.path}
+# rule profile_featurecounts_run_repeats_on_transcriptome:
+#     input:        
+#         summary = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats', "{multimappers}",
+#                           RUN_NAME + "_star_transcriptome_repeats.counts.summary")
+#     params:
+#         path = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", "repeats", "{multimappers}"),
+#         script = FEATURECOUNTS_RSCRIPT,
+#         gtf = 'star_transcriptome_repeats'
+#     output:
+#         png = op.join(BASE, "runs", RUN_NAME, "star_transcriptome",
+#                       'repeats',  "{multimappers}",
+#                      RUN_NAME + "_repeats.counts.summary.png")
+#     threads: 1
+#     shell:
+#        """
+#        cd {params.path}
        
-       {Rscript} {params.script} --summary {input.summary} --output {output.png} --identifier {params.gtf}
-       """
+#        {Rscript} {params.script} --summary {input.summary} --output {output.png} --identifier {params.gtf}
+#        """
        
-rule profile_featurecounts_run_repeats_no_overlap_on_transcriptome:
-    input:        
-        summary = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', RUN_NAME + "_repeats_not_overlapping_genes.counts.summary")
-    params:
-        path = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap'),
-        script = FEATURECOUNTS_RSCRIPT,
-        gtf = 'star_transcriptome_repeats_no_overlap'
-    output:
-        png = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
-                     RUN_NAME + "_repeats_no_overlap.counts.summary.png")
-    threads: 1
-    shell:
-       """
-       cd {params.path}
+# rule profile_featurecounts_run_repeats_no_overlap_on_transcriptome:
+#     input:        
+#         summary = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
+#                           "{multimappers}",
+#                           RUN_NAME + "_repeats_no_overlap_genes.counts.summary")
+#     params:
+#         path = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
+#                        "{multimappers}"),
+#         script = FEATURECOUNTS_RSCRIPT,
+#         gtf = 'star_transcriptome_repeats_no_overlap'
+#     output:
+#         png = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
+#                       "{multimappers}",
+#                      RUN_NAME + "_repeats_no_overlap_genes.counts.summary.png")
+#     threads: 1
+#     shell:
+#        """
+#        cd {params.path}
        
-       {Rscript} {params.script} --summary {input.summary} --output {output.png} --identifier {params.gtf}
-       """
+#        {Rscript} {params.script} --summary {input.summary} --output {output.png} --identifier {params.gtf}
+#        """
        
 rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
     input:
@@ -263,28 +309,69 @@ rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
     params:
         path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome')
     output:
-        counts  = temp(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', RUN_NAME + "_repeats_not_overlapping_genes.counts")),
-        gz_counts = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
-        summary = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', RUN_NAME + "_repeats_not_overlapping_genes.counts.summary")        
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
+                               "{multimappers}", RUN_NAME + "_repeats_no_overlap_genes.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
+                            "{multimappers}", RUN_NAME + "_repeats_no_overlap_genes.counts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
+                          "{multimappers}",
+                          RUN_NAME + "_repeats_no_overlap_genes.counts.summary")        
     log :
-        log = op.join(BASE, "runs",  RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', 'feature_counts_not_overlapping_genes.log'),
+        log = op.join(BASE, "runs",  RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', "{multimappers}",
+                      'feature_counts_not_overlapping_genes.log'),
     threads:
         NTHREADS
-    shell: """
-    cd {params.path}
+    # shell: """
+    # cd {params.path}
 
-    mkdir -p {params.path}/repeats_no_overlap
+    # mkdir -p {params.path}/repeats_no_overlap
 
-    {FEATURECOUNTS} -T {threads} \
-    -t exon \
-    -g gene_id \
-    -a {input.gtf} \
-    -o  {output.counts} \
-    {params.path}/*bam  2>&1 > {log}
+    # {FEATURECOUNTS} -T {threads} \
+    # -t exon \
+    # -g gene_id \
+    # -a {input.gtf} \
+    # -o  {output.counts} \
+    # {params.path}/*bam  2>&1 > {log}
 
-    {PIGZ} --keep -p {threads} {output.counts}
-    """
+    # {PIGZ} --keep -p {threads} {output.counts}
+    # """
+    run:
+        if wildcards.multimappers == 'multimappers':
+           shell("""
+           echo multimappers allowed
 
+           cd {params.path}
+
+           {FEATURECOUNTS} -T {threads} \
+           -p \
+           -t exon \
+           -g gene_id \
+           -a {input.gtf} \
+           -o  {output.counts} \
+           -M \
+           --fraction \
+           {params.path}/*bam  2>&1 > {log}
+
+           {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+           """)
+        elif wildcards.multimappers == 'unique_reads':
+           shell("""
+           echo unique only
+
+           cd {params.path}
+
+           {FEATURECOUNTS} -T {threads} \
+           -p \
+           -t exon \
+           -g gene_id \
+           -a {input.gtf} \
+           -o  {output.counts} \
+           {params.path}/*bam  2>&1 > {log}
+
+           {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+           """)
+           
 ## use this! @todo
 rule get_repeats_not_overlapping_genes_gtf:
     input:
@@ -379,31 +466,73 @@ rule featurecounts_repeats_repeatome_pe:
                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_female.conf'))),
           # bam = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam"),
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
-        fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
+        fake_repeatome_gtf = op.join(BASE, 'annotation',
+                                     'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
     output:
-        counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts")),
-        gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.gz"),
-        summary = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", RUN_NAME + "_bowtie_repeats.counts.summary")
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                               RUN_NAME + "_bowtie_repeats.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                            RUN_NAME + "_bowtie_repeats.counts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                          RUN_NAME + "_bowtie_repeats.counts.summary")
     params:
         path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome")
     log :
-        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "bowtie_repeats_featurecounts.log"),
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                "bowtie_repeats_featurecounts.log"),
     threads:
         NTHREADS
-    shell:
-       """
-       ## note multimappers are counted
-       {FEATURECOUNTS} -T {threads} \
-       -p \
-       -t exon \
-       -g gene_id \
-       -a {input.fake_repeatome_gtf} \
-       -o  {output.counts} \
-       -M \
-       {params.path}/*bam  &> {log}
+    run:
+        if wildcards.multimappers == 'multimappers':
+           shell("""
+           echo multimappers allowed
 
-       {PIGZ} --keep  -p {threads} {output.counts}
-       """
+           cd {params.path}
+
+           {FEATURECOUNTS} -T {threads} \
+           -p \
+           -t exon \
+           -g gene_id \
+           -a {input.fake_repeatome_gtf} \
+           -o  {output.counts} \
+           -M \
+           --fraction \
+           {params.path}/*bam  2>&1 > {log}
+
+           {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+           """)
+        elif wildcards.multimappers == 'unique_reads':
+           shell("""
+           echo unique only
+
+           cd {params.path}
+
+           {FEATURECOUNTS} -T {threads} \
+           -p \
+           -t exon \
+           -g gene_id \
+           -a {input.fake_repeatome_gtf} \
+           -o  {output.counts} \
+           {params.path}/*bam  2>&1 > {log}
+
+           {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+           """)
+
+    # shell:
+    #    """
+    #    ## note multimappers are counted
+    #    {FEATURECOUNTS} -T {threads} \
+    #    -p \
+    #    -t exon \
+    #    -g gene_id \
+    #    -a {input.fake_repeatome_gtf} \
+    #    -o  {output.counts} \
+    #    -M \
+    #    {params.path}/*bam  &> {log}
+
+    #    {PIGZ} --keep  -p {threads} {output.counts}
+    #    """
 
 rule featurecounts_repeats_transcriptome_pe:
     input:
@@ -415,27 +544,68 @@ rule featurecounts_repeats_transcriptome_pe:
                  srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'pbmc_smartseq2_male.conf'))),
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
     output:
-        counts  = temp(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts')),
-        gz_counts = op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', RUN_NAME + '_star_transcriptome_repeats.counts.gz')
+        counts  = temp(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats',
+                                "{multimappers}", RUN_NAME + '_star_transcriptome_repeats.counts')),
+        gz_counts = op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats',
+                             "{multimappers}", RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
+        summary =  op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats',
+                             "{multimappers}", RUN_NAME + '_star_transcriptome_repeats.counts.summary')
     params:
         path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome')
     log :
-        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "star_repeats_featurecounts.log"),
+        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',  "{multimappers}",
+                "star_repeats_featurecounts.log"),
     threads:
         NTHREADS
-    shell:
-       """
-       {FEATURECOUNTS} -T {threads} \
-       -p \
-       -t exon \
-       -g gene_id \
-       -a {input.gtf} \
-       -o  {output.counts} \
-       {params.path}/*bam  &> {log}
+    # shell:
+    #    """
+    #    {FEATURECOUNTS} -T {threads} \
+    #    -p \
+    #    -t exon \
+    #    -g gene_id \
+    #    -a {input.gtf} \
+    #    -o  {output.counts} \
+    #    {params.path}/*bam  &> {log}
 
-       {PIGZ} --keep -p {threads} {output.counts}
-       """
-       
+    #    {PIGZ} --keep -p {threads} {output.counts}
+    #    """
+    run:
+        if wildcards.multimappers == 'multimappers':
+           shell("""
+           echo multimappers allowed
+
+           cd {params.path}
+
+           {FEATURECOUNTS} -T {threads} \
+           -p \
+           -t exon \
+           -g gene_id \
+           -a {input.gtf} \
+           -o  {output.counts} \
+           -M \
+           --fraction \
+           {params.path}/*bam  2>&1 > {log}
+
+           {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+           """)
+        elif wildcards.multimappers == 'unique_reads':
+           shell("""
+           echo unique only
+
+           cd {params.path}
+
+           {FEATURECOUNTS} -T {threads} \
+           -p \
+           -t exon \
+           -g gene_id \
+           -a {input.gtf} \
+           -o  {output.counts} \
+           {params.path}/*bam  2>&1 > {log}
+
+           {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+           """)
+           
 rule featurecounts_genes_transcriptome_pe:
     input:
         # bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),

@@ -52,7 +52,7 @@ STAR = '~/soft/star/STAR-2.7.3a/source/STAR'
 FEATURECOUNTS = '~/soft/subread/subread-2.0.0-source/bin/featureCounts'
 # SALMON = '~/soft/salmon/salmon-1.1.0_linux_x86_64/bin/salmon'
 SALMON='/home/imallona/soft/salmon/salmon-1.2.1/bin/salmon'
-SALMON_V1_10X_RUN='/home/imallona/soft/salmon/salmon-1.2.1_src/scripts/v1_10x/run_modified_with_i1.sh'
+SALMON_V1_10X_RUN='/home/imallona/soft/salmon/salmon-1.2.1_src/scripts/v1_10x/run.sh'
 SALMON_V1_10X_WRAPPER='/home/imallona/soft/salmon/salmon-1.2.1_src/scripts/v1_10x/wrapper'
 CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
 BIOAWK = '~/soft/bioawk/bioawk'
@@ -91,13 +91,28 @@ rule all:
         # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html'),
         # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report_genes_regressed_out.html'),
         # op.join(BASE, 'runs', 'pbmc_integration_test.html'),
-         expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_cellranger_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
+        expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_chromium_no_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
                        regress_nfeature = ['TRUE', 'FALSE']),
-         op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard",  RUN_NAME + "_transcriptome_repeats.counts.summary.png"),
-         op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes",  RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
+        #  expand(op.join(BASE, "runs", RUN_NAME,
+        #                 "count_repeats_on_cellranger_standard",
+        #                 "{multimappers}",
+        #                 RUN_NAME + "_transcriptome_repeats.counts.summary.png"),
+        #         multimappers = ['multimappers', 'unique_reads']),
+        #  expand(op.join(BASE, "runs", RUN_NAME,
+        #                 "count_repeats_on_cellranger_standard_not_overlapping_genes",
+        #                 "{multimappers}",
+        #                 RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
+        #          multimappers = ['multimappers', 'unique_reads']),
+         op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
+         # expand(op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome',
+         #                '{multimappers}',
+         #                "all_cells_repeats.counts.gz"),
+         #        multimappers = ['multimappers', 'unique_reads'])
          # op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
-         # op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
-
+         # op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
+         # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+         #       regress_ncount = ['TRUE', 'FALSE'],
+         #       regress_nfeature = ['TRUE', 'FALSE'])
 
 
 # ## srrwhatever is  not a pbmc!
@@ -119,6 +134,74 @@ rule all:
 #         {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", output_file = \"{output.html}\", params = list(run1 = \"{input.run1}\", run2= \"{input.run2}\", run3 = \"{input.run3}\"))' &> {log}
 #         """
 
+
+rule knit_report_chromium_no_alevin:
+    input:
+        genes = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+        repeats = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+        featurecounts_multi = op.join(BASE, "runs", RUN_NAME,
+                                      'count_repeats_on_cellranger_standard',
+                                      'multimappers',
+                                      RUN_NAME + "_repeats.counts.gz"),
+        featurecounts_unique = op.join(BASE, "runs", RUN_NAME,
+                                      'count_repeats_on_cellranger_standard',
+                                      'unique_reads',
+                                      RUN_NAME + "_repeats.counts.gz"),
+        repeats_only_featurecounts_control_multi = op.join(
+            BASE, "runs", RUN_NAME,
+            'count_repeats_on_cellranger_standard_not_overlapping_genes',
+            'multimappers',
+            RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+        repeats_only_featurecounts_control_unique = op.join(
+            BASE, "runs", RUN_NAME,
+            'count_repeats_on_cellranger_standard_not_overlapping_genes',
+            'unique_reads',
+            RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+        repeats_bowtie_multi = op.join(
+            BASE, "runs", RUN_NAME,
+            'bowtie_repeatome',
+            'multimappers',
+            'all_cells_repeats.counts.gz'),
+        repeats_bowtie_unique = op.join(
+            BASE, "runs", RUN_NAME,
+            'bowtie_repeatome',
+            'unique_reads',
+            'all_cells_repeats.counts.gz')
+        
+    params:
+        rmd = 'summarize_chromium_run_pbmcs.Rmd',
+        run_name = RUN_NAME
+    output:
+        html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_chromium_no_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        markers = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
+    log:
+        op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_chromium_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
+    shell: """
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+          output_file = \"{output.html}\", 
+          params = list(identifier = \"{params.run_name}\", 
+                     genes_cellranger = \"{input.genes}\", 
+                     repeats_cellranger = \"{input.repeats}\", 
+                     repeats_featurecounts_multi = \"{input.featurecounts_multi}\", 
+                     repeats_featurecounts_unique = \"{input.featurecounts_unique}\",
+                     repeats_only_featurecounts_control_multi = \"{input.repeats_only_featurecounts_control_multi}\", 
+                     repeats_only_featurecounts_control_unique = \"{input.repeats_only_featurecounts_control_unique}\",
+                     seurat_output = \"{output.rds}\", 
+                     aris_output = \"{output.aris}\", 
+                     regress_genes_nCount = \"{wildcards.regress_ncount}\", 
+                     regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
+                     repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
+                     repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\", 
+                     genes_alevin = \"None\",
+                     repeats_alevin = \"None\", 
+                     markers_output = \"{output.markers}\",
+                     cobra_output = \"{output.cobra}\"))' &> {log}
+        """
+
+    
     
 rule get_frozen_pbmc_data:
     output:
@@ -261,9 +344,7 @@ To run alevin in v1 mode the following three changes are required:
 
 """
 
-
-
-rule map_salmon_repeats_chromium_v1_DOESNOTWORK:
+rule map_salmon_repeats_chromium_v1_ALTERNATIVE_DOESNOTWORKNEITHER:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
@@ -276,37 +357,76 @@ rule map_salmon_repeats_chromium_v1_DOESNOTWORK:
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
         processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats'),
-        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon')
+        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
+        converter_path =  op.dirname("{SALMON_V1_V10X_RUN}")
     log:
         op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium.log')
     shell:
         """
     mkdir -p {params.processing_path}
-    cd {params.processing_path}
 
-    ## link wrapper
-    ln -s {SALMON_V1_10X_WRAPPER}
-    
-    # ({SALMON_V1_10X_RUN} {SALMON} alevin \
-    # -lISR \
-    # -b {params.fastqs_path}/ \
-    # --gemcode \
-    # -i {params.salmon_idx} \
-    # -p {threads} \
-    # -o {params.processing_path} \
-    # --tgMap {input.tgmap} ) 2> {log}
+    cd {params.converter_path}
+
+    # cd {params.processing_path}
 
     {SALMON_V1_10X_RUN} {SALMON} alevin \
-      -lISR \
-      -b {params.fastqs_path}/ \
-      --gemcode \
-      -i {params.salmon_idx} \
-      -p {threads} \
-      -o {params.processing_path} \
-      --tgMap {input.tgmap}
+    -lISR \
+    -b {params.fastqs_path}/ \
+    --gemcode \
+    -i {params.salmon_idx} \
+    -p {threads} \
+    -o {params.processing_path} \
+    --tgMap {input.tgmap}
 
     touch -c {output}
-        """
+    """
+
+
+
+# rule map_salmon_repeats_chromium_v1_DOESNOTWORK:
+#     input:        
+#         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
+#         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
+#         cb = sorted(glob(op.join(BASE, 'data', RUN_NAME,  '*I1*fastq.gz'))),
+#         r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME,  '*RA*fastq.gz')))        
+#     output:
+#         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
+#     threads:
+#         NTHREADS
+#     params:
+#         fastqs_path = op.join(BASE, 'data', RUN_NAME),
+#         processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats'),
+#         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon')
+#     log:
+#         op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium.log')
+#     shell:
+#         """
+#     mkdir -p {params.processing_path}
+#     cd {params.processing_path}
+
+#     ## link wrapper
+#     ln -s {SALMON_V1_10X_WRAPPER}
+    
+#     # ({SALMON_V1_10X_RUN} {SALMON} alevin \
+#     # -lISR \
+#     # -b {params.fastqs_path}/ \
+#     # --gemcode \
+#     # -i {params.salmon_idx} \
+#     # -p {threads} \
+#     # -o {params.processing_path} \
+#     # --tgMap {input.tgmap} ) 2> {log}
+
+#     {SALMON_V1_10X_RUN} {SALMON} alevin \
+#       -lISR \
+#       -b {params.fastqs_path}/ \
+#       --gemcode \
+#       -i {params.salmon_idx} \
+#       -p {threads} \
+#       -o {params.processing_path} \
+#       --tgMap {input.tgmap}
+
+#     touch -c {output}
+#         """
     
 
 rule map_salmon_genes_chromium_v1_DOESNOTWORK:
