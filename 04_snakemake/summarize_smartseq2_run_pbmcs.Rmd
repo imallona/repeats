@@ -14,13 +14,17 @@ output:
     self_contained: yes
 params:
   identifier: ""   
-  repeats_bowtie: ""
-  repeats_star: ""
-  repeats_no_overlap_star: ""
+  repeats_bowtie_unique: ""
+  repeats_bowtie_multi: ""
+  repeats_star_unique: ""
+  repeats_star_multi: ""
+  repeats_only_unique: ""
+  repeats_only_multi: ""
   genes_star: ""
   seurat_output: ""
   aris_output: ""
   cobra_output: ""
+  markers_output: ""
   regress_genes_nCount: ""
   regress_genes_nFeature: ""
 ---
@@ -45,7 +49,7 @@ library(Matrix)
 library(knitr)
 library(Seurat)
 library(dplyr)
-## library(scater)
+library(scater)
 library(dplyr)
 library(data.table)
 ## library(SingleCellExperiment)
@@ -96,9 +100,12 @@ ac <- function(col, alpha=1){
                        rgb(x[1], x[2], x[3], alpha=alpha))  
 }
 
-coef_var <- function(x){
-        (sd(x)/mean(x))*100
-}
+## coef_var <- function(x){
+##         (sd(x)/mean(x))*100
+## }
+
+
+
 
 ```
 
@@ -178,142 +185,238 @@ featurecounts_to_seurat <- function(fn, identifier, add_gene_symbols = FALSE, re
 
 ```{r justfordebugging, eval = FALSE}
 
-## params <- list(identifier = "pbmcs_smartseq2_ding",
-##                genes_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/genes/SRR9169209_Aligned.sortedByCoord.out.bam.counts.gz',
-##                repeats_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats/SRR9169209_Aligned.sortedByCoord.out.bam.counts.gz',
-##                repeats_bowtie = '/home/imallona/repeats_sc/runs/ding_celseq2/bowtie_repeatome/SRR9169209_bowtie_repeats.counts.gz',
-##                repeats_no_overlap_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats_no_overlap/SRR9169209_repeats_no_overlap.counts.gz',
-##                seurat_output = "/home/imallona/tmp/test.rds",
-##                regress_genes_nCount = FALSE,
-##                regress_genes_nFeatures = FALSE)
-
-
-params <- list(identifier = "",
-               genes_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/genes/pbmcs_smartseq2_ding_star_genes.counts.gz',
-               repeats_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz',
-               repeats_bowtie = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz',
-               repeats_no_overlap_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz',
-               seurat_output = "/home/imallona/tmp/test.rds",
-               cobra_output = '/home/imallona/tmp/cobra.rds'
-               regress_genes_nCount = FALSE,
-               regress_genes_nFeatures = FALSE)
-
-
-
 ## params <- list(identifier = "",
-##                genes_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/genes/ding_celseq2_star_genes.counts.gz',
-##                repeats_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats/ding_celseq2_star_transcriptome_repeats.counts.gz',
-##                repeats_bowtie = '/home/imallona/repeats_sc/runs/ding_celseq2/bowtie_repeatome/ding_celseq2_bowtie_repeats.counts.gz',
-##                repeats_no_overlap_star = '/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats/ding_celseq2_repeats_not_overlapping_genes.counts.gz',
+##                genes_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/genes/pbmcs_smartseq2_ding_star_genes.counts.gz',
+##                repeats_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz',
+##                repeats_bowtie = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz',
+##                repeats_no_overlap_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz',
 ##                seurat_output = "/home/imallona/tmp/test.rds",
+##                cobra_output = '/home/imallona/tmp/cobra.rds'
 ##                regress_genes_nCount = FALSE,
 ##                regress_genes_nFeatures = FALSE)
+
+
+## params <- list(identifier = "pbmcs_smartseq2_ding",
+##                genes_star = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/genes/pbmcs_smartseq2_ding_star_genes.counts.gz',
+##                repeats_star_unique = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/unique_reads/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz',
+##                repeats_star_multi = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/multimappers/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz',
+##                repeats_bowtie_unique = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/unique_reads/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz',
+##                repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/multimappers/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz',
+##                repeats_only_unique = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/unique_reads/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz',
+##                repeats_only_multi = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/multimappers/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz',
+##                seurat_output = "/home/imallona/tmp/test.rds",
+##                cobra_output = '/home/imallona/tmp/cobra.rds',
+##                regress_genes_nCount = FALSE,
+##                regress_genes_nFeatures = FALSE)
+
+params <- list(identifier = "pbmcs_smartseq2_ding", 
+          genes_star = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/genes/pbmcs_smartseq2_ding_star_genes.counts.gz", 
+          repeats_star_unique = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/unique_reads/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz", 
+          repeats_star_multi = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats/multimappers/pbmcs_smartseq2_ding_star_transcriptome_repeats.counts.gz", 
+          repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/unique_reads/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz", 
+          repeats_bowtie_multi = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/bowtie_repeatome/multimappers/pbmcs_smartseq2_ding_bowtie_repeats.counts.gz", 
+          repeats_only_unique = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats_no_overlap/unique_reads/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz",
+          repeats_only_multi = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/star_transcriptome/repeats_no_overlap/multimappers/pbmcs_smartseq2_ding_repeats_not_overlapping_genes.counts.gz",
+          seurat_output = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/pbmcs_smartseq2_ding_pmbc_smartseq2_regress_nCount_FALSE_nFeature_TRUE.rds", 
+          aris_output = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/pbmcs_smartseq2_ding_aris_regress_nCount_FALSE_nFeature_TRUE.rds", 
+          cobra_output = "/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/pbmcs_smartseq2_ding_cobra_regress_nCount_FALSE_nFeature_TRUE.rds",
+     regress_genes_nCount = "FALSE",
+     regress_genes_nFeature = "TRUE")
+
 
 ```
 
 ```{r}
 d <- list()
 
-d$genes_star <- featurecounts_to_seurat(
-    params$genes_star,
-    identifier = sprintf('%s_%s', params$identifier, 'genes_star'),
-    add_gene_symbols = TRUE)
 
-d$repeats_star <- featurecounts_to_seurat(
-    params$repeats_star,
-    identifier = sprintf('%s_%s', params$identifier, 'repeats_star'))
+for (item in setdiff(names(params),
+                     c('identifier', 'seurat_output', 'cobra_output', 'aris_output',
+                       'markers_output', 'regress_genes_nCount', 'regress_genes_nFeature'))){
 
+    d[[item]] <- featurecounts_to_seurat(
+    params[[item]],
+    identifier = sprintf('%s_%s', params$identifier, params[[item]]),
+    add_gene_symbols = grepl('genes', item))
+}
 
-d$repeats_bowtie <- featurecounts_to_seurat(
-    params$repeats_bowtie,
-    identifier = sprintf('%s_%s', params$identifier, 'repeats_bowtie'))
-
-d$repeats_no_overlap_star <- featurecounts_to_seurat(
-    params$repeats_no_overlap_star,
-    identifier = sprintf('%s_%s', params$identifier, 'repeats_no_overlap_star'))
-
+(d)
 ```
 
-# Read assignment descriptive
 
-@todo add paths explicitly (not recursive from `params$identifier`)
-
-Four cells selected randomly.
+Mixed (genes + uniquely mapping repeats not overlapping genes) object generation
 
 ```{r}
-## summaries <- list.files(file.path('/home/imallona', 'repeats_sc', 'runs', params$identifier),
-##                         pattern = '.*summary.*csv', recursive = TRUE)
-## summaries
+if (params$repeats_only_unique != "None") {
+    
+    common_cells <- intersect(colnames(d$genes_star), colnames(d$repeats_only_unique))
+    ## length(common_cells)
+    d$both_unique <- CreateSeuratObject(
+        rbind(as.matrix(GetAssayData(d$genes_star, slot = 'counts'))[,common_cells],
+              as.matrix(GetAssayData(d$repeats_only_unique, slot = 'counts'))[,common_cells]),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
 
-base <- file.path('/home/imallona', 'repeats_sc', 'runs')
-summaries <- list(repeats_bowtie = file.path(
-                      base, params$identifier, 'bowtie_repeatome',
-                      paste0(params$identifier, '_bowtie_repeats.counts.summary.png_barplot.csv')),
-                  genes_star = file.path(
-                      base, params$identifier, 'star_transcriptome/genes',
-                      paste0(params$identifier, '_genes.counts.summary.png_barplot.csv')),             
-                  repeats_star = file.path(
-                      base, params$identifier, 'star_transcriptome/repeats',
-                      paste0(params$identifier, '_repeats.counts.summary.png_barplot.csv')),
-                  repeats_no_overlap_star =  file.path(
-                      base, params$identifier, 'star_transcriptome/repeats_no_overlap',
-                      paste0(params$identifier, '_repeats_no_overlap.counts.summary.png_barplot.csv')))
 
-sm <- list()
-for (su in names(summaries)) {
-    sm[[su]] <- data.table::fread(summaries[[su]], header = TRUE)
-    sm[[su]]$id <- su
-
+    rm(common_cells)
 }
-sm <- do.call(rbind.data.frame, sm)
-
-## ggplot(sm, aes(x=Status, y = pct)) +
-##     geom_bar(stat="identity") +
-##     facet_wrap(~id) +
-##     geom_text(aes(label=sprintf('%.2g', count)), size=3,
-##               vjust = -0.5) +
-##     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-##     ylab ('read assignments (%)') +
-##     ggtitle(sprintf('GTF %s', opt$id))
-sm <- as.data.frame(sm)
-## str(sm)
-## table(sm$Status)
-
-sm <- sm[sm$Status %in% c('Assigned', 'Unassigned_MultiMapping', 'Unassigned_NoFeatures',
-                          'Unassigned_Ambiguity'),]
-
-sm$id <- factor(sm$id)
-
-## head(sm)
-## table(sm$bam)
-sm$cell <- gsub('_Aligned.sortedByCoord.out', '', sm$bam)
-sm$cell <- gsub('.bam', '', sm$cell)
-
 ```
 
-```{r, fig.width = 10, fig.height = 6}
-ggplot(data=as.data.frame(sm), aes(x=id, y=pct, col = cell, group = cell)) +
-    geom_point() + geom_line()+
-    facet_wrap(~Status, ncol = 4)+
-    geom_text(aes(label=sprintf('%.2g', count)), size=3,
-              vjust = -0.5) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    ylab ('read assignments (%; text indicate counts)') +
-    xlab('status') + ggtitle(params$identifier)
+Mixed: genes + multimapping repeats not overlapping genes
 
-```    
+```{r}
+if (params$repeats_only_multi != "None") {
+    
+    common_cells <- intersect(colnames(d$genes_star), colnames(d$repeats_only_multi))
+    ## length(common_cells)
+    d$both_multi <- CreateSeuratObject(
+        rbind(as.matrix(GetAssayData(d$genes_star, slot = 'counts'))[,common_cells],
+              as.matrix(GetAssayData(d$repeats_only_multi, slot = 'counts'))[,common_cells]),
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
+
+
+    rm(common_cells)
+}
+```
+
+
+
+<!-- # Read assignment descriptive -->
+
+<!-- @todo add paths explicitly (not recursive from `params$identifier`) -->
+
+<!-- Four cells selected randomly. -->
+
+<!-- ```{r} -->
+<!-- ## summaries <- list.files(file.path('/home/imallona', 'repeats_sc', 'runs', params$identifier), -->
+<!-- ##                         pattern = '.*summary.*csv', recursive = TRUE) -->
+<!-- ## summaries -->
+
+<!-- base <- file.path('/home/imallona', 'repeats_sc', 'runs') -->
+
+<!-- ## summaries <- list() -->
+<!-- ## for (item in  setdiff(names(params), 'identifier')) { -->
+<!-- ##     file.path(base, params$identifier) -->
+<!-- ##     list.files(file.path(base, params$identifier), pattern = "*csv", recursive = TRUE) -->
+
+<!-- ##     summaries[[item]] <- list.files(file.path( -->
+<!-- ##                       base, params$identifier, item), -->
+<!-- ##                       pattern = '*summary.png_barplot.csv') -->
+<!-- ## } -->
+
+
+
+<!-- summaries <- list(repeats_bowtie = file.path( -->
+<!--                       base, params$identifier, 'bowtie_repeatome', -->
+<!--                       paste0(params$identifier, '_bowtie_repeats.counts.summary.png_barplot.csv')), -->
+<!--                   genes_star = file.path( -->
+<!--                       base, params$identifier, 'star_transcriptome/genes', -->
+<!--                       paste0(params$identifier, '_genes.counts.summary.png_barplot.csv')),              -->
+<!--                   repeats_star = file.path( -->
+<!--                       base, params$identifier, 'star_transcriptome/repeats', -->
+<!--                       paste0(params$identifier, '_repeats.counts.summary.png_barplot.csv')), -->
+<!--                   repeats_no_overlap_star =  file.path( -->
+<!--                       base, params$identifier, 'star_transcriptome/repeats_no_overlap', -->
+<!--                       paste0(params$identifier, '_repeats_no_overlap.counts.summary.png_barplot.csv'))) -->
+
+<!-- sm <- list() -->
+<!-- for (su in names(summaries)) { -->
+<!--     sm[[su]] <- data.table::fread(summaries[[su]], header = TRUE) -->
+<!--     sm[[su]]$id <- su -->
+
+<!-- } -->
+<!-- sm <- do.call(rbind.data.frame, sm) -->
+
+<!-- ## ggplot(sm, aes(x=Status, y = pct)) + -->
+<!-- ##     geom_bar(stat="identity") + -->
+<!-- ##     facet_wrap(~id) + -->
+<!-- ##     geom_text(aes(label=sprintf('%.2g', count)), size=3, -->
+<!-- ##               vjust = -0.5) + -->
+<!-- ##     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!-- ##     ylab ('read assignments (%)') + -->
+<!-- ##     ggtitle(sprintf('GTF %s', opt$id)) -->
+<!-- sm <- as.data.frame(sm) -->
+<!-- ## str(sm) -->
+<!-- ## table(sm$Status) -->
+
+<!-- sm <- sm[sm$Status %in% c('Assigned', 'Unassigned_MultiMapping', 'Unassigned_NoFeatures', -->
+<!--                           'Unassigned_Ambiguity'),] -->
+
+<!-- sm$id <- factor(sm$id) -->
+
+<!-- ## head(sm) -->
+<!-- ## table(sm$bam) -->
+<!-- sm$cell <- gsub('_Aligned.sortedByCoord.out', '', sm$bam) -->
+<!-- sm$cell <- gsub('.bam', '', sm$cell) -->
+
+<!-- ``` -->
+
+<!-- ```{r, fig.width = 10, fig.height = 6} -->
+<!-- ggplot(data=as.data.frame(sm), aes(x=id, y=pct, col = cell, group = cell)) + -->
+<!--     geom_point() + geom_line()+ -->
+<!--     facet_wrap(~Status, ncol = 4)+ -->
+<!--     geom_text(aes(label=sprintf('%.2g', count)), size=3, -->
+<!--               vjust = -0.5) + -->
+<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--     ylab ('read assignments (%; text indicate counts)') + -->
+<!--     xlab('status') + ggtitle(params$identifier) -->
+
+<!-- ```     -->
 
 # Basic Seurat processing
 
 ## QC before filtering {.tabset}
 
+```{r}
+d$genes_star[["percent.mt"]] <- PercentageFeatureSet(d$genes_star, pattern = "-MT-")
+summary(d$genes_star$percent.mt)
+```
+
+
+```{r}
+## QC is based upon genes 
+item <- 'genes_star'
+
+libsize.drop <- isOutlier(d$genes_star$nCount_RNA, nmads = 3, type = "both", log = TRUE)
+feature.drop <- isOutlier(d$genes_star$nFeature_RNA, nmads = 3, type = "both", log = TRUE)
+mito.drop <- isOutlier(d$genes_star$percent.mt, nmads = 3, type = "higher")
+
+selected_cells <- colnames(d$genes_star)[!(libsize.drop | feature.drop | mito.drop)]
+
+```
+
+
+Outlier tagging results
+
+```{r}
+print(data.frame(ByLibSize = sum(libsize.drop),
+                 ByFeature = sum(feature.drop), 
+                 ByMito = sum(mito.drop),
+                 Remaining = length(selected_cells)))
+```
+
 ```{r, results = 'asis', fig.width = 8, fig.height = 4}
+
+
 for (item in names(d)) {
     cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
     if (item == 'genes_star') {
-        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
-        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
+        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "-MT-")
+
+        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt") +
+              geom_vline(xintercept = attributes(libsize.drop)$thresholds) +
+              geom_hline(yintercept = attributes(mito.drop)$thresholds))
+        
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
                       ncol = 3))
 
@@ -321,11 +424,17 @@ for (item in names(d)) {
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2))
     
     }
-    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+
+    d[[item]]@meta.data$qc_pass <- rownames(d[[item]]@meta.data) %in% selected_cells
+    
+    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA",
+                         group.by = 'qc_pass', shape.by = 'qc_pass'))
+    
     cat('\n\n')
 }
-```
 
+
+```
 
 ## Basic stats pre-QC
 
@@ -340,9 +449,9 @@ for (item in names(d)) {
         mean(d[[item]]@meta.data$nCount_RNA), sd(d[[item]]@meta.data$nCount_RNA),
         mean(d[[item]]@meta.data$nFeature_RNA), sd(d[[item]]@meta.data$nFeature_RNA))
 
-    if ('pct_mt_mean' %in% colnames(d[[item]]@meta.data)) {
+    if ('percent.mt' %in% colnames(d[[item]]@meta.data)) {
         summarized[[item]] <- c(summarized[[item]],
-                                mean(d[[item]]@meta.data@percent.mt, na.rm = TRUE))
+                                mean(d[[item]]@meta.data$percent.mt, na.rm = TRUE))
     }
     else {
         summarized[[item]] <- c(summarized[[item]], NA)
@@ -353,8 +462,11 @@ for (item in names(d)) {
 summarized <- as.data.frame(do.call(rbind.data.frame, summarized))
 colnames(summarized) <- c('dataset','filter', 'ncells',
                           'ncount_mean', 'ncount_sd', 'nfeature_mean', 'nfeature_sd',
-                          'percent.mt')
-print(summarized)
+                          'mito_pct_mean')
+```
+
+```{r}
+DT::datatable(summarized)
 ```
 
 ## QC after filtering {.tabset}
@@ -362,35 +474,35 @@ print(summarized)
 Filtering out cells according to the repeats expression, and forwarding the selection to other layers
 
 ```{r}
-d$genes_star <- subset(d$genes_star, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & (percent.mt < 10 | is.na(percent.mt)))
-## d$genes_star <- subset(d$genes_star, subset = nFeature_RNA > 200 & (percent.mt < 10 | is.na(percent.mt)))
-selected_cells <- colnames(d$genes_star)
-
+## the subsetting applies to all slots, even though the metrics come from genes only
 for (item in names(d)) {
     d[[item]] <- subset(d[[item]], cells = selected_cells)
 }
 
+(d)
 ```
 
 ```{r, results = 'asis', fig.width = 8, fig.height = 4}
 for (item in names(d)) {
     cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
-    if (item == 'genes') {
-        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
+    if (item == 'genes_star') {
+        ## d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
         print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
                       ncol = 3))
 
     } else {
-        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2))
+        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2) +
+              ggtitle(item))
     
     }
-    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA") +
+          ggtitle(sprintf('%s', item)))
     cat('\n\n')
 }
-```
 
+```
 
 ## Basic stats post-QC
 
@@ -405,9 +517,9 @@ for (item in names(d)) {
         mean(d[[item]]@meta.data$nCount_RNA), sd(d[[item]]@meta.data$nCount_RNA),
         mean(d[[item]]@meta.data$nFeature_RNA), sd(d[[item]]@meta.data$nFeature_RNA))
 
-    if ('pct_mt_mean' %in% colnames(d[[item]]@meta.data)) {
+    if ('percent.mt' %in% colnames(d[[item]]@meta.data)) {
         summarized[[item]] <- c(summarized[[item]],
-                                mean(d[[item]]@meta.data@percent.mt, na.rm = TRUE))
+                                mean(d[[item]]@meta.data$percent.mt, na.rm = TRUE))
     }
     else {
         summarized[[item]] <- c(summarized[[item]], NA)
@@ -418,12 +530,17 @@ for (item in names(d)) {
 summarized <- as.data.frame(do.call(rbind.data.frame, summarized))
 colnames(summarized) <- c('dataset','filter', 'ncells',
                           'ncount_mean', 'ncount_sd', 'nfeature_mean', 'nfeature_sd',
-                          'percent.mt')
-print(summarized)
+                          'mito_pct_mean')
 
 ```
 
+```{r}
+DT::datatable(summarized)
+```
+
 ## Variable features {.tabset}
+
+We take the top 10% of the features for genes or genes + repeats, but 25% for repeats.
 
 ```{r, message = FALSE, fig.width =8, fig.height = 4, results= 'asis'}
 for (item in names(d)) {
@@ -432,9 +549,18 @@ for (item in names(d)) {
     d[[item]] <- NormalizeData(object = d[[item]],
                                normalization.method = "LogNormalize",
                                scale.factor = 10000)
-    
-    d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst", nfeatures = 2000)
 
+    ## if repeats, we take half of them
+    ## else if genes, then the top 10 pct
+    if (grepl('repeats', item)) {
+        d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst",
+                                          nfeatures = round(nrow(d[[item]])/4))
+    }
+    else {
+        d[[item]] <- FindVariableFeatures(d[[item]], selection.method = "vst",
+                                          nfeatures = round(nrow(d[[item]])/10))
+    }
+    
     ## Identify the 10 most highly variable genes
     top10 <- head(VariableFeatures(d[[item]]), 10)
 
@@ -448,6 +574,7 @@ for (item in names(d)) {
 
 
 ```
+
 
 ## Dimred PCA {.tabset}
 
@@ -764,7 +891,7 @@ rownames(d$genes_star@meta.data) <- d$genes_star@meta.data$cell
 
 ## still, the annotation can also be transfered to repeats/featurecounts
 
-for (item in grep('repeats', names(d), value = TRUE)) {
+for (item in grep('repeats|both', names(d), value = TRUE)) {
     rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
 
     tmp <- merge(data.frame(cell = d[[item]]@meta.data$cell),
@@ -829,46 +956,46 @@ for (item in names(d)) {
 }
 ```
 
-# boxplots by identity {.tabset}
+<!-- # boxplots by identity {.tabset} -->
 
-```{r fig.height = 6, fig.width = 16, results = 'asis'}
-## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11')
-for (slot in c('repeats_star')) {
-    cat("## ", slot, "\n\n")
-    selected <- c(names(head(sort(apply(GetAssayData(d[[slot]]),1, coef_var),
-                                  decreasing = TRUE),
-                             5)),
-                  c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a'))
+<!-- ```{r fig.height = 6, fig.width = 16, results = 'asis'} -->
+<!-- ## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11') -->
+<!-- for (slot in c('repeats_star')) { -->
+<!--     cat("## ", slot, "\n\n") -->
+<!--     selected <- c(names(head(sort(apply(GetAssayData(d[[slot]]),1, coef_var), -->
+<!--                                   decreasing = TRUE), -->
+<!--                              5)), -->
+<!--                   c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a')) -->
 
 
-    repeats <- as.data.frame(FetchData(d[[slot]], vars = selected, slot = 'data'))
-    repeats$cell <- rownames(repeats)
+<!--     repeats <- as.data.frame(FetchData(d[[slot]], vars = selected, slot = 'data')) -->
+<!--     repeats$cell <- rownames(repeats) -->
 
     
-    d$genes_star@meta.data$cell <- rownames(d$genes_star@meta.data)
-    repeats <- merge(d$genes_star@meta.data[, c('scina', 'cell') ],
-                     repeats, by = 'cell', all.x = TRUE)
+<!--     d$genes_star@meta.data$cell <- rownames(d$genes_star@meta.data) -->
+<!--     repeats <- merge(d$genes_star@meta.data[, c('scina', 'cell') ], -->
+<!--                      repeats, by = 'cell', all.x = TRUE) -->
 
-    rownames(repeats) <- repeats$cell
+<!--     rownames(repeats) <- repeats$cell -->
     
-    repeats <- melt(repeats, id.vars = c('cell', 'scina'))
+<!--     repeats <- melt(repeats, id.vars = c('cell', 'scina')) -->
 
-    colnames(repeats) <- c('cell', 'scina', 'repfamily', 'data')
+<!--     colnames(repeats) <- c('cell', 'scina', 'repfamily', 'data') -->
     
-    print(ggplot(repeats,
-           aes(x = scina, y = data)) + 
-          geom_boxplot(outlier.size=1) +
-          scale_y_continuous(trans='log10') +
-        scale_fill_discrete(drop=FALSE) +
-        facet_wrap(~ factor(repfamily), ncol = 10) +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-        ylab('repeat expression [ncount]') +
-        xlab('SCINA identity') + ggtitle(sprintf('%s %s\n%s', slot, 'repeats', 'scina')))
+<!--     print(ggplot(repeats, -->
+<!--            aes(x = scina, y = data)) +  -->
+<!--           geom_boxplot(outlier.size=1) + -->
+<!--           scale_y_continuous(trans='log10') + -->
+<!--         scale_fill_discrete(drop=FALSE) + -->
+<!--         facet_wrap(~ factor(repfamily), ncol = 10) + -->
+<!--         theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--         ylab('repeat expression [ncount]') + -->
+<!--         xlab('SCINA identity') + ggtitle(sprintf('%s %s\n%s', slot, 'repeats', 'scina'))) -->
 
-    rm(repeats)
-    cat('\n\n')
-}
-```
+<!--     rm(repeats) -->
+<!--     cat('\n\n') -->
+<!-- } -->
+<!-- ``` -->
 
 # Descriptive (clustering) {.tabset}
 
@@ -877,8 +1004,8 @@ Tabset: coloring according to the clustering results.
 ```{r descriptive, results = 'asis', fig.width =8, fig.height = 8}
 
 res <- 'RNA_snn_res.0.2'
-common_cells <- intersect(intersect(colnames(d$genes_star), colnames(d$repeats_star)), colnames(d$repeats_bowtie))
-
+## common_cells <- intersect(intersect(colnames(d$genes_star), colnames(d$repeats_star)), colnames(d$repeats_bowtie))
+common_cells <- colnames(d[[1]])
 
 for (item_clust in names(d)) {
     tag <- sprintf('%s\n%s', item_clust, res)
@@ -947,37 +1074,7 @@ plot(merged, pch = 20, cex = 0.5, col = ac(pal[merged$scina, 'color'], 0.1))
 rm(merged)
 ```
 
-## Genes vs SCINA
 
-Removed the unassigned class in SCINA
-
-```{r}
-aris <- list()
-i <- 1
-for (genes_res in seq(0.2, 2, 0.2)) {
-    genes_res <- sprintf('RNA_snn_res.%s', genes_res)
-    rownames(d$genes_star@meta.data) <- d$genes_star@meta.data$cell
-    known <- rownames(d$genes_star@meta.data[d$genes_star@meta.data$scina != 'unknown',])
-
-    aris[[i]] <- c(sprintf('genes_%s (n=%s)', genes_res,
-                           length(unique(d$genes_star@meta.data[known, genes_res]))),
-                   sprintf('scina_%s (n=%s)', 'scina',
-                           length(unique(d$genes_star@meta.data[known, 'scina']))),
-                   adjustedRandIndex(d$genes_star@meta.data[known, genes_res],
-                                     d$genes_star@meta.data[known, 'scina']))
-                                     
-    i <- i +1
-}    
-
-aris <- do.call(rbind.data.frame, aris)
-colnames(aris) <- c('genes_res', 'scina', 'ari')
-aris$ari <- as.numeric(as.character(aris$ari))
-print(aris)
-```
-
-```{r}
-aris_stored <- list(aris)
-```
 
 
 
@@ -1042,81 +1139,29 @@ for (flavour1 in names(d)) {
 
 # Diferential repeat expression by SCINA identity {.tabset}
 
-```{r, results = 'asis', eval = FALSE}
+```{r}
+ml <- list()
+```
+
+
+```{r datatable_does_not_render, results = 'asis'}
 for (item in names(d)) {
     cat('## ', item, '\n\n')
     
     Idents(d[[item]]) <- 'scina'
 
     ## find markers for every scina identity (discarding the unplaced); report only positives   
-    markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
+    ml[[item]] <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
                               only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
     
-    print(markers)
+    print(head(ml[[item]]))
+
     cat('\n\n')
 }
 
 ```
 
-```{r}
-ml <- list()
-```
 
-## genes_star
-
-```{r}
-item <- 'genes_star'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
-
-## repeats_star
-
-```{r}
-item <- 'repeats_star'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
-
-
-## repeats_bowtie
-
-```{r}
-item <- 'repeats_bowtie'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
-
-## repeats_no_overlap_star
-
-```{r}
-item <- 'repeats_no_overlap_star'
-Idents(d[[item]]) <- 'scina'
-## find markers for every scina identity (discarding the unplaced); report only positives   
-markers <- FindAllMarkers(subset(d[[item]], idents = 'unknown', invert = TRUE),
-                          only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-
-ml[[item]] <- markers
-DT::datatable(markers)
-
-```
 
 
 # F1-based
@@ -1283,6 +1328,96 @@ for (flavour in names(d)) {
 
 ```
 
+<!-- ```{r} -->
+
+<!-- cobra <- list() -->
+<!-- i <- 1 -->
+<!-- for (flavour in names(hung)) { -->
+<!--     for (res in names(hung[[flavour]])) { -->
+<!--     cobra[[i]] <- data.frame(cell = names(hung[[flavour]][[res]]$pr), -->
+<!--                              pr = hung[[flavour]][[res]]$pr, -->
+<!--                              re = hung[[flavour]][[res]]$re, -->
+<!--                              F1 = hung[[flavour]][[res]]$F1, -->
+<!--                              res = res, -->
+<!--                              flavour = flavour) -->
+<!--     i = i +1 -->
+<!--     } -->
+<!-- } -->
+
+<!-- cobra <- do.call(rbind.data.frame, cobra) -->
+<!-- cobra$id <- params$identifier -->
+
+<!-- ``` -->
+
+<!-- ```{r, fig.height = 4, fig.width = 7} -->
+<!-- ggplot(data = cobra, aes(x = pr, y =  re, group = res, col = res)) + -->
+<!--     geom_point() + -->
+<!--     facet_grid(flavour~cell, margins = FALSE) + -->
+<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) -->
+
+<!-- ``` -->
+
+<!-- ```{r, fig.height = 4, fig.width = 8} -->
+<!-- ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) + -->
+<!--     geom_point() + -->
+<!--     facet_grid(flavour~res, margins = FALSE) + -->
+<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) -->
+
+<!-- ``` -->
+
+<!-- ```{r, fig.height = 4, fig.width = 7} -->
+<!-- ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) + -->
+<!--     geom_point() + -->
+<!--     facet_wrap(~flavour) +  -->
+<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) -->
+
+<!-- ``` -->
+
+<!-- ```{r, fig.height = 4, fig.width = 8} -->
+<!-- ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) + -->
+<!--     geom_point() + -->
+<!--     facet_grid(flavour~res) +  -->
+<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) -->
+
+<!-- ``` -->
+
+<!-- For each cell type, get the max F1 stratifying by flavour *regardless of the resolution*. -->
+
+<!-- ```{r} -->
+
+<!-- ## cobra <- cobra[order(cobra$F1, cobra$cell, decreasing = TRUE),] -->
+<!-- ## maxf1 <- cobra[0,] -->
+<!-- maxF1 <- list() -->
+
+<!-- for (flavour in levels(cobra$flavour)) { -->
+<!--     for (cell in levels(cobra$cell)) { -->
+<!--         maxF1[[paste(flavour, cell)]] <- c(flavour, cell, max(cobra[cobra$flavour == flavour & -->
+<!--                                                                     cobra$cell == cell, 'F1'])) -->
+<!--     } -->
+    
+<!-- } -->
+
+
+<!-- maxF1 <- do.call(rbind.data.frame, maxF1) -->
+<!-- colnames(maxF1) <- c('flavour', 'cell', 'max_F1') -->
+<!-- maxF1$max_F1 <- as.numeric(as.character(maxF1$max_F1)) -->
+      
+<!-- maxF1$cell <- factor(as.character(maxF1$cell), levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)]))) -->
+<!-- maxF1$id <- params$identifier -->
+
+<!-- ``` -->
+
+<!-- ```{r, fig.width = 7, fig.height = 7} -->
+<!-- ggplot(data = maxF1, aes(x= cell, y = max_F1, col = flavour, group = flavour)) + -->
+<!--     geom_point() + -->
+<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) -->
+       
+<!-- ``` -->
+
+
 ```{r}
 
 cobra <- list()
@@ -1301,43 +1436,8 @@ for (flavour in names(hung)) {
 
 cobra <- do.call(rbind.data.frame, cobra)
 cobra$id <- params$identifier
-
 ```
 
-```{r, fig.height = 4, fig.width = 7}
-ggplot(data = cobra, aes(x = pr, y =  re, group = res, col = res)) +
-    geom_point() +
-    facet_grid(flavour~cell, margins = FALSE) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
-
-```
-
-```{r, fig.height = 4, fig.width = 8}
-ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
-    geom_point() +
-    facet_grid(flavour~res, margins = FALSE) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
-
-```
-
-```{r, fig.height = 4, fig.width = 7}
-ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
-    geom_point() +
-    facet_wrap(~flavour) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
-
-```
-
-```{r, fig.height = 4, fig.width = 8}
-ggplot(data = cobra, aes(x = re, y =  F1, group=res, col =cell)) +
-    geom_point() +
-    facet_grid(flavour~res) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
-
-```
 
 For each cell type, get the max F1 stratifying by flavour *regardless of the resolution*.
 
@@ -1360,17 +1460,108 @@ maxF1 <- do.call(rbind.data.frame, maxF1)
 colnames(maxF1) <- c('flavour', 'cell', 'max_F1')
 maxF1$max_F1 <- as.numeric(as.character(maxF1$max_F1))
       
-maxF1$cell <- factor(as.character(maxF1$cell), levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)])))
-maxF1$id <- params$identifier
+maxF1$cell <- factor(as.character(maxF1$cell),
+                     levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)])))
 
 ```
 
-```{r, fig.width = 7, fig.height = 7}
-ggplot(data = maxF1, aes(x= cell, y = max_F1, col = flavour, group = flavour)) +
+```{r}
+DT::datatable(as.data.frame(cobra %>%
+              group_by(flavour, cell) %>%
+              summarize(max(F1)) %>%
+              arrange(desc(`max(F1)`))))
+````
+
+
+```{r, fig.height = 8, fig.width = 10}
+ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
     geom_point() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+    facet_grid(flavour~res, margins = FALSE) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+```
+
+```{r, fig.height = 8, fig.width = 8}
+ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
+    geom_point() +
+    facet_wrap(~flavour) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) +
+    labs(x = 'resolution')
+
+```
+
+```{r, fig.height = 7, fig.width = 10}
+
+cobra$resolution <- gsub('RNA_snn_res_', '', cobra$res)
+ggplot(data = cobra, aes(x = re, y =  F1, group=resolution, col =cell)) +
+    geom_point() +
+    facet_grid(flavour~res) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+```
+
+```{r, fig.width = 5, fig.height = 5}
+## sorting in a more sensible way
+maxF1$flavour <- factor(maxF1$flavour,
+                        levels = c('genes_cellranger', 'genes_alevin',
+                                   'both_unique', 'both_multi', 'both_alevin',
+                                   'repeats_cellranger', 'repeats_alevin',
+                                   'repeats_bowtie_unique', 'repeats_bowtie_multi',
+                                   'repeats_featurecounts_unique', 'repeats_featurecounts_multi',
+                                   'control_repeats_only_unique', 'control_repeats_only_multi'))
+                                          
+
+ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
+    geom_point() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
        
 ```
+
+
+# Aris 
+
+
+Not plotted, kept for further analysis
+
+```{r}
+aris_stored <- list()
+```
+
+```{r}
+
+for (flavour in names(d)) {
+    aris <- list()
+    i <- 1
+
+    for (flavour_res in seq(0.2, 2, 0.2)) {
+        flavour_res <- sprintf('RNA_snn_res.%s', flavour_res)
+        rownames(d[[flavour]]@meta.data) <- d[[flavour]]@meta.data$cell
+        known <- rownames(d[[flavour]]@meta.data[d[[flavour]]@meta.data$scina != 'unknown',])
+
+        aris[[i]] <- c(sprintf('%s_%s (n=%s)', flavour, flavour_res,
+                               length(unique(d[[flavour]]@meta.data[known, flavour_res]))),
+                       sprintf('scina_%s (n=%s)', 'scina',
+                               length(unique(d[[flavour]]@meta.data[known, 'scina']))),
+                       adjustedRandIndex(d[[flavour]]@meta.data[known, flavour_res],
+                                         d[[flavour]]@meta.data[known, 'scina']))
+        
+        i <- i +1
+    }    
+
+    aris <- do.call(rbind.data.frame, aris)
+    colnames(aris) <- c(sprintf('%s_res', flavour), 'scina', 'ari')
+    aris$ari <- as.numeric(as.character(aris$ari))
+    print(aris)
+    
+    aris_stored[[sprintf('%s__scina', flavour)]] <- aris
+
+}
+```
+
 
 
 
@@ -1381,7 +1572,7 @@ List of seurat objects
 saveRDS(object = d, file = params$seurat_output)
 saveRDS(object = aris_stored, file = params$aris_output)
 saveRDS(object = cobra, file = params$cobra_output)
-
+saveRDS(object = ml, file = params$markers_output)
 ```
 
 # Timestamp
@@ -1390,6 +1581,4 @@ saveRDS(object = cobra, file = params$cobra_output)
 date()
 sessionInfo()
 devtools::session_info()
-
 ```
-

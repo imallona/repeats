@@ -105,16 +105,30 @@ rule all:
         # op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs',  'web_summary.html'),
         # op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
         # op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz"),
-        expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_cellranger_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
+        expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
                        regress_nfeature = ['TRUE', 'FALSE']),
         op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard_not_overlapping_genes',
                 RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
-        op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard", RUN_NAME +  "_transcriptome_repeats.counts.summary.png"),
-        op.join(BASE, "runs", RUN_NAME, "count_repeats_on_cellranger_standard_not_overlapping_genes",  RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
+        expand(op.join(BASE, "runs", RUN_NAME,
+                        "count_repeats_on_cellranger_standard",
+                        "{multimappers}",
+                        RUN_NAME + "_transcriptome_repeats.counts.summary.png"),
+                multimappers = ['multimappers', 'unique_reads']),
+        expand(op.join(BASE, "runs", RUN_NAME,
+                        "count_repeats_on_cellranger_standard_not_overlapping_genes",
+                        "{multimappers}",
+                        RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
+                 multimappers = ['multimappers', 'unique_reads']),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
         expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
-                       regress_nfeature = ['TRUE', 'FALSE'])
+                       regress_nfeature = ['TRUE', 'FALSE']),
+         op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
+         expand(op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome',
+                        '{multimappers}',
+                        "all_cells_repeats.counts.gz"),
+                multimappers = ['multimappers', 'unique_reads'])
+        
         
 
 rule get_pbmc_v3:

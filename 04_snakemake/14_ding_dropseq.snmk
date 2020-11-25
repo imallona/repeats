@@ -1,0 +1,269 @@
+#!/usr/bin/env snakemake -s
+## 
+## Started 12 Nov 2020
+##
+## Izaskun Mallona
+## GPLv3
+
+import os
+import os.path as op
+from glob import glob
+import re
+
+# import pandas as pd
+
+print('This is human')
+print('dropseq')
+print('this comes from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE132044')
+
+## Folder structure start --------------------------------------------------------------------- ##
+
+
+## config file start ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# configfile: "config.yaml"
+# validate(config, "schemas/config.schema.yaml")
+
+# samples = pd.read_csv(config["samples"], sep = '\t').set_index("id", drop=False)
+#@FIXME to be moved to config, not hardcoded!
+BASE = op.join('/home', 'imallona', 'repeats_sc')
+NTHREADS = 40
+PER_TASK_MAX_THREADS = 10
+LOCAL_MEM_GB = 100
+
+RUN_NAME  = 'ding_dropseq'
+RUN_TECH = 'dropseq'
+GENOME = 'GRCh38'
+CONF = op.join(BASE, "data", RUN_NAME, 'dropseq_ding.conf')
+
+GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
+GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
+REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
+
+GTF_MAKING_SCRIPT = '~/src/repeats_sc/04_snakemake/gtf_maker.R'
+GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/gtf_parser.R'
+FEATURECOUNTS_RSCRIPT= '~/src/repeats_sc/04_snakemake/plot_featurecounts_profile.R'
+
+BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
+BOWTIE = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'
+
+##pigz 2.3.1
+PIGZ = '/usr/bin/pigz'
+BIOPYTHON_CONVERT='biopython.convert'
+STAR = '~/soft/star/STAR-2.7.3a/source/STAR'
+FEATURECOUNTS = '~/soft/subread/subread-2.0.0-source/bin/featureCounts'
+# SALMON = '~/soft/salmon/salmon-1.1.0_linux_x86_64/bin/salmon'
+SALMON='~/soft/salmon/salmon-1.2.1/bin/salmon'
+CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
+BIOAWK = '~/soft/bioawk/bioawk'
+BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
+Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
+FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
+PREFETCH= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/prefetch' # fastq-dump : 2.10.4
+VDBVALIDATE= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate' # fastq-dump : 2.10.4
+# FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.5-ubuntu64/bin/fastq-dump' #
+# FASTERQDUMP= '~/soft/sra-toools/sratoolkit.2.10.5-ubuntu64/bin/fasterq-dump' #
+# VDB_VALIDATE = '~/soft/sra-toools/sratoolkit.2.10.5-ubuntu64/bin/vdb-validate'
+BEDOPS = '~/soft/bedops/bedops-2.4.39/bin/'
+## FASTQS, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}.fastq.gz"))
+
+
+## include: "/home/imallona/src/repeats_sc/04_snakemake/rnaseq_like_human_paired_end.snmk"
+include: "/home/imallona/src/repeats_sc/04_snakemake/not_chromium_per_sample_flow.snmk"
+
+try:
+   if not op.exists(op.dirname(op.join(BASE, 'annotation'))):
+      os.makedirs(op.join(BASE, 'annotation'))
+except OSError as err:
+   print(err)
+      
+for item in ['bowtie', 'star', 'salmon']:
+   try:
+      if not op.exists(op.dirname(op.join(BASE, 'indices', item))):
+         os.makedirs(op.join(BASE, 'indices', item))
+   except OSError as err:
+      print(err)
+
+def write_config(fn):
+        conf = CONF
+        path = op.join(BASE, "data", RUN_NAME)
+        if not op.exists(path):
+           os.makedirs(path)
+        
+        with open(conf, "w+") as fh:
+           fh.writelines("""SRR9169180,RNA-Seq,110,28398733000,PRJNA545730,SAMN11914027,15835644128,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943299,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836751,SRP200058,GSM3836751,Drop-seq,male,Peripheral blood mononuclear cell,,
+SRR9169210,RNA-Seq,110,25352865010,PRJNA545730,SAMN11915423,14277929705,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943784,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837164,SRP200058,GSM3837164,Drop-seq,female,Peripheral blood mononuclear cell,,
+SRR9169215,RNA-Seq,89,37492211111,PRJNA545730,SAMN11914629,16510170453,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943789,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-09T00:00:00Z,GSM3837169,SRP200058,GSM3837169,Drop-seq,female,Peripheral blood mononuclear cell,,
+SRR9169443,RNA-Seq,89,4636831826,PRJNA545730,SAMN11914620,2933786676,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943798,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837178,SRP200058,GSM3837178,Drop-seq,female,Peripheral blood mononuclear cell,,
+SRR9169181,RNA-Seq,89,20401685024,PRJNA545730,SAMN11914026,12541390623,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943300,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3836752,SRP200058,GSM3836752,Drop-seq,male,Peripheral blood mononuclear cell,,""")
+
+   
+def get_samples(fn):
+    # samples = pd.read_table(fn)
+   if not op.isfile(fn):
+      write_config(fn)
+   
+   samples = []
+   with open(fn) as fh:
+    for line in fh: 
+        samples.append(line.split(',')[0].strip())
+    return(samples)
+
+
+# def list_cbs(wildcards):
+#    fastqs_path = op.join(BASE, 'data', RUN_NAME)
+#    # fns = sorted(filter(re.compile('SR.*[0-9]_1.fastq.gz').match, os.listdir(fastqs_path)))
+#    fns = [x + '_1_trim.fastq.gz' for x in get_samples(CONF)]
+#    return([op.join(fastqs_path, x) for x in fns])
+
+
+# def list_r2s(wildcards):
+#    # fns = sorted(filter(re.compile('SR.*[0-9]_2.fastq.gz').match, os.listdir(fastqs_path)))
+#    fastqs_path = op.join(BASE, 'data', RUN_NAME)
+#    fns = [x + '_2.fastq.gz' for x in get_samples(CONF)]
+#    return([op.join(fastqs_path, x) for x in fns])
+
+
+rule all:
+    input:
+        CONF,
+        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 
+                       "{srr}_Aligned.sortedByCoord.out.bam"),
+               srr = get_samples(CONF)),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
+                       "{multimappers}",
+                       "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
+               srr = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers']),  
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
+                       "{srr}_star_transcriptome_genes.counts.summary.png"), 
+               srr = get_samples(CONF)),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',
+                       "{multimappers}", "{srr}_Aligned.sortedByCoord.out.bam.counts.summary"), 
+               srr = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers']),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',
+                       "{multimappers}", "{srr}_star_transcriptome_repeats.counts.summary.png"), 
+               srr = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers']),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
+                       "{multimappers}",
+                       "{srr}_repeats_no_overlap.counts.summary.png"), 
+               srr = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers']),
+        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                       "{srr}_bowtie_repeats.counts.summary.png"),
+               srr = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers']),
+        expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', "{srr}", 'alevin',
+                       'quants_mat.gz'),
+               srr = get_samples(CONF)),
+        expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}", 'alevin',
+                       'quants_mat.gz'),
+               srr = get_samples(CONF)),      
+        expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_dropseq_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+                regress_ncount = ['TRUE', 'FALSE'],
+                regress_nfeature = ['TRUE', 'FALSE']),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
+               srr = get_samples(CONF))
+
+
+## because structure is 12 CB +8 UMI and then an oligodt follows
+rule trim_r1s_to_20:
+    input:
+        r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz")
+    output:
+        r1_trim = temp(op.join(BASE, "data", RUN_NAME, "{srr}_1_trim.fastq.gz"))
+    threads:
+        1
+    shell:  """
+    {PIGZ} -p {threads} --decompress --stdout {input.r1} | sed 's/.1 / /g' | \
+      awk 'NR%4==1{{a=$0;}} 
+      NR%4==2{{take=substr($0,1,20)}} 
+      NR%4==3{{c=$0}} 
+      NR%4==0{{d=substr($0,1,20); print a"\\n"take"\\n+\\n"d;}}' | {PIGZ} -p {threads} --stdout > {output.r1_trim}
+    """
+
+    
+## we assume the first 20 reads from read1 are the umis + CB
+## CB1 from 1 to 12
+## UMI from 13 to 20
+rule deal_with_umis_r2:
+    input:
+        r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
+        r2 = op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq.gz")
+    output:
+        r2_umi = temp(op.join(BASE, "data", RUN_NAME, "{srr}_2_umi.fastq.gz"))
+    threads:
+        1
+    shell: """
+    join <(zcat {input.r2} | sed 's/.2 / /g' | awk '{{OFS=FS=" "; print $1}}' | nl)  \
+       <(zcat {input.r1} | awk '{{OFS=FS=" "; print $1}}' | nl ) | \
+       awk '(NR%4==1){{a=$2;}}(NR%4==2){{cb=substr($3,0,12);umi=substr($3,13,8); b=$2}}(NR%4==3){{c=$2}}(NR%4==0){{d=$2;print a"_"cb"_"umi".2\\n"b"\\n+\\n"d;}}' | {PIGZ} -p {threads} --stdout > {output.r2_umi}
+
+    """
+
+
+## we assume the first 20 reads from read1 are the umis + CB
+## CB1 from 1 to 12
+## UMI from 13 to 20
+rule deal_with_umis_r1:
+    input:
+        r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz")
+    output:
+        r1_umi = temp(op.join(BASE, "data", RUN_NAME, "{srr}_1_umi.fastq.gz"))
+    threads:
+        1
+    shell:  """
+    {PIGZ} -p {threads} --decompress --stdout {input.r1} | sed 's/.1 / /g' | \
+      awk 'NR%4==1{{a=$1;}} 
+      NR%4==2{{cb=substr($0,0,12);umi=substr($0,13,8);b_without=substr($0,20)}} 
+      NR%4==3{{c=$0}} 
+      NR%4==0{{d=substr($0,13); print a"_"cb"_"umi".1\\n"b_without"\\n+\\n"d;}}' | {PIGZ} -p {threads} --stdout > {output.r1_umi}
+
+    """
+
+
+rule knit_report_dropseq_ad_hoc_ding:
+    input:
+        genes_alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes'),
+        repeats_alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats'),
+        genes_featurecounts = directory(op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome')),
+        repeats_star_multi = directory(op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats', 'multimappers')),
+        repeats_star_unique = directory(op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats', 'unique_reads')),
+        repeats_bowtie_multi = directory(op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', 'multimappers')),
+        repeats_bowtie_unique = directory(op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', 'unique_reads')),        
+        repeats_only_multi = directory(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', "multimappers")),
+        repeats_only_unique = directory(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', 'unique_reads'))       
+    params:
+        rmd = 'summarize_alevin_multiple_samples.Rmd',
+        run_name = RUN_NAME
+    output:
+        html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_dropseq_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_dropseq_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        markers = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
+    log:
+        op.join(BASE, 'runs', RUN_NAME, RUN_NAME + 'summarize_dropseq_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
+    shell:
+        """
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+          output_file = \"{output.html}\", 
+          params = list(identifier = \"{params.run_name}\", 
+          genes_alevin = \"{input.genes_alevin}\",
+          repeats_alevin = \"{input.repeats_alevin}\",
+          repeats_star_unique = \"{input.repeats_star_unique}\",
+          repeats_star_multi = \"{input.repeats_star_multi}\",
+          repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\",
+          repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
+          repeats_only_unique = \"{input.repeats_only_unique}\",
+          repeats_only_multi = \"{input.repeats_only_multi}\",
+          genes_featurecounts = \"{input.genes_featurecounts}\",
+          seurat_output = \"{output.rds}\", 
+          aris_output = \"{output.aris}\", 
+          cobra_output = \"{output.cobra}\", 
+          markers_output = \"{output.markers}\", 
+          regress_genes_nCount = \"{wildcards.regress_ncount}\", \
+          regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}
+        """
