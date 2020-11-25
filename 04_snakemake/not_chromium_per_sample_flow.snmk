@@ -253,11 +253,19 @@ rule featurecounts_repeats_repeatome_bowtie:
        --Rpath {params.path} \
        {input.bam}  &> {log}
 
-       ## any CB:UMI pair that was seen is removed from the output (awk array)
+       # ## any CB:UMI pair that was seen is removed from the output (awk array)
+       # grep 'Assigned' {output.detailed} | \
+       #   awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
+       #   sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+       #   {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+
        grep 'Assigned' {output.detailed} | \
-         awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
-         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+        awk 'BEGIN {{ OFS = "\t" }}
+        {{
+            split ($1, a, "[_.]") 
+            !x[a[3], a[4]]++;
+            print a[3],a[4],$4
+         }}' |  {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}  
             """)
@@ -274,10 +282,18 @@ rule featurecounts_repeats_repeatome_bowtie:
        {input.bam}  &> {log}
 
        ## any CB:UMI pair that was seen is removed from the output (awk array)
+       # grep 'Assigned' {output.detailed} | \
+       #   awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
+       #   sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+       #   {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+
        grep 'Assigned' {output.detailed} | \
-         awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
-         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+        awk 'BEGIN {{ OFS = "\t" }}
+        {{
+            split ($1, a, "[_.]") 
+            !x[a[3], a[4]]++;
+            print a[3],a[4],$4
+         }}' |  {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}  
           
@@ -325,10 +341,18 @@ rule feature_counts_repeats_not_overlapping_genes:
        {input.bam}  &> {log}
 
        ## any CB:UMI pair that was seen is removed from the output (awk array)
+       # grep 'Assigned' {output.detailed} | \
+       #   awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
+       #   sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+       #   {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+
        grep 'Assigned' {output.detailed} | \
-         awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
-         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+        awk 'BEGIN {{ OFS = "\t" }}
+        {{
+            split ($1, a, "[_.]") 
+            !x[a[3], a[4]]++;
+            print a[3],a[4],$4
+         }}' |  {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}  
             """)
@@ -345,10 +369,18 @@ rule feature_counts_repeats_not_overlapping_genes:
        {input.bam}  &> {log}
 
        ## any CB:UMI pair that was seen is removed from the output (awk array)
+       # grep 'Assigned' {output.detailed} | \
+       #   awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
+       #   sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+       #   {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+
        grep 'Assigned' {output.detailed} | \
-         awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
-         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+        awk 'BEGIN {{ OFS = "\t" }}
+        {{
+            split ($1, a, "[_.]") 
+            !x[a[3], a[4]]++;
+            print a[3],a[4],$4
+         }}' |  {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}            
             """)
@@ -387,9 +419,17 @@ rule featurecounts_genes:
        # awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | cut -f2,3,6 | \
        # {PIGZ} --keep  -p {threads} --stdout > {output.genes_gz_detailed}
 
+       # grep 'Assigned' {output.genes_detailed} |  \
+       #   awk -F'[_.\t]' '{{OFS="\t"; print $3,$4, $8}}' | \
+       #    {PIGZ} --keep  -p {threads} --stdout > {output.genes_gz_detailed}
 
-       grep 'Assigned' {output.genes_detailed} |  awk -F'[_.\t]' '{{OFS="\t"; print $3,$4, $8}}' | \
-       {PIGZ} --keep  -p {threads} --stdout > {output.genes_gz_detailed}
+      grep 'Assigned' {output.genes_detailed} | \
+        awk 'BEGIN {{ OFS = "\t" }}
+        {{
+            split ($1, a, "[_.]") 
+            !x[a[3], a[4]]++;
+            print a[3],a[4],$4
+         }}' |  {PIGZ} --keep  -p {threads} --stdout > {output.genes_gz_detailed}
 
        {PIGZ} --keep -p {threads} {output.genes_counts}
        
@@ -437,10 +477,18 @@ rule featurecounts_repeats_from_star:
        {input.bam}  &> {log}
 
        ## any CB:UMI pair that was seen is removed from the output (awk array)
+       # grep 'Assigned' {output.detailed} | \
+       #   awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
+       #   sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+       #   {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+
        grep 'Assigned' {output.detailed} | \
-         awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
-         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+        awk 'BEGIN {{ OFS = "\t" }}
+        {{
+            split ($1, a, "[_.]") 
+            !x[a[3], a[4]]++;
+            print a[3],a[4],$4
+         }}' |  {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}  
             """)
@@ -457,10 +505,18 @@ rule featurecounts_repeats_from_star:
        {input.bam}  &> {log}
 
        ## any CB:UMI pair that was seen is removed from the output (awk array)
+       # grep 'Assigned' {output.detailed} | \
+       #   awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
+       #   sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+       #   {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+
        grep 'Assigned' {output.detailed} | \
-         awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
-         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+        awk 'BEGIN {{ OFS = "\t" }}
+        {{
+            split ($1, a, "[_.]") 
+            !x[a[3], a[4]]++;
+            print a[3],a[4],$4
+         }}' |  {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}            
             """)

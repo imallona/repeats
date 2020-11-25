@@ -130,7 +130,7 @@ def get_samples(fn):
 #    return([op.join(fastqs_path, x) for x in fns])
 
 
-rule all:b
+rule all:
     input:
         expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 
                        "{srr}_Aligned.sortedByCoord.out.bam"),
