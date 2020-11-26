@@ -190,7 +190,18 @@ rule all:
                 regress_ncount = ['TRUE', 'FALSE'],
                 regress_nfeature = ['TRUE', 'FALSE']),
         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
-               srr = get_samples(CONF))
+               srr = get_samples(CONF)),
+         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
+                       "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"), 
+               srr = get_samples(CONF)),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',
+                       "{multimappers}", "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"), 
+               srr = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers']),
+        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                       "{srr}.bam.featureCounts.gz"),
+               srr = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers'])
 
 
 

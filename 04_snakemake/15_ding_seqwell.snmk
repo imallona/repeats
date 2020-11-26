@@ -171,7 +171,18 @@ rule all:
                srr = get_samples(CONF)),
         expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', "{srr}",  'alevin',
                        'flag_seqwell.log'),
-               srr = get_samples(CONF))
+               srr = get_samples(CONF)),
+          expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
+                       "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"), 
+               srr = get_samples(CONF)),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',
+                       "{multimappers}", "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"), 
+               srr = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers']),
+        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                       "{srr}.bam.featureCounts.gz"),
+               srr = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers'])
 
 
 rule run_alevin_seqwell_repeats:
@@ -207,7 +218,7 @@ rule run_alevin_seqwell_repeats:
     -l ISR \
     -1 {params.cb} \
     -2 {params.r2} \
-    --end 3 --umiLength 8 --barcodeLength 12 \
+    --end 5 --umiLength 8 --barcodeLength 12 \
     --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
@@ -251,7 +262,7 @@ rule run_alevin_seqwell_genes:
     -l ISR \
     -1 {params.cb} \
     -2 {params.r2} \
-    --end 3 --umiLength 8 --barcodeLength 12 \
+    --end 5 --umiLength 8 --barcodeLength 12 \
     --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
@@ -262,6 +273,20 @@ rule run_alevin_seqwell_genes:
         """
         
 ## because structure is 12 CB +8 UMI and then an oligodt follows
+
+# Seq-Well-polyT: {
+#     num_read: 2,
+
+#     read1: {
+#       CB1: [1, 12],
+#       UMI: [13, 20],
+#       polyT: [21, 25]
+#     },
+
+#     read2: {
+#       cDNA: []
+#     }
+# }
 rule trim_r1s_to_20:
     input:
         r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz")

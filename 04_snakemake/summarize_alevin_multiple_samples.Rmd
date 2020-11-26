@@ -286,6 +286,7 @@ d$repeats_alevin <- CreateSeuratObject(counts =  counts,
 rm(counts, genes)
 
 
+
 ```
 
 
@@ -297,14 +298,15 @@ process_featurecounts_grouped_by_cb_umi <- function(fn, id = "",
                                                     annotate_genes = FALSE,
                                                     accepted_barcodes = 'all') {
      ## Featurecounts-based repeats
-    counts <- data.table::fread(fn, sep = '\t', header = FALSE)
+    counts <- data.table::fread(fn, header = FALSE)
     ## cb first, umi second
 
+    print(head(counts))
     tryCatch({
         colnames(counts) <- c('cb', 'umi', 'gene')
     }, error = function(x) print(paste(head(counts, 1), collapse = ";")))
 
-    counts$cb <- gsub('[[:digit:].]+', '', counts$cb)
+    ## counts$cb <- gsub('[[:digit:].]+', '', counts$cb)
     counts$cb <- paste(id, counts$cb, sep = "_")
 
     if (length(accepted_barcodes) > 1) {
