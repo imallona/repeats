@@ -160,9 +160,9 @@ rule all:
                        "{srr}.bam.featureCounts.gz"),
                srr = get_samples(CONF),
                multimappers = ['unique_reads', 'multimappers']),
-        expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_seqwell_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-                regress_ncount = ['TRUE', 'FALSE'],
-                regress_nfeature = ['TRUE', 'FALSE']),
+        # expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_seqwell_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        #         regress_ncount = ['TRUE', 'FALSE'],
+        #         regress_nfeature = ['TRUE', 'FALSE']),
         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
                        "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
               srr = get_samples(CONF)),
@@ -218,7 +218,7 @@ rule run_alevin_seqwell_repeats:
     -l ISR \
     -1 {params.cb} \
     -2 {params.r2} \
-    --end 5 --umiLength 8 --barcodeLength 12 \
+    --end 5 --umiLength 8 --barcodeLength 12  --forceCells 6038 \
     --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
@@ -262,7 +262,7 @@ rule run_alevin_seqwell_genes:
     -l ISR \
     -1 {params.cb} \
     -2 {params.r2} \
-    --end 5 --umiLength 8 --barcodeLength 12 \
+    --end 5 --umiLength 8 --barcodeLength 12 --forceCells 6038 \
     --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
