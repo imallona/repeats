@@ -37,6 +37,14 @@ RUN_TECH = 'seqwell'
 GENOME = 'GRCh38'
 CONF = op.join(BASE, "data", RUN_NAME, 'seqwell_ding.conf')
 
+# read1: {
+#   CB1: [1, 12],
+#   UMI: [13, 20]
+# },
+NUM_CELLS = 6038
+BARCODE_PATTERN = 'CCCCCCCCCCCCNNNNNNNN'
+
+
 GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
 GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
 REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
@@ -115,19 +123,20 @@ def get_samples(fn):
         samples.append(line.split(',')[0].strip())
     return(samples)
 
- 
-# def list_cbs(wildcards):
-#    fastqs_path = op.join(BASE, 'data', RUN_NAME)
-#    # fns = sorted(filter(re.compile('SR.*[0-9]_1.fastq.gz').match, os.listdir(fastqs_path)))
-#    fns = [x + '_1_trim.fastq.gz' for x in get_samples(CONF)]
-#    return([op.join(fastqs_path, x) for x in fns])
+  
+def list_r1s(fn = CONF):
+   fastqs_path = op.join(BASE, 'data', RUN_NAME)
+   # fns = sorted(filter(re.compile('SR.*[0-9]_1.fastq.gz').match, os.listdir(fastqs_path)))
+   fns = [x + '_1_trim.fastq.gz' for x in get_samples(fn)]
+   return([op.join(fastqs_path, x) for x in fns])
 
+# print(' '.join(list_r1s()))
 
-# def list_r2s(wildcards):
-#    # fns = sorted(filter(re.compile('SR.*[0-9]_2.fastq.gz').match, os.listdir(fastqs_path)))
-#    fastqs_path = op.join(BASE, 'data', RUN_NAME)
-#    fns = [x + '_2.fastq.gz' for x in get_samples(CONF)]
-#    return([op.join(fastqs_path, x) for x in fns])
+def list_r2s(fn = CONF):
+   # fns = sorted(filter(re.compile('SR.*[0-9]_2.fastq.gz').match, os.listdir(fastqs_path)))
+   fastqs_path = op.join(BASE, 'data', RUN_NAME)
+   fns = [x + '_2.fastq.gz' for x in get_samples(fn)]
+   return([op.join(fastqs_path, x) for x in fns])
 
 
 rule all:
@@ -160,16 +169,16 @@ rule all:
                        "{srr}.bam.featureCounts.gz"),
                srr = get_samples(CONF),
                multimappers = ['unique_reads', 'multimappers']),
-        # expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_seqwell_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-        #         regress_ncount = ['TRUE', 'FALSE'],
-        #         regress_nfeature = ['TRUE', 'FALSE']),
+        expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_seqwell_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+                regress_ncount = ['TRUE', 'FALSE'],
+                regress_nfeature = ['TRUE', 'FALSE']),
         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
                        "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
               srr = get_samples(CONF)),
-        expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}",  'alevin',
+        expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats',  'alevin',
                        'flag_seqwell.log'),
                srr = get_samples(CONF)),
-        expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', "{srr}",  'alevin',
+        expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  'alevin',
                        'flag_seqwell.log'),
                srr = get_samples(CONF)),
           expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
@@ -182,33 +191,37 @@ rule all:
         expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
                        "{srr}.bam.featureCounts.gz"),
                srr = get_samples(CONF),
-               multimappers = ['unique_reads', 'multimappers'])
+               multimappers = ['unique_reads', 'multimappers']),
+        expand(op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.txt.gz"),
+               srr = get_samples(CONF))
 
 
 rule run_alevin_seqwell_repeats:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
-        # cb = list_cbs,
-        # r2 = list_r2s
-        cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
-        r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")        
+        cb = list_r1s(),
+        r2 = list_r2s()
+        # cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
+        # r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")   
+        
     output:
-        alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}",  'alevin', 'quants_mat.gz'),
-        flag = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}",  'alevin',
+        alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats',   'alevin', 'quants_mat.gz'),
+        flag = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats',   'alevin',
                        'flag_seqwell.log')
     threads:
         NTHREADS
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}"),
+        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats'),
         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
-        # cb = list_cbs,
-        # r2 = list_r2s
-        cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
-        r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
+        cb = ' '.join(list_r1s()),
+        r2 = ' '.join(list_r2s()),
+        num_cells = NUM_CELLS
+        # cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
+        # r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
     log:
-        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_seqwell_{srr}.log')
+        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_seqwell.log')
     shell:
         """
     mkdir -p {params.processing_path}
@@ -218,7 +231,7 @@ rule run_alevin_seqwell_repeats:
     -l ISR \
     -1 {params.cb} \
     -2 {params.r2} \
-    --end 5 --umiLength 8 --barcodeLength 12  --forceCells 6038 \
+    --end 5 --umiLength 8 --barcodeLength 12  --forceCells {params.num_cells} \
     --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
@@ -233,26 +246,28 @@ rule run_alevin_seqwell_genes:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'duplicate_clusters.tsv'),
-        # cb = list_cbs,
-        # r2 = list_r2s
-        cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
-        r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")        
+        cb = list_r1s(),
+        r2 = list_r2s()# ,
+        # cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
+        # r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")    
+        
     output:
-        alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', "{srr}",  'alevin', 'quants_mat.gz'),
-        flag = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', "{srr}",  'alevin',
+        alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',   'alevin', 'quants_mat.gz'),
+        flag = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  'alevin',
                        'flag_seqwell.log')
     threads:
         NTHREADS
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', "{srr}"),
+        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes'),
         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon'),
-        # cb = list_cbs,
-        # r2 = list_r2s
-        cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
-        r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
+        cb = ' '.join(list_r1s()),
+        r2 = ' '.join(list_r2s()),
+        num_cells = NUM_CELLS
+        # cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
+        # r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
     log:
-        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_genes_seqwell_{srr}.log')
+        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_genes_seqwell.log')
     shell:
         """
     mkdir -p {params.processing_path}
@@ -262,7 +277,7 @@ rule run_alevin_seqwell_genes:
     -l ISR \
     -1 {params.cb} \
     -2 {params.r2} \
-    --end 5 --umiLength 8 --barcodeLength 12 --forceCells 6038 \
+    --end 5 --umiLength 8 --barcodeLength 12 --forceCells {params.num_cells}\
     --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
@@ -271,6 +286,8 @@ rule run_alevin_seqwell_genes:
     touch -c {output.alevin}
     touch {output.flag}
         """
+
+
         
 ## because structure is 12 CB +8 UMI and then an oligodt follows
 
@@ -366,8 +383,9 @@ rule knit_report_seqwell_ad_hoc_ding:
                                      'repeats_no_overlap', "multimappers"),
         repeats_only_unique = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome',
                                                 'repeats_no_overlap', 'unique_reads'),
-        genes_alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes'),
-        repeats_alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats')
+        genes_alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
+        repeats_alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats',  'alevin',
+                                 'quants_mat.gz')
     params:
         rmd = 'summarize_alevin_multiple_samples.Rmd',
         run_name = RUN_NAME

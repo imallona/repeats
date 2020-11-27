@@ -46,6 +46,9 @@ RUN_NAME  = 'ding_celseq2'
 RUN_TECH = 'celseq2'
 GENOME = 'GRCh38'
 
+NUM_CELLS = 564
+BARCODE_PATTERN = 'NNNNNNCCCCCC'
+
 CONF =  op.join(BASE, "data", RUN_NAME, 'celseq2_ding.conf')
 
 GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
@@ -137,19 +140,6 @@ SRR9169441,RNA-Seq,89,1094064184,PRJNA545730,SAMN11914622,682967510,GEO,public,"
 #     return(samples)
 
 
-def list_r1s(fn):
-   fastqs_path = op.join(BASE, 'data', RUN_NAME)
-   # fns = sorted(filter(re.compile('SR.*[0-9]_1.fastq.gz').match, os.listdir(fastqs_path)))
-   fns = [x + '_1_trim.fastq.gz' for x in get_samples_srrs(fn)]
-   return([op.join(fastqs_path, x) for x in fns])
-
-
-def list_r2s(fn):
-   # fns = sorted(filter(re.compile('SR.*[0-9]_2.fastq.gz').match, os.listdir(fastqs_path)))
-   fastqs_path = op.join(BASE, 'data', RUN_NAME)
-   fns = [x + '_2.fastq.gz' for x in get_samples(fn)]
-   return([op.join(fastqs_path, x) for x in fns])
-
 def get_samples(fn):
     # samples = pd.read_table(fn)
    if not op.isfile(fn):
@@ -162,6 +152,21 @@ def get_samples(fn):
    return(samples)
 
  
+def list_r1s(fn = CONF):
+   fastqs_path = op.join(BASE, 'data', RUN_NAME)
+   # fns = sorted(filter(re.compile('SR.*[0-9]_1.fastq.gz').match, os.listdir(fastqs_path)))
+   fns = [x + '_1_trim.fastq.gz' for x in get_samples(fn)]
+   return([op.join(fastqs_path, x) for x in fns])
+
+# print(' '.join(list_r1s()))
+
+def list_r2s(fn = CONF):
+   # fns = sorted(filter(re.compile('SR.*[0-9]_2.fastq.gz').match, os.listdir(fastqs_path)))
+   fastqs_path = op.join(BASE, 'data', RUN_NAME)
+   fns = [x + '_2.fastq.gz' for x in get_samples(fn)]
+   return([op.join(fastqs_path, x) for x in fns])
+
+
 rule all:
     input:
         expand(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
@@ -194,12 +199,10 @@ rule all:
                        "{srr}_bowtie_repeats.counts.summary.png"),
                srr = get_samples(op.join(BASE, 'data', RUN_NAME, 'celseq2_ding.conf')),
                multimappers = ['unique_reads', 'multimappers']),
-        expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', "{srr}", 'alevin',
-                       'quants_mat.gz'),
-               srr = get_samples(CONF)),
-        expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}", 'alevin',
-                       'quants_mat.gz'),
-               srr = get_samples(CONF)),
+        expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin',
+                       'quants_mat.gz')),
+        expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin',
+                       'quants_mat.gz')),
         # expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
         #         regress_ncount = ['TRUE', 'FALSE'],
         #         regress_nfeature = ['TRUE', 'FALSE']),
@@ -215,22 +218,24 @@ rule all:
         expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
                        "{srr}.bam.featureCounts.gz"),
                srr = get_samples(CONF),
-               multimappers = ['unique_reads', 'multimappers'])
+               multimappers = ['unique_reads', 'multimappers']),
+        expand(op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.fastq.gz"),
+               srr = get_samples(CONF))
 
 
 
 
 rule knit_report_celseq_ad_hoc_ding:
     input:
-        genes_featurecounts = directory(op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome')),
-        repeats_star_multi = directory(op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats', 'multimappers')),
-        repeats_star_unique = directory(op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats', 'unique_reads')),
-        repeats_bowtie_multi = directory(op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', 'multimappers')),
-        repeats_bowtie_unique = directory(op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', 'unique_reads')),        
-        repeats_only_multi = directory(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', "multimappers")),
-        repeats_only_unique = directory(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', 'unique_reads')),        
-        genes_alevin = directory(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes')),
-        repeats_alevin = directory(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats'))
+        genes_featurecounts = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome'),
+        repeats_star_multi = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats', 'multimappers'),
+        repeats_star_unique =op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats', 'unique_reads'),
+        repeats_bowtie_multi =op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', 'multimappers'),
+        repeats_bowtie_unique = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', 'unique_reads'),        
+        repeats_only_multi = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', "multimappers"),
+        repeats_only_unique = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', 'unique_reads'),        
+        genes_alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes'),
+        repeats_alevin =op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats')
     params:
         rmd = 'summarize_alevin_multiple_samples.Rmd',
         run_name = RUN_NAME
@@ -289,25 +294,26 @@ rule run_alevin_repeats_celseq2:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
-        # cb = list_cbs,
-        # r2 = list_r2s
-        cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
-        r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
+        cb = list_r1s(),
+        r2 = list_r2s()
+        # cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
+        # r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
         
     output:
-        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}",  'alevin', 'quants_mat.gz')
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
     threads:
         NTHREADS
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}"),
+        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats'),
         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
-        # cb = list_cbs,
-        # r2 = list_r2s
-        cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
-        r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
+        cb = ' '.join(list_r1s(CONF)),
+        r2 = ' '.join(list_r2s(CONF)),
+        num_cells = NUM_CELLS
+        # cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
+        # r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
     log:
-        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_celseq_{srr}.log')
+        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_celseq.log')
     shell:
         """
     mkdir -p {params.processing_path}
@@ -320,7 +326,7 @@ rule run_alevin_repeats_celseq2:
     --end 3 \
     --umiLength 6 \
     --barcodeLength 6 \
-    --forceCells 564 \
+    --forceCells {params.num_cells} \
     --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
@@ -334,25 +340,25 @@ rule run_alevin_genes_celseq2:
     input:        
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'duplicate_clusters.tsv'),
-        # cb = list_cbs,
-        # r2 = list_r2s,
-        cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
-        r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
-        
+        cb = list_r1s(),
+        r2 = list_r2s()
+        # cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
+        # r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")        
     output:
-        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  "{srr}",  'alevin',  'quants_mat.gz')
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin',  'quants_mat.gz')
     threads:
         NTHREADS
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  "{srr}"),
+        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes'),
         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon'),
-        # cb = list_cbs,
-        # r2 = list_r2s
-        cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
-        r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
+        cb = ' '.join(list_r1s(CONF)),
+        r2 = ' '.join(list_r2s(CONF)),
+        num_cells = NUM_CELLS
+        # cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
+        # r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
     log:
-        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_genes_celseq_{srr}.log')
+        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_genes_celseq.log')
     shell:
         """
     mkdir -p {params.processing_path}
@@ -374,6 +380,24 @@ rule run_alevin_genes_celseq2:
     touch -c {output}
         """
 
+rule umitools_whitelist:
+    input:
+        r1_trim = op.join(BASE, "data", RUN_NAME, "{srr}_1_trim.fastq.gz")
+    output:       
+       whitelist = op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.fastq.gz")
+    params:
+        bc_pattern = BARCODE_PATTERN,
+        num_cells = NUM_CELLS
+    log:
+        op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.log")
+    shell:
+        """
+        umi_tools whitelist --stdin {input.r1_trim} \
+                    --bc-pattern={params.bc_pattern} \
+                    --set-cell-number={params.num_cells} \
+                    --log2stderr > whitelist.txt &> {log}
+
+    """
         
 ## we assume the first 12 reads from read1 are the umis + CB
 # read1: {

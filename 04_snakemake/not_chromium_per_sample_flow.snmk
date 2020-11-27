@@ -534,3 +534,26 @@ rule map_star_transcriptome_se:
         ## in case STAR managed to delete its own folder (doesn't always happen)
         mkdir -p {output.star_tmp}
         """
+
+rule umitools_whitelist:
+    input:
+        r1_trim = op.join(BASE, "data", RUN_NAME, "{srr}_1_trim.fastq.gz")
+    output:
+        whitelist = temp(op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.txt")),
+        whitelist_gz = op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.txt.gz")
+    params:
+        bc_pattern = BARCODE_PATTERN,
+        num_cells = NUM_CELLS,
+        threads = PER_TASK_MAX_THREADS
+    log:
+        op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.log")
+    shell:
+        """
+        umi_tools whitelist --stdin {input.r1_trim} \
+                    --bc-pattern={params.bc_pattern} \
+                    --set-cell-number={params.num_cells} \
+                    --log2stderr > {output.whitelist} &> {log}
+
+        {PIGZ} --keep  -p {threads} {output.whitelist}
+
+    """

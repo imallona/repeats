@@ -36,6 +36,14 @@ RUN_TECH = 'dropseq'
 GENOME = 'GRCh38'
 CONF = op.join(BASE, "data", RUN_NAME, 'dropseq_ding.conf')
 
+NUM_CELLS = 8470
+
+# read1: {
+#   CB1: [1, 12],
+#   UMI: [13, 20]
+# },
+BARCODE_PATTERN = 'CCCCCCCCCCCCNNNNNNNN'
+
 GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
 GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
 REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
@@ -165,6 +173,8 @@ rule all:
                 regress_ncount = ['TRUE', 'FALSE'],
                 regress_nfeature = ['TRUE', 'FALSE']),
         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
+               srr = get_samples(CONF)),
+        expand(op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.txt.gz"),
                srr = get_samples(CONF))
 
 
@@ -267,3 +277,26 @@ rule knit_report_dropseq_ad_hoc_ding:
           regress_genes_nCount = \"{wildcards.regress_ncount}\", \
           regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}
         """
+
+# rule umitools_whitelist:
+#     input:
+#         r1_trim = op.join(BASE, "data", RUN_NAME, "{srr}_1_trim.fastq.gz")
+#     output:
+#         whitelist = temp(op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.txt")),
+#         whitelist_gz = op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.txt.gz")
+#     params:
+#         bc_pattern = BARCODE_PATTERN,
+#         num_cells = NUM_CELLS,
+#         threads = PER_TASK_MAX_THREADS
+#     log:
+#         op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.log")
+#     shell:
+#         """
+#         umi_tools whitelist --stdin {input.r1_trim} \
+#                     --bc-pattern={params.bc_pattern} \
+#                     --set-cell-number={params.num_cells} \
+#                     --log2stderr > {output.whitelist} &> {log}
+
+#         {PIGZ} --keep  -p {threads} {output.whitelist}
+
+#     """
