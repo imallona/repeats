@@ -552,7 +552,8 @@ rule umitools_whitelist:
         umi_tools whitelist --stdin {input.r1_trim} \
                     --bc-pattern={params.bc_pattern} \
                     --set-cell-number={params.num_cells} \
-                    --log2stderr > {output.whitelist} &> {log}
+                    --log = {log} \
+                    -S {output.whitelist}
 
         {PIGZ} --keep  -p {threads} {output.whitelist}
 

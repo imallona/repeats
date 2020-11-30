@@ -209,1078 +209,1076 @@ for (rds in params) {
     ## d[[run]]$genes_cr <- load_standard_cellranger_genes(run_name = run)
     ## d[[run]]$reps_cr <- load_cellranger_repeats(run_name = run)
     ## d[[run]]$reps_fc <- load_featurecounts_repeats(run_name = run)
-    d[[sapply(strsplit(dirname(rds), .Platform$file.sep),
-               function(x) return(x[6]))]] <- readRDS(file = rds)
+
+    tryCatch({
+        d[[sapply(strsplit(dirname(rds), .Platform$file.sep),
+                  function(x) return(x[6]))]] <- readRDS(file = rds)
+    },
+    error = function(x) print(sprintf('error detected and ignored loading data: \n%s\n', x)))
 }
 ```
 
-# Most variable repeats cellranger {.tabset}
+# Number of cells, flavours table
 
-Similarly for repeats expression (avg +- sd of repeats CPM by gene expression cluster?)
 
 
-```{r, fig.height = 5, fig.width = 15, results = 'asis'}
-res <- 'RNA_snn_res.0.2'
-
-## ## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11')
-## selected <- c(names(head(sort(apply(GetAssayData(d[[run]]$repeats_cellranger),1, coef_var), decreasing = TRUE),
-##                          5)), c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a'))
-
-## maybe with variable features?
-
-for (run in names(d)[sapply(d, function(x) return('repeats_cellranger' %in% names(x)))]) {
-    cat("## ", run, "\n\n")
-    repeats_cellranger <- as.data.frame(FetchData(
-        d[[run]]$repeats_cellranger,
-        vars = head(VariableFeatures(d[[run]]$repeats_cellranger), 10) , slot = 'data'))
-        
-    repeats_cellranger$cell <- rownames(repeats_cellranger)
-        
-    d[[run]]$genes_cellranger@meta.data$cell <- rownames(d[[run]]$genes_cellranger@meta.data)
-    repeats_cellranger <- merge(d[[run]]$genes_cellranger@meta.data[, c(res, 'cell') ],
-                     repeats_cellranger, by = 'cell', all.x = TRUE)
-    
-    rownames(repeats_cellranger) <- repeats_cellranger$cell
-    
-    repeats_cellranger <- melt(repeats_cellranger, id.vars = c('cell', res))
-    
-    colnames(repeats_cellranger) <- c('cell', res, 'repfamily', 'CPM')
-
-    print(ggplot(repeats_cellranger,
-           aes(x = get(res), y = CPM)) + 
-          geom_boxplot(outlier.size=1) +
-          scale_y_continuous(trans='log10') +
-        scale_fill_discrete(drop=FALSE) +
-        facet_wrap(~ factor(repfamily), ncol = 10) +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-        ylab('repeat expression [CPM]') +
-        xlab('gene-based clustering') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_cellranger', res)))
-    cat('\n\n')
-}
-
-```
-
-# Most variable repeats cellranger by identity {.tabset}
-
-
-```{r, fig.height = 5, fig.width = 15, results = 'asis'}
-scina <- 'scina'
-## agg <- list()
-
-for (run in names(d)[sapply(d, function(x) return('repeats_cellranger' %in% names(x)))]) {
-    cat("## ", run, "\n\n")
-    
-    repeats_cellranger <- as.data.frame(FetchData(
-        d[[run]]$repeats_cellranger,
-        vars = head(VariableFeatures(d[[run]]$repeats_cellranger), 10) , slot = 'data'))
-
-
-    
-    repeats_cellranger$cell <- rownames(repeats_cellranger)
-
-    d[[run]]$genes_cellranger@meta.data$cell <- rownames(d[[run]]$genes_cellranger@meta.data)
-    repeats_cellranger <- merge(d[[run]]$genes_cellranger@meta.data[, c(scina, 'cell') ],
-                     repeats_cellranger, by = 'cell', all.x = TRUE)
-    
-    rownames(repeats_cellranger) <- repeats_cellranger$cell
-    
-    repeats_cellranger <- melt(repeats_cellranger, id.vars = c('cell', scina))
-    
-    colnames(repeats_cellranger) <- c('cell', scina, 'repfamily', 'CPM')
-
-    print(ggplot(repeats_cellranger,
-           aes(x = scina, y = CPM)) + 
-          geom_boxplot(outlier.size=1) +
-          scale_y_continuous(trans='log10') +
-        scale_fill_discrete(drop=FALSE) +
-        facet_wrap(~ factor(repfamily), ncol = 10) +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-        ylab('repeat expresssion [CPM]') +
-        xlab('scina identity') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_cellranger', scina)))
-    cat('\n\n')
-
-}
-
-```
-
-# similarly for repeats alevin
-
-
-
-```{r, fig.height = 5, fig.width = 15, results = 'asis'}
-scina <- 'scina'
-## agg <- list()
-
-for (run in names(d)[sapply(d, function(x) return('repeats_alevin' %in% names(x)))]) {
-    cat("## ", run, "\n\n")
-    
-    repeats_alevin <- as.data.frame(FetchData(
-        d[[run]]$repeats_alevin,
-        vars = head(VariableFeatures(d[[run]]$repeats_alevin), 10) , slot = 'data'))
-
-
-    
-    repeats_alevin$cell <- rownames(repeats_alevin)
-
-    d[[run]]$genes_alevin@meta.data$cell <- rownames(d[[run]]$genes_alevin@meta.data)
-    repeats_alevin <- merge(d[[run]]$genes_alevin@meta.data[, c(scina, 'cell') ],
-                     repeats_alevin, by = 'cell', all.x = TRUE)
-    
-    rownames(repeats_alevin) <- repeats_alevin$cell
-    
-    repeats_alevin <- melt(repeats_alevin, id.vars = c('cell', scina))
-    
-    colnames(repeats_alevin) <- c('cell', scina, 'repfamily', 'CPM')
-
-    print(ggplot(repeats_alevin,
-           aes(x = scina, y = CPM)) + 
-          geom_boxplot(outlier.size=1) +
-          scale_y_continuous(trans='log10') +
-        scale_fill_discrete(drop=FALSE) +
-        facet_wrap(~ factor(repfamily), ncol = 10) +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-        ylab('repeat expresssion [CPM]') +
-        xlab('scina identity') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_alevin', scina)))
-    cat('\n\n')
-
-}
-
-```
-
-# All integrated (repeats, scina)
-
-Using alevin
-
-```{r fig.width = 14, fig.height = 14}
-
-## first aggregate all repeats_alevin stuff
-## and get the ones with highest variability
-selected <- unique(unlist(lapply(d[sapply(d, function(x) return('repeats_alevin' %in% names(x)))],
-              function(x) return(head(VariableFeatures(x$repeats_alevin), 3)))))
-
-length(selected)
-## aggregate(agg['CPM'], by = list(agg$repfamily, agg$run),  FUN = function(x) c(mean = mean(x, na.rm = TRUE), n = length(x), sd = sd(x, na.rm = TRUE) ))
-
-## now get these data for selected features, aggregate and plot
-
-tmp <- list()
-for (run in names(d)[sapply(d, function(x) return('repeats_alevin' %in% names(x)))]) {
-    foo <- data.frame(run = run,
-                             FetchData(d[[run]]$repeats_alevin, vars = selected, slot = 'data'))
-
-    ## add annotations
-    bar <- data.frame(cell = rownames(foo),
-                      scina = d[[run]]$repeats_alevin@meta.data[rownames(foo), 'scina'])
-
-    stopifnot(rownames(foo) == bar$cell)
-    
-    
-    tmp[[run]] <- data.frame(foo, scina = bar$scina)
-    rm(foo, bar)
-}
-
-tmp <- do.call(rbind.data.frame, tmp)
-str(tmp)
-
-## melt
-repeats_alevin <- melt(tmp, id.vars = c('run', 'scina'))
-head(repeats_alevin)    
-colnames(repeats_alevin) <- c('run', 'scina', 'repfamily', 'CPM')
-
-```
-
-```{r, fig.width = 12, fig.height = 12}
-print(ggplot(repeats_alevin,
-             aes(x = scina, y = CPM, fill = run)) + 
-      geom_boxplot(outlier.size=1) +
-      scale_y_continuous(trans='log10') +
-      scale_fill_discrete(drop=FALSE) +
-      facet_wrap(~ factor(repfamily), ncol = 4) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-      ylab('repeat expresssion [CPM]') +
-      xlab('scina identity') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_alevin', scina)))
-```
-
-
-```{r, fig.width = 8, fig.height = 14}
-print(ggplot(repeats_alevin[repeats_alevin$scina %in% c('CD14+_monocyte', 'CD16+_monocite',
-                                                  'CD4+_T_cell',
-                                                  'B_cell',
-                                                  'Cytotoxic_T_cell'),],
-             aes(x = run, y = CPM, fill = run)) + 
-      geom_boxplot(outlier.size=1) +
-      ## scale_y_continuous(trans='log10') +
-      scale_fill_discrete(drop=FALSE) +
-      facet_grid( factor(scina) ~ factor(repfamily)) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-      ylab('repeat expresssion [CPM]') +
-      xlab('run') + ggtitle(sprintf('%s\n%s', 'repeats_alevin', scina)))
-
-```
-
-# Cluster by average expression (repeats, SCINA)
-
-Avoiding non-determined cell types
-
-```{r, results = 'asis', fig.height = 10, fig.width = 10}
-repeats_alevin <- repeats_alevin[repeats_alevin$scina != 'unknown',]
-foo <- reshape2::dcast(repeats_alevin, run + scina ~ repfamily, mean, value.var = 'CPM')
-
-
-rownames(foo) <- paste(foo$scina, foo$run, sep = '_')
-
-annot <- foo[,c('run', 'scina')]
-rownames(annot) <- paste(annot$scina, annot$run, sep = '_')
-foo <- foo[,-(1:2)]
-
-pheatmap(foo, annotation_row = annot, show_rownames = FALSE)
-
-pheatmap(t(foo), annotation_col = annot, show_colnames = FALSE)
-
-
-pheatmap(foo[order(rownames(foo)),], annotation_row = annot,
-         show_rownames = FALSE, cluster_rows = FALSE,
-         cluster_cols = FALSE)
-
-
-```
-
-
-
-<!-- here start -->
-
-
-# Most variable repeats star {.tabset}
-
-Similarly for repeats expression (avg +- sd of repeats CPM by gene expression cluster?)
-
-What's the point here?
-
-
-```{r, fig.height = 5, fig.width = 15, results = 'asis'}
-res <- 'RNA_snn_res.0.2'
-
-## ## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11')
-## selected <- c(names(head(sort(apply(GetAssayData(d[[run]]$repeats_star),1, coef_var), decreasing = TRUE),
-##                          5)), c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a'))
-
-## maybe with variable features?
-
-for (run in names(d)[sapply(d, function(x) return('repeats_star' %in% names(x)))]) {
-    cat("## ", run, "\n\n")
-    repeats_star <- as.data.frame(FetchData(
-        d[[run]]$repeats_star,
-        vars = head(VariableFeatures(d[[run]]$repeats_star), 10) , slot = 'data'))
-        
-    repeats_star$cell <- rownames(repeats_star)
-        
-    d[[run]]$genes@meta.data$cell <- rownames(d[[run]]$genes@meta.data)
-    repeats_star <- merge(d[[run]]$genes@meta.data[, c(res, 'cell') ],
-                     repeats_star, by = 'cell', all.x = TRUE)
-    
-    rownames(repeats_star) <- repeats_star$cell
-    
-    repeats_star <- melt(repeats_star, id.vars = c('cell', res))
-    
-    colnames(repeats_star) <- c('cell', res, 'repfamily', 'CPM')
-
-    print(ggplot(repeats_star,
-           aes(x = get(res), y = CPM)) + 
-          geom_boxplot(outlier.size=1) +
-          scale_y_continuous(trans='log10') +
-        scale_fill_discrete(drop=FALSE) +
-        facet_wrap(~ factor(repfamily), ncol = 10) +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-        ylab('repeat expression [CPM]') +
-        xlab('gene-based clustering') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_star', res)))
-    cat('\n\n')
-}
-
-```
-
-# Most variable repeats star by identity {.tabset}
-
-Repeats star unique
-
-```{r, fig.height = 5, fig.width = 15, results = 'asis'}
-scina <- 'scina'
-## agg <- list()
-
-for (run in names(d)[sapply(d, function(x) return('repeats_star_unique' %in% names(x)))]) {
-    cat("## ", run, "\n\n")
-
-    repeats_star_unique <- as.data.frame(FetchData(
-        d[[run]]$repeats_star_unique,
-        vars = head(VariableFeatures(d[[run]]$repeats_star_unique), 10) , slot = 'data'))
-
-
-    
-    repeats_star_unique$cell <- rownames(repeats_star_unique)
-
-    ## d[[run]]$genes_alevin@meta.data$cell <- rownames(d[[run]]$genes_alevin@meta.data)
-    repeats_star_unique <- merge(d[[run]]$repeats_star_unique@meta.data[, c(scina, 'cell') ],
-                     repeats_star_unique, by = 'cell', all.x = TRUE)
-    
-    rownames(repeats_star_unique) <- repeats_star_unique$cell
-    
-    repeats_star_unique <- melt(repeats_star_unique, id.vars = c('cell', scina))
-    
-    colnames(repeats_star_unique) <- c('cell', scina, 'repfamily', 'CPM')
-
-    print(ggplot(repeats_star_unique,
-           aes(x = scina, y = CPM)) + 
-          geom_boxplot(outlier.size=1) +
-          scale_y_continuous(trans='log10') +
-        scale_fill_discrete(drop=FALSE) +
-        facet_wrap(~ factor(repfamily), ncol = 10) +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-        ylab('repeat expresssion [CPM]') +
-        xlab('scina identity') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_star_unique', scina)))
-    cat('\n\n')
-
-}
-
-```
-
-# All integrated (repeats, scina)
-
-```{r fig.width = 14, fig.height = 14}
-
-## first aggregate all repeats_star stuff
-## get the ones with the highest var
-selected <- unique(unlist(
-    lapply(d[sapply(d,
-                    function(x) return('repeats_star_unique' %in% names(x)))],
-           function(x) return(head(VariableFeatures(x$repeats_star_unique), 3)))))
-
-
-## aggregate(agg['CPM'], by = list(agg$repfamily, agg$run),  FUN = function(x) c(mean = mean(x, na.rm = TRUE), n = length(x), sd = sd(x, na.rm = TRUE) ))
-
-## now get these data for selected features, aggregate and plot
-## this crashes because of the repeat counting/aggregation, that edited repeat names
-## @todo fix (doesn't find `SAR`)
-tmp <- list()
-for (run in  names(d)[sapply(d, function(x) return('repeats_star_unique' %in% names(x)))]) {
-    foo <- data.frame(run = run,
-                      FetchData(d[[run]]$repeats_star_unique, vars = selected,
-                                slot = 'data'))
-
-    ## add annotations
-    bar <- data.frame(cell = rownames(foo),
-                      scina = d[[run]]$repeats_star_unique@meta.data[rownames(foo), 'scina'])
-
-    stopifnot(rownames(foo) == bar$cell)
-    
-    
-    tmp[[run]] <- data.frame(foo, scina = bar$scina)
-    rm(foo, bar)
-}
-
-str(tmp)
-tmp <- do.call(rbind.data.frame, tmp)
-str(tmp)
-
-## melt
-repeats_star_unique <- melt(tmp, id.vars = c('run', 'scina'))
-
-colnames(repeats_star_unique) <- c('run', 'scina', 'repfamily', 'CPM')
-
-
-```
-
-```{r, fig.width = 12, fig.height = 12}
-print(ggplot(repeats_star_unique,
-             aes(x = scina, y = CPM, fill = run)) + 
-      geom_boxplot(outlier.size=1) +
-      scale_y_continuous(trans='log10') +
-      scale_fill_discrete(drop=FALSE) +
-      facet_wrap(~ factor(repfamily), ncol = 4) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-      ylab('repeat expresssion [CPM]') +
-      xlab('scina identity') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_star_unique', scina)))
-```
-
-
-```{r, fig.width = 8, fig.height = 14}
-print(ggplot(repeats_star,
-             aes(x = repfamily, y = CPM, fill = run)) + 
-      geom_boxplot(outlier.size=1) +
-      scale_y_continuous(trans='log10') +
-      scale_fill_discrete(drop=FALSE) +
-      facet_grid(factor(scina)~ factor(run)) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-      ylab('repeat expresssion [CPM]') +
-      xlab('scina identity') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_star', scina)))
-
-```
-
-# Cluster by average expression (repeats, SCINA)
-
-Avoiding non-determined cell types
-
-```{r, results = 'asis', fig.height = 10, fig.width = 10}
-repeats_star <- repeats_star[repeats_star$scina != 'unknown',]
-foo <- reshape2::dcast(repeats_star, run + scina ~ repfamily, mean, value.var = 'CPM')
-
-
-rownames(foo) <- paste(foo$run, foo$scina, sep = '_')
-
-annot <- foo[,c('run', 'scina')]
-rownames(annot) <- paste(annot$run, annot$scina, sep = '_')
-foo <- foo[,-(1:2)]
-
-pheatmap(foo, annotation_row = annot, show_rownames = FALSE)
-
-pheatmap(t(foo), annotation_col = annot, show_colnames = FALSE)
-```
-
-
-<!-- here stop -->
-
-
-
-# Most variable repeats featurecounts {.tabset}
-
-Similarly for repeats expression (avg +- sd of repeats CPM by gene expression cluster?)
-
-What's the point here?
-
-
-```{r, fig.height = 5, fig.width = 15, results = 'asis'}
-res <- 'RNA_snn_res.0.2'
-
-## ## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11')
-## selected <- c(names(head(sort(apply(GetAssayData(d[[run]]$repeats_featurecounts),1, coef_var), decreasing = TRUE),
-##                          5)), c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a'))
-
-## maybe with variable features?
-
-for (run in names(d)[sapply(d, function(x) return('repeats_featurecounts' %in% names(x)))]) {
-    cat("## ", run, "\n\n")
-    repeats_featurecounts <- as.data.frame(FetchData(
-        d[[run]]$repeats_featurecounts,
-        vars = head(VariableFeatures(d[[run]]$repeats_featurecounts), 10) , slot = 'data'))
-        
-    repeats_featurecounts$cell <- rownames(repeats_featurecounts)
-        
-    d[[run]]$genes@meta.data$cell <- rownames(d[[run]]$genes@meta.data)
-    repeats_featurecounts <- merge(d[[run]]$genes@meta.data[, c(res, 'cell') ],
-                     repeats_featurecounts, by = 'cell', all.x = TRUE)
-    
-    rownames(repeats_featurecounts) <- repeats_featurecounts$cell
-    
-    repeats_featurecounts <- melt(repeats_featurecounts, id.vars = c('cell', res))
-    
-    colnames(repeats_featurecounts) <- c('cell', res, 'repfamily', 'CPM')
-
-    print(ggplot(repeats_featurecounts,
-           aes(x = get(res), y = CPM)) + 
-          geom_boxplot(outlier.size=1) +
-          scale_y_continuous(trans='log10') +
-        scale_fill_discrete(drop=FALSE) +
-        facet_wrap(~ factor(repfamily), ncol = 10) +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-        ylab('repeat expression [CPM]') +
-        xlab('gene-based clustering') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_featurecounts', res)))
-    cat('\n\n')
-}
-
-```
-
-# Most variable repeats featurecounts by identity {.tabset}
-
-
-```{r, fig.height = 5, fig.width = 15, results = 'asis'}
-scina <- 'scina'
-## agg <- list()
-
-for (run in names(d)[sapply(d, function(x) return('repeats_featurecounts' %in% names(x)))]) {
-    cat("## ", run, "\n\n")
-    
-    repeats_featurecounts <- as.data.frame(FetchData(
-        d[[run]]$repeats_featurecounts,
-        vars = head(VariableFeatures(d[[run]]$repeats_featurecounts), 10) , slot = 'data'))
-
-
-    
-    repeats_featurecounts$cell <- rownames(repeats_featurecounts)
-
-    d[[run]]$genes@meta.data$cell <- rownames(d[[run]]$genes@meta.data)
-    repeats_featurecounts <- merge(d[[run]]$genes@meta.data[, c(scina, 'cell') ],
-                     repeats_featurecounts, by = 'cell', all.x = TRUE)
-    
-    rownames(repeats_featurecounts) <- repeats_featurecounts$cell
-    
-    repeats_featurecounts <- melt(repeats_featurecounts, id.vars = c('cell', scina))
-    
-    colnames(repeats_featurecounts) <- c('cell', scina, 'repfamily', 'CPM')
-
-    print(ggplot(repeats_featurecounts,
-           aes(x = scina, y = CPM)) + 
-          geom_boxplot(outlier.size=1) +
-          scale_y_continuous(trans='log10') +
-        scale_fill_discrete(drop=FALSE) +
-        facet_wrap(~ factor(repfamily), ncol = 10) +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-        ylab('repeat expresssion [CPM]') +
-        xlab('scina identity') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_featurecounts', scina)))
-    cat('\n\n')
-
-}
-
-```
-
-# All integrated (repeats, scina)
-
-```{r fig.width = 14, fig.height = 14}
-
-## first aggregate all repeats_featurecounts stuff
-sds <- lapply(d[sapply(d, function(x) return('repeats_featurecounts' %in% names(x)))],
-              function(x) return(apply(as.data.frame(GetAssayData(x$repeats_featurecounts,
-                                                        slot = 'data')), 1, sd)))
-
-## get the ones with the highest average sd
-
-mean_sd <- apply(do.call(cbind.data.frame, sds), 1, mean)
-selected <- names(head(sort(mean_sd, decreasing = TRUE), 20))
-## selected
-
-
-## aggregate(agg['CPM'], by = list(agg$repfamily, agg$run),  FUN = function(x) c(mean = mean(x, na.rm = TRUE), n = length(x), sd = sd(x, na.rm = TRUE) ))
-
-## now get these data for selected features, aggregate and plot
-
-tmp <- list()
-for (run in names(d)) {
-    foo <- data.frame(run = run,
-                             FetchData(d[[run]]$repeats_featurecounts, vars = selected, slot = 'data'))
-
-    ## add annotations
-    bar <- data.frame(cell = rownames(foo),
-                      scina = d[[run]]$repeats_featurecounts@meta.data[rownames(foo), 'scina'])
-
-    stopifnot(rownames(foo) == bar$cell)
-    
-    
-    tmp[[run]] <- data.frame(foo, scina = bar$scina)
-    rm(foo, bar)
-}
-
-tmp <- do.call(rbind.data.frame, tmp)
-str(tmp)
-
-## melt
-repeats_featurecounts <- melt(tmp, id.vars = c('run', 'scina'))
-head(repeats_featurecounts)    
-colnames(repeats_featurecounts) <- c('run', 'scina', 'repfamily', 'CPM')
-
-```
-
-```{r, fig.width = 12, fig.height = 12}
-print(ggplot(repeats_featurecounts,
-             aes(x = scina, y = CPM, fill = run)) + 
-      geom_boxplot(outlier.size=1) +
-      scale_y_continuous(trans='log10') +
-      scale_fill_discrete(drop=FALSE) +
-      facet_wrap(~ factor(repfamily), ncol = 4) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-      ylab('repeat expresssion [CPM]') +
-      xlab('scina identity') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_featurecounts', scina)))
-```
-
-
-```{r, fig.width = 8, fig.height = 14}
-print(ggplot(repeats_featurecounts,
-             aes(x = repfamily, y = CPM, fill = run)) + 
-      geom_boxplot(outlier.size=1) +
-      scale_y_continuous(trans='log10') +
-      scale_fill_discrete(drop=FALSE) +
-      facet_grid(factor(scina)~ factor(run)) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-      ylab('repeat expresssion [CPM]') +
-      xlab('scina identity') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_featurecounts', scina)))
-
-```
-
-# Cluster by average expression (repeats, SCINA)
-
-Avoiding non-determined cell types
-
-```{r, results = 'asis', fig.height = 10, fig.width = 10}
-repeats_featurecounts <- repeats_featurecounts[repeats_featurecounts$scina != 'unknown',]
-foo <- reshape2::dcast(repeats_featurecounts, run + scina ~ repfamily, mean, value.var = 'CPM')
-
-
-rownames(foo) <- paste(foo$run, foo$scina, sep = '_')
-
-annot <- foo[,c('run', 'scina')]
-rownames(annot) <- paste(annot$run, annot$scina, sep = '_')
-foo <- foo[,-(1:2)]
-
-pheatmap(foo, annotation_row = annot, show_rownames = FALSE)
-
-pheatmap(t(foo), annotation_col = annot, show_colnames = FALSE)
-```
-
-
-
-
-# Pheatmaps
-
-Note the cell sampling: same cells in all plots; `annotation_col` comes from genes' clustering.
-
-```{r, results = 'asis', dpi=50, fig.width = 15, fig.height = 15}
-NCELLS <- 1000
-NFEATURES <- 500
-
-## stop()
-for (run in names(d)) {
-    cat("## ", run, "{.tabset}\n\n")
-    
-    set.seed(654)
-    idx_cell <- sample(colnames(GetAssayData(d[[run]][[1]])), NCELLS, replace = FALSE)
-    
-    for (item in names(d[[run]])) {
-        cat("### ", item, "{.tabset}\n\n")
-
-        set.seed(464)
-        idx_feat <- sample(VariableFeatures(d[[run]][[item]]), NFEATURES, replace = FALSE)
-        
-        print(pheatmap(GetAssayData(
-            object = subset(d[[run]][[item]],
-                            features = idx_feat,
-                            cells = intersect(idx_cell, colnames(GetAssayData(d[[run]][[item]])))),
-            slot = 'scale.data'),
-            main = sprintf('%s %s', run, item),
-            color = viridis(100),
-            cluster_rows = TRUE,
-            cluster_cols = TRUE,
-            show_rownames = FALSE,
-            show_colnames = FALSE,
-            clustering_distance_cols = "euclidean",
-            clustering_method = "ward.D2",
-            clustering_distance_rows = "euclidean",
-            fontsize_row = 12,
-            annotation_col = as.data.frame(d[[run]]$genes_cellranger@meta.data[idx_cell, c(res),
-                                                                               drop = FALSE]),
-            scale = "none"))
-        cat('\n\n')
-    }
-    cat('\n\n')
+```{r}
+## name harmonization
+for (dataset in names(d)) {
+    d[[dataset]]$repeats_star_unique <- d[[dataset]]$repeats_featurecounts_unique
+    d[[dataset]]$repeats_star_multi <- d[[dataset]]$repeats_featurecounts_multi
+    d[[dataset]]$repeats_only_unique <- d[[dataset]]$control_repeats_only_unique
+    d[[dataset]]$repeats_multi_unique <- d[[dataset]]$control_repeats_multi_unique
 }
 ```
 
-
-
-
-# ARIS
-
-## Data load
 
 ```{r}
 
-aris_df <- NULL
+fd <- list()
 
-for (rds in params) {
-    ## the params are RDS objects from Seurat
-    ## aris[[sapply(strsplit(dirname(rds), .Platform$file.sep),
-    ##       function(x) return(x[6]))]] <- list()
-    fns <- list.files(dirname(rds), pattern = 'aris.*rds')
-    for (fn in fns) {
-        curr_nest <- readRDS(file.path(dirname(rds), fn))
-        ## curr <- do.call(function(x) rbind.data.frame(x, setNames = c('cat1' , 'cat2', 'ari')),
-        ##                 curr_nest)
-        ## aris_df <- NULL
-        for (item in names(curr_nest)) {
-            curr <- curr_nest[[item]]
-            colnames(curr) <- c('set1', 'set2', 'ari')
-            curr$origin <- item
+i <- 1
+for (dataset in names(d)) {
+    flavours <- names(d[[dataset]])
+    for (flavour in flavours) {
+        ncells <- ncol(d[[dataset]][[flavour]])
+        avg_reads <- mean(d[[dataset]][[flavour]]@meta.data$nCount_RNA)
+        avg_features <- mean(d[[dataset]][[flavour]]@meta.data$nFeature_RNA)
+        fd[[i]] <- c(dataset, flavour, ncells, avg_reads, avg_features)
+        i <- i + 1
+    }
+}
 
-            parsed <- strcapture(
-                pattern = "aris_regress_nCount_(.*)_nFeature_(.*).rds",
-                x = fn,
-                proto = list(ncount = logical(), nfeature = logical()))
+fd <- do.call(rbind.data.frame, fd)
+head(fd)
+colnames(fd) <- c('dataset',
+                  'flavour',
+                  'num_cells',
+                  'avg_num_reads_read_per_cell',
+                  'avg_num_genes_per_cell')
+
+fd
+```
+
+
+<!-- # Most variable repeats cellranger {.tabset} -->
+
+<!-- Similarly for repeats expression (avg +- sd of repeats CPM by gene expression cluster?) -->
+
+
+<!-- ```{r, fig.height = 5, fig.width = 15, results = 'asis'} -->
+<!-- res <- 'RNA_snn_res.0.2' -->
+
+<!-- ## ## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11') -->
+<!-- ## selected <- c(names(head(sort(apply(GetAssayData(d[[run]]$repeats_cellranger),1, coef_var), decreasing = TRUE), -->
+<!-- ##                          5)), c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a')) -->
+
+<!-- ## maybe with variable features? -->
+
+<!-- for (run in names(d)[sapply(d, function(x) return('repeats_cellranger' %in% names(x)))]) { -->
+<!--     cat("## ", run, "\n\n") -->
+<!--     repeats_cellranger <- as.data.frame(FetchData( -->
+<!--         d[[run]]$repeats_cellranger, -->
+<!--         vars = head(VariableFeatures(d[[run]]$repeats_cellranger), 10) , slot = 'data')) -->
+        
+<!--     repeats_cellranger$cell <- rownames(repeats_cellranger) -->
+        
+<!--     d[[run]]$genes_cellranger@meta.data$cell <- rownames(d[[run]]$genes_cellranger@meta.data) -->
+<!--     repeats_cellranger <- merge(d[[run]]$genes_cellranger@meta.data[, c(res, 'cell') ], -->
+<!--                      repeats_cellranger, by = 'cell', all.x = TRUE) -->
+    
+<!--     rownames(repeats_cellranger) <- repeats_cellranger$cell -->
+    
+<!--     repeats_cellranger <- melt(repeats_cellranger, id.vars = c('cell', res)) -->
+    
+<!--     colnames(repeats_cellranger) <- c('cell', res, 'repfamily', 'CPM') -->
+
+<!--     print(ggplot(repeats_cellranger, -->
+<!--            aes(x = get(res), y = CPM)) +  -->
+<!--           geom_boxplot(outlier.size=1) + -->
+<!--           scale_y_continuous(trans='log10') + -->
+<!--         scale_fill_discrete(drop=FALSE) + -->
+<!--         facet_wrap(~ factor(repfamily), ncol = 10) + -->
+<!--         theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--         ylab('repeat expression [CPM]') + -->
+<!--         xlab('gene-based clustering') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_cellranger', res))) -->
+<!--     cat('\n\n') -->
+<!-- } -->
+
+<!-- ``` -->
+
+<!-- # Most variable repeats cellranger by identity {.tabset} -->
+
+
+<!-- ```{r, fig.height = 5, fig.width = 15, results = 'asis'} -->
+<!-- scina <- 'scina' -->
+<!-- ## agg <- list() -->
+
+<!-- for (run in names(d)[sapply(d, function(x) return('repeats_cellranger' %in% names(x)))]) { -->
+<!--     cat("## ", run, "\n\n") -->
+    
+<!--     repeats_cellranger <- as.data.frame(FetchData( -->
+<!--         d[[run]]$repeats_cellranger, -->
+<!--         vars = head(VariableFeatures(d[[run]]$repeats_cellranger), 10) , slot = 'data')) -->
+
+
+    
+<!--     repeats_cellranger$cell <- rownames(repeats_cellranger) -->
+
+<!--     d[[run]]$genes_cellranger@meta.data$cell <- rownames(d[[run]]$genes_cellranger@meta.data) -->
+<!--     repeats_cellranger <- merge(d[[run]]$genes_cellranger@meta.data[, c(scina, 'cell') ], -->
+<!--                      repeats_cellranger, by = 'cell', all.x = TRUE) -->
+    
+<!--     rownames(repeats_cellranger) <- repeats_cellranger$cell -->
+    
+<!--     repeats_cellranger <- melt(repeats_cellranger, id.vars = c('cell', scina)) -->
+    
+<!--     colnames(repeats_cellranger) <- c('cell', scina, 'repfamily', 'CPM') -->
+
+<!--     print(ggplot(repeats_cellranger, -->
+<!--            aes(x = scina, y = CPM)) +  -->
+<!--           geom_boxplot(outlier.size=1) + -->
+<!--           scale_y_continuous(trans='log10') + -->
+<!--         scale_fill_discrete(drop=FALSE) + -->
+<!--         facet_wrap(~ factor(repfamily), ncol = 10) + -->
+<!--         theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--         ylab('repeat expresssion [CPM]') + -->
+<!--         xlab('scina identity') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_cellranger', scina))) -->
+<!--     cat('\n\n') -->
+
+<!-- } -->
+
+<!-- ``` -->
+
+<!-- # similarly for repeats alevin -->
+
+
+
+<!-- ```{r, fig.height = 5, fig.width = 15, results = 'asis'} -->
+<!-- scina <- 'scina' -->
+<!-- ## agg <- list() -->
+
+<!-- for (run in names(d)[sapply(d, function(x) return('repeats_alevin' %in% names(x)))]) { -->
+<!--     cat("## ", run, "\n\n") -->
+    
+<!--     repeats_alevin <- as.data.frame(FetchData( -->
+<!--         d[[run]]$repeats_alevin, -->
+<!--         vars = head(VariableFeatures(d[[run]]$repeats_alevin), 10) , slot = 'data')) -->
+
+
+    
+<!--     repeats_alevin$cell <- rownames(repeats_alevin) -->
+
+<!--     d[[run]]$genes_alevin@meta.data$cell <- rownames(d[[run]]$genes_alevin@meta.data) -->
+<!--     repeats_alevin <- merge(d[[run]]$genes_alevin@meta.data[, c(scina, 'cell') ], -->
+<!--                      repeats_alevin, by = 'cell', all.x = TRUE) -->
+    
+<!--     rownames(repeats_alevin) <- repeats_alevin$cell -->
+    
+<!--     repeats_alevin <- melt(repeats_alevin, id.vars = c('cell', scina)) -->
+    
+<!--     colnames(repeats_alevin) <- c('cell', scina, 'repfamily', 'CPM') -->
+
+<!--     print(ggplot(repeats_alevin, -->
+<!--            aes(x = scina, y = CPM)) +  -->
+<!--           geom_boxplot(outlier.size=1) + -->
+<!--           scale_y_continuous(trans='log10') + -->
+<!--         scale_fill_discrete(drop=FALSE) + -->
+<!--         facet_wrap(~ factor(repfamily), ncol = 10) + -->
+<!--         theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--         ylab('repeat expresssion [CPM]') + -->
+<!--         xlab('scina identity') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_alevin', scina))) -->
+<!--     cat('\n\n') -->
+
+<!-- } -->
+
+<!-- ``` -->
+
+<!-- # All integrated (repeats, scina) -->
+
+<!-- Using alevin -->
+
+<!-- ```{r fig.width = 14, fig.height = 14} -->
+
+<!-- ## first aggregate all repeats_alevin stuff -->
+<!-- ## and get the ones with highest variability -->
+<!-- selected <- unique(unlist(lapply(d[sapply(d, function(x) return('repeats_alevin' %in% names(x)))], -->
+<!--               function(x) return(head(VariableFeatures(x$repeats_alevin), 3))))) -->
+
+<!-- length(selected) -->
+<!-- ## aggregate(agg['CPM'], by = list(agg$repfamily, agg$run),  FUN = function(x) c(mean = mean(x, na.rm = TRUE), n = length(x), sd = sd(x, na.rm = TRUE) )) -->
+
+<!-- ## now get these data for selected features, aggregate and plot -->
+
+<!-- tmp <- list() -->
+<!-- for (run in names(d)[sapply(d, function(x) return('repeats_alevin' %in% names(x)))]) { -->
+<!--     foo <- data.frame(run = run, -->
+<!--                              FetchData(d[[run]]$repeats_alevin, vars = selected, slot = 'data')) -->
+
+<!--     ## add annotations -->
+<!--     bar <- data.frame(cell = rownames(foo), -->
+<!--                       scina = d[[run]]$repeats_alevin@meta.data[rownames(foo), 'scina']) -->
+
+<!--     stopifnot(rownames(foo) == bar$cell) -->
+    
+    
+<!--     tmp[[run]] <- data.frame(foo, scina = bar$scina) -->
+<!--     rm(foo, bar) -->
+<!-- } -->
+
+<!-- tmp <- do.call(rbind.data.frame, tmp) -->
+<!-- str(tmp) -->
+
+<!-- ## melt -->
+<!-- repeats_alevin <- melt(tmp, id.vars = c('run', 'scina')) -->
+<!-- head(repeats_alevin)     -->
+<!-- colnames(repeats_alevin) <- c('run', 'scina', 'repfamily', 'CPM') -->
+
+<!-- ``` -->
+
+<!-- ```{r, fig.width = 12, fig.height = 12} -->
+<!-- print(ggplot(repeats_alevin, -->
+<!--              aes(x = scina, y = CPM, fill = run)) +  -->
+<!--       geom_boxplot(outlier.size=1) + -->
+<!--       scale_y_continuous(trans='log10') + -->
+<!--       scale_fill_discrete(drop=FALSE) + -->
+<!--       facet_wrap(~ factor(repfamily), ncol = 4) + -->
+<!--       theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--       ylab('repeat expresssion [CPM]') + -->
+<!--       xlab('scina identity')) -->
+<!-- ``` -->
+
+
+<!-- ```{r, fig.width = 8, fig.height = 14} -->
+<!-- print(ggplot(repeats_alevin[repeats_alevin$scina %in% c('CD14+_monocyte', 'CD16+_monocyte', -->
+<!--                                                   'CD4+_T_cell', -->
+<!--                                                   'B_cell', -->
+<!--                                                   'Cytotoxic_T_cell'),], -->
+<!--              aes(x = run, y = CPM, fill = run)) +  -->
+<!--       geom_boxplot(outlier.size=1) + -->
+<!--       ## scale_y_continuous(trans='log10') + -->
+<!--       scale_fill_discrete(drop=FALSE) + -->
+<!--       facet_grid( factor(scina) ~ factor(repfamily)) + -->
+<!--       theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--       ylab('repeat expresssion [CPM]') + -->
+<!--       xlab('run') + ggtitle(sprintf('%s\n%s', 'repeats_alevin', scina))) -->
+
+<!-- ``` -->
+
+<!-- # Cluster by average expression (repeats, SCINA) -->
+
+<!-- Avoiding non-determined cell types -->
+
+<!-- ```{r, results = 'asis', fig.height = 10, fig.width = 10} -->
+<!-- repeats_alevin <- repeats_alevin[repeats_alevin$scina != 'unknown',] -->
+<!-- foo <- reshape2::dcast(repeats_alevin, run + scina ~ repfamily, mean, value.var = 'CPM') -->
+
+
+<!-- rownames(foo) <- paste(foo$scina, foo$run, sep = '_') -->
+
+<!-- annot <- foo[,c('run', 'scina')] -->
+<!-- rownames(annot) <- paste(annot$scina, annot$run, sep = '_') -->
+<!-- foo <- foo[,-(1:2)] -->
+
+<!-- pheatmap(foo, annotation_row = annot, show_rownames = FALSE) -->
+
+<!-- pheatmap(t(foo), annotation_col = annot, show_colnames = FALSE) -->
+
+
+<!-- pheatmap(foo[order(rownames(foo)),], annotation_row = annot, -->
+<!--          show_rownames = FALSE, cluster_rows = FALSE, -->
+<!--          cluster_cols = FALSE) -->
+
+
+<!-- ``` -->
+
+
+
+<!-- <\!-- here start -\-> -->
+
+
+<!-- # Most variable repeats star {.tabset} -->
+
+<!-- Similarly for repeats expression (avg +- sd of repeats CPM by gene expression cluster?) -->
+
+<!-- What's the point here? -->
+
+
+<!-- ```{r, fig.height = 5, fig.width = 15, results = 'asis'} -->
+<!-- res <- 'RNA_snn_res.0.2' -->
+
+<!-- ## ## selected <- c('AluY', 'AluSx', 'MER49', 'MIR', 'L2a', 'L2b', 'L1PA11') -->
+<!-- ## selected <- c(names(head(sort(apply(GetAssayData(d[[run]]$repeats_star),1, coef_var), decreasing = TRUE), -->
+<!-- ##                          5)), c('AluY', 'AluSx', 'L1PA11', 'MIR', 'L2a')) -->
+
+<!-- ## maybe with variable features? -->
+
+<!-- for (run in names(d)[sapply(d, function(x) return('repeats_star' %in% names(x)))]) { -->
+<!--     cat("## ", run, "\n\n") -->
+<!--     repeats_star <- as.data.frame(FetchData( -->
+<!--         d[[run]]$repeats_star, -->
+<!--         vars = head(VariableFeatures(d[[run]]$repeats_star), 10) , slot = 'data')) -->
+        
+<!--     repeats_star$cell <- rownames(repeats_star) -->
+        
+<!--     d[[run]]$genes@meta.data$cell <- rownames(d[[run]]$genes@meta.data) -->
+<!--     repeats_star <- merge(d[[run]]$genes@meta.data[, c(res, 'cell') ], -->
+<!--                      repeats_star, by = 'cell', all.x = TRUE) -->
+    
+<!--     rownames(repeats_star) <- repeats_star$cell -->
+    
+<!--     repeats_star <- melt(repeats_star, id.vars = c('cell', res)) -->
+    
+<!--     colnames(repeats_star) <- c('cell', res, 'repfamily', 'CPM') -->
+
+<!--     print(ggplot(repeats_star, -->
+<!--            aes(x = get(res), y = CPM)) +  -->
+<!--           geom_boxplot(outlier.size=1) + -->
+<!--           scale_y_continuous(trans='log10') + -->
+<!--         scale_fill_discrete(drop=FALSE) + -->
+<!--         facet_wrap(~ factor(repfamily), ncol = 10) + -->
+<!--         theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--         ylab('repeat expression [CPM]') + -->
+<!--         xlab('gene-based clustering') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_star', res))) -->
+<!--     cat('\n\n') -->
+<!-- } -->
+
+<!-- ``` -->
+
+<!-- # Most variable repeats star by identity {.tabset} -->
+
+<!-- Repeats star unique -->
+
+<!-- ```{r, fig.height = 5, fig.width = 15, results = 'asis'} -->
+<!-- scina <- 'scina' -->
+<!-- ## agg <- list() -->
+
+<!-- for (run in names(d)[sapply(d, function(x) return('repeats_star_unique' %in% names(x)))]) { -->
+<!--     cat("## ", run, "\n\n") -->
+
+<!--     repeats_star_unique <- as.data.frame(FetchData( -->
+<!--         d[[run]]$repeats_star_unique, -->
+<!--         vars = head(VariableFeatures(d[[run]]$repeats_star_unique), 10) , slot = 'data')) -->
+
+
+    
+<!--     repeats_star_unique$cell <- rownames(repeats_star_unique) -->
+
+<!--     ## d[[run]]$genes_alevin@meta.data$cell <- rownames(d[[run]]$genes_alevin@meta.data) -->
+<!--     repeats_star_unique <- merge(d[[run]]$repeats_star_unique@meta.data[, c(scina, 'cell') ], -->
+<!--                      repeats_star_unique, by = 'cell', all.x = TRUE) -->
+    
+<!--     rownames(repeats_star_unique) <- repeats_star_unique$cell -->
+    
+<!--     repeats_star_unique <- melt(repeats_star_unique, id.vars = c('cell', scina)) -->
+    
+<!--     colnames(repeats_star_unique) <- c('cell', scina, 'repfamily', 'CPM') -->
+
+<!--     print(ggplot(repeats_star_unique, -->
+<!--            aes(x = scina, y = CPM)) +  -->
+<!--           geom_boxplot(outlier.size=1) + -->
+<!--           scale_y_continuous(trans='log10') + -->
+<!--         scale_fill_discrete(drop=FALSE) + -->
+<!--         facet_wrap(~ factor(repfamily), ncol = 10) + -->
+<!--         theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--         ylab('repeat expresssion [CPM]') + -->
+<!--         xlab('scina identity') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_star_unique', scina))) -->
+<!--     cat('\n\n') -->
+
+<!-- } -->
+
+<!-- ``` -->
+
+<!-- # All integrated (repeats, scina) -->
+
+<!-- ```{r fig.width = 14, fig.height = 14} -->
+
+<!-- ## first aggregate all repeats_star stuff -->
+<!-- ## get the ones with the highest var -->
+<!-- selected <- unique(unlist( -->
+<!--     lapply(d[sapply(d, -->
+<!--                     function(x) return('repeats_star_unique' %in% names(x)))], -->
+<!--            function(x) return(head(VariableFeatures(x$repeats_star_unique), 3))))) -->
+
+
+<!-- ## aggregate(agg['CPM'], by = list(agg$repfamily, agg$run),  FUN = function(x) c(mean = mean(x, na.rm = TRUE), n = length(x), sd = sd(x, na.rm = TRUE) )) -->
+
+<!-- ## now get these data for selected features, aggregate and plot -->
+<!-- ## this crashes because of the repeat counting/aggregation, that edited repeat names -->
+<!-- ## @todo fix (doesn't find `SAR`) -->
+<!-- tmp <- list() -->
+<!-- for (run in  names(d)[sapply(d, function(x) return('repeats_star_unique' %in% names(x)))]) { -->
+<!--     foo <- data.frame(run = run, -->
+<!--                       FetchData(d[[run]]$repeats_star_unique, vars = selected, -->
+<!--                                 slot = 'data')) -->
+
+<!--     ## add annotations -->
+<!--     bar <- data.frame(cell = rownames(foo), -->
+<!--                       scina = d[[run]]$repeats_star_unique@meta.data[rownames(foo), 'scina']) -->
+
+<!--     stopifnot(rownames(foo) == bar$cell) -->
+    
+    
+<!--     tmp[[run]] <- data.frame(foo, scina = bar$scina) -->
+<!--     rm(foo, bar) -->
+<!-- } -->
+
+<!-- str(tmp) -->
+<!-- tmp <- do.call(rbind.data.frame, tmp) -->
+<!-- str(tmp) -->
+
+<!-- ## melt -->
+<!-- repeats_star_unique <- melt(tmp, id.vars = c('run', 'scina')) -->
+
+<!-- colnames(repeats_star_unique) <- c('run', 'scina', 'repfamily', 'CPM') -->
+
+
+<!-- ``` -->
+
+<!-- ```{r, fig.width = 12, fig.height = 12} -->
+<!-- print(ggplot(repeats_star_unique, -->
+<!--              aes(x = scina, y = CPM, fill = run)) +  -->
+<!--       geom_boxplot(outlier.size=1) + -->
+<!--       scale_y_continuous(trans='log10') + -->
+<!--       scale_fill_discrete(drop=FALSE) + -->
+<!--       facet_wrap(~ factor(repfamily), ncol = 4) + -->
+<!--       theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--       ylab('repeat expresssion [CPM]') + -->
+<!--       xlab('scina identity') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_star_unique', scina))) -->
+<!-- ``` -->
+
+
+<!-- ```{r, fig.width = 8, fig.height = 14} -->
+<!-- print(ggplot(repeats_star, -->
+<!--              aes(x = repfamily, y = CPM, fill = run)) +  -->
+<!--       geom_boxplot(outlier.size=1) + -->
+<!--       scale_y_continuous(trans='log10') + -->
+<!--       scale_fill_discrete(drop=FALSE) + -->
+<!--       facet_grid(factor(scina)~ factor(run)) + -->
+<!--       theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--       ylab('repeat expresssion [CPM]') + -->
+<!--       xlab('scina identity') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_star', scina))) -->
+
+<!-- ``` -->
+
+<!-- # Cluster by average expression (repeats, SCINA) -->
+
+<!-- Avoiding non-determined cell types -->
+
+<!-- ```{r, results = 'asis', fig.height = 10, fig.width = 10} -->
+<!-- repeats_star <- repeats_star[repeats_star$scina != 'unknown',] -->
+<!-- foo <- reshape2::dcast(repeats_star, run + scina ~ repfamily, mean, value.var = 'CPM') -->
+
+
+<!-- rownames(foo) <- paste(foo$run, foo$scina, sep = '_') -->
+
+<!-- annot <- foo[,c('run', 'scina')] -->
+<!-- rownames(annot) <- paste(annot$run, annot$scina, sep = '_') -->
+<!-- foo <- foo[,-(1:2)] -->
+
+<!-- pheatmap(foo, annotation_row = annot, show_rownames = FALSE) -->
+
+<!-- pheatmap(t(foo), annotation_col = annot, show_colnames = FALSE) -->
+<!-- ``` -->
+
+<!-- # Pairwise correlation per identity? -->
+
+<!-- ```{r} -->
+
+<!-- library(MatrixCorrelation) -->
+
+<!-- X1 <- scale( matrix( rnorm(100*300), 100,300), scale = FALSE) -->
+<!-- usv <- svd(X1) -->
+<!-- X2 <- usv$u[,-3] %*% diag(usv$d[-3]) %*% t(usv$v[,-3]) -->
+<!-- smi <- SMI(X1,X2,5,5) -->
+<!-- plot(smi, B = 1000) # default B = 10000 -->
+<!-- print(smi) -->
+<!-- summary(smi) -->
+<!-- is.signif(smi, B = 1000) # default B = 10000 -->
+
+
+<!-- for (run in  names(d)) { -->
+
+<!--     repeats <- grep('repeat', names(d[[run]])) -->
+    
+<!--     smi <- SMI(d[[run]][[repeats[1]]], d[[run]][[repeats[2]]], 5, 5) -->
+
+<!--     foo <- data.frame(run = run, -->
+<!--                       FetchData(d[[run]]$repeats_star_unique, vars = selected, -->
+<!--                                 slot = 'data')) -->
+
+<!--     ## add annotations -->
+<!--     bar <- data.frame(cell = rownames(foo), -->
+<!--                       scina = d[[run]]$repeats_star_unique@meta.data[rownames(foo), 'scina']) -->
+
+<!--     stopifnot(rownames(foo) == bar$cell) -->
+    
+    
+<!--     tmp[[run]] <- data.frame(foo, scina = bar$scina) -->
+<!--     rm(foo, bar) -->
+<!-- } -->
+
+<!-- str(tmp) -->
+<!-- tmp <- do.call(rbind.data.frame, tmp) -->
+<!-- str(tmp) -->
+
+
+
+<!-- ``` -->
+
+<!-- <\!-- here stop -\-> -->
+
+<!-- # All integrated (repeats, scina) -->
+
+<!-- ```{r fig.width = 14, fig.height = 14} -->
+
+<!-- ## first aggregate all repeats_featurecounts stuff -->
+<!-- sds <- lapply(d[sapply(d, function(x) return('repeats_featurecounts' %in% names(x)))], -->
+<!--               function(x) return(apply(as.data.frame(GetAssayData(x$repeats_featurecounts, -->
+<!--                                                         slot = 'data')), 1, sd))) -->
+
+<!-- ## get the ones with the highest average sd -->
+
+<!-- mean_sd <- apply(do.call(cbind.data.frame, sds), 1, mean) -->
+<!-- selected <- names(head(sort(mean_sd, decreasing = TRUE), 20)) -->
+<!-- ## selected -->
+
+
+<!-- ## aggregate(agg['CPM'], by = list(agg$repfamily, agg$run),  FUN = function(x) c(mean = mean(x, na.rm = TRUE), n = length(x), sd = sd(x, na.rm = TRUE) )) -->
+
+<!-- ## now get these data for selected features, aggregate and plot -->
+
+<!-- tmp <- list() -->
+<!-- for (run in names(d)) { -->
+<!--     foo <- data.frame(run = run, -->
+<!--                              FetchData(d[[run]]$repeats_featurecounts, vars = selected, slot = 'data')) -->
+
+<!--     ## add annotations -->
+<!--     bar <- data.frame(cell = rownames(foo), -->
+<!--                       scina = d[[run]]$repeats_featurecounts@meta.data[rownames(foo), 'scina']) -->
+
+<!--     stopifnot(rownames(foo) == bar$cell) -->
+    
+    
+<!--     tmp[[run]] <- data.frame(foo, scina = bar$scina) -->
+<!--     rm(foo, bar) -->
+<!-- } -->
+
+<!-- tmp <- do.call(rbind.data.frame, tmp) -->
+<!-- str(tmp) -->
+
+<!-- ## melt -->
+<!-- repeats_featurecounts <- melt(tmp, id.vars = c('run', 'scina')) -->
+<!-- head(repeats_featurecounts)     -->
+<!-- colnames(repeats_featurecounts) <- c('run', 'scina', 'repfamily', 'CPM') -->
+
+<!-- ``` -->
+
+<!-- ```{r, fig.width = 12, fig.height = 12} -->
+<!-- print(ggplot(repeats_featurecounts, -->
+<!--              aes(x = scina, y = CPM, fill = run)) +  -->
+<!--       geom_boxplot(outlier.size=1) + -->
+<!--       scale_y_continuous(trans='log10') + -->
+<!--       scale_fill_discrete(drop=FALSE) + -->
+<!--       facet_wrap(~ factor(repfamily), ncol = 4) + -->
+<!--       theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--       ylab('repeat expresssion [CPM]') + -->
+<!--       xlab('scina identity') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_featurecounts', scina))) -->
+<!-- ``` -->
+
+
+<!-- ```{r, fig.width = 8, fig.height = 14} -->
+<!-- print(ggplot(repeats_featurecounts, -->
+<!--              aes(x = repfamily, y = CPM, fill = run)) +  -->
+<!--       geom_boxplot(outlier.size=1) + -->
+<!--       scale_y_continuous(trans='log10') + -->
+<!--       scale_fill_discrete(drop=FALSE) + -->
+<!--       facet_grid(factor(scina)~ factor(run)) + -->
+<!--       theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--       ylab('repeat expresssion [CPM]') + -->
+<!--       xlab('scina identity') + ggtitle(sprintf('%s %s\n%s', run, 'repeats_featurecounts', scina))) -->
+
+<!-- ``` -->
+
+<!-- # Cluster by average expression (repeats, SCINA) -->
+
+<!-- Avoiding non-determined cell types -->
+
+<!-- ```{r, results = 'asis', fig.height = 10, fig.width = 10} -->
+<!-- repeats_featurecounts <- repeats_featurecounts[repeats_featurecounts$scina != 'unknown',] -->
+<!-- foo <- reshape2::dcast(repeats_featurecounts, run + scina ~ repfamily, mean, value.var = 'CPM') -->
+
+
+<!-- rownames(foo) <- paste(foo$run, foo$scina, sep = '_') -->
+
+<!-- annot <- foo[,c('run', 'scina')] -->
+<!-- rownames(annot) <- paste(annot$run, annot$scina, sep = '_') -->
+<!-- foo <- foo[,-(1:2)] -->
+
+<!-- pheatmap(foo, annotation_row = annot, show_rownames = FALSE) -->
+
+<!-- pheatmap(t(foo), annotation_col = annot, show_colnames = FALSE) -->
+<!-- ``` -->
+
+
+
+
+<!-- # Pheatmaps -->
+
+<!-- Note the cell sampling: same cells in all plots; `annotation_col` comes from genes' clustering. -->
+
+<!-- ```{r, results = 'asis', dpi=50, fig.width = 15, fig.height = 15} -->
+<!-- NCELLS <- 1000 -->
+<!-- NFEATURES <- 500 -->
+
+<!-- ## stop() -->
+<!-- for (run in names(d)) { -->
+<!--     cat("## ", run, "{.tabset}\n\n") -->
+    
+<!--     set.seed(654) -->
+<!--     idx_cell <- sample(colnames(GetAssayData(d[[run]][[1]])), NCELLS, replace = FALSE) -->
+    
+<!--     for (item in names(d[[run]])) { -->
+<!--         cat("### ", item, "{.tabset}\n\n") -->
+
+<!--         set.seed(464) -->
+<!--         idx_feat <- sample(VariableFeatures(d[[run]][[item]]), NFEATURES, replace = FALSE) -->
+        
+<!--         print(pheatmap(GetAssayData( -->
+<!--             object = subset(d[[run]][[item]], -->
+<!--                             features = idx_feat, -->
+<!--                             cells = intersect(idx_cell, colnames(GetAssayData(d[[run]][[item]])))), -->
+<!--             slot = 'scale.data'), -->
+<!--             main = sprintf('%s %s', run, item), -->
+<!--             color = viridis(100), -->
+<!--             cluster_rows = TRUE, -->
+<!--             cluster_cols = TRUE, -->
+<!--             show_rownames = FALSE, -->
+<!--             show_colnames = FALSE, -->
+<!--             clustering_distance_cols = "euclidean", -->
+<!--             clustering_method = "ward.D2", -->
+<!--             clustering_distance_rows = "euclidean", -->
+<!--             fontsize_row = 12, -->
+<!--             annotation_col = as.data.frame(d[[run]]$genes_cellranger@meta.data[idx_cell, c(res), -->
+<!--                                                                                drop = FALSE]), -->
+<!--             scale = "none")) -->
+<!--         cat('\n\n') -->
+<!--     } -->
+<!--     cat('\n\n') -->
+<!-- } -->
+<!-- ``` -->
+
+
+
+
+<!-- # ARIS -->
+
+<!-- ## Data load -->
+
+<!-- ```{r} -->
+
+<!-- aris_df <- NULL -->
+
+<!-- for (rds in params) { -->
+<!--     ## the params are RDS objects from Seurat -->
+<!--     ## aris[[sapply(strsplit(dirname(rds), .Platform$file.sep), -->
+<!--     ##       function(x) return(x[6]))]] <- list() -->
+<!--     fns <- list.files(dirname(rds), pattern = 'aris.*rds') -->
+<!--     for (fn in fns) { -->
+<!--         curr_nest <- readRDS(file.path(dirname(rds), fn)) -->
+<!--         ## curr <- do.call(function(x) rbind.data.frame(x, setNames = c('cat1' , 'cat2', 'ari')), -->
+<!--         ##                 curr_nest) -->
+<!--         ## aris_df <- NULL -->
+<!--         for (item in names(curr_nest)) { -->
+<!--             curr <- curr_nest[[item]] -->
+<!--             colnames(curr) <- c('set1', 'set2', 'ari') -->
+<!--             curr$origin <- item -->
+
+<!--             parsed <- strcapture( -->
+<!--                 pattern = "aris_regress_nCount_(.*)_nFeature_(.*).rds", -->
+<!--                 x = fn, -->
+<!--                 proto = list(ncount = logical(), nfeature = logical())) -->
             
-            curr$ncount_scaling <- parsed$ncount
-            curr$nfeature_scaling <- parsed$nfeature
+<!--             curr$ncount_scaling <- parsed$ncount -->
+<!--             curr$nfeature_scaling <- parsed$nfeature -->
             
-            curr$sample <- sapply(strsplit(dirname(rds), .Platform$file.sep),
-                                  function(x) return(x[6]))
-            aris_df <- rbind(aris_df, curr)
+<!--             curr$sample <- sapply(strsplit(dirname(rds), .Platform$file.sep), -->
+<!--                                   function(x) return(x[6])) -->
+<!--             aris_df <- rbind(aris_df, curr) -->
 
-        }
+<!--         } -->
 
-        ## aris[[sapply(strsplit(dirname(rds), .Platform$file.sep),
-        ##              function(x) return(x[6]))]][[basename(fn)]] <- curr_nest
-    }
-}
+<!--         ## aris[[sapply(strsplit(dirname(rds), .Platform$file.sep), -->
+<!--         ##              function(x) return(x[6]))]][[basename(fn)]] <- curr_nest -->
+<!--     } -->
+<!-- } -->
 
-summary(aris_df)
-rm(parsed, curr)
-```
+<!-- summary(aris_df) -->
+<!-- rm(parsed, curr) -->
+<!-- ``` -->
 
-Extract resolutions and n for clustering
+<!-- Extract resolutions and n for clustering -->
 
-```{r notscina, eval = TRUE}
-parsed <- strcapture(
-    pattern = "(.*)_RNA_snn_res.(.*) \\(n=(.*)\\)",
-    x = aris_df$set1,
-    proto = list(id1 = character(),
-                 res1 = numeric(),
-                 size1 = numeric()))
+<!-- ```{r notscina, eval = TRUE} -->
+<!-- parsed <- strcapture( -->
+<!--     pattern = "(.*)_RNA_snn_res.(.*) \\(n=(.*)\\)", -->
+<!--     x = aris_df$set1, -->
+<!--     proto = list(id1 = character(), -->
+<!--                  res1 = numeric(), -->
+<!--                  size1 = numeric())) -->
 
-aris_df <- cbind(aris_df, parsed)
-rm(parsed)
+<!-- aris_df <- cbind(aris_df, parsed) -->
+<!-- rm(parsed) -->
 
-parsed <- strcapture(
-    pattern = "(.*)_RNA_snn_res.(.*) \\(n=(.*)\\)",
-    x = aris_df$set2,
-    proto = list(id2 = character(),
-                 res2 = numeric(),
-                 size2 = numeric()))
+<!-- parsed <- strcapture( -->
+<!--     pattern = "(.*)_RNA_snn_res.(.*) \\(n=(.*)\\)", -->
+<!--     x = aris_df$set2, -->
+<!--     proto = list(id2 = character(), -->
+<!--                  res2 = numeric(), -->
+<!--                  size2 = numeric())) -->
 
-aris_df <- cbind(aris_df, parsed)
-rm(parsed)
+<!-- aris_df <- cbind(aris_df, parsed) -->
+<!-- rm(parsed) -->
 
-## head(aris_df)
-```
+<!-- ## head(aris_df) -->
+<!-- ``` -->
 
-Extract resolutions and n for scina
+<!-- Extract resolutions and n for scina -->
 
-```{r eval = TRUE}
-parsed <- strcapture(
-    pattern = "scina_scina \\(n=(.*)\\)",
-    x = aris_df$set2,
-    proto = list(size_scina = numeric()))
+<!-- ```{r eval = TRUE} -->
+<!-- parsed <- strcapture( -->
+<!--     pattern = "scina_scina \\(n=(.*)\\)", -->
+<!--     x = aris_df$set2, -->
+<!--     proto = list(size_scina = numeric())) -->
 
-aris_df <- cbind(aris_df, parsed)
-rm(parsed)
+<!-- aris_df <- cbind(aris_df, parsed) -->
+<!-- rm(parsed) -->
 
 
-## head(aris_df)
-```
+<!-- ## head(aris_df) -->
+<!-- ``` -->
 
 
 
-## ARIs comparison {.tabset}
+<!-- ## ARIs comparison {.tabset} -->
 
-Plot ARIs decay with resolution, scaling etc
+<!-- Plot ARIs decay with resolution, scaling etc -->
 
-```{r, fig.width=12, fig.height=8, results = 'asis'}
+<!-- ```{r, fig.width=12, fig.height=8, results = 'asis'} -->
 
-aris_df$regressed_out <- 'none'
+<!-- aris_df$regressed_out <- 'none' -->
 
-aris_df$regressed_out[aris_df$ncount_scaling & aris_df$nfeature_scaling] <- 'both'
-aris_df$regressed_out[aris_df$ncount_scaling & !aris_df$nfeature_scaling] <- 'genes_ncount'
-aris_df$regressed_out[!aris_df$ncount_scaling & aris_df$nfeature_scaling] <- 'genes_nfeature'
+<!-- aris_df$regressed_out[aris_df$ncount_scaling & aris_df$nfeature_scaling] <- 'both' -->
+<!-- aris_df$regressed_out[aris_df$ncount_scaling & !aris_df$nfeature_scaling] <- 'genes_ncount' -->
+<!-- aris_df$regressed_out[!aris_df$ncount_scaling & aris_df$nfeature_scaling] <- 'genes_nfeature' -->
 
-aris_df$regressed_out <- factor(aris_df$regressed_out,
-                                   levels = c('none', 'genes_ncount', 'genes_nfeature', 'both'))
+<!-- aris_df$regressed_out <- factor(aris_df$regressed_out, -->
+<!--                                    levels = c('none', 'genes_ncount', 'genes_nfeature', 'both')) -->
 
-```
+<!-- ``` -->
 
-```{r, fig.width=12, fig.height=8, results = 'asis'}
+<!-- ```{r, fig.width=12, fig.height=8, results = 'asis'} -->
 
-aris_df$label1 <- sprintf('res%s_(n=%s)', aris_df$res1, aris_df$size1)
-aris_df$label1[grepl('NA', aris_df$label1)] <- NA
+<!-- aris_df$label1 <- sprintf('res%s_(n=%s)', aris_df$res1, aris_df$size1) -->
+<!-- aris_df$label1[grepl('NA', aris_df$label1)] <- NA -->
 
-aris_df$label2 <- sprintf('res%s_(n=%s)', aris_df$res2, aris_df$size2)
-aris_df$label2[grepl('NA', aris_df$label2)] <- NA
+<!-- aris_df$label2 <- sprintf('res%s_(n=%s)', aris_df$res2, aris_df$size2) -->
+<!-- aris_df$label2[grepl('NA', aris_df$label2)] <- NA -->
 
 
-## cat('### genes vs repeats cr\n\n')
+<!-- ## cat('### genes vs repeats cr\n\n') -->
 
-## print(ggplot(aris_df[aris_df$id1 == 'genes' & aris_df$id2 == 'repeats_cr',],
-##              aes(x = res1, y = ari, col = as.factor(regressed_out))) +
-##       geom_point() +
-##       labs(title = "genes cellranger vs repeats cellranger (from repeats bam)",
-##            subtitle = "by repeats resolution", y = "ARI", x = "genes resolution",
-##            color = 'regressed out') +
-##       facet_grid(sample~paste0('repeats res.\n', res2)) +
-##       theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+<!-- ## print(ggplot(aris_df[aris_df$id1 == 'genes' & aris_df$id2 == 'repeats_cr',], -->
+<!-- ##              aes(x = res1, y = ari, col = as.factor(regressed_out))) + -->
+<!-- ##       geom_point() + -->
+<!-- ##       labs(title = "genes cellranger vs repeats cellranger (from repeats bam)", -->
+<!-- ##            subtitle = "by repeats resolution", y = "ARI", x = "genes resolution", -->
+<!-- ##            color = 'regressed out') + -->
+<!-- ##       facet_grid(sample~paste0('repeats res.\n', res2)) + -->
+<!-- ##       theme(axis.text.x = element_text(angle = 90, hjust = 1))) -->
 
-## cat('\n\n')
+<!-- ## cat('\n\n') -->
 
-cat('### genes vs repeats fc\n\n')
+<!-- cat('### genes vs repeats fc\n\n') -->
 
-print(ggplot(aris_df[aris_df$id1 == 'genes' & aris_df$id2 == 'repeats_fc',],
-             aes(x = res1, y = ari, col = as.factor(regressed_out))) +
-      geom_point() +
-      labs(title = "genes cellranger vs repeats featurecounts (from genes bam)",
-           subtitle = "by repeats resolution", y = "ARI", x = "genes resolution",
-           color = 'regressed out') +
-      facet_grid(sample~paste0('repeats res.\n', res2)) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+<!-- print(ggplot(aris_df[aris_df$id1 == 'genes' & aris_df$id2 == 'repeats_fc',], -->
+<!--              aes(x = res1, y = ari, col = as.factor(regressed_out))) + -->
+<!--       geom_point() + -->
+<!--       labs(title = "genes cellranger vs repeats featurecounts (from genes bam)", -->
+<!--            subtitle = "by repeats resolution", y = "ARI", x = "genes resolution", -->
+<!--            color = 'regressed out') + -->
+<!--       facet_grid(sample~paste0('repeats res.\n', res2)) + -->
+<!--       theme(axis.text.x = element_text(angle = 90, hjust = 1))) -->
 
-cat('\n\n')
+<!-- cat('\n\n') -->
 
-cat('### repeats fc vs repeats cr\n\n')
+<!-- cat('### repeats fc vs repeats cr\n\n') -->
 
-print(ggplot(aris_df[aris_df$id1 == 'repeats_fc' & aris_df$id2 == 'repeats_cr',],
-             aes(x = res1, y = ari, col = as.factor(regressed_out))) +
-      geom_point() +
-      labs(title = "repeats featurecounts (from genes bam) vs repeats cellranger (repeats bam)",
-           subtitle = "by repeats cellranger resolution", y = "ARI", x = "repeats fc resolution",
-           color = 'regressed out') +
-      facet_grid(sample~paste0('repeats cr res.\n', res2)) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+<!-- print(ggplot(aris_df[aris_df$id1 == 'repeats_fc' & aris_df$id2 == 'repeats_cr',], -->
+<!--              aes(x = res1, y = ari, col = as.factor(regressed_out))) + -->
+<!--       geom_point() + -->
+<!--       labs(title = "repeats featurecounts (from genes bam) vs repeats cellranger (repeats bam)", -->
+<!--            subtitle = "by repeats cellranger resolution", y = "ARI", x = "repeats fc resolution", -->
+<!--            color = 'regressed out') + -->
+<!--       facet_grid(sample~paste0('repeats cr res.\n', res2)) + -->
+<!--       theme(axis.text.x = element_text(angle = 90, hjust = 1))) -->
 
-cat('\n\n')
-```
+<!-- cat('\n\n') -->
+<!-- ``` -->
 
 
-Maybe add the number of clusters? as a size param?
+<!-- Maybe add the number of clusters? as a size param? -->
 
 
-Rather, plot both size and res
+<!-- Rather, plot both size and res -->
 
-```{r, eval = TRUE, fig.height = 5, fig.with = 15}
-## print(ggplot(aris_df[aris_df$id1 == 'repeats_fc' & aris_df$id2 == 'repeats_cr',],
-##              aes(x = res1, y = ari, col = as.factor(regressed_out))) +
-##       geom_point() +
-##       labs(title = "repeats featurecounts (from genes bam) vs repeats cellranger (repeats bam)",
-##            subtitle = "by repeats cellranger resolution", y = "ARI", x = "repeats fc resolution",
-##            color = 'regressed out') +
-##       facet_grid(sample~paste0('repeats cr res.\n', res2)) +
-##       theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+<!-- ```{r, eval = TRUE, fig.height = 5, fig.with = 15} -->
+<!-- ## print(ggplot(aris_df[aris_df$id1 == 'repeats_fc' & aris_df$id2 == 'repeats_cr',], -->
+<!-- ##              aes(x = res1, y = ari, col = as.factor(regressed_out))) + -->
+<!-- ##       geom_point() + -->
+<!-- ##       labs(title = "repeats featurecounts (from genes bam) vs repeats cellranger (repeats bam)", -->
+<!-- ##            subtitle = "by repeats cellranger resolution", y = "ARI", x = "repeats fc resolution", -->
+<!-- ##            color = 'regressed out') + -->
+<!-- ##       facet_grid(sample~paste0('repeats cr res.\n', res2)) + -->
+<!-- ##       theme(axis.text.x = element_text(angle = 90, hjust = 1))) -->
 
-print(ggplot(aris_df,
-             aes(x = res1, y = size1, col = as.factor(regressed_out))) +
-      geom_point() +
-      facet_grid(sample~id1) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+<!-- print(ggplot(aris_df, -->
+<!--              aes(x = res1, y = size1, col = as.factor(regressed_out))) + -->
+<!--       geom_point() + -->
+<!--       facet_grid(sample~id1) + -->
+<!--       theme(axis.text.x = element_text(angle = 90, hjust = 1))) -->
 
-print(ggplot(aris_df,
-             aes(x = res2, y = size2, col = as.factor(regressed_out))) +
-      geom_point() +
-      facet_grid(sample~id2) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
-```
+<!-- print(ggplot(aris_df, -->
+<!--              aes(x = res2, y = size2, col = as.factor(regressed_out))) + -->
+<!--       geom_point() + -->
+<!--       facet_grid(sample~id2) + -->
+<!--       theme(axis.text.x = element_text(angle = 90, hjust = 1))) -->
+<!-- ``` -->
 
-# ARIs flavours vs SCINA
+<!-- # ARIs flavours vs SCINA -->
 
 
-```{r, fig.height = 5, fig.with = 15}
+<!-- ```{r, fig.height = 5, fig.with = 15} -->
 
-print(ggplot(aris_df[grep('scina', aris_df$origin),],
-             aes(x = res1, y = ari, col = as.factor(regressed_out) )) +
-      geom_point() +
-      facet_grid(sample~id1) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+<!-- print(ggplot(aris_df[grep('scina', aris_df$origin),], -->
+<!--              aes(x = res1, y = ari, col = as.factor(regressed_out) )) + -->
+<!--       geom_point() + -->
+<!--       facet_grid(sample~id1) + -->
+<!--       theme(axis.text.x = element_text(angle = 90, hjust = 1))) -->
 
-```
+<!-- ``` -->
 
 
-```{r}
+<!-- ```{r} -->
 
-print(ggplot(aris_df[grep('scina', aris_df$origin),],
-             aes(x = res1, y = size1, col = as.factor(regressed_out) )) +
-      geom_point() +
-      facet_grid(sample~id1) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+<!-- print(ggplot(aris_df[grep('scina', aris_df$origin),], -->
+<!--              aes(x = res1, y = size1, col = as.factor(regressed_out) )) + -->
+<!--       geom_point() + -->
+<!--       facet_grid(sample~id1) + -->
+<!--       theme(axis.text.x = element_text(angle = 90, hjust = 1))) -->
 
-```
+<!-- ``` -->
 
 
-```{r}
-print(ggplot(aris_df[grep('scina', aris_df$origin),],
-             aes(x = res1, y = ari, col = as.factor(regressed_out) )) +
-      geom_point() +
-      facet_grid(sample~id1) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+<!-- ```{r} -->
+<!-- print(ggplot(aris_df[grep('scina', aris_df$origin),], -->
+<!--              aes(x = res1, y = ari, col = as.factor(regressed_out) )) + -->
+<!--       geom_point() + -->
+<!--       facet_grid(sample~id1) + -->
+<!--       theme(axis.text.x = element_text(angle = 90, hjust = 1))) -->
 
-```
+<!-- ``` -->
 
-# All variable features and all repeats methods at once, using scina {.tabset}
+<!-- # All variable features and all repeats methods at once, using scina {.tabset} -->
 
-## With repeats including control not overlapping genes
+<!-- ## With repeats including control not overlapping genes -->
 
-```{r}
+<!-- ```{r} -->
 
-NCELLS = 200 ## cells per run:sample
-NVARIABLE = 20 ## variable repeats features (per run:sample)
+<!-- NCELLS = 200 ## cells per run:sample -->
+<!-- NVARIABLE = 20 ## variable repeats features (per run:sample) -->
 
-cr <- list()
-for (flavour in c('repeats_cellranger', 'repeats_star', 'repeats_featurecounts',
-                  'control_repeats_only')) {
-    for (run in names(d)[sapply(d, function(x) return(flavour %in% names(x)))]) {
+<!-- cr <- list() -->
+<!-- for (flavour in c('repeats_cellranger', 'repeats_star', 'repeats_featurecounts', -->
+<!--                   'control_repeats_only')) { -->
+<!--     for (run in names(d)[sapply(d, function(x) return(flavour %in% names(x)))]) { -->
 
-        cr[[paste(flavour, run)]] <- data.frame(
-            rep = head(VariableFeatures(d[[run]][[flavour]]), NVARIABLE),
-            flavour = flavour,
-            run = run,
-            stringsAsFactors = FALSE)
-    }    
-}
+<!--         cr[[paste(flavour, run)]] <- data.frame( -->
+<!--             rep = head(VariableFeatures(d[[run]][[flavour]]), NVARIABLE), -->
+<!--             flavour = flavour, -->
+<!--             run = run, -->
+<!--             stringsAsFactors = FALSE) -->
+<!--     }     -->
+<!-- } -->
 
-cr <- do.call(rbind.data.frame, cr)
-table(cr$flavour, cr$run)
+<!-- cr <- do.call(rbind.data.frame, cr) -->
+<!-- table(cr$flavour, cr$run) -->
 
-variable <- list()
-for (flavour in c('repeats_cellranger', 'repeats_star', 'repeats_featurecounts', 'control_repeats_only')) {
-    for (run in names(d)[sapply(d, function(x) return(flavour %in% names(x)))]) {
-        idx <- sample(colnames(d[[run]][[flavour]]), size = NCELLS, replace = FALSE)
-        variable[[paste(run, flavour, sep = '.')]] <- GetAssayData(d[[run]][[flavour]],
-                            slot = 'data')[unique(cr$rep),idx]
-    }
-}
+<!-- variable <- list() -->
+<!-- for (flavour in c('repeats_cellranger', 'repeats_star', 'repeats_featurecounts', 'control_repeats_only')) { -->
+<!--     for (run in names(d)[sapply(d, function(x) return(flavour %in% names(x)))]) { -->
+<!--         idx <- sample(colnames(d[[run]][[flavour]]), size = NCELLS, replace = FALSE) -->
+<!--         variable[[paste(run, flavour, sep = '.')]] <- GetAssayData(d[[run]][[flavour]], -->
+<!--                             slot = 'data')[unique(cr$rep),idx] -->
+<!--     } -->
+<!-- } -->
 
-foo <- do.call(cbind.data.frame, variable)
+<!-- foo <- do.call(cbind.data.frame, variable) -->
 
-colannot <- data.frame(id = colnames(foo),
-                       sample = sapply(strsplit(colnames(foo), '.', fixed = TRUE),
-                                        function(x) return(x[1])),
-                       flavour = sapply(strsplit(colnames(foo), '.', fixed = TRUE),
-                                       function(x) return(x[2])),
-                       cell = sapply(strsplit(colnames(foo), '.', fixed = TRUE),
-                                     function(x) return(x[3])),
-                       scina = NA,
-                       stringsAsFactors = FALSE)
+<!-- colannot <- data.frame(id = colnames(foo), -->
+<!--                        sample = sapply(strsplit(colnames(foo), '.', fixed = TRUE), -->
+<!--                                         function(x) return(x[1])), -->
+<!--                        flavour = sapply(strsplit(colnames(foo), '.', fixed = TRUE), -->
+<!--                                        function(x) return(x[2])), -->
+<!--                        cell = sapply(strsplit(colnames(foo), '.', fixed = TRUE), -->
+<!--                                      function(x) return(x[3])), -->
+<!--                        scina = NA, -->
+<!--                        stringsAsFactors = FALSE) -->
 
 
-head(colannot)
+<!-- head(colannot) -->
 
-for ( i in 1:nrow(colannot)) {
-    colannot[i, 'scina'] <- as.character(d[[colannot[i, 'sample']]][[colannot[i, 'flavour']]]@meta.data[colannot[i, 'cell'], 'scina'])
+<!-- for ( i in 1:nrow(colannot)) { -->
+<!--     colannot[i, 'scina'] <- as.character(d[[colannot[i, 'sample']]][[colannot[i, 'flavour']]]@meta.data[colannot[i, 'cell'], 'scina']) -->
 
     
-}
+<!-- } -->
 
-rownames(colannot) <- colannot$id
+<!-- rownames(colannot) <- colannot$id -->
 
-table(colannot$scina)
-
-
-## remove any repeat whose annotation by scina is 'unknown'
-colannot <- colannot[colannot$scina != 'unknown',]
-foo <- foo[,colannot$id]
-dim(foo)
-
-## remove any repeat with 0 sd after sampling
-sum(is.infinite(unlist(foo)))
-foo <- foo[apply(foo, 1, sd) > 0,]
-
-```
-
-```{r, fig.height = 20, fig.width = 20}
+<!-- table(colannot$scina) -->
 
 
-newCols <- colorRampPalette(grDevices::rainbow(length(unique(colannot$scina))))
-mycolors <- newCols(length(unique(colannot$scina)))
-names(mycolors) <- unique(colannot$scina)
-mycolors <- list(scina = mycolors)
+<!-- ## remove any repeat whose annotation by scina is 'unknown' -->
+<!-- colannot <- colannot[colannot$scina != 'unknown',] -->
+<!-- foo <- foo[,colannot$id] -->
+<!-- dim(foo) -->
 
-print(pheatmap(foo,
-               color = viridis(100),
-            cluster_rows = TRUE,
-            cluster_cols = TRUE,
-            show_rownames = TRUE,
-            show_colnames = FALSE,
-            clustering_distance_cols = "euclidean",
-            clustering_method = "ward.D2",
-            clustering_distance_rows = "euclidean",
-            fontsize_row = 12,
-            annotation_col = colannot[,c('flavour', 'sample', 'scina')],
-            annotation_colors = mycolors,
-            scale = "none"))
+<!-- ## remove any repeat with 0 sd after sampling -->
+<!-- sum(is.infinite(unlist(foo))) -->
+<!-- foo <- foo[apply(foo, 1, sd) > 0,] -->
+
+<!-- ``` -->
+
+<!-- ```{r, fig.height = 20, fig.width = 20} -->
 
 
+<!-- newCols <- colorRampPalette(grDevices::rainbow(length(unique(colannot$scina)))) -->
+<!-- mycolors <- newCols(length(unique(colannot$scina))) -->
+<!-- names(mycolors) <- unique(colannot$scina) -->
+<!-- mycolors <- list(scina = mycolors) -->
 
-```
-
-## Without non-overlapping genes repeats control (biased by transcriptome)
-
-```{r}
-
-NCELLS = 200 ## cells per run:sample
-NVARIABLE = 20 ## variable repeats features (per run:sample)
-
-cr <- list()
-for (flavour in c('repeats_cellranger', 'repeats_star', 'repeats_featurecounts')) {
-    for (run in names(d)[sapply(d, function(x) return(flavour %in% names(x)))]) {
-
-        cr[[paste(flavour, run)]] <- data.frame(
-            rep = head(VariableFeatures(d[[run]][[flavour]]), NVARIABLE),
-            flavour = flavour,
-            run = run,
-            stringsAsFactors = FALSE)
-    }    
-}
-
-cr <- do.call(rbind.data.frame, cr)
-table(cr$flavour, cr$run)
-
-variable <- list()
-for (flavour in c('repeats_cellranger', 'repeats_star', 'repeats_featurecounts')) {
-    for (run in names(d)[sapply(d, function(x) return(flavour %in% names(x)))]) {
-        idx <- sample(colnames(d[[run]][[flavour]]), size = NCELLS, replace = FALSE)
-        variable[[paste(run, flavour, sep = '.')]] <- GetAssayData(d[[run]][[flavour]],
-                            slot = 'data')[unique(cr$rep),idx]
-    }
-}
-
-foo <- do.call(cbind.data.frame, variable)
-
-colannot <- data.frame(id = colnames(foo),
-                       sample = sapply(strsplit(colnames(foo), '.', fixed = TRUE),
-                                        function(x) return(x[1])),
-                       flavour = sapply(strsplit(colnames(foo), '.', fixed = TRUE),
-                                       function(x) return(x[2])),
-                       cell = sapply(strsplit(colnames(foo), '.', fixed = TRUE),
-                                     function(x) return(x[3])),
-                       scina = NA,
-                       stringsAsFactors = FALSE)
+<!-- print(pheatmap(foo, -->
+<!--                color = viridis(100), -->
+<!--             cluster_rows = TRUE, -->
+<!--             cluster_cols = TRUE, -->
+<!--             show_rownames = TRUE, -->
+<!--             show_colnames = FALSE, -->
+<!--             clustering_distance_cols = "euclidean", -->
+<!--             clustering_method = "ward.D2", -->
+<!--             clustering_distance_rows = "euclidean", -->
+<!--             fontsize_row = 12, -->
+<!--             annotation_col = colannot[,c('flavour', 'sample', 'scina')], -->
+<!--             annotation_colors = mycolors, -->
+<!--             scale = "none")) -->
 
 
-head(colannot)
 
-for ( i in 1:nrow(colannot)) {
-    colannot[i, 'scina'] <- as.character(d[[colannot[i, 'sample']]][[colannot[i, 'flavour']]]@meta.data[colannot[i, 'cell'], 'scina'])
+<!-- ``` -->
+
+<!-- ## Without non-overlapping genes repeats control (biased by transcriptome) -->
+
+<!-- ```{r} -->
+
+<!-- NCELLS = 200 ## cells per run:sample -->
+<!-- NVARIABLE = 20 ## variable repeats features (per run:sample) -->
+
+<!-- cr <- list() -->
+<!-- for (flavour in c('repeats_cellranger', 'repeats_star', 'repeats_featurecounts')) { -->
+<!--     for (run in names(d)[sapply(d, function(x) return(flavour %in% names(x)))]) { -->
+
+<!--         cr[[paste(flavour, run)]] <- data.frame( -->
+<!--             rep = head(VariableFeatures(d[[run]][[flavour]]), NVARIABLE), -->
+<!--             flavour = flavour, -->
+<!--             run = run, -->
+<!--             stringsAsFactors = FALSE) -->
+<!--     }     -->
+<!-- } -->
+
+<!-- cr <- do.call(rbind.data.frame, cr) -->
+<!-- table(cr$flavour, cr$run) -->
+
+<!-- variable <- list() -->
+<!-- for (flavour in c('repeats_cellranger', 'repeats_star', 'repeats_featurecounts')) { -->
+<!--     for (run in names(d)[sapply(d, function(x) return(flavour %in% names(x)))]) { -->
+<!--         idx <- sample(colnames(d[[run]][[flavour]]), size = NCELLS, replace = FALSE) -->
+<!--         variable[[paste(run, flavour, sep = '.')]] <- GetAssayData(d[[run]][[flavour]], -->
+<!--                             slot = 'data')[unique(cr$rep),idx] -->
+<!--     } -->
+<!-- } -->
+
+<!-- foo <- do.call(cbind.data.frame, variable) -->
+
+<!-- colannot <- data.frame(id = colnames(foo), -->
+<!--                        sample = sapply(strsplit(colnames(foo), '.', fixed = TRUE), -->
+<!--                                         function(x) return(x[1])), -->
+<!--                        flavour = sapply(strsplit(colnames(foo), '.', fixed = TRUE), -->
+<!--                                        function(x) return(x[2])), -->
+<!--                        cell = sapply(strsplit(colnames(foo), '.', fixed = TRUE), -->
+<!--                                      function(x) return(x[3])), -->
+<!--                        scina = NA, -->
+<!--                        stringsAsFactors = FALSE) -->
+
+
+<!-- head(colannot) -->
+
+<!-- for ( i in 1:nrow(colannot)) { -->
+<!--     colannot[i, 'scina'] <- as.character(d[[colannot[i, 'sample']]][[colannot[i, 'flavour']]]@meta.data[colannot[i, 'cell'], 'scina']) -->
 
     
-}
+<!-- } -->
 
-rownames(colannot) <- colannot$id
+<!-- rownames(colannot) <- colannot$id -->
 
-table(colannot$scina)
-
-
-## remove any repeat whose annotation by scina is 'unknown'
-colannot <- colannot[colannot$scina != 'unknown',]
-foo <- foo[,colannot$id]
-dim(foo)
-
-## remove any repeat with 0 sd after sampling
-sum(is.infinite(unlist(foo)))
-foo <- foo[apply(foo, 1, sd) > 0,]
-
-```
-
-```{r, fig.height = 20, fig.width = 20}
+<!-- table(colannot$scina) -->
 
 
-newCols <- colorRampPalette(grDevices::rainbow(length(unique(colannot$scina))))
-mycolors <- newCols(length(unique(colannot$scina)))
-names(mycolors) <- unique(colannot$scina)
-mycolors <- list(scina = mycolors)
+<!-- ## remove any repeat whose annotation by scina is 'unknown' -->
+<!-- colannot <- colannot[colannot$scina != 'unknown',] -->
+<!-- foo <- foo[,colannot$id] -->
+<!-- dim(foo) -->
 
-print(pheatmap(foo,
-               color = viridis(100),
-            cluster_rows = TRUE,
-            cluster_cols = TRUE,
-            show_rownames = TRUE,
-            show_colnames = FALSE,
-            clustering_distance_cols = "euclidean",
-            clustering_method = "ward.D2",
-            clustering_distance_rows = "euclidean",
-            fontsize_row = 12,
-            annotation_col = colannot[,c('flavour', 'sample', 'scina')],
-            annotation_colors = mycolors,
-            scale = "none"))
+<!-- ## remove any repeat with 0 sd after sampling -->
+<!-- sum(is.infinite(unlist(foo))) -->
+<!-- foo <- foo[apply(foo, 1, sd) > 0,] -->
+
+<!-- ``` -->
+
+<!-- ```{r, fig.height = 20, fig.width = 20} -->
 
 
+<!-- newCols <- colorRampPalette(grDevices::rainbow(length(unique(colannot$scina)))) -->
+<!-- mycolors <- newCols(length(unique(colannot$scina))) -->
+<!-- names(mycolors) <- unique(colannot$scina) -->
+<!-- mycolors <- list(scina = mycolors) -->
 
-```
+<!-- print(pheatmap(foo, -->
+<!--                color = viridis(100), -->
+<!--             cluster_rows = TRUE, -->
+<!--             cluster_cols = TRUE, -->
+<!--             show_rownames = TRUE, -->
+<!--             show_colnames = FALSE, -->
+<!--             clustering_distance_cols = "euclidean", -->
+<!--             clustering_method = "ward.D2", -->
+<!--             clustering_distance_rows = "euclidean", -->
+<!--             fontsize_row = 12, -->
+<!--             annotation_col = colannot[,c('flavour', 'sample', 'scina')], -->
+<!--             annotation_colors = mycolors, -->
+<!--             scale = "none")) -->
+
+
+
+<!-- ``` -->
 
 # F1s
 
@@ -1291,10 +1289,13 @@ cobra <- list()
 for (rds in params) {
     fn <- list.files(dirname(rds), pattern = '.*cobra.*TRUE.*TRUE.*')
    
-    
-    cobra[[sapply(strsplit(dirname(rds), .Platform$file.sep),
-                  function(x) return(x[6]))]] <- readRDS(file = file.path(dirname(rds), fn))
+    tryCatch({
+        cobra[[sapply(strsplit(dirname(rds), .Platform$file.sep),
+                      function(x) return(x[6]))]] <- readRDS(file = file.path(dirname(rds), fn))
+
+    }, error = function(x) sprintf('caught error %s\n', x)) 
 }
+
 
 cobra <- do.call(rbind.data.frame, cobra)
 ```
@@ -1302,10 +1303,17 @@ cobra <- do.call(rbind.data.frame, cobra)
 ```{r}
 ## some classes are equivalent
 cobra$flavour <- as.character(cobra$flavour)
+
+cobra$flavour[cobra$flavour == 'genes_featurecounts'] <- 'genes_star'
+cobra$flavour[cobra$flavour == 'repeats_featurecounts_unique'] <- 'repeats_star_unique'
+cobra$flavour[cobra$flavour == 'repeats_featurecounts_multi'] <- 'repeats_star_multi'
+
 cobra$flavour[cobra$flavour == 'control_repeats_only_multi'] <- 'repeats_only_multi'
 cobra$flavour[cobra$flavour == 'control_repeats_only_unique'] <- 'repeats_only_unique'
 
 table(cobra$flavour)
+
+cobra$res <- gsub('RNA_snn_res.', 'snn_', cobra$res)
 ```
 
 
@@ -1357,8 +1365,8 @@ Add whether multimappers are allowed
 
 
 ```{r}
-cobra$multimapper <- 'NA'
-
+cobra$multimapper <- NA
+cobra[grepl('alevin', cobra$flavour), 'multimapper'] <- 'alevin'
 cobra[grepl('multi', cobra$flavour), 'multimapper'] <- 'multi'
 cobra[grepl('unique', cobra$flavour), 'multimapper'] <- 'unique'
 
@@ -1369,7 +1377,7 @@ Add whether repeats are overlapping genes or not
 
 ```{r}
 cobra$overlap <- 'overlap_allowed'
-
+cobra[grepl('repeats_alevin', cobra$flavour), 'overlap'] <- 'alevin_decoy'
 cobra[grepl('genes|both', cobra$flavour), 'overlap'] <- 'genes'
 cobra[grepl('only', cobra$flavour), 'overlap'] <- 'no_overlap'
 
@@ -1430,19 +1438,137 @@ ggplot(data = cobra,
 
 ```
 
-## T cells vs Monocytes only
+<!-- ## T cells vs Monocytes only -->
 
-```{r, eval = FALSE}
-ggplot(data = cobra[cobra$cell %in% c('CD14+_monocyte', 'CD16+_monocyte', 'Cytotoxic_T_cell',
-                                      'CD4+_T_cell', 'Plasmacytoid_dendritic_cell') &
-                    cobra$flavour %in% c('genes_cellranger', 'repeats_cellranger',
-                                         '',],      
-    aes(x = res, y =  F1, group=flavour, col = cell)) +
-    geom_point() +
-    facet_grid(id~flavour) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) 
+<!-- ```{r, eval = FALSE} -->
+<!-- ggplot(data = cobra[cobra$cell %in% c('CD14+_monocyte', 'CD16+_monocyte', 'Cytotoxic_T_cell', -->
+<!--                                       'CD4+_T_cell', 'Plasmacytoid_dendritic_cell'),],       -->
+<!--     aes(x = res, y =  F1, group=flavour, col = cell)) + -->
+<!--     geom_point() + -->
+<!--     facet_grid(id~flavour) +  -->
+<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))  -->
+<!-- ``` -->
+
+
+## 
+For each cell type, get the max F1 stratifying by flavour *regardless of the resolution*.
+
+```{r}
+maxF1 <- list()
+cobra$id <- as.factor(cobra$id)
+cobra$flavour <- as.factor(cobra$flavour)
+cobra$cell <- as.factor(cobra$cell)
+tryCatch({
+    ## cobra <- cobra[order(cobra$F1, cobra$cell, decreasing = TRUE),]
+    ## maxf1 <- cobra[0,]
+
+    for (run in levels(cobra$id)) {
+        for (flavour in levels(cobra$flavour)) {
+            for (cell in levels(cobra$cell)) {
+                maxF1[[paste(run, flavour, cell)]] <- c(
+                    run, flavour, cell, max(cobra[cobra$flavour == flavour &
+                                                  cobra$cell == cell &
+                                                  cobra$id == run, 'F1']))
+            }
+        }
+    }
+
+
+    maxF1 <- do.call(rbind.data.frame, maxF1)
+    colnames(maxF1) <- c('run', 'flavour', 'cell', 'max_F1')
+    maxF1$max_F1 <- as.numeric(as.character(maxF1$max_F1))
+    
+    maxF1$cell <- factor(as.character(maxF1$cell),
+                         levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)])))
+}, error = function(x) print(x))
 ```
+
+Harmonize/sort flavour levels
+
+
+```{r}
+## tryCatch({
+## sorting in a more sensible way
+stopifnot(length(setdiff(levels(maxF1$flavour),
+                         c('genes_cellranger', 'genes_alevin',
+                           'genes_star',
+                           'both_unique', 'both_multi', 'both_alevin',
+                           'repeats_cellranger', 'repeats_alevin',
+                           'repeats_bowtie_unique', 'repeats_bowtie_multi',
+                           'repeats_star_unique', 'repeats_star_multi',
+                           'repeats_only_unique', 'repeats_only_multi'))) == 0)
+
+maxF1$flavour <- factor(maxF1$flavour,
+                        levels = c('genes_cellranger', 'genes_alevin',
+                                   'genes_star',
+                                   'both_unique', 'both_multi', 'both_alevin',
+                                   'repeats_cellranger', 'repeats_alevin',
+                                   'repeats_bowtie_unique', 'repeats_bowtie_multi',
+                                   'repeats_star_unique', 'repeats_star_multi',
+                                   'repeats_only_unique', 'repeats_only_multi'))
+
+## table(maxF1$flavour, useNA = 'always')
+## head(maxF1)
+
+```
+
+Add annotations
+
+```{r}
+
+maxF1$analyte <- 'NA'
+maxF1[grepl('genes', maxF1$flavour), 'analyte'] <- 'genes'
+maxF1[grepl('repeats', maxF1$flavour), 'analyte'] <- 'repeats'
+maxF1[grepl('both', maxF1$flavour), 'analyte'] <- 'both'
+
+maxF1$multimapper <- 'NA'
+maxF1[grepl('multi', maxF1$flavour), 'multimapper'] <- 'multi'
+maxF1[grepl('alevin', maxF1$flavour), 'multimapper'] <- 'deduplicated'
+maxF1[grepl('genes|cellranger|unique', maxF1$flavour), 'multimapper'] <- 'unique'
+
+
+
+table(maxF1$analyte, maxF1$multimapper, useNA = 'always')
+
+maxF1$overlap <- 'overlap_allowed'
+maxF1[grepl('repeats_alevin', maxF1$flavour), 'overlap'] <- 'alevin_decoy'
+maxF1[grepl('genes|both', maxF1$flavour), 'overlap'] <- 'genes'
+maxF1[grepl('only', maxF1$flavour), 'overlap'] <- 'no_overlap'
+
+head(maxF1)
+```
+
+```{r}
+
+ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
+    geom_point() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+```
+
+```{r}
+
+ggplot(data = maxF1, aes(x= run, y = max_F1, col = as.factor(analyte),
+                         shape = as.factor(overlap), group = cell)) +
+    geom_point() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    facet_grid( multimapper ~ cell)
+
+```
+
+
+```{r}
+
+ggplot(data = maxF1, aes(x= run, y = max_F1, col = as.factor(cell), group = cell)) +
+    geom_point() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    facet_grid( multimapper ~ overlap) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) 
+
+```
+
 
 # Markers {.tabset}
 
@@ -1472,6 +1598,7 @@ for (rds in params) {
         markers[[fn]] <- markers[[fn]][markers[[fn]]$p_val_adj < 0.05,]
     }
 }
+
 markers <- do.call(rbind.data.frame, markers)
 
 
@@ -1511,7 +1638,7 @@ for (celltype in unique(markers$cluster)) {
 }
 
 
-str(ul)
+## str(ul)
 
 
 ```

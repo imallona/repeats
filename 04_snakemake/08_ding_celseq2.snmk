@@ -203,9 +203,9 @@ rule all:
                        'quants_mat.gz')),
         expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin',
                        'quants_mat.gz')),
-        # expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-        #         regress_ncount = ['TRUE', 'FALSE'],
-        #         regress_nfeature = ['TRUE', 'FALSE']),
+        expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+                regress_ncount = ['TRUE', 'FALSE'],
+                regress_nfeature = ['TRUE', 'FALSE']),
         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
                srr = get_samples(CONF)),
          expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
@@ -219,7 +219,7 @@ rule all:
                        "{srr}.bam.featureCounts.gz"),
                srr = get_samples(CONF),
                multimappers = ['unique_reads', 'multimappers']),
-        expand(op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.fastq.gz"),
+        expand(op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.txt.gz"),
                srr = get_samples(CONF))
 
 
@@ -234,8 +234,8 @@ rule knit_report_celseq_ad_hoc_ding:
         repeats_bowtie_unique = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', 'unique_reads'),        
         repeats_only_multi = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', "multimappers"),
         repeats_only_unique = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', 'unique_reads'),        
-        genes_alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes'),
-        repeats_alevin =op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats')
+        genes_alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
+        repeats_alevin =op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
     params:
         rmd = 'summarize_alevin_multiple_samples.Rmd',
         run_name = RUN_NAME
@@ -371,7 +371,7 @@ rule run_alevin_genes_celseq2:
     --end 3 \
     --umiLength 6 \
     --barcodeLength 6 \
-    --forceCells 564 \
+    --forceCells {params.num_cells} \
     --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
@@ -380,24 +380,7 @@ rule run_alevin_genes_celseq2:
     touch -c {output}
         """
 
-rule umitools_whitelist:
-    input:
-        r1_trim = op.join(BASE, "data", RUN_NAME, "{srr}_1_trim.fastq.gz")
-    output:       
-       whitelist = op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.fastq.gz")
-    params:
-        bc_pattern = BARCODE_PATTERN,
-        num_cells = NUM_CELLS
-    log:
-        op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.log")
-    shell:
-        """
-        umi_tools whitelist --stdin {input.r1_trim} \
-                    --bc-pattern={params.bc_pattern} \
-                    --set-cell-number={params.num_cells} \
-                    --log2stderr > whitelist.txt &> {log}
 
-    """
         
 ## we assume the first 12 reads from read1 are the umis + CB
 # read1: {

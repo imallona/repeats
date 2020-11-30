@@ -113,10 +113,10 @@ coef_var <- function(x){
 
 ```{r justfordebugging, eval = FALSE}
 
-params <- list(identifier = "",
+params <- list(identifier = "celseq2",
                seurat_output = "/home/imallona/tmp/test.rds",
-               repeats_alevin = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/repeats',
-               genes_alevin = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/genes',
+               repeats_alevin = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/repeats/alevin/quants_mat.gz',
+               genes_alevin = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/genes/alevin/quants_mat.gz',
                repeats_star_unique = "/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats/unique_reads", 
                repeats_star_multi = "/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats/multimappers", 
                repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/ding_celseq2/bowtie_repeatome/unique_reads", 
@@ -129,8 +129,8 @@ params <- list(identifier = "",
 
 params <- list(identifier = "seqwell",
                seurat_output = "/home/imallona/tmp/test.rds",
-               repeats_alevin = '/home/imallona/repeats_sc/runs/ding_seqwell/alevin/repeats',
-               genes_alevin = '/home/imallona/repeats_sc/runs/ding_seqwell/alevin/genes',
+               repeats_alevin = '/home/imallona/repeats_sc/runs/ding_seqwell/alevin/repeats/alevin/quants_mat.gz',
+               genes_alevin = '/home/imallona/repeats_sc/runs/ding_seqwell/alevin/genes/alevin/quants_mat.gz',
                repeats_star_unique = "/home/imallona/repeats_sc/runs/ding_seqwell/star_transcriptome/repeats/unique_reads", 
                repeats_star_multi = "/home/imallona/repeats_sc/runs/ding_seqwell/star_transcriptome/repeats/multimappers", 
                repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/ding_seqwell/bowtie_repeatome/unique_reads", 
@@ -145,48 +145,24 @@ params <- list(identifier = "seqwell",
 
 ```
 
-```{r}
+```{r start}
 d <- list()
 ```
 
 List samples
 
 ```{r}
-counts <- list()
 
-genes_fns <- list.files(params$genes_alevin, pattern = 'quants_mat.gz',
-                                  recursive = TRUE)
-
-for (run in genes_fns) {
-    counts[[run]] <- tximeta::tximeta(coldata = data.frame(
-                                names = "genes",
-                                files = file.path(params$genes_alevin, run),
-                                stringsAsFactors = FALSE
-                                ), type = "alevin")
-
-    counts[[run]] <-  as.data.frame(assays(counts[[run]])$counts)
-    colnames(counts[[run]]) <- paste(gsub('/alevin', '', dirname(run)), colnames(counts[[run]]),
-                                     sep = "_")
-
-    genes <- rownames(counts[[run]])
-}
-
-counts <- do.call(cbind.data.frame, counts)
-## str(counts)
-rownames(counts) <- genes
-
-colnames(counts) <- gsub('quants_mat.gz.', '', basename(colnames(counts)))
+counts <- as.data.frame(assays(tximeta::tximeta(coldata = data.frame(
+                               names = "genes",
+                               files = params$genes_alevin,
+                               stringsAsFactors = FALSE), type = "alevin"))$counts)
 ```
 
 Annotate genes
 
-```{r}
+```{r annotate}
 
-## annot_fn <- tempfile(pattern = "file", tmpdir = tempdir(), fileext = "")
-## ## querying ensembl biomart only once
-## if (!exists(annot_fn)) {
-
-## }
 
 annot <- list()
 
@@ -239,7 +215,7 @@ grep('-MT-', rownames(d$genes_alevin), value = TRUE)
 
 Repeats alevin
 
-```{r}
+```{r multiplealevin, eval = FALSE}
 
 counts <- list()
 
@@ -272,6 +248,17 @@ colnames(counts) <- gsub('quants_mat.gz.', '', basename(colnames(counts)))
 counts[1:3, 1:3]
 ```
 
+
+```{r, eval = TRUE}
+counts <- as.data.frame(assays(tximeta::tximeta(coldata = data.frame(
+                                names = "repeats",
+                                files = params$repeats_alevin,
+                                stringsAsFactors = FALSE
+                                ), type = "alevin"))$counts)
+
+```
+
+
 ```{r}
 
 d$repeats_alevin <- CreateSeuratObject(counts =  counts,
@@ -283,7 +270,7 @@ d$repeats_alevin <- CreateSeuratObject(counts =  counts,
                                        names.delim = "_",
                                        meta.data = NULL)
 
-rm(counts, genes)
+rm(counts)
 
 
 
@@ -301,13 +288,13 @@ process_featurecounts_grouped_by_cb_umi <- function(fn, id = "",
     counts <- data.table::fread(fn, header = FALSE)
     ## cb first, umi second
 
-    print(head(counts))
+    ## print(head(counts))
     tryCatch({
         colnames(counts) <- c('cb', 'umi', 'gene')
     }, error = function(x) print(paste(head(counts, 1), collapse = ";")))
 
-    ## counts$cb <- gsub('[[:digit:].]+', '', counts$cb)
-    counts$cb <- paste(id, counts$cb, sep = "_")
+
+    ## counts$cb <- paste(id, counts$cb, sep = "_") # not needed
 
     if (length(accepted_barcodes) > 1) {
         counts2 <- counts[counts$cb %in% accepted_barcodes,]
@@ -327,6 +314,13 @@ process_featurecounts_grouped_by_cb_umi <- function(fn, id = "",
     wide <- wide[,-1]
     rm(counts)
 
+    ## add missing accepted barcodes with 0 values for all genes/repeats
+    missing <- setdiff(accepted_barcodes, colnames(wide))
+    wide[,missing] <- 0
+
+    ## ordering
+    wide <- wide[,accepted_barcodes] 
+                                    
     ## annotation needed if yes
     if (annotate_genes) {
         
@@ -404,17 +398,29 @@ for (item in grep('repeats|genes',
         ## colnames(tmp[[id]]) <- paste(id, colnames(tmp[[id]]), sep = '_')
         
     }
-    ## merge them
-    d[[item]]  <- Reduce(
-        function(x, y) merge(x, y, by = "id", all = TRUE),
-        lapply(tmp, function(x) { x$id <- rownames(x); x }))
+    ## ## merge them
+    ## d[[item]]  <- Reduce(
+    ##     function(x, y) merge(x, y, by = "id", all = TRUE),
+    ##     lapply(tmp, function(x) { x$id <- rownames(x); x }))
+
+    ## rather than merge them, sum them
+    genenames <-  rownames(tmp[[1]])
+    cbs <- colnames(d$genes_alevin)
+    d[[item]] <- data.frame(matrix(0,
+                                   nrow = length(genenames),
+                                   ncol = length(cbs)),
+                            row.names = genenames)
+    colnames(d[[item]]) <- cbs
+    for (id in names(tmp)) {
+        d[[item]] <- d[[item]] + tmp[[id]][genenames, cbs]
+    }
 
     d[[item]][is.na(d[[item]])] <- 0
 
-    rownames(d[[item]]) <- d[[item]]$id
+    rownames(d[[item]]) <- genenames
     
     d[[item]] <- CreateSeuratObject(
-        d[[item]][,-1],
+        d[[item]],
         project = item,
         assay = "RNA",
         min.cells = 0,
@@ -438,7 +444,8 @@ d
 GetAssayData(d$repeats_alevin)[1:3, 1:3]
 GetAssayData(d$genes_alevin)[1:3, 1:3]
 GetAssayData(d$genes_featurecounts)[1:3, 1:3]
-GetAssayData(d$repeats_star_unique)[1:3, 1:3]
+GetAssayData(d$repeats_star_unique)[1:30, 1:3]
+
 ```
 
 # Basic Seurat processing
@@ -599,7 +606,14 @@ for (item in names(d)) {
 
 ## Dimred PCA {.tabset}
 
+
+```{r debug}
+saveRDS(object =d, file = params$seurat_output) # todo remove
+
+```
+
 ```{r, message = FALSE, results ='asis'}
+
 
 
 NUM_PCS <- 1:20
