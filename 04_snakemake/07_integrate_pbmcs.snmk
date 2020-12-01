@@ -26,7 +26,10 @@ rule integration_pbmcs_10x_plus_smartseq2:
         c2 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
         s1 = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/pbmcs_smartseq2_ding_pmbc_smartseq2_regress_nCount_FALSE_nFeature_FALSE.rds',
         c3 = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
-        c4 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds'
+        c4 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
+        celseq2 = '/home/imallona/repeats_sc/runs/ding_celseq2/ding_celseq2_pmbc_celseq2_regress_nCount_FALSE_nFeature_FALSE.rds',
+        dropseq = '/home/imallona/repeats_sc/runs/ding_dropseq/ding_dropseq_pmbc_dropseq_regress_nCount_FALSE_nFeature_FALSE.rds',
+        seqwell = '/home/imallona/repeats_sc/runs/ding_seqwell/ding_seqwell_pmbc_seqwell_regress_nCount_FALSE_nFeature_FALSE.rds',
     params:
         rmd = 'integrate_runs_pbmcs.Rmd'
     output:
@@ -41,6 +44,9 @@ rule integration_pbmcs_10x_plus_smartseq2:
              chromium2= \"{input.c2}\", 
              chromium3 = \"{input.c3}\",
              chromium4 = \"{input.c4}\",
-             smartseq1 = \"{input.s1}\"))' &> {log}
+             smartseq1 = \"{input.s1}\",
+             celseq2 = \"{input.celseq2}\",
+             dropseq = \"{input.dropseq}\",
+             seqwell = \"{input.seqwell}\" ))' &> {log}
         """
 
