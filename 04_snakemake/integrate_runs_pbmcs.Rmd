@@ -197,6 +197,21 @@ params <- list( chromium1 = '/home/imallona/repeats_sc/runs/pbmc8k/pbmc8k_pmbc_c
 
 
 ```{r}
+annot <- read.table(text="id,type,origin
+pbmc8k,chromium_v2,tenx
+5k_pbmc_v3,chromium_v3,tenx
+pbmc_10k_v3,chromium_v3,tenx
+pbmcs_smartseq2_ding,smartseq2,ding
+frozen_pbmc_donor_a,chromium_v1,tenx
+ding_dropseq,dropseq,ding
+ding_celseq2,celseq2,ding
+ding_seqwell,seqwell,ding", sep = ",", header = TRUE)
+
+rownames(annot) <- annot$id
+```
+
+
+```{r}
 d <- list()
 ```
 
@@ -226,9 +241,15 @@ for (rds in params) {
 ## name harmonization
 for (dataset in names(d)) {
     d[[dataset]]$repeats_star_unique <- d[[dataset]]$repeats_featurecounts_unique
+    d[[dataset]]$repeats_featurecounts_unique <- NULL
     d[[dataset]]$repeats_star_multi <- d[[dataset]]$repeats_featurecounts_multi
+     d[[dataset]]$repeats_featurecounts_multi <- NULL
     d[[dataset]]$repeats_only_unique <- d[[dataset]]$control_repeats_only_unique
-    d[[dataset]]$repeats_multi_unique <- d[[dataset]]$control_repeats_multi_unique
+    d[[dataset]]$control_repeats_only_unique <- NULL
+    d[[dataset]]$repeats_only_multi <- d[[dataset]]$control_repeats_only_multi
+    d[[dataset]]$control_repeats_only_multi <- NULL
+     d[[dataset]]$genes_star <- d[[dataset]]$genes_featurecounts
+    d[[dataset]]$genes_featurecounts <- NULL
 }
 ```
 
@@ -250,15 +271,804 @@ for (dataset in names(d)) {
 }
 
 fd <- do.call(rbind.data.frame, fd)
-head(fd)
 colnames(fd) <- c('dataset',
                   'flavour',
                   'num_cells',
-                  'avg_num_reads_read_per_cell',
+                  'avg_num_reads_per_cell',
                   'avg_num_genes_per_cell')
 
-fd
+for (item in c('num_cells',
+               'avg_num_reads_per_cell',
+               'avg_num_genes_per_cell')) {
+    fd[,item] <- as.numeric(as.character(fd[,item]))
+}
+
 ```
+
+
+```{r}
+
+fd <- merge(fd, annot, by.x = 'dataset', by.y = 'id', all = TRUE)
+```
+
+```{r, fig.width =8, fig.height = 8}
+
+ggplot(fd, aes( y=num_cells, x=flavour, color = type)) + 
+    geom_point() +
+    scale_y_continuous(trans='log10') +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    facet_wrap(~dataset)
+```
+
+
+```{r, fig.width =8, fig.height = 8}
+
+ggplot(fd, aes( y=avg_num_reads_per_cell, x=flavour, color = type)) + 
+    geom_point() +
+    scale_y_continuous(trans='log10') +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    facet_wrap(~dataset)
+```
+
+```{r, fig.width =8, fig.height = 8}
+
+ggplot(fd, aes( y=avg_num_genes_per_cell, x=flavour, color = type)) + 
+    geom_point() +
+    scale_y_continuous(trans='log10') +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    facet_wrap(~dataset)
+```
+
+
+SCINA annotations/plot
+
+
+```{r}
+pal <- read.table(text = 'identity,color
+CD4+_T_cell,"#A6CEE3"
+Cytotoxic_T_cell,"#1F78B4"
+B_cell,"#B2DF8A"
+Natural_killer_cell,"#33A02C"
+CD14+_monocyte,"#FB9A99"
+CD16+_monocyte,"#E31A1C"
+Dendritic_cell,"#FDBF6F"
+Plasmacytoid_dendritic_cell,"#FF7F00"
+Plasma_cell,"#CAB2D6"
+Platelet,"#6A3D9A"
+unknown,"#C0C0C0"', header = TRUE, sep = ',', stringsAsFactors = FALSE)
+
+rownames(pal) <- pal$identity
+```
+
+
+```{r}
+
+scinas <- list()
+i <- 1
+for (dataset in names(d)) {
+     flavours <- grep('genes', names(d[[dataset]]), value = TRUE)
+     for (flavour in flavours) {
+         for (identity in unique(as.character(d[[dataset]][[flavour]]@meta.data$scina))) {
+             scinas[[i]] <- c(dataset, flavour, identity,
+                              sum(d[[dataset]][[flavour]]@meta.data$scina == identity))
+             i <- i + 1
+         }
+     }
+}
+
+scinas <- do.call(rbind.data.frame, scinas)
+colnames(scinas) <- c('dataset', 'flavour', 'identity', 'count')
+scinas$count <- as.numeric(as.character(scinas$count))
+```
+
+
+```{r, fig.width = 10, fig.height = 10}
+ggplot(scinas, aes(y = count, x = flavour, fill = identity)) + 
+    geom_bar(position="fill", stat="identity") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    ylab('proportion of cells') +
+    facet_wrap(~dataset) +
+    scale_fill_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+```
+
+<!-- ```{r} -->
+
+<!-- ``` -->
+
+# F1s
+
+```{r}
+cobra <- list()
+
+
+for (rds in params) {
+    fn <- list.files(dirname(rds), pattern = '.*cobra.*TRUE.*TRUE.*')
+   
+    tryCatch({
+        cobra[[sapply(strsplit(dirname(rds), .Platform$file.sep),
+                      function(x) return(x[6]))]] <- readRDS(file = file.path(dirname(rds), fn))
+
+    }, error = function(x) sprintf('caught error %s\n', x)) 
+}
+
+
+cobra <- do.call(rbind.data.frame, cobra)
+```
+
+```{r}
+## some classes are equivalent
+cobra$flavour <- as.character(cobra$flavour)
+
+cobra$flavour[cobra$flavour == 'genes_featurecounts'] <- 'genes_star'
+cobra$flavour[cobra$flavour == 'repeats_featurecounts_unique'] <- 'repeats_star_unique'
+cobra$flavour[cobra$flavour == 'repeats_featurecounts_multi'] <- 'repeats_star_multi'
+
+cobra$flavour[cobra$flavour == 'control_repeats_only_multi'] <- 'repeats_only_multi'
+cobra$flavour[cobra$flavour == 'control_repeats_only_unique'] <- 'repeats_only_unique'
+
+table(cobra$flavour)
+
+cobra$res <- gsub('RNA_snn_res.', 'snn_', cobra$res)
+```
+
+
+```{r}
+pal <- read.table(text = 'identity,color
+CD4+_T_cell,"#A6CEE3"
+Cytotoxic_T_cell,"#1F78B4"
+B_cell,"#B2DF8A"
+Natural_killer_cell,"#33A02C"
+CD14+_monocyte,"#FB9A99"
+CD16+_monocyte,"#E31A1C"
+Dendritic_cell,"#FDBF6F"
+Plasmacytoid_dendritic_cell,"#FF7F00"
+Plasma_cell,"#CAB2D6"
+Platelet,"#6A3D9A"
+unknown,"#C0C0C0"', header = TRUE, sep = ',', stringsAsFactors = FALSE)
+
+rownames(pal) <- pal$identity
+```
+
+
+```{r, fig.width = 12, fig.height = 6}
+
+ggplot(data = cobra,      
+    aes(x = res, y =  F1, group=flavour, col = cell)) +
+    geom_point() +
+    facet_grid(id~flavour) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) 
+
+```
+
+Add whether the analyte is repeat, genes, or both
+
+
+```{r}
+cobra$analyte <- NA
+cobra[grepl('genes', cobra$flavour), 'analyte'] <- 'genes'
+cobra[grepl('repeats', cobra$flavour), 'analyte'] <- 'repeats'
+cobra[grepl('both', cobra$flavour), 'analyte'] <- 'both'
+
+
+table(cobra$analyte, useNA = 'always')
+
+```
+
+
+Add whether multimappers are allowed
+
+
+```{r}
+cobra$multimapper <- NA
+cobra[grepl('alevin', cobra$flavour), 'multimapper'] <- 'alevin'
+cobra[grepl('multi', cobra$flavour), 'multimapper'] <- 'multi'
+cobra[grepl('unique', cobra$flavour), 'multimapper'] <- 'unique'
+
+table(cobra$multimapper, useNA = 'always')
+```
+
+Add whether repeats are overlapping genes or not
+
+```{r}
+cobra$overlap <- 'overlap_allowed'
+cobra[grepl('repeats_alevin', cobra$flavour), 'overlap'] <- 'alevin_decoy'
+cobra[grepl('genes|both', cobra$flavour), 'overlap'] <- 'genes'
+cobra[grepl('only', cobra$flavour), 'overlap'] <- 'no_overlap'
+
+
+table(cobra$overlap, useNA = 'always')
+```
+
+
+
+```{r, fig.width = 12, fig.height = 6}
+
+ggplot(data = cobra,      
+    aes(x = res, y =  F1, group=flavour, col = flavour)) +
+    geom_point() +
+    facet_grid(id~cell) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    xlab('unsup. clust. resolution') +
+    ylab('F1 score')
+
+```
+
+
+```{r, fig.width = 12, fig.height = 6}
+
+ggplot(data = cobra,      
+    aes(x = res, y =  F1, group=flavour, col = analyte)) +
+    geom_point(aes(shape= analyte, col = analyte)) +
+    facet_grid(id~cell) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    xlab('unsup. clust. resolution') +
+    ylab('F1 score')
+
+```
+
+
+```{r, fig.width = 12, fig.height = 6}
+
+ggplot(data = cobra,      
+       aes(x = res, y =  F1, group=flavour, col = multimapper)) +
+    geom_point(aes(shape= multimapper, col = multimapper)) +
+    facet_grid(id~cell) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    xlab('unsup. clust. resolution') +
+    ylab('F1 score')
+
+```
+
+
+```{r, fig.width = 12, fig.height = 6}
+
+ggplot(data = cobra,      
+    aes(x = res, y =  F1, group=flavour, col = overlap)) +
+    geom_point(aes(shape= overlap, col = overlap)) +
+    facet_grid(id~cell) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    xlab('unsup. clust. resolution') +
+    ylab('F1 score')
+
+```
+
+<!-- ## T cells vs Monocytes only -->
+
+<!-- ```{r, eval = FALSE} -->
+<!-- ggplot(data = cobra[cobra$cell %in% c('CD14+_monocyte', 'CD16+_monocyte', 'Cytotoxic_T_cell', -->
+<!--                                       'CD4+_T_cell', 'Plasmacytoid_dendritic_cell'),],       -->
+<!--     aes(x = res, y =  F1, group=flavour, col = cell)) + -->
+<!--     geom_point() + -->
+<!--     facet_grid(id~flavour) +  -->
+<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))  -->
+<!-- ``` -->
+
+
+##  For each cell type, get the max F1 stratifying by flavour *regardless of the resolution*.
+
+```{r, message = FALSE}
+
+maxF1 <- list()
+cobra$id <- as.factor(cobra$id)
+cobra$flavour <- as.factor(cobra$flavour)
+cobra$cell <- as.factor(cobra$cell)
+tryCatch({
+    ## cobra <- cobra[order(cobra$F1, cobra$cell, decreasing = TRUE),]
+    ## maxf1 <- cobra[0,]
+
+    for (run in levels(cobra$id)) {
+        for (flavour in levels(cobra$flavour)) {
+            for (cell in levels(cobra$cell)) {
+                curr <- max(cobra[cobra$flavour == flavour &
+                                                  cobra$cell == cell &
+                                                  cobra$id == run, 'F1'])
+                if (!is.finite(curr)) curr <- NA
+                maxF1[[paste(run, flavour, cell)]] <- c(
+                    run, flavour, cell, curr)
+            }
+        }
+    }
+
+
+    maxF1 <- do.call(rbind.data.frame, maxF1)
+    colnames(maxF1) <- c('run', 'flavour', 'cell', 'max_F1')
+    maxF1$max_F1 <- as.numeric(as.character(maxF1$max_F1))
+    
+    maxF1$cell <- factor(as.character(maxF1$cell),
+                         levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)])))
+}, error = function(x) print(x))
+```
+
+Harmonize/sort flavour levels
+
+
+```{r}
+## tryCatch({
+## sorting in a more sensible way
+stopifnot(length(setdiff(levels(maxF1$flavour),
+                         c('genes_cellranger', 'genes_alevin',
+                           'genes_star',
+                           'both_unique', 'both_multi', 'both_alevin',
+                           'repeats_cellranger', 'repeats_alevin',
+                           'repeats_bowtie_unique', 'repeats_bowtie_multi',
+                           'repeats_star_unique', 'repeats_star_multi',
+                           'repeats_only_unique', 'repeats_only_multi'))) == 0)
+
+maxF1$flavour <- factor(maxF1$flavour,
+                        levels = c('genes_cellranger', 'genes_alevin',
+                                   'genes_star',
+                                   'both_unique', 'both_multi', 'both_alevin',
+                                   'repeats_cellranger', 'repeats_alevin',
+                                   'repeats_bowtie_unique', 'repeats_bowtie_multi',
+                                   'repeats_star_unique', 'repeats_star_multi',
+                                   'repeats_only_unique', 'repeats_only_multi'))
+
+
+maxF1$run <-  factor(maxF1$run,
+                     levels = c("frozen_pbmc_donor_a",
+                                "pbmc8k",
+                                "5k_pbmc_v3",
+                                "pbmc_10k_v3",   
+                                "ding_celseq2",
+                                "ding_dropseq",
+                                "ding_seqwell",                                     
+                                "pbmcs_smartseq2_ding"))
+
+## table(maxF1$flavour, useNA = 'always')
+## head(maxF1)
+
+```
+
+Add annotations
+
+```{r}
+
+maxF1$analyte <- 'NA'
+maxF1[grepl('genes', maxF1$flavour), 'analyte'] <- 'genes'
+maxF1[grepl('repeats', maxF1$flavour), 'analyte'] <- 'repeats'
+maxF1[grepl('both', maxF1$flavour), 'analyte'] <- 'both'
+
+maxF1$analyte <- factor(maxF1$analyte, levels = c('genes', 'both', 'repeats'))
+
+maxF1$multimapper <- 'NA'
+maxF1[grepl('multi', maxF1$flavour), 'multimapper'] <- 'multi'
+maxF1[grepl('alevin', maxF1$flavour), 'multimapper'] <- 'deduplicated'
+maxF1[grepl('genes|cellranger|unique', maxF1$flavour), 'multimapper'] <- 'unique'
+
+
+
+table(maxF1$analyte, maxF1$multimapper, useNA = 'always')
+
+maxF1$overlap <- 'overlap_allowed'
+maxF1[grepl('repeats_alevin', maxF1$flavour), 'overlap'] <- 'alevin_decoy'
+maxF1[grepl('genes|both', maxF1$flavour), 'overlap'] <- 'genes'
+maxF1[grepl('only', maxF1$flavour), 'overlap'] <- 'no_overlap'
+
+head(maxF1)
+```
+
+```{r, fig.width = 5, fig.height = 4}
+
+ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
+    geom_point() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+```
+
+
+```{r, fig.width = 10, fig.height = 6}
+
+ggplot(data = maxF1[maxF1$analyte %in% c('genes', 'repeats'),],
+       aes(x= overlap, y = max_F1, col = cell, group = cell)) +
+    geom_point() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    facet_grid(cell~run) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+```
+
+```{r, fig.width = 10, fig.height = 4}
+
+ggplot(data = maxF1[maxF1$analyte %in% c('genes', 'repeats'),],
+       aes(x= overlap, y = max_F1, col = cell, group = cell)) +
+    geom_point() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    facet_grid(analyte~run) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+```
+
+
+```{r, fig.width = 16, fig.height = 8}
+
+ggplot(data = maxF1, aes(x= run, y = max_F1, col = as.factor(analyte),
+                         shape = as.factor(overlap), group = cell)) +
+    geom_point() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    facet_grid( multimapper ~ cell)
+
+```
+
+
+```{r, fig.width = 10, fig.height = 5}
+
+ggplot(data = maxF1, aes(x= run, y = max_F1, col = as.factor(cell), group = cell)) +
+    geom_point() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    facet_grid( multimapper ~ overlap) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) 
+
+```
+
+```{r, fig.width = 10, fig.height = 10}
+ggplot(data = maxF1[maxF1$analyte %in% c('genes', 'repeats'),],
+        aes(x= overlap, y = max_F1, col = cell, group = cell)) +
+    geom_point() +
+     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+     facet_grid(cell~run) +
+     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+```
+
+```{r, fig.width = 7, fig.height = 5}
+ggplot(data = maxF1,
+       aes(x= overlap, y = max_F1, col = analyte, group = cell,
+           shape = analyte)) +
+    geom_point() +
+     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+     facet_grid(run~cell)
+```
+
+# F1s dotplot and heatmap
+
+```{r}
+
+## text_size <- 1
+axels_col <- 'black'
+axes_col <- ifelse(grepl('both', levels(maxF1$flavour)), 'red', 'black')
+
+```
+
+```{r, fig.width = 7, fig.height = 5}
+ggplot(data = maxF1,
+       aes(x= flavour, y = max_F1, col = cell, group = cell, shape = analyte)) +
+    facet_grid(~run) +
+    geom_point(size = 2) +
+    scale_y_continuous(trans = 'sqrt') +
+    ## scale_shape_manual(values=c(0, 4, 1)) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, colour = axes_col)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) 
+
+```
+
+
+
+
+
+```{r, fig.width =9, fig.height = 5}
+
+maxF1 %>%
+    ggplot(aes(flavour, run,  fill = max_F1)) +
+    geom_tile(aes(fill=max_F1)) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, colour = axes_col)) +
+    facet_wrap(~cell, ncol = 5) +
+    ylab('dataset') +
+    xlab('method') +
+    scale_fill_gradientn(colours = c("white",  "blue", "red"),
+                         values = c(0, 0.5, 1)) 
+    ## geom_text(data=maxF1, aes(flavour, run, label = max_F1))
+
+```
+
+
+# Markers {.tabset}
+
+For each sample, each flavour, and each celltype, get the significant markers. Then, look for overlaps.
+
+
+```{r}
+markers <- list()
+
+for (rds in params) {    
+    ## the params are RDS objects from Seurat
+    ## aris[[sapply(strsplit(dirname(rds), .Platform$file.sep),
+    ##       function(x) return(x[6]))]] <- list()
+    fns <- list.files(dirname(rds), pattern = 'markers.*TRUE.*TRUE.*rds')
+    for (fn in fns) {
+        curr_nest <- readRDS(file.path(dirname(rds), fn))
+        for (item in names(curr_nest)) {
+            curr_nest[[item]]$flavour <- item
+            curr_nest[[item]]$dataset <- sapply(strsplit(dirname(rds), '/'),
+                                                function(x) return(x[6]))
+        }
+
+        curr_nest <- lapply(curr_nest, function(x) x %>%
+                                                   group_by(cluster))
+        
+        markers[[fn]] <- do.call(rbind.data.frame, curr_nest)
+        markers[[fn]] <- markers[[fn]][markers[[fn]]$p_val_adj < 0.05,]
+    }
+}
+
+markers <- do.call(rbind.data.frame, markers)
+
+
+colnames(markers)
+table(markers$cluster)
+table(markers$flavour)
+table(markers$dataset)
+```
+
+
+```{r, fig.width = 7, fig.height=6}
+
+markers <- as.data.frame(markers)
+
+
+for (celltype in unique(markers$cluster)) {
+    cat('## ', celltype, '\n\n')
+    ul <- list()
+    for (dataset in unique(markers[markers$cluster == celltype, 'dataset'])) {
+
+        for (flavour in grep('repeats', unique(markers[ markers$cluster == celltype &
+                                                        markers$dataset == dataset, 'flavour']),
+                             value = TRUE)) {
+                    
+            ul[[paste(celltype, dataset, flavour, sep = "_")]] <- markers[
+                markers$cluster == celltype &
+                markers$dataset == dataset &
+                markers$flavour == flavour, 'gene']
+        }
+    }
+    print(upset(fromList(ul), nsets = 10,  text.scale = 0.8))
+    grid.text(paste(celltype) ,x = 0.65, y=0.95, gp=gpar(fontsize = 10))
+    
+    ## rm(ul)
+    cat('\n\n')
+
+}
+
+
+## str(ul)
+
+
+```
+
+# Markers II {.tabset}
+
+Per celltype, concordance
+
+```{r, fig.width =8, fig.height=5}
+
+
+ul <- list()
+for (celltype in unique(markers$cluster)) {
+    cat('## ', celltype, '\n\n')
+
+   
+    for (flavour in unique(markers[markers$cluster == celltype, 'flavour'])) {
+        ul <- list()
+        for (dataset in unique(markers[markers$cluster == celltype &
+                                     markers$flavour == flavour, 'dataset'])) {
+
+            ul[[paste(dataset, flavour, sep = "_")]] <- markers[
+                markers$flavour == flavour  &
+                markers$cluster == celltype &
+                markers$dataset == dataset, 'gene']
+   
+        
+        }
+        ## str(ul)
+        
+        print(upset(fromList(ul), nsets = length(ul)))
+        grid.text(paste(celltype, flavour) ,x = 0.65, y=0.95, gp=gpar(fontsize = 10))
+
+    cat('\n\n')
+
+    }
+}
+
+
+```
+
+# Markers III {.tabset}
+
+By celltype, no matter which method
+
+```{r, fig.width =6, fig.height=4}
+
+
+ul <- list()
+for (celltype in unique(markers$cluster)) {
+    cat('## ', celltype, '\n\n')
+    
+    ul[[celltype]] <- NULL
+    for (dataset in unique(markers[markers$cluster == celltype, 'dataset'])) {
+
+        print(dataset)
+            
+        ul[[dataset]] <- unique(c(ul[[celltype]], markers[ grepl('repeats', markers$flavour) &
+                                                             markers$cluster == celltype &
+                                                             markers$dataset == dataset, 'gene']))
+
+         
+    }
+    
+   
+    print(upset(fromList(ul), nsets  = length(ul)))
+    grid.text(paste(celltype) ,x = 0.65, y=0.95, gp=gpar(fontsize = 10))
+    cat('\n\n')
+}
+
+
+
+
+```
+
+# Markers IV {.tabset}
+
+By celltype, method influence
+
+```{r, fig.width = 8, fig.height=16}
+
+
+
+for (celltype in 'CD14+_monocyte') {
+    cat('## ', celltype, '\n\n')
+    
+
+    for (dataset in unique(markers[markers$cluster == celltype, 'dataset'])) {
+
+        ul <- list()
+        for (flavour in unique(markers[markers$cluster == celltype &
+                                     markers$dataset == dataset, 'flavour'])) {
+            
+            ul[[paste(dataset, flavour)]] <-  markers[markers$flavour == flavour &
+                                      markers$cluster == celltype &
+                                      markers$dataset == dataset, 'gene']
+
+        }
+
+        print(upset(fromList(ul), nsets  = length(ul)))
+        grid.text(paste(celltype, dataset) ,x = 0.65, y=0.95, gp=gpar(fontsize = 10))
+        cat('\n\n')
+
+    }
+}
+
+
+
+
+
+
+```
+
+
+# Markers V
+
+```{r, fig.width =12, fig.height=5}
+ft <- as.data.frame(table(markers[markers$cluster == 'CD14+_monocyte', 'gene']))
+
+ft <- ft[order(ft$Freq, decreasing = TRUE),]
+head(ft)
+selected <- as.character(head(ft, 20)$Var1)
+
+
+## get cpms from the seurat object, only 5 cells (first 5 indexed)
+foo <- list()
+for (item in names(d)) {
+    ## foo <- list()
+    for (flavour in grep('repeats', names(d[[item]]), value = TRUE)) {
+        tmp <- as.data.frame(FetchData(d[[item]][[flavour]],
+                                       vars = selected,
+                                       slot = 'data'))[1:5,]
+        tmp$cell <- rownames(tmp)
+
+        
+        tmp <- merge(d[[item]][[flavour]]@meta.data[, c('cell', 'scina')],
+                     tmp, by = 'cell', all.x = TRUE)
+        rownames(tmp) <- tmp$cell
+        tmp <- melt(tmp, id.vars = c('cell', 'scina'))
+        tmp$flavour <- flavour
+        tmp$dataset <-  item
+        foo[[paste(item, flavour)]] <- tmp
+        
+        
+    }
+    ## foo <- do.call(rbind.data.frame, foo)
+}
+
+foo <- do.call(rbind.data.frame, foo)
+head(foo)
+
+
+print(ggplot(foo[foo$scina %in% c('CD14+_monocyte', 'CD16+_monoctye', 'CD4+_T_cell'),],
+             aes(x = variable, y = value, fill = flavour)) + 
+      geom_boxplot() +
+      scale_y_continuous(trans='log10') +
+      scale_fill_discrete(drop=FALSE) +
+      facet_grid(dataset ~ scina) +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+
+
+```
+
+# Cluster techniques and flavours and celltypes?
+
+# Add bulk
+
+```{r}
+bulk <- readRDS('/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_de.rds')
+str(bulk)
+names(bulk)
+
+## samplemonocyte-sampletcell
+bulk_yardstick <- bulk[['repeats_star_multi']][[1]]
+selected <- rownames(bulk_yardstick[bulk_yardstick$FDR < 0.05 & abs(bulk_yardstick$logFC) >= 2,])
+selected <- head(selected, 10)
+
+
+```
+
+
+```{r, fig.width =12, fig.height=5}
+
+## get cpms from the seurat object, only 5 cells (first 5 indexed)
+foo <- list()
+for (item in names(d)) {
+    ## foo <- list()
+    for (flavour in grep('repeats', names(d[[item]]), value = TRUE)) {
+        tmp <- as.data.frame(FetchData(d[[item]][[flavour]],
+                                       vars = selected,
+                                       slot = 'data'))[1:5,]
+        tmp$cell <- rownames(tmp)
+
+        
+        tmp <- merge(d[[item]][[flavour]]@meta.data[, c('cell', 'scina')],
+                     tmp, by = 'cell', all.x = TRUE)
+        rownames(tmp) <- tmp$cell
+
+        tmp <- melt(tmp, id.vars = c('cell', 'scina'))
+        tmp <- tmp[grepl('T_cell|monocyte', tmp$scina),]
+        tmp$flavour <- flavour
+        tmp$dataset <-  item
+        foo[[paste(item, flavour)]] <- tmp
+        
+        
+    }
+    ## foo <- do.call(rbind.data.frame, foo)
+}
+
+foo <- do.call(rbind.data.frame, foo)
+head(foo)
+foo$scina <- as.character(foo$scina)
+table(foo$scina)
+
+print(ggplot(foo,
+             aes(x = variable, y = value, fill = flavour)) + 
+      geom_boxplot() +
+      scale_fill_discrete(drop=FALSE) +
+      facet_grid(dataset ~ scina) +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+
+```
+
+# Timestamp
+
+```{r sessionInfo, cache = FALSE}
+date()
+sessionInfo()
+devtools::session_info()
+
+```
+
+
+
 
 
 <!-- # Most variable repeats cellranger {.tabset} -->
@@ -1279,595 +2089,4 @@ fd
 
 
 <!-- ``` -->
-
-# F1s
-
-```{r}
-cobra <- list()
-
-
-for (rds in params) {
-    fn <- list.files(dirname(rds), pattern = '.*cobra.*TRUE.*TRUE.*')
-   
-    tryCatch({
-        cobra[[sapply(strsplit(dirname(rds), .Platform$file.sep),
-                      function(x) return(x[6]))]] <- readRDS(file = file.path(dirname(rds), fn))
-
-    }, error = function(x) sprintf('caught error %s\n', x)) 
-}
-
-
-cobra <- do.call(rbind.data.frame, cobra)
-```
-
-```{r}
-## some classes are equivalent
-cobra$flavour <- as.character(cobra$flavour)
-
-cobra$flavour[cobra$flavour == 'genes_featurecounts'] <- 'genes_star'
-cobra$flavour[cobra$flavour == 'repeats_featurecounts_unique'] <- 'repeats_star_unique'
-cobra$flavour[cobra$flavour == 'repeats_featurecounts_multi'] <- 'repeats_star_multi'
-
-cobra$flavour[cobra$flavour == 'control_repeats_only_multi'] <- 'repeats_only_multi'
-cobra$flavour[cobra$flavour == 'control_repeats_only_unique'] <- 'repeats_only_unique'
-
-table(cobra$flavour)
-
-cobra$res <- gsub('RNA_snn_res.', 'snn_', cobra$res)
-```
-
-
-```{r}
-pal <- read.table(text = 'identity,color
-CD4+_T_cell,"#A6CEE3"
-Cytotoxic_T_cell,"#1F78B4"
-B_cell,"#B2DF8A"
-Natural_killer_cell,"#33A02C"
-CD14+_monocyte,"#FB9A99"
-CD16+_monocyte,"#E31A1C"
-Dendritic_cell,"#FDBF6F"
-Plasmacytoid_dendritic_cell,"#FF7F00"
-Plasma_cell,"#CAB2D6"
-Platelet,"#6A3D9A"
-unknown,"#C0C0C0"', header = TRUE, sep = ',', stringsAsFactors = FALSE)
-
-rownames(pal) <- pal$identity
-```
-
-
-```{r, fig.width = 17, fig.height = 6}
-
-ggplot(data = cobra,      
-    aes(x = res, y =  F1, group=flavour, col = cell)) +
-    geom_point() +
-    facet_grid(id~flavour) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) 
-
-```
-
-Add whether the analyte is repeat, genes, or both
-
-
-```{r}
-cobra$analyte <- NA
-cobra[grepl('genes', cobra$flavour), 'analyte'] <- 'genes'
-cobra[grepl('repeats', cobra$flavour), 'analyte'] <- 'repeats'
-cobra[grepl('both', cobra$flavour), 'analyte'] <- 'both'
-
-
-table(cobra$analyte, useNA = 'always')
-
-```
-
-
-Add whether multimappers are allowed
-
-
-```{r}
-cobra$multimapper <- NA
-cobra[grepl('alevin', cobra$flavour), 'multimapper'] <- 'alevin'
-cobra[grepl('multi', cobra$flavour), 'multimapper'] <- 'multi'
-cobra[grepl('unique', cobra$flavour), 'multimapper'] <- 'unique'
-
-table(cobra$multimapper, useNA = 'always')
-```
-
-Add whether repeats are overlapping genes or not
-
-```{r}
-cobra$overlap <- 'overlap_allowed'
-cobra[grepl('repeats_alevin', cobra$flavour), 'overlap'] <- 'alevin_decoy'
-cobra[grepl('genes|both', cobra$flavour), 'overlap'] <- 'genes'
-cobra[grepl('only', cobra$flavour), 'overlap'] <- 'no_overlap'
-
-
-table(cobra$overlap, useNA = 'always')
-```
-
-
-
-```{r, fig.width = 13, fig.height = 6}
-
-ggplot(data = cobra,      
-    aes(x = res, y =  F1, group=flavour, col = flavour)) +
-    geom_point() +
-    facet_grid(id~cell) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    xlab('unsup. clust. resolution') +
-    ylab('F1 score')
-
-```
-
-
-```{r, fig.width = 13, fig.height = 6}
-
-ggplot(data = cobra,      
-    aes(x = res, y =  F1, group=flavour, col = analyte)) +
-    geom_point(aes(shape= analyte, col = analyte)) +
-    facet_grid(id~cell) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    xlab('unsup. clust. resolution') +
-    ylab('F1 score')
-
-```
-
-
-```{r, fig.width = 13, fig.height = 6}
-
-ggplot(data = cobra,      
-       aes(x = res, y =  F1, group=flavour, col = multimapper)) +
-    geom_point(aes(shape= multimapper, col = multimapper)) +
-    facet_grid(id~cell) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    xlab('unsup. clust. resolution') +
-    ylab('F1 score')
-
-```
-
-
-```{r, fig.width = 12, fig.height = 6}
-
-ggplot(data = cobra,      
-    aes(x = res, y =  F1, group=flavour, col = overlap)) +
-    geom_point(aes(shape= overlap, col = overlap)) +
-    facet_grid(id~cell) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    xlab('unsup. clust. resolution') +
-    ylab('F1 score')
-
-```
-
-<!-- ## T cells vs Monocytes only -->
-
-<!-- ```{r, eval = FALSE} -->
-<!-- ggplot(data = cobra[cobra$cell %in% c('CD14+_monocyte', 'CD16+_monocyte', 'Cytotoxic_T_cell', -->
-<!--                                       'CD4+_T_cell', 'Plasmacytoid_dendritic_cell'),],       -->
-<!--     aes(x = res, y =  F1, group=flavour, col = cell)) + -->
-<!--     geom_point() + -->
-<!--     facet_grid(id~flavour) +  -->
-<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
-<!--     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))  -->
-<!-- ``` -->
-
-
-## 
-For each cell type, get the max F1 stratifying by flavour *regardless of the resolution*.
-
-```{r}
-maxF1 <- list()
-cobra$id <- as.factor(cobra$id)
-cobra$flavour <- as.factor(cobra$flavour)
-cobra$cell <- as.factor(cobra$cell)
-tryCatch({
-    ## cobra <- cobra[order(cobra$F1, cobra$cell, decreasing = TRUE),]
-    ## maxf1 <- cobra[0,]
-
-    for (run in levels(cobra$id)) {
-        for (flavour in levels(cobra$flavour)) {
-            for (cell in levels(cobra$cell)) {
-                maxF1[[paste(run, flavour, cell)]] <- c(
-                    run, flavour, cell, max(cobra[cobra$flavour == flavour &
-                                                  cobra$cell == cell &
-                                                  cobra$id == run, 'F1']))
-            }
-        }
-    }
-
-
-    maxF1 <- do.call(rbind.data.frame, maxF1)
-    colnames(maxF1) <- c('run', 'flavour', 'cell', 'max_F1')
-    maxF1$max_F1 <- as.numeric(as.character(maxF1$max_F1))
-    
-    maxF1$cell <- factor(as.character(maxF1$cell),
-                         levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)])))
-}, error = function(x) print(x))
-```
-
-Harmonize/sort flavour levels
-
-
-```{r}
-## tryCatch({
-## sorting in a more sensible way
-stopifnot(length(setdiff(levels(maxF1$flavour),
-                         c('genes_cellranger', 'genes_alevin',
-                           'genes_star',
-                           'both_unique', 'both_multi', 'both_alevin',
-                           'repeats_cellranger', 'repeats_alevin',
-                           'repeats_bowtie_unique', 'repeats_bowtie_multi',
-                           'repeats_star_unique', 'repeats_star_multi',
-                           'repeats_only_unique', 'repeats_only_multi'))) == 0)
-
-maxF1$flavour <- factor(maxF1$flavour,
-                        levels = c('genes_cellranger', 'genes_alevin',
-                                   'genes_star',
-                                   'both_unique', 'both_multi', 'both_alevin',
-                                   'repeats_cellranger', 'repeats_alevin',
-                                   'repeats_bowtie_unique', 'repeats_bowtie_multi',
-                                   'repeats_star_unique', 'repeats_star_multi',
-                                   'repeats_only_unique', 'repeats_only_multi'))
-
-## table(maxF1$flavour, useNA = 'always')
-## head(maxF1)
-
-```
-
-Add annotations
-
-```{r}
-
-maxF1$analyte <- 'NA'
-maxF1[grepl('genes', maxF1$flavour), 'analyte'] <- 'genes'
-maxF1[grepl('repeats', maxF1$flavour), 'analyte'] <- 'repeats'
-maxF1[grepl('both', maxF1$flavour), 'analyte'] <- 'both'
-
-maxF1$multimapper <- 'NA'
-maxF1[grepl('multi', maxF1$flavour), 'multimapper'] <- 'multi'
-maxF1[grepl('alevin', maxF1$flavour), 'multimapper'] <- 'deduplicated'
-maxF1[grepl('genes|cellranger|unique', maxF1$flavour), 'multimapper'] <- 'unique'
-
-
-
-table(maxF1$analyte, maxF1$multimapper, useNA = 'always')
-
-maxF1$overlap <- 'overlap_allowed'
-maxF1[grepl('repeats_alevin', maxF1$flavour), 'overlap'] <- 'alevin_decoy'
-maxF1[grepl('genes|both', maxF1$flavour), 'overlap'] <- 'genes'
-maxF1[grepl('only', maxF1$flavour), 'overlap'] <- 'no_overlap'
-
-head(maxF1)
-```
-
-```{r}
-
-ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
-    geom_point() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
-
-```
-
-```{r}
-
-ggplot(data = maxF1, aes(x= run, y = max_F1, col = as.factor(analyte),
-                         shape = as.factor(overlap), group = cell)) +
-    geom_point() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    facet_grid( multimapper ~ cell)
-
-```
-
-
-```{r}
-
-ggplot(data = maxF1, aes(x= run, y = max_F1, col = as.factor(cell), group = cell)) +
-    geom_point() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    facet_grid( multimapper ~ overlap) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) 
-
-```
-
-
-# Markers {.tabset}
-
-For each sample, each flavour, and each celltype, get the significant markers. Then, look for overlaps.
-
-
-```{r}
-markers <- list()
-
-for (rds in params) {    
-    ## the params are RDS objects from Seurat
-    ## aris[[sapply(strsplit(dirname(rds), .Platform$file.sep),
-    ##       function(x) return(x[6]))]] <- list()
-    fns <- list.files(dirname(rds), pattern = 'markers.*TRUE.*TRUE.*rds')
-    for (fn in fns) {
-        curr_nest <- readRDS(file.path(dirname(rds), fn))
-        for (item in names(curr_nest)) {
-            curr_nest[[item]]$flavour <- item
-            curr_nest[[item]]$dataset <- sapply(strsplit(dirname(rds), '/'),
-                                                function(x) return(x[6]))
-        }
-
-        curr_nest <- lapply(curr_nest, function(x) x %>%
-                                                   group_by(cluster))
-        
-        markers[[fn]] <- do.call(rbind.data.frame, curr_nest)
-        markers[[fn]] <- markers[[fn]][markers[[fn]]$p_val_adj < 0.05,]
-    }
-}
-
-markers <- do.call(rbind.data.frame, markers)
-
-
-colnames(markers)
-table(markers$cluster)
-table(markers$flavour)
-table(markers$dataset)
-```
-
-
-```{r, fig.width = 8, fig.height=7}
-
-markers <- as.data.frame(markers)
-
-
-for (celltype in unique(markers$cluster)) {
-    cat('## ', celltype, '\n\n')
-    ul <- list()
-    for (dataset in unique(markers[markers$cluster == celltype, 'dataset'])) {
-
-        for (flavour in grep('repeats', unique(markers[ markers$cluster == celltype &
-                                                        markers$dataset == dataset, 'flavour']),
-                             value = TRUE)) {
-                    
-            ul[[paste(celltype, dataset, flavour, sep = "_")]] <- markers[
-                markers$cluster == celltype &
-                markers$dataset == dataset &
-                markers$flavour == flavour, 'gene']
-        }
-    }
-    print(upset(fromList(ul), nsets = 10,  text.scale = 0.8))
-    grid.text(paste(celltype) ,x = 0.65, y=0.95, gp=gpar(fontsize = 10))
-    
-    ## rm(ul)
-    cat('\n\n')
-
-}
-
-
-## str(ul)
-
-
-```
-
-# Markers II {.tabset}
-
-Per celltype, concordance
-
-```{r, fig.width =8, fig.height=5}
-
-
-ul <- list()
-for (celltype in unique(markers$cluster)) {
-    cat('## ', celltype, '\n\n')
-
-   
-    for (flavour in unique(markers[markers$cluster == celltype, 'flavour'])) {
-        ul <- list()
-        for (dataset in unique(markers[markers$cluster == celltype &
-                                     markers$flavour == flavour, 'dataset'])) {
-
-            ul[[paste(dataset, flavour, sep = "_")]] <- markers[
-                markers$flavour == flavour  &
-                markers$cluster == celltype &
-                markers$dataset == dataset, 'gene']
-   
-        
-        }
-        ## str(ul)
-        
-        print(upset(fromList(ul), nsets = length(ul)))
-        grid.text(paste(celltype, flavour) ,x = 0.65, y=0.95, gp=gpar(fontsize = 10))
-
-    cat('\n\n')
-
-    }
-}
-
-
-```
-
-# Markers III {.tabset}
-
-By celltype, no matter which method
-
-```{r, fig.width =6, fig.height=4}
-
-
-ul <- list()
-for (celltype in unique(markers$cluster)) {
-    cat('## ', celltype, '\n\n')
-    
-    ul[[celltype]] <- NULL
-    for (dataset in unique(markers[markers$cluster == celltype, 'dataset'])) {
-
-        print(dataset)
-            
-        ul[[dataset]] <- unique(c(ul[[celltype]], markers[ grepl('repeats', markers$flavour) &
-                                                             markers$cluster == celltype &
-                                                             markers$dataset == dataset, 'gene']))
-
-         
-    }
-    
-   
-    print(upset(fromList(ul), nsets  = length(ul)))
-    grid.text(paste(celltype) ,x = 0.65, y=0.95, gp=gpar(fontsize = 10))
-    cat('\n\n')
-}
-
-
-
-
-```
-
-# Markers IV {.tabset}
-
-By celltype, method influence
-
-```{r, fig.width =6, fig.height=4}
-
-
-
-for (celltype in 'CD14+_monocyte') {
-    cat('## ', celltype, '\n\n')
-    
-
-    for (dataset in unique(markers[markers$cluster == celltype, 'dataset'])) {
-
-        ul <- list()
-        for (flavour in unique(markers[markers$cluster == celltype &
-                                     markers$dataset == dataset, 'flavour'])) {
-            
-            ul[[paste(dataset, flavour)]] <-  markers[markers$flavour == flavour &
-                                      markers$cluster == celltype &
-                                      markers$dataset == dataset, 'gene']
-
-        }
-
-        print(upset(fromList(ul), nsets  = length(ul)))
-        grid.text(paste(celltype, dataset) ,x = 0.65, y=0.95, gp=gpar(fontsize = 10))
-        cat('\n\n')
-
-    }
-}
-
-
-
-
-
-
-```
-
-
-# Markers V
-
-```{r, fig.width =12, fig.height=5}
-ft <- as.data.frame(table(markers[markers$cluster == 'CD14+_monocyte', 'gene']))
-
-ft <- ft[order(ft$Freq, decreasing = TRUE),]
-head(ft)
-selected <- as.character(head(ft, 20)$Var1)
-
-
-## get cpms from the seurat object, only 5 cells (first 5 indexed)
-foo <- list()
-for (item in names(d)) {
-    ## foo <- list()
-    for (flavour in grep('repeats', names(d[[item]]), value = TRUE)) {
-        tmp <- as.data.frame(FetchData(d[[item]][[flavour]],
-                                       vars = selected,
-                                       slot = 'data'))[1:5,]
-        tmp$cell <- rownames(tmp)
-
-        
-        tmp <- merge(d[[item]][[flavour]]@meta.data[, c('cell', 'scina')],
-                     tmp, by = 'cell', all.x = TRUE)
-        rownames(tmp) <- tmp$cell
-        tmp <- melt(tmp, id.vars = c('cell', 'scina'))
-        tmp$flavour <- flavour
-        tmp$dataset <-  item
-        foo[[paste(item, flavour)]] <- tmp
-        
-        
-    }
-    ## foo <- do.call(rbind.data.frame, foo)
-}
-
-foo <- do.call(rbind.data.frame, foo)
-head(foo)
-
-
-print(ggplot(foo[foo$scina %in% c('CD14+_monocyte', 'CD16+_monoctye', 'CD4+_T_cell'),],
-             aes(x = variable, y = value, fill = flavour)) + 
-      geom_boxplot() +
-      scale_y_continuous(trans='log10') +
-      scale_fill_discrete(drop=FALSE) +
-      facet_grid(dataset ~ scina) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
-
-
-```
-
-# Cluster techniques and flavours and celltypes?
-
-# Add bulk
-
-```{r}
-bulk <- readRDS('/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_de.rds')
-str(bulk)
-names(bulk)
-
-## samplemonocyte-sampletcell
-bulk_yardstick <- bulk[['repeats_star_multi']][[1]]
-selected <- rownames(bulk_yardstick[bulk_yardstick$FDR < 0.05 & abs(bulk_yardstick$logFC) >= 2,])
-selected <- head(selected, 10)
-
-
-```
-
-
-```{r, fig.width =12, fig.height=5}
-
-## get cpms from the seurat object, only 5 cells (first 5 indexed)
-foo <- list()
-for (item in names(d)) {
-    ## foo <- list()
-    for (flavour in grep('repeats', names(d[[item]]), value = TRUE)) {
-        tmp <- as.data.frame(FetchData(d[[item]][[flavour]],
-                                       vars = selected,
-                                       slot = 'data'))[1:5,]
-        tmp$cell <- rownames(tmp)
-
-        
-        tmp <- merge(d[[item]][[flavour]]@meta.data[, c('cell', 'scina')],
-                     tmp, by = 'cell', all.x = TRUE)
-        rownames(tmp) <- tmp$cell
-
-        tmp <- melt(tmp, id.vars = c('cell', 'scina'))
-        tmp <- tmp[grepl('T_cell|monocyte', tmp$scina),]
-        tmp$flavour <- flavour
-        tmp$dataset <-  item
-        foo[[paste(item, flavour)]] <- tmp
-        
-        
-    }
-    ## foo <- do.call(rbind.data.frame, foo)
-}
-
-foo <- do.call(rbind.data.frame, foo)
-head(foo)
-foo$scina <- as.character(foo$scina)
-table(foo$scina)
-
-print(ggplot(foo,
-             aes(x = variable, y = value, fill = flavour)) + 
-      geom_boxplot() +
-      scale_fill_discrete(drop=FALSE) +
-      facet_grid(dataset ~ scina) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
-
-```
-
-# Timestamp
-
-```{r sessionInfo, cache = FALSE}
-date()
-sessionInfo()
-devtools::session_info()
-
-```
 

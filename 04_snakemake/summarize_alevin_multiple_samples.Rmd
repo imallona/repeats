@@ -298,6 +298,26 @@ rm(counts)
 ```
 
 
+Both alevin 
+
+```{r}
+
+common_cells <- intersect(colnames(d$genes_alevin), colnames(d$repeats_alevin))
+
+d$both_alevin <- CreateSeuratObject(
+    rbind(as.matrix(GetAssayData(d$genes_alevin, slot = 'counts'))[,common_cells],
+          as.matrix(GetAssayData(d$repeats_alevin, slot = 'counts'))[,common_cells]),
+    assay = "RNA",
+    min.cells = 0,
+    min.features = 0,
+    names.field = 1,
+    names.delim = "_",
+    meta.data = NULL)
+
+
+ 
+```
+
 ## Other modalities
 
 ```{r}
