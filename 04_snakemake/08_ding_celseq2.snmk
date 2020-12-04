@@ -46,7 +46,9 @@ RUN_NAME  = 'ding_celseq2'
 RUN_TECH = 'celseq2'
 GENOME = 'GRCh38'
 
-NUM_CELLS = 564
+NUM_CELLS = 564 ## from the paper
+NUM_CELLS_PER_FASTQ = 60 # since they're 12 runs 
+
 BARCODE_PATTERN = 'NNNNNNCCCCCC'
 
 CONF =  op.join(BASE, "data", RUN_NAME, 'celseq2_ding.conf')
@@ -121,8 +123,6 @@ SRR9169206,RNA-Seq,110,6805595170,PRJNA545730,SAMN11915422,3943989627,GEO,public
 SRR9169208,RNA-Seq,110,7223219080,PRJNA545730,SAMN11915420,4177497322,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943782,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837162,SRP200058,GSM3837162,CEL-Seq2,female,Peripheral blood mononuclear cell,,
 SRR9169441,RNA-Seq,89,1094064184,PRJNA545730,SAMN11914622,682967510,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX5943796,Illumina HiSeq 2500,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2019-06-05T00:00:00Z,GSM3837176,SRP200058,GSM3837176,CEL-Seq2,female,Peripheral blood mononuclear cell,,""")
 
-
-           
 
 # def get_samples(fn, gender = None):
 #     # samples = pd.read_table(fn)
@@ -205,9 +205,9 @@ rule all:
         expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}", 'alevin',
                        'quants_mat.gz'),
                srr = get_samples(CONF)),
-        expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-                regress_ncount = ['TRUE', 'FALSE'],
-                regress_nfeature = ['TRUE', 'FALSE']),
+        # expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        #         regress_ncount = ['TRUE', 'FALSE'],
+        #         regress_nfeature = ['TRUE', 'FALSE']),
         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
                        "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
                srr = get_samples(CONF)),
@@ -226,6 +226,21 @@ rule all:
                srr = get_samples(CONF))
 
 
+
+rule get_whitelist:
+    params:
+        url = 'ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE132nnn/GSE132044/suppl/GSE132044_pbmc_hg38_cell.tsv.gz',
+        path = op.join(BASE, 'runs', RUN_NAME)
+    threads: NTHREADS
+    output:
+        whitelistgz = temp(op.join(BASE, 'runs', RUN_NAME, 'GSE132044_pbmc_hg38_cell.tsv.gz')),
+        whitelist = op.join(BASE, 'runs', RUN_NAME, 'GSE132044_pbmc_hg38_cell.tsv')        
+    shell:
+        """
+        cd {params.path}
+        wget {params.url}
+        {PIGZ} -d --keep  -p {threads} {output.whitelistgz}   
+        """
 
 
 rule knit_report_celseq_ad_hoc_ding:
@@ -312,7 +327,7 @@ rule run_alevin_repeats_celseq2:
         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
         # cb = ' '.join(list_r1s(CONF)),
         # r2 = ' '.join(list_r2s(CONF)),
-        num_cells = NUM_CELLS,
+        num_cells = NUM_CELLS_PER_FASTQ,
         cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
         r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
     log:
@@ -330,6 +345,7 @@ rule run_alevin_repeats_celseq2:
     --umiLength 6 \
     --barcodeLength 6 \
     --dumpFeatures \
+    --expectCells {params.num_cells} \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
     --tgMap {input.tgmap} ) 2> {log}
@@ -356,7 +372,7 @@ rule run_alevin_genes_celseq2:
         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon'),
         # cb = ' '.join(list_r1s(CONF)),
         # r2 = ' '.join(list_r2s(CONF)),
-        num_cells = NUM_CELLS,
+        num_cells = NUM_CELLS_PER_FASTQ,
         cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
         r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
     log:
@@ -373,6 +389,7 @@ rule run_alevin_genes_celseq2:
     --end 3 \
     --umiLength 6 \
     --barcodeLength 6 \
+    --expectCells {params.num_cells} \
     --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \

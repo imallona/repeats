@@ -72,6 +72,7 @@ library(SCINA)
 library(DT)
 library(tximeta)
 library(SummarizedExperiment)
+library(GEOquery)
 })
 ```
 
@@ -297,6 +298,31 @@ rm(counts)
 
 ```
 
+
+
+## Filtering barcodes used by Ding et al
+
+```{r}
+
+
+gseid <- 'GSE132044'
+
+gse <- getGEO(gseid, GSEMatrix=FALSE)
+
+runmeta <- sapply(GSMList(gse), function(x) return( c(Meta(x)$relation, Meta(x)$title)))
+
+supp <- getGEOSuppFiles(gseid, makeDirectory = TRUE, baseDir = getwd(),
+  fetch_files = TRUE, filter_regex = 'GSE132044_pbmc_hg38_cell.tsv.gz')
+
+cellmeta <- read.table(rownames(supp), sep = '.', col.names = c('replicate', 'tech', 'id'))
+## table(cellmeta$tech)
+
+cellmeta[cellmeta$tech == 'CEL-Seq2',] # so the barcode is prepended with the run number
+
+
+```
+
+## Both
 
 Both alevin 
 
@@ -552,21 +578,31 @@ colnames(summarized) <- c('dataset','filter', 'ncells',
 print(summarized)
 ```
 
-## QC after filtering {.tabset}
-
-Filtering out cells according to the repeats expression, and forwarding the selection to other layers
-
-```{r subset}
-d$genes_alevin <- subset(d$genes_alevin, subset = percent.mt < 18| is.na(percent.mt))
-
-selected_cells <- colnames(d$genes_alevin)
-length(selected_cells)
-
-for (item in names(d)) {
-    d[[item]] <- subset(d[[item]], cells = selected_cells)
-}
 
 
+## QC filtering
+
+
+```{r}
+## QC is based upon genes 
+item <- 'alevin'
+
+libsize.drop <- isOutlier(d$genes_alevin$nCount_RNA, nmads = 2, type = "both", log = TRUE)
+feature.drop <- isOutlier(d$genes_alevin$nFeature_RNA, nmads = 2, type = "both", log = TRUE)
+mito.drop <- isOutlier(d$genes_alevin$percent.mt, nmads = 2, type = "higher")
+
+selected_cells <- colnames(d$genes_alevin)[!(libsize.drop | feature.drop | mito.drop)]
+
+```
+
+
+Outlier tagging results
+
+```{r}
+print(data.frame(ByLibSize = sum(libsize.drop),
+                 ByFeature = sum(feature.drop), 
+                 ByMito = sum(mito.drop),
+                 Remaining = length(selected_cells)))
 ```
 
 ```{r, results = 'asis', fig.width = 8, fig.height = 4}
@@ -574,9 +610,12 @@ for (item in names(d)) {
     cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
     if (item == 'genes_alevin') {
-        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]],
-                                                          pattern = "ENS.*[0-9]+-MT-.*")
-        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
+        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
+
+        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt") +
+              geom_vline(xintercept = attributes(libsize.drop)$thresholds) +
+              geom_hline(yintercept = attributes(mito.drop)$thresholds))
+        
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
                       ncol = 3))
 
@@ -584,14 +623,35 @@ for (item in names(d)) {
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2))
     
     }
-    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+
+    d[[item]]@meta.data$qc_pass <- rownames(d[[item]]@meta.data) %in% selected_cells
+    
+    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA",
+                         group.by = 'qc_pass', shape.by = 'qc_pass'))
+    
     cat('\n\n')
 }
 
-
-
-
 ```
+
+
+
+## QC after filtering {.tabset}
+
+
+Filtering out cells according to the genes expression, and forwarding the selection to other layers
+
+
+
+```{r}
+## the subsetting applies to all slots, even though the metrics come from genes only
+for (item in names(d)) {
+    d[[item]] <- subset(d[[item]], cells = selected_cells)
+}
+
+(d)
+```
+
 
 ## Basic stats post-QC
 

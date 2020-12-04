@@ -59,6 +59,8 @@ library(viridis)
 library(UpSetR)
 library(ggplot2)
 library(grid)
+library(gridExtra)
+library(scales)
 
 })
 ```
@@ -289,34 +291,48 @@ for (item in c('num_cells',
 ```{r}
 
 fd <- merge(fd, annot, by.x = 'dataset', by.y = 'id', all = TRUE)
+
+fd$flavour <- factor(fd$flavour,
+                        levels = c('genes_cellranger', 'genes_alevin',
+                                   'genes_star',
+                                   'both_unique', 'both_multi', 'both_alevin',
+                                   'repeats_cellranger', 'repeats_alevin',
+                                   'repeats_bowtie_unique', 'repeats_bowtie_multi',
+                                   'repeats_star_unique', 'repeats_star_multi',
+                                   'repeats_only_unique', 'repeats_only_multi'))
+
+
+
+
 ```
 
-```{r, fig.width =8, fig.height = 8}
+```{r, fig.width = 10, fig.height = 5}
 
 ggplot(fd, aes( y=num_cells, x=flavour, color = type)) + 
     geom_point() +
     scale_y_continuous(trans='log10') +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    facet_wrap(~dataset)
+    facet_wrap(~dataset, ncol = 4, nrow = 2)
 ```
 
 
-```{r, fig.width =8, fig.height = 8}
+```{r, fig.width =10, fig.height = 5}
 
 ggplot(fd, aes( y=avg_num_reads_per_cell, x=flavour, color = type)) + 
     geom_point() +
     scale_y_continuous(trans='log10') +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    facet_wrap(~dataset)
+    facet_wrap(~dataset, ncol = 4, nrow = 2)
 ```
 
-```{r, fig.width =8, fig.height = 8}
+```{r, fig.width = 10, fig.height = 5}
 
 ggplot(fd, aes( y=avg_num_genes_per_cell, x=flavour, color = type)) + 
     geom_point() +
+    ylab('avg_num_features_per_cell') +
     scale_y_continuous(trans='log10') +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    facet_wrap(~dataset)
+    facet_wrap(~dataset, ncol = 4, nrow = 2)
 ```
 
 
@@ -362,13 +378,44 @@ scinas$count <- as.numeric(as.character(scinas$count))
 ```
 
 
-```{r, fig.width = 10, fig.height = 10}
+```{r, fig.width = 8, fig.height = 5}
 ggplot(scinas, aes(y = count, x = flavour, fill = identity)) + 
     geom_bar(position="fill", stat="identity") +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     ylab('proportion of cells') +
-    facet_wrap(~dataset) +
+    facet_wrap(~dataset, ncol = 4) +
     scale_fill_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+```
+
+# tSNEs {.tabset}
+
+
+```{r, fig.width = 13, fig.height = 7}
+library(gridExtra)
+for (flavour in unique(unlist(sapply(d, names)))){
+    cat(sprintf('## %s \n\n', flavour))
+    p <- list()
+
+    for (dataset in names(d)) {
+        p[[dataset]] <- tryCatch({
+            DimPlot(d[[dataset]][[flavour]], reduction = "tsne", group.by = 'scina',
+                    cols = setNames(pal$color, pal$identity)) +
+                theme(legend.position="none", plot.title = element_text(size=14),
+                      axis.text=element_text(size=12),
+                      axis.title=element_text(size=12)) +
+                ggtitle(sprintf('%s\n%s', dataset, flavour))
+        }, error = function(x) return(ggplot() + theme_void())
+        )
+        ## gridExtra::grid.arrange(p, ncol = 4)
+
+        ## do.call("grid.arrange", c(p, ncol=4, nrow = 4))
+        
+
+    }
+    do.call("grid.arrange", c(p, ncol = 4, nrow = 2))
+    cat(sprintf('\n\n'))
+}
 
 ```
 
@@ -431,16 +478,33 @@ rownames(pal) <- pal$identity
 ```
 
 
-```{r, fig.width = 12, fig.height = 6}
+```{r, fig.width = 18, fig.height = 10}
 
 ggplot(data = cobra,      
     aes(x = res, y =  F1, group=flavour, col = cell)) +
     geom_point() +
-    facet_grid(id~flavour) + 
+    facet_grid(id~flavour) +    
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) 
 
 ```
+
+```{r, fig.width = 11, fig.height = 6}
+
+
+ggplot(data = cobra[cobra$flavour %in% c('genes_alevin', 'repeats_alevin', 'both_alevin'),],      
+    aes(x = res, y =  F1, group=flavour, col = cell)) +
+    geom_point() +
+    facet_grid(flavour~id) +
+    scale_y_continuous(trans = 'atanh') +
+    ylab('F1 score') +
+    xlab('SNN resolution') +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) 
+
+```
+
+
 
 Add whether the analyte is repeat, genes, or both
 
@@ -650,7 +714,7 @@ maxF1[grepl('only', maxF1$flavour), 'overlap'] <- 'no_overlap'
 head(maxF1)
 ```
 
-```{r, fig.width = 5, fig.height = 4}
+```{r, fig.width = 7, fig.height = 6}
 
 ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
     geom_point() +
@@ -683,7 +747,7 @@ ggplot(data = maxF1[maxF1$analyte %in% c('genes', 'repeats'),],
 ```
 
 
-```{r, fig.width = 16, fig.height = 8}
+```{r, fig.width = 14, fig.height = 7}
 
 ggplot(data = maxF1, aes(x= run, y = max_F1, col = as.factor(analyte),
                          shape = as.factor(overlap), group = cell)) +
@@ -704,7 +768,7 @@ ggplot(data = maxF1, aes(x= run, y = max_F1, col = as.factor(cell), group = cell
 
 ```
 
-```{r, fig.width = 10, fig.height = 10}
+```{r, fig.width = 9, fig.height = 8}
 ggplot(data = maxF1[maxF1$analyte %in% c('genes', 'repeats'),],
         aes(x= overlap, y = max_F1, col = cell, group = cell)) +
     geom_point() +
@@ -722,7 +786,7 @@ ggplot(data = maxF1,
      facet_grid(run~cell)
 ```
 
-# F1s dotplot and heatmap
+# F1s scatterplot and heatmap
 
 ```{r}
 
@@ -732,13 +796,15 @@ axes_col <- ifelse(grepl('both', levels(maxF1$flavour)), 'red', 'black')
 
 ```
 
-```{r, fig.width = 7, fig.height = 5}
+```{r, fig.width = 11, fig.height = 5}
+library(scales)
+## help(trans_new)
+
 ggplot(data = maxF1,
        aes(x= flavour, y = max_F1, col = cell, group = cell, shape = analyte)) +
-    facet_grid(~run) +
+    facet_wrap(~run, ncol = 4, nrow = 2) +
     geom_point(size = 2) +
-    scale_y_continuous(trans = 'sqrt') +
-    ## scale_shape_manual(values=c(0, 4, 1)) +
+    scale_y_continuous(trans = 'atanh') +
     theme_bw() +
     theme(axis.text.x = element_text(angle = 90, hjust = 1, colour = axes_col)) +
     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) 
