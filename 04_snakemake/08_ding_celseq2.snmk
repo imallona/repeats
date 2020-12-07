@@ -205,9 +205,9 @@ rule all:
         expand(op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}", 'alevin',
                        'quants_mat.gz'),
                srr = get_samples(CONF)),
-        # expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-        #         regress_ncount = ['TRUE', 'FALSE'],
-        #         regress_nfeature = ['TRUE', 'FALSE']),
+         # expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+         #         regress_ncount = ['TRUE', 'FALSE'],
+         #         regress_nfeature = ['TRUE', 'FALSE']),
         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
                        "{srr}_Aligned.sortedByCoord.out.bam.featureCounts.gz"),
                srr = get_samples(CONF)),
@@ -253,10 +253,11 @@ rule knit_report_celseq_ad_hoc_ding:
         repeats_only_multi = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', "multimappers"),
         repeats_only_unique = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', 'unique_reads'),        
         genes_alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes'),
-        repeats_alevin =op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats')
+        repeats_alevin =op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats'),
+        config_fn = CONF
     params:
         rmd = 'summarize_alevin_multiple_samples.Rmd',
-        run_name = RUN_NAME
+        run_name = 'CEL-Seq2'
     output:
         html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
         rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_celseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
@@ -284,7 +285,8 @@ rule knit_report_celseq_ad_hoc_ding:
           cobra_output = \"{output.cobra}\", 
           markers_output = \"{output.markers}\", 
           regress_genes_nCount = \"{wildcards.regress_ncount}\", \
-          regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}
+          regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
+          config_fn = \"{input.config_fn}\"))' &> {log}
         """
 
 """
@@ -465,7 +467,7 @@ rule trim_r1s_to_12:
     
 rule get_data:
     input:
-        conf = op.join(BASE, "data", RUN_NAME, 'celseq2_ding.conf')
+        conf = CONF
     output:
         # r1_uncomp = temp(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq")),
         # r2_uncomp = temp(op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq")),

@@ -352,10 +352,11 @@ rule knit_report_dropseq_ad_hoc_ding:
         repeats_bowtie_multi = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', 'multimappers'),
         repeats_bowtie_unique = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome', 'unique_reads'),        
         repeats_only_multi = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', "multimappers"),
-        repeats_only_unique = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', 'unique_reads')       
+        repeats_only_unique = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', 'unique_reads'),
+        config_fn = CONF
     params:
         rmd = 'summarize_alevin_multiple_samples.Rmd',
-        run_name = RUN_NAME
+        run_name = "Drop-seq"
     output:
         html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_dropseq_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
         rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_dropseq_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
@@ -383,7 +384,8 @@ rule knit_report_dropseq_ad_hoc_ding:
           cobra_output = \"{output.cobra}\", 
           markers_output = \"{output.markers}\", 
           regress_genes_nCount = \"{wildcards.regress_ncount}\", \
-          regress_genes_nFeature = \"{wildcards.regress_nfeature}\"))' &> {log}
+          regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
+          config_fn = \"{input.config_fn}\"))' &> {log}
         """
 
 # rule umitools_whitelist:
