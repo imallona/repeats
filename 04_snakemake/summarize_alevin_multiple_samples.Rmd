@@ -183,7 +183,10 @@ cellmeta$barcode <- gsub('R?[0-9]+-', '', cellmeta$id)
 if (params$id == 'CEL-Seq2') {
     cellmeta$run<- paste(cellmeta$tech, gsub('-[A-Z]+', '', cellmeta$id), sep = "-")
 } else if (params$id == "Seq-Well"){
-  cellmeta$run <-  paste0('Seq-Well-', gsub('-[A-Z]+', '', cellmeta$id))
+    ## cellmeta$run <-  paste0('Seq-Well-', gsub('-[A-Z]+', '', cellmeta$id))
+    cellmeta$run <-  paste0('Seq-Well-',
+                            sapply(strsplit(as.character(cellmeta$id), split ='-'),
+                                   function(x) return(x[1])))
 } else {
     cellmeta$run <- sapply(strsplit(as.character(cellmeta$id), '-'), function(x) return(x[1]))
 }
@@ -199,24 +202,35 @@ head(conf)
 ```
 
 ```{r}
-dict <- merge(conf[,c('V13', 'V1')], runmeta[,c('srx', 'V3' )], by.x = 'V13', by.y ='srx')
 
-dict$pbmc <- sapply(strsplit(as.character(dict$V3), split ='\\.'), function(x) return (x[1]))
+generate_dict <- function(conf, runmeta) {
+    dict <- merge(conf[,c('V13', 'V1')], runmeta[,c('srx', 'V3' )], by.x = 'V13', by.y ='srx')
 
-if (params$id == 'CEL-Seq2') {
-    dict$rep <- substr(as.character(dict$V3),
-                       nchar(as.character(dict$V3)),
-                       nchar(as.character(dict$V3)))
-} else if (params$id == "Seq-Well") {
-    dict$rep <- sapply(strsplit(as.character(dict$V3), '_'),
-                       function(x) return(paste0(x[2], '_', x[3])))
+    dict$pbmc <- sapply(strsplit(as.character(dict$V3), split ='\\.'), function(x) return (x[1]))
+
+    if (params$id == 'CEL-Seq2') {
+        dict$rep <- substr(as.character(dict$V3),
+                           nchar(as.character(dict$V3)),
+                           nchar(as.character(dict$V3)))
+    } else if (params$id == "Seq-Well") {
+        ## this weird thing is because cellmeta and  the GEO runs are unconsistent
+        dict$rep <- gsub('_NA', '', sapply(strsplit(as.character(dict$V3), '_'),
+                                           function(x) return(paste0(x[2], '_', x[3]))))
+
+        dict$rep <- gsub('V1', '', dict$rep)
+    }
+
+    dict$run <- paste(params$identifier, dict$rep, sep = '-')
+    colnames(dict) <- c('srx', 'srr', 'full', 'rep', 'pbmc', 'run')
+
+    return(dict)
 }
 
-dict$run <- paste(params$identifier, dict$rep, sep = '-')
-colnames(dict) <- c('srx', 'srr', 'full', 'rep', 'pbmc', 'run')
 
-## head(dict)
+```
 
+```{r}
+dict <- generate_dict(conf = conf, runmeta = runmeta)
 
 ```
 
@@ -231,6 +245,8 @@ get_ding_approved_barcodes <- function(cellmeta, dict, srr) {
     ##     return(paste(tmp$srr, tmp$barcode, sep = "_"))
     ## else
     ##     return(as.character(tmp$barcode))
+    if (params$id == 'Seq-Well')
+        tmp$barcode <- gsub('S3_', '', tmp$barcode)
     return(tmp$barcode)
 }
 
@@ -246,9 +262,11 @@ get_ding_run <- function(cellmeta, dict, srr) {
 
 
 ## get_ding_approved_barcodes(cellmeta = cellmeta, dict = dict, srr = 'SRR9169176')
+## get_ding_approved_barcodes(cellmeta = cellmeta, dict = dict, srr = 'SRR9169186')
 
 
-get_count_table_grouped_by_dings_run <- function(alevin_fns) {
+get_count_table_grouped_by_dings_run <- function(alevin_fns, dict, cellmeta,
+                                                 flavour = 'genes_alevin') {
 
     counts <- list()
     
@@ -273,10 +291,10 @@ get_count_table_grouped_by_dings_run <- function(alevin_fns) {
         for (fn in ding[ding$run == run, 'fns']) {
 
             srr <- gsub('/alevin','', dirname(fn))
-            
+            stop(file.path(params[[run]], fn))
             counts[[run]][[srr]] <- tximeta::tximeta(coldata = data.frame(
                                                          names = "genes",
-                                                         files = file.path(params$genes_alevin, fn),
+                                                         files = file.path(params[[flavour]], fn),
                                                          stringsAsFactors = FALSE
                                                      ), type = "alevin")
 
@@ -344,7 +362,10 @@ counts <- list()
 genes_fns <- list.files(params$genes_alevin, pattern = 'quants_mat.gz',
                         recursive = TRUE)
 
-counts <- get_count_table_grouped_by_dings_run(genes_fns) 
+counts <- get_count_table_grouped_by_dings_run(alevin_fns = genes_fns,
+                                               dict = generate_dict(conf, runmeta),
+                                               cellmeta = cellmeta,
+                                               flavour = 'genes_alevin') 
 
 ```
 
@@ -456,7 +477,11 @@ counts <- NULL
 repeats_fns <- list.files(params$repeats_alevin, pattern = 'quants_mat.gz',
                         recursive = TRUE)
 
-counts <- get_count_table_grouped_by_dings_run(repeats_fns)
+counts <- get_count_table_grouped_by_dings_run(
+    alevin_fns =  repeats_fn,
+    dict = generate_dict(conf, runmeta),
+    cellmeta = cellmeta,
+    flavour = 'repeats_alevin') 
 
 ```
 
@@ -510,7 +535,7 @@ d$both_alevin <- CreateSeuratObject(
 
 process_featurecounts_grouped_by_cb_umi <- function(fn, id = "",
                                                     annotate_genes = FALSE,
-                                                    accepted_barcodes = 'all') {
+                                                    accepted_barcodes = 'void') {
      ## Featurecounts-based repeats
     counts <- data.table::fread(fn, header = FALSE)
     ## cb first, umi second
@@ -611,15 +636,15 @@ for (item in grep('repeats|genes',
     head(ding)
 
     counts <- list()
-    for (run in ding$run) {
-        print(run)
+    for (run in unique(as.character(ding$run))) {
+        print(sprintf('%s %s', item, run))
         counts[[run]] <- list()
         for (fn in ding[ding$run == run, 'fns']) {
             print(fn)
             
             srr <- sapply(strsplit(basename(fn), '[\\._]'), function(x) return(x[1]))
             
-            
+            ## print(get_ding_approved_barcodes(cellmeta, dict, srr))
             counts[[run]][[srr]] <- process_featurecounts_grouped_by_cb_umi(
                 file.path(params[[item]], fn),
                 annotate_genes = FALSE,
@@ -628,7 +653,8 @@ for (item in grep('repeats|genes',
         
         ## rather than merge them, sum them
         genenames <-  unique(unlist(sapply(counts[[run]], rownames)))
-        cbs <- cellmeta[cellmeta$run == run, 'barcode']
+
+        cbs <- unique(gsub('[0-9SR_]', '', cellmeta[cellmeta$run == run, 'barcode']))
         
         tmp <- data.frame(matrix(0,
                                  nrow = length(genenames),
@@ -646,6 +672,7 @@ for (item in grep('repeats|genes',
         counts[[run]] <- tmp
         rm(tmp)
         genes <- rownames(counts[[run]])
+        ## colnames(counts[[run]]) <- sprintf('%s_%s', run, colnames(counts[[run]]))
     }
 
     ## check to add undetected features
@@ -758,10 +785,14 @@ print(summarized)
 
 ## QC filtering
 
+```{r debugpreqc}
+saveRDS(object =d, file = paste0(params$seurat_output, '.debugpreqc')) # todo remove
+```
+
 
 ```{r}
 ## QC is based upon genes 
-item <- 'alevin'
+item <- 'genes_alevin'
 
 libsize.drop <- isOutlier(d$genes_alevin$nCount_RNA, nmads = 3, type = "both", log = TRUE)
 feature.drop <- isOutlier(d$genes_alevin$nFeature_RNA, nmads = 3, type = "both", log = TRUE)
@@ -786,7 +817,7 @@ for (item in names(d)) {
     cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
     if (item == 'genes_alevin') {
-        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
+        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "-MT-")
 
         print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt") +
               geom_vline(xintercept = attributes(libsize.drop)$thresholds) +
@@ -890,10 +921,10 @@ for (item in names(d)) {
 ## Dimred PCA {.tabset}
 
 
-```{r debug}
-saveRDS(object =d, file = params$seurat_output) # todo remove
+<!-- ```{r debug} -->
+<!-- saveRDS(object =d, file = params$seurat_output) # todo remove -->
 
-```
+<!-- ``` -->
 
 ```{r, message = FALSE, results ='asis'}
 
