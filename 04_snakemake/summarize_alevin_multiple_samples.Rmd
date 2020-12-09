@@ -202,7 +202,7 @@ if (params$id == 'CEL-Seq2') {
                             sapply(strsplit(as.character(cellmeta$id), split ='-'),
                                    function(x) return(x[1])))
 } else if (params$id == 'Drop-seq') {
-    cellmeta$run <- sprintf('%s_%s', params$id, cellmeta$replicate)
+    cellmeta$run <- sprintf('%s-%s', params$id, cellmeta$replicate)
 }
 tail(cellmeta)
 
@@ -239,7 +239,7 @@ generate_dict <- function(conf, runmeta) {
     if (params$id %in% c('Seq-Well', 'CEL-Seq2')) {
         dict$run <- paste(params$identifier, dict$rep, sep = '-')
     } else if (params$id == 'Drop-seq') {
-        dict$run <- sprintf('%s_%s', params$id, dict$pbmc)
+        dict$run <- sprintf('%s-%s', params$id, dict$pbmc)
     }
 
     if(params$id == 'Drop-seq') {
@@ -325,6 +325,10 @@ get_count_table_grouped_by_dings_run <- function(alevin_fns, dict, cellmeta,
 
             counts[[run]][[srr]] <-  as.data.frame(assays(counts[[run]][[srr]])$counts)
 
+            ## get_ding_approved_barcodes(cellmeta = cellmeta,
+            ##                            dict = dict,
+            ##                            srr = srr)
+                                       
             selected <- intersect(get_ding_approved_barcodes(cellmeta = cellmeta,
                                                              dict = dict,
                                                              srr = srr),
@@ -644,8 +648,6 @@ process_featurecounts_grouped_by_cb_umi <- function(fn, id = "",
 ```
 
 ```{r}
-
-
 
 for (item in grep('repeats|genes',
                   grep('alevin|regress', names(params), invert = TRUE, value = TRUE),
