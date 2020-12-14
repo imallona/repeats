@@ -61,6 +61,10 @@ library(ggplot2)
 library(grid)
 library(gridExtra)
 library(scales)
+library(tidyr)
+library(Wind) # https://github.com/haowulab/Wind
+library(gridExtra)
+library(scales)
 
 })
 ```
@@ -392,7 +396,6 @@ ggplot(scinas, aes(y = count, x = flavour, fill = identity)) +
 
 
 ```{r, fig.width = 13, fig.height = 7}
-library(gridExtra)
 for (flavour in unique(unlist(sapply(d, names)))){
     cat(sprintf('## %s \n\n', flavour))
     p <- list()
@@ -426,21 +429,21 @@ for (flavour in unique(unlist(sapply(d, names)))){
 # F1s
 
 ```{r}
-cobra <- list()
+cobral <- list()
 
 
 for (rds in params) {
     fn <- list.files(dirname(rds), pattern = '.*cobra.*TRUE.*TRUE.*')
    
     tryCatch({
-        cobra[[sapply(strsplit(dirname(rds), .Platform$file.sep),
+        cobral[[sapply(strsplit(dirname(rds), .Platform$file.sep),
                       function(x) return(x[6]))]] <- readRDS(file = file.path(dirname(rds), fn))
 
     }, error = function(x) sprintf('caught error %s\n', x)) 
 }
 
 
-cobra <- do.call(rbind.data.frame, cobra)
+cobra <- do.call(rbind.data.frame, cobral)
 ```
 
 ```{r}
@@ -598,6 +601,111 @@ ggplot(data = cobra,
 
 ```
 
+
+F1 scores gains/losses both genes vs genes only (alevin)
+
+
+```{r}
+delta <- list()
+
+## celltypes <- levels(cobra$cell)
+## resolutions <- levels(cobra$res)
+
+for (run in names(cobral)) {
+    delta[[run]] <- list()
+    for (score in c('F1', 'pr', 're')) {
+    delta[[run]][[score]] <- list()
+
+        ## delta[[run]] <- matrix(NA, ncol = length(celltypes), nrow = length(resolutions))
+
+    if ('genes_alevin' %in% cobral[[run]]$flavour){
+
+        label <- 'alevin'
+        genes <- cobral[[run]][cobral[[run]]$flavour == 'genes_alevin',] %>%
+            select(cell, res, score) %>% spread(res, score)
+   
+
+        both <- cobral[[run]][cobral[[run]]$flavour ==  'both_alevin',] %>%
+            select(cell, res, score) %>%
+            spread(res, score)
+    } else {
+        tryCatch({
+        label <- 'star'
+        genes <- cobral[[run]][cobral[[run]]$flavour == 'genes_star',] %>%
+            select(cell, res, score) %>% spread(res, score)
+   
+        both <- cobral[[run]][cobral[[run]]$flavour ==  'both_star',] %>%
+            select(cell, res, score) %>%
+            spread(res, score)
+        }, error = function(x) print(x))
+        
+    }
+
+    tryCatch({
+        both_vs_genes <- data.frame(cell = genes$cell,
+                                    both - genes)[,-2]
+        rownames(both_vs_genes) <- genes$cell
+
+        head(both_vs_genes)
+        head(both_vs_genes  %>%  pivot_longer(!cell, names_to = "resolution", values_to = score))
+        
+        delta[[run]][[score]] <- data.frame(
+            both_vs_genes  %>%
+            pivot_longer(!cell, names_to = "resolution", values_to = score),
+            score = score,
+            run = run,
+            type = 'both__minus__genes',
+            mapper = label)
+    }, error = function(x) print(x))
+
+    }
+}
+
+f1s <- do.call(rbind.data.frame, sapply(delta, function(x) return(x['F1'])))
+f1s$res <- as.numeric(as.character(gsub('RNA_snn_res.', '', f1s$resolution)))
+
+```
+
+```{r}
+ggplot(data = f1s,      
+    aes(x = res, y =  F1, group= run, col = run)) +
+    geom_point(aes(shape= run)) +
+    facet_grid(~cell) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    xlab('unsup. clust. resolution') +
+    ylab('F1 score with repeats vs only genes') +
+    geom_smooth()
+
+```
+
+
+```{r}
+
+
+ggplot(data = f1s,      
+    aes(x = res, y =  F1,  col = cell)) +
+    geom_point() +
+    facet_grid(~run) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    xlab('unsup. clust. resolution') +
+    ylab('F1 score with repeats vs only genes') +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) +
+    geom_smooth()
+
+
+```
+
+Identical Louvain resolutions have very different meanings in different datasets. Let's get the max for genes, and check whether having also the repeats makes any difference.
+
+
+```{r}
+print('todo')
+
+```
+
+
+
+
 <!-- ## T cells vs Monocytes only -->
 
 <!-- ```{r, eval = FALSE} -->
@@ -644,6 +752,109 @@ tryCatch({
     maxF1$cell <- factor(as.character(maxF1$cell),
                          levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)])))
 }, error = function(x) print(x))
+```
+
+
+```{r}
+
+max_genes <- list()
+
+for (run in levels(cobra$id)) {
+    ## for (flavour in levels(cobra$flavour)) {
+    for (cell in levels(cobra$cell)) {
+        genes_flavour <-  'genes_alevin'
+
+        curr <- cobra[cobra$flavour == genes_flavour &
+                      cobra$cell == cell &
+                      cobra$id == run,]
+        
+        if (is.finite(max(curr$F1))) {
+            genes <- head(curr[order(curr$F1, decreasing = TRUE),], 1)
+            max_genes[[paste(run, genes_flavour, cell)]] <- c(
+                run, genes_flavour, cell, genes$F1, genes$res, genes$pr, genes$re )
+        
+            
+
+            for (flavour in grep('repeats|both', levels(cobra$flavour), value = TRUE)) {
+                
+                other <- cobra[cobra$flavour == flavour &
+                               cobra$cell == cell &
+                               cobra$id == run &
+                               cobra$res == genes$res,]
+
+                if(nrow(other) > 0) {
+                
+                ## print(sprintf('%s %s', run, cell, flavourdim(other))
+                
+                    max_genes[[paste(run, flavour, cell)]] <- c(
+                        run, flavour, cell, other$F1, other$res, other$pr, other$re )
+                }
+            }
+            
+        }
+    }
+}
+
+str(max_genes)
+
+table(sapply(max_genes, length))
+
+max_genes <- do.call(rbind.data.frame, max_genes)
+
+
+
+colnames(max_genes) <- c('run', 'flavour', 'cell', 'max_F1', 'res', 'pr', 're')
+table(max_genes$flavour)
+max_genes$max_F1 <- as.numeric(as.character(max_genes$max_F1))
+    
+max_genes$cell <- factor(as.character(max_genes$cell),
+                         levels = unique(as.character(max_genes$cell[order(max_genes$max_F1)])))
+
+```
+
+```{r}
+head(max_genes)
+
+ggplot(data = max_genes, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
+    geom_point() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    facet_wrap(~run) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+
+```
+
+Subtract the genes value to F1s?
+
+```{r}
+max_genes %>%  pivot_wider(id_cols = c('cell', 'run', 'res'),
+                           names_from = 'flavour',
+                           values_from = 'max_F1')
+
+max_genes %>%
+    ggplot(aes(flavour, run,  fill = max_F1)) +
+    geom_tile(aes(fill=max_F1)) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    facet_wrap(~cell, ncol = 5) +
+    ylab('dataset') +
+    xlab('method') +
+    scale_fill_gradientn(colours = c("white",  "blue", "red"),
+                         values = c(0, 0.5, 1)) 
+
+## geom_text(data=maxF1, aes(flavour, run, label = max_F1))
+tmp <- max_genes %>%  pivot_wider(id_cols = c('cell', 'run', 'res'),
+                                  names_from = 'flavour',
+                                  values_from = 'max_F1')
+
+## apply (tmp[]
+```
+
+
+Maybe subract the genes value?
+
+```{r}
+
 ```
 
 Harmonize/sort flavour levels
@@ -714,26 +925,17 @@ maxF1[grepl('only', maxF1$flavour), 'overlap'] <- 'no_overlap'
 head(maxF1)
 ```
 
-```{r, fig.width = 7, fig.height = 6}
 
-ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
-    geom_point() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+<!-- ```{r, fig.width = 10, fig.height = 6} -->
 
-```
+<!-- ggplot(data = maxF1[maxF1$analyte %in% c('genes', 'repeats'),], -->
+<!--        aes(x= overlap, y = max_F1, col = cell, group = cell)) + -->
+<!--     geom_point() + -->
+<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--     facet_grid(cell~run) + -->
+<!--     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) -->
 
-
-```{r, fig.width = 10, fig.height = 6}
-
-ggplot(data = maxF1[maxF1$analyte %in% c('genes', 'repeats'),],
-       aes(x= overlap, y = max_F1, col = cell, group = cell)) +
-    geom_point() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    facet_grid(cell~run) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
-
-```
+<!-- ``` -->
 
 ```{r, fig.width = 10, fig.height = 4}
 
@@ -741,7 +943,7 @@ ggplot(data = maxF1[maxF1$analyte %in% c('genes', 'repeats'),],
        aes(x= overlap, y = max_F1, col = cell, group = cell)) +
     geom_point() +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    facet_grid(analyte~run) +
+    facet_grid(~run) +
     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
 
 ```
@@ -797,7 +999,6 @@ axes_col <- ifelse(grepl('both', levels(maxF1$flavour)), 'red', 'black')
 ```
 
 ```{r, fig.width = 11, fig.height = 5}
-library(scales)
 ## help(trans_new)
 
 ggplot(data = maxF1,
@@ -831,6 +1032,118 @@ maxF1 %>%
 
 ```
 
+# Weighted RIs (Wind)
+
+
+```{r}
+
+
+nmis_outer <- list()
+aris_outer <- list()
+
+
+for (run in names(d)) {
+    ## print(run)
+
+    if (! 'genes_alevin' %in% names(d[[run]])) next
+    ## only for the common cells not labelled 'unknown'
+    common_cells <- Reduce(intersect, sapply(d[[run]], function (x) return(x@meta.data$cell)))
+
+    common_cells <- intersect(
+        common_cells,
+        rownames(d[[run]]$genes_alevin@meta.data[d[[run]]$genes_alevin@meta.data$scina != 'unknown',]))
+
+    nmis <- list()
+    aris <- list()
+
+    for (method in names(d[[run]])) {
+        tryCatch({
+            print(sprintf('%s %s', run, method))
+            Y <- as.matrix(GetAssayData(d[[run]][[method]],
+                                        slot = 'counts')[,common_cells])
+            
+            trueclass <- d[[run]]$genes_alevin@meta.data[common_cells, 'scina']
+            ctStruct <- createRef(Y, trueclass)
+
+
+            clusters <- list()
+
+            for (res in grep('snn', colnames(d[[run]][[method]]@meta.data), value = TRUE)) {
+                ## clusters <- sapply(d, function(x) return(x@meta.data[common_cells, res]))
+                clusters[[res]] <- d[[run]][[method]]@meta.data[common_cells, res]
+            }
+
+            ## str(    clusters)
+            (resolutions <- names(clusters))
+
+            ## NMI
+            allNMI = matrix(0, nrow=length(resolutions), ncol=2)
+            rownames(allNMI) = resolutions
+            colnames(allNMI) = c("NMI", "wNMI")
+
+            for(i in 1:length(clusters)) {
+                allNMI[i,1] = wNMI(ctStruct, trueclass, clusters[[i]], FALSE)
+                allNMI[i,2] = wNMI(ctStruct, trueclass, clusters[[i]])
+            }
+
+            nmis[[method]] <- allNMI
+            
+            ## ARI
+            weights <- createWeights(Y, trueclass)
+            ## str(weights)
+            
+            allRI = matrix(0, nrow=length(resolutions), ncol=6)
+            rownames(allRI) = resolutions
+            allRI
+
+            colnames(allRI) = c("RI", "NI1","NI2","wRI","wNI1","wNI2")
+            for(i in 1:length(clusters)) {
+                allRI[i,1:3] = wRI(as.character(trueclass), as.numeric(clusters[[i]])) [1:3]
+                allRI[i,4:6] = wRI(as.character(trueclass), as.numeric(clusters[[i]]), 
+                                   weights$W0, weights$W1)[1:3]
+            }
+
+            aris[[method]] <- allRI
+        }, error = function(x) print(x))
+    }
+
+    aris_outer[[run]] <- aris
+    nmis_outer[[run]] <- nmis
+
+    
+}
+```
+
+Plots wRI / wNMI
+
+
+```{r}
+
+for (dataset in names(nmis_outer)) {
+    for (method in names(nmis_outer[[dataset]])) {
+        par(mfrow = c(1,2))
+        barplot(t(aris_outer[[dataset]][[method]][,c(1,4)]), beside=TRUE, ylim=c(0,1.05), 
+            legend.text=TRUE, xpd=FALSE, las =2, main = method)
+    
+
+        barplot(t(nmis_outer[[dataset]][[method]]), beside=TRUE, ylim=c(0,1.05), 
+                legend.text=TRUE, xpd=FALSE, las = 2, main = method)
+    }
+}
+
+dataset <- 'pbmc8k'
+par(mfrow = c(4,4))
+for (method in names(nmis_outer[[dataset]])) {
+    barplot(t(aris_outer[[dataset]][[method]][,c(1,4)]), beside=TRUE, ylim=c(0,1.05), 
+            legend.text=TRUE, xpd=FALSE, las =2, main = method)
+    
+
+    barplot(t(nmis_outer[[dataset]][[method]]), beside=TRUE, ylim=c(0,1.05), 
+            legend.text=TRUE, xpd=FALSE, las = 2, main = method)
+}
+
+
+```
 
 # Markers {.tabset}
 

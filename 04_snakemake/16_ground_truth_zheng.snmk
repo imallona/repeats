@@ -1,0 +1,157 @@
+#!/usr/bin/env snakemake -s
+## 
+## Started 14th Jan 2020
+##
+## Izaskun Mallona
+## GPLv3
+
+import os.path as op
+from glob import glob
+
+
+# From http://cf.10xgenomics.com/samples/cell-exp/1.1.0/frozen_pbmc_donor_a/frozen_pbmc_donor_a_web_summary.html
+# ~2,900 cells detected
+# Sequenced on Illumina NextSeq 500 High Output with ~25,000 reads per cell
+# 98bp read1 (transcript), 8bp I5 sample barcode, 14bp I7 GemCode barcode and 5bp read2 (UMI)
+# Analysis run with --cells=3000
+
+RUN_NAME  = 'zheng_truth'
+CHEMISTRY = 'SC3Pv1'
+DEMUX = True
+
+#@FIXME to be moved to config, not hardcoded!
+BASE = op.join('/home', 'imallona', 'repeats_sc')
+NTHREADS = 60
+LOCAL_MEM_GB = 100
+GENOME = 'GRCh38'
+CONF = op.join(BASE, 'data', RUN_NAME, 'zheng.conf')
+
+## @FIXME to be moved to config
+GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
+# GENES_GTF_URL =  'ftp://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz'
+GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
+REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
+# REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/mm10_rmsk_TE.gtf.gz'
+DFAM_EMBL_URL = 'https://www.dfam.org/releases/current/families/Dfam.embl.gz'
+# TRANSCRIPTOME_URL= 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh38.cdna.all.fa.gz'
+TRANSCRIPTOME_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.pc_transcripts.fa.gz'
+
+CELLRANGER_HG38_URL = 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-GRCh38-3.0.0.tar.gz'
+
+## @FIXME to be moved to config
+
+GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/gtf_parser.R'
+FEATURECOUNTS_RSCRIPT= '~/src/repeats_sc/04_snakemake/plot_featurecounts_profile.R'
+
+BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
+BOWTIE = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'
+
+##pigz 2.3.1
+PIGZ = '/usr/bin/pigz'
+BIOPYTHON_CONVERT='biopython.convert'
+STAR = '~/soft/star/STAR-2.7.3a/source/STAR'
+FEATURECOUNTS = '~/soft/subread/subread-2.0.0-source/bin/featureCounts'
+# SALMON = '~/soft/salmon/salmon-1.1.0_linux_x86_64/bin/salmon'
+SALMON='/home/imallona/soft/salmon/salmon-1.2.1/bin/salmon'
+SALMON_V1_10X_RUN='/home/imallona/soft/salmon/salmon-1.2.1_src/scripts/v1_10x/run.sh'
+SALMON_V1_10X_WRAPPER='/home/imallona/soft/salmon/salmon-1.2.1_src/scripts/v1_10x/wrapper'
+CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
+BIOAWK = '~/soft/bioawk/bioawk'
+BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
+Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
+FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
+
+# print(op.join(BASE, 'data', RUN_NAME))
+
+# samples_R2, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_1.fastq.gz"))
+# samples_R1, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_2.fastq.gz"))
+# samples_I3, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_3.fastq.gz"))
+
+# ## 
+# this is needed to be hardcoded/config file
+
+try:
+   if not op.exists(op.dirname(op.join(BASE, 'annotation'))):
+      os.makedirs(op.join(BASE, 'annotation'))
+except OSError as err:
+   print(err)
+      
+for item in ['bowtie', 'star', 'salmon']:
+   try:
+      if not op.exists(op.dirname(op.join(BASE, 'indices', item))):
+         os.makedirs(op.join(BASE, 'indices', item))
+   except OSError as err:
+      print(err)
+      
+## Folder structure end ----------------------------------------------------------------------- ##
+
+
+# config file
+def get_zheng_urls(conf):
+   if not op.isfile(conf):
+      write_config(conf)
+   
+   samples = []
+   with open(conf) as fh:
+      for line in fh: 
+         samples.append(line.split(',')[0].strip())
+   return(samples)
+
+         
+def get_zheng_samples(conf):
+   if not op.isfile(conf):
+      write_config(conf)
+   
+   samples = []
+   with open(conf) as fh:
+      for line in fh: 
+         samples.append(line.split(',')[1].strip())
+   return(samples)
+
+
+def write_config(conf):
+   path = op.join(BASE, "data", RUN_NAME)
+   if not op.exists(path):
+      os.makedirs(path)
+      
+   with open(conf, "w+") as fh:
+       fh.writelines("""https://cg.10xgenomics.com/samples/cell-exp/1.1.0/cd14_monocytes/cd14_monocytes_fastqs.tar,cd14_monocytes
+https://cg.10xgenomics.com/samples/cell-exp/1.1.0/b_cells/b_cells_fastqs.tar,b_cells
+https://cg.10xgenomics.com/samples/cell-exp/1.1.0/cd34/cd34_fastqs.tar,cd34
+https://cg.10xgenomics.com/samples/cell-exp/1.1.0/cd4_t_helper/cd4_t_helper_fastqs.tar,cd4_t_helper
+https://cg.10xgenomics.com/samples/cell-exp/1.1.0/regulatory_t/regulatory_t_fastqs.tar,regulatory_t
+https://cf.10xgenomics.com/samples/cell-exp/1.1.0/naive_t/naive_t_fastqs.tar,naive_t
+https://cg.10xgenomics.com/samples/cell-exp/1.1.0/memory_t/memory_t_fastqs.tar,memory_t
+https://cg.10xgenomics.com/samples/cell-exp/1.1.0/cd56_nk/cd56_nk_fastqs.tar,cd56_nk
+https://cg.10xgenomics.com/samples/cell-exp/1.1.0/cytotoxic_t/cytotoxic_t_fastqs.tar,cytotoxic_t
+https://cg.10xgenomics.com/samples/cell-exp/1.1.0/naive_cytotoxic/naive_cytotoxic_fastqs.tar,naive_cytotoxic
+""")
+      
+# include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow.snmk"
+
+print(get_zheng_samples(CONF))
+
+rule all:
+    input:
+        # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html'),
+        expand(op.join(BASE, 'data', RUN_NAME, "{celltype}_fastqs.tar"),
+               celltype = get_zheng_samples(CONF))
+
+rule get_data_zheng:
+    priority:
+        100
+    params:
+        path = op.join(BASE, 'data', RUN_NAME),
+        path_data = op.join(BASE, 'data', RUN_NAME),
+        base_url = 'https://cg.10xgenomics.com/samples/cell-exp/1.1.0'
+    output:
+        tar = op.join(BASE, 'data', RUN_NAME, "{celltype}_fastqs.tar")
+    threads:
+        1
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+    
+        wget "{params.base_url}/{wildcards.celltype}/{wildcards.celltype}_fastqs.tar"
+        """
