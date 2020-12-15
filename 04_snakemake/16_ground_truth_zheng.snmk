@@ -1,6 +1,6 @@
 #!/usr/bin/env snakemake -s
 ## 
-## Started 14th Jan 2020
+## Started 14 Dec 2020
 ##
 ## Izaskun Mallona
 ## GPLv3
@@ -8,20 +8,13 @@
 import os.path as op
 from glob import glob
 
-
-# From http://cf.10xgenomics.com/samples/cell-exp/1.1.0/frozen_pbmc_donor_a/frozen_pbmc_donor_a_web_summary.html
-# ~2,900 cells detected
-# Sequenced on Illumina NextSeq 500 High Output with ~25,000 reads per cell
-# 98bp read1 (transcript), 8bp I5 sample barcode, 14bp I7 GemCode barcode and 5bp read2 (UMI)
-# Analysis run with --cells=3000
-
 RUN_NAME  = 'zheng_truth'
 CHEMISTRY = 'SC3Pv1'
 DEMUX = True
 
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
-NTHREADS = 60
+NTHREADS = 20
 LOCAL_MEM_GB = 100
 GENOME = 'GRCh38'
 CONF = op.join(BASE, 'data', RUN_NAME, 'zheng.conf')
@@ -135,8 +128,148 @@ rule all:
     input:
         # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html'),
         expand(op.join(BASE, 'data', RUN_NAME, "{celltype}_fastqs.tar"),
+               celltype = get_zheng_samples(CONF)),
+        expand(op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'cellranger_standard', 'outs',
+                       'web_summary.html'),
+               celltype = get_zheng_samples(CONF)),
+        expand(op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'cellranger_repeats', 'outs',
+                       'web_summary.html'),
+               celltype = get_zheng_samples(CONF)),
+        expand(op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'alevin', 'repeats',
+                       'alevin', 'quants_mat.gz').
                celltype = get_zheng_samples(CONF))
+        
+rule run_cellranger_standard:
+    input:
+        flag = op.join(BASE, 'data', RUN_NAME, "{celltype}_fastqs.flag"),
+        transcriptome = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0')
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME, "{celltype}"),
+        sample_name = RUN_NAME,
+        local_mem_gb = LOCAL_MEM_GB,
+        processing_path = op.join(BASE, 'runs', RUN_NAME, "{celltype}"),
+        chemistry = CHEMISTRY
+    output:
+        op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'cellranger_standard', 'outs',
+                'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'cellranger_standard', 'outs',
+                'possorted_genome_bam.bam'),
+        op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'cellranger_standard', 'outs',
+                'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+    threads:
+        NTHREADS
+    log:
+        op.join(BASE, 'runs',  RUN_NAME, 'run_cellranger_{celltype}_standard.log')
+    shell:
+        """
+            mkdir -p {params.processing_path}
+            cd {params.processing_path}
+            rm -rf cellranger_standard
 
+            {CELLRANGER} count --id=cellranger_standard \
+            --fastqs={params.fastqs_path} \
+            --transcriptome={input.transcriptome} \
+            --jobmode=local \
+            --localcores={threads} \
+            --localmem={params.local_mem_gb} \
+            --chemistry={params.chemistry}
+            """
+
+rule try_alevin_repeats:
+    input:        
+        tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
+        idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
+        cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, "{celltype}", '*I1*fastq.gz'))),
+        r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, "{celltype}", '*RA*fastq.gz')))        
+    output:
+        op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
+    threads:
+        NTHREADS
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME, "{celltype}", ),
+        processing_path = op.join(BASE, 'runs', RUN_NAME, "{celltype}",  'alevin', 'repeats'),
+        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
+        converter_path =  op.dirname("{SALMON_V1_V10X_RUN}")
+    log:
+        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium_"{celltype}".log')
+    shell:
+        """
+    mkdir -p {params.processing_path}
+
+    cd {params.converter_path}
+
+    # cd {params.processing_path}
+
+    {SALMON_V1_10X_RUN} {SALMON} alevin \
+    -lISR \
+    -b {params.fastqs_path}/ \
+    --gemcode \
+    -i {params.salmon_idx} \
+    -p {threads} \
+    -o {params.processing_path} \
+    --tgMap {input.tgmap}
+
+    touch -c {output}
+    """
+        
+rule run_cellranger_repeats:
+    input:
+        flag = op.join(BASE, 'data', RUN_NAME, "{celltype}_fastqs.flag"),
+        transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME, "{celltype}"),
+        sample_name = RUN_NAME,
+        local_mem_gb = LOCAL_MEM_GB,
+        processing_path = op.join(BASE, 'runs', RUN_NAME, "{celltype}"),
+        chemistry = CHEMISTRY
+    output:
+        op.join(BASE, 'runs', RUN_NAME, "{celltype}",'cellranger_repeats',
+                'outs', 'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, "{celltype}",'cellranger_repeats', 'outs',
+                'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+    threads:
+        NTHREADS
+    log:
+        op.join(BASE, 'runs', RUN_NAME, 'run_cellranger_{celltype}_repeats.log')
+    shell:
+        """
+        mkdir -p {params.processing_path}
+        cd {params.processing_path}
+        rm -rf cellranger_repeats
+
+        {CELLRANGER} count --id=cellranger_repeats \
+          --fastqs={params.fastqs_path} \
+          --transcriptome={input.transcriptome} \
+          --jobmode=local \
+          --localcores={threads} \
+          --localmem={params.local_mem_gb} \
+          --chemistry={params.chemistry} \
+            """
+
+rule uncompress_data_zheng:
+    input:
+        tar = op.join(BASE, 'data', RUN_NAME, "{celltype}_fastqs.tar")
+    params:
+        path = op.join(BASE, 'data', RUN_NAME, "{celltype}"),
+        path_data = op.join(BASE, 'data', RUN_NAME),
+        base_url = 'https://cg.10xgenomics.com/samples/cell-exp/1.1.0'
+    output:
+        flag = op.join(BASE, 'data', RUN_NAME, "{celltype}_fastqs.flag")
+    threads:
+        1
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+    
+        tar xvf {input.tar} -C .
+
+        # flatten the directory
+        find {params.path} -mindepth 2 -type f -exec mv -t {params.path} -i '{{}}' +
+        
+        touch {output.flag}
+        """
+        
 rule get_data_zheng:
     priority:
         100
