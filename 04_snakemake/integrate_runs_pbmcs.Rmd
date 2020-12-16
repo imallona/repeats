@@ -881,6 +881,12 @@ maxF1$flavour <- factor(maxF1$flavour,
                                    'repeats_star_unique', 'repeats_star_multi',
                                    'repeats_only_unique', 'repeats_only_multi'))
 
+maxF1$run <- as.character(maxF1$run)
+maxF1$run[maxF1$run == 'Drop-seq'] <- 'ding_dropseq'
+maxF1$run[maxF1$run == 'CEL-Seq2'] <- 'ding_celseq2'
+maxF1$run[maxF1$run == 'Seq-Well'] <- 'ding_seqwell'
+
+## table(maxF1$run)
 
 maxF1$run <-  factor(maxF1$run,
                      levels = c("frozen_pbmc_donor_a",
@@ -892,7 +898,7 @@ maxF1$run <-  factor(maxF1$run,
                                 "ding_seqwell",                                     
                                 "pbmcs_smartseq2_ding"))
 
-## table(maxF1$flavour, useNA = 'always')
+table(maxF1$run, useNA = 'always')
 ## head(maxF1)
 
 ```
@@ -998,7 +1004,7 @@ axes_col <- ifelse(grepl('both', levels(maxF1$flavour)), 'red', 'black')
 
 ```
 
-```{r, fig.width = 11, fig.height = 5}
+```{r, fig.width = 10, fig.height = 5}
 ## help(trans_new)
 
 ggplot(data = maxF1,
@@ -1040,7 +1046,7 @@ maxF1 %>%
 
 nmis_outer <- list()
 aris_outer <- list()
-
+weights_outer <- list()
 
 for (run in names(d)) {
     ## print(run)
@@ -1058,7 +1064,7 @@ for (run in names(d)) {
 
     for (method in names(d[[run]])) {
         tryCatch({
-            print(sprintf('%s %s', run, method))
+            ## print(sprintf('%s %s', run, method))
             Y <- as.matrix(GetAssayData(d[[run]][[method]],
                                         slot = 'counts')[,common_cells])
             
@@ -1074,7 +1080,7 @@ for (run in names(d)) {
             }
 
             ## str(    clusters)
-            (resolutions <- names(clusters))
+            resolutions <- names(clusters)
 
             ## NMI
             allNMI = matrix(0, nrow=length(resolutions), ncol=2)
@@ -1104,6 +1110,7 @@ for (run in names(d)) {
             }
 
             aris[[method]] <- allRI
+            weights_outer[[paste(run, method)]] <- weights
         }, error = function(x) print(x))
     }
 
@@ -1114,32 +1121,71 @@ for (run in names(d)) {
 }
 ```
 
-Plots wRI / wNMI
-
-
 ```{r}
+saveRDS(object = aris_outer, file = '/home/imallona/pbmc_aris_outer.rds')
+saveRDS(object = nmis_outer, file = '/home/imallona/pbmc_nmis_outer.rds')
+saveRDS(object = weights_outer, file = '/home/imallona/pbmc_weights_outer.rds')
+```
+
+## Plots wRI / wNMI {.tabset}
+
+
+```{r, fig.width = 8, fig.height = 4, results = 'asis'}
 
 for (dataset in names(nmis_outer)) {
+    cat('### ', dataset, '\n\n')
     for (method in names(nmis_outer[[dataset]])) {
         par(mfrow = c(1,2))
         barplot(t(aris_outer[[dataset]][[method]][,c(1,4)]), beside=TRUE, ylim=c(0,1.05), 
-            legend.text=TRUE, xpd=FALSE, las =2, main = method)
+            legend.text=TRUE, xpd=FALSE, las =2, main = sprintf('%s %s', dataset, method))
     
 
         barplot(t(nmis_outer[[dataset]][[method]]), beside=TRUE, ylim=c(0,1.05), 
-                legend.text=TRUE, xpd=FALSE, las = 2, main = method)
+                legend.text=TRUE, xpd=FALSE, las = 2, main = sprintf('%s %s', dataset, method))
     }
+    cat(sprintf('\n\n'))
 }
 
+```
+
+## Weight plots {.tabset}
+
+```{r fig.width = 16, fig.height = 5, results = 'asis'}
+for (id in names(weights_outer)) {
+
+    cat('### ', id, '\n\n')
+    pheatmaps <- list()
+
+    pheatmaps[[1]] <- pheatmap(weights_outer[[id]]$W1, main = sprintf('W1 %s', id),
+                               silent = TRUE)[[4]]
+
+    pheatmaps[[2]] <- pheatmap(weights_outer[[id]]$W0, main = sprintf('W0 %s', id),
+                               silent = TRUE)[[4]]
+
+    pheatmaps[[3]] <- pheatmap(weights_outer[[id]]$W1/weights_outer[[id]]$W0,
+                               main = sprintf('W1/W0 %s', id),
+                               silent = TRUE)[[4]]
+
+    print(grid.arrange(arrangeGrob(grobs= pheatmaps, ncol=3)))
+
+     cat(sprintf('\n\n'))
+}
+
+```
+
+## PBMC 8k in depth
+
+
+```{r fig.width =30, fig.heigh = 5}
 dataset <- 'pbmc8k'
-par(mfrow = c(4,4))
+par(mfrow = c(1,2))
 for (method in names(nmis_outer[[dataset]])) {
     barplot(t(aris_outer[[dataset]][[method]][,c(1,4)]), beside=TRUE, ylim=c(0,1.05), 
-            legend.text=TRUE, xpd=FALSE, las =2, main = method)
+            legend.text=TRUE, xpd=FALSE, las =2, main = sprintf('%s %s', dataset, method))
     
 
     barplot(t(nmis_outer[[dataset]][[method]]), beside=TRUE, ylim=c(0,1.05), 
-            legend.text=TRUE, xpd=FALSE, las = 2, main = method)
+            legend.text=TRUE, xpd=FALSE, las = 2, main = sprintf('%s %s', dataset, method))
 }
 
 
