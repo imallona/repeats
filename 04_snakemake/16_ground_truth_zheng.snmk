@@ -14,7 +14,7 @@ DEMUX = True
 
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
-NTHREADS = 20
+NTHREADS = 30
 LOCAL_MEM_GB = 100
 GENOME = 'GRCh38'
 CONF = op.join(BASE, 'data', RUN_NAME, 'zheng.conf')
@@ -124,6 +124,26 @@ https://cg.10xgenomics.com/samples/cell-exp/1.1.0/naive_cytotoxic/naive_cytotoxi
 
 print(get_zheng_samples(CONF))
 
+def list_cellranger_outputs(basepath, conf, flavour = 'cellranger_standard'):
+   # celltypes = ['naive_t',
+   #             'cd14_monocytes',
+   #             'cd4_t_helper',
+   #             'b_cells',
+   #             'regulatory_t',
+   #             'memory_t',
+   #             'cd56_nk',
+   #             'naive_cytotoxic',
+   #             'cytotoxic_t',
+   #             'cd34']
+
+   celltypes = get_zheng_samples(conf)
+   return([op.join(basepath, celltype, flavour, 'outs', 'filtered_feature_bc_matrix',
+                     'barcodes.tsv.gz') for celltype in celltypes])
+
+print(list_cellranger_outputs(basepath = op.join(BASE, 'runs', RUN_NAME),
+                              conf = CONF,
+                              flavour = 'cellranger_repeats'))
+
 rule all:
     input:
         # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html'),
@@ -135,10 +155,49 @@ rule all:
         expand(op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'cellranger_repeats', 'outs',
                        'web_summary.html'),
                celltype = get_zheng_samples(CONF)),
-        expand(op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'alevin', 'repeats',
-                       'alevin', 'quants_mat.gz').
-               celltype = get_zheng_samples(CONF))
-        
+        # expand(op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'alevin', 'repeats',
+        #                'alevin', 'quants_mat.gz'),
+        #        celltype = get_zheng_samples(CONF)),
+        expand( op.join(BASE, 'runs', RUN_NAME,
+                        RUN_NAME + '_pbmc_zheng_truth_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+                regress_ncount = ['TRUE', 'FALSE'],
+                regress_nfeature = ['TRUE', 'FALSE'])
+
+rule knit_ad_hoc_zheng:
+    input:
+        genes_cellranger = list_cellranger_outputs(basepath = op.join(BASE, 'runs', RUN_NAME),
+                              conf = CONF,
+                              flavour = 'cellranger_standard'),
+        repeats_cellranger = list_cellranger_outputs(basepath = op.join(BASE, 'runs', RUN_NAME),
+                              conf = CONF,
+                              flavour = 'cellranger_repeats'),
+        config_fn = CONF
+    params:
+        rmd = 'summarize_zheng_truth_cellranger.Rmd',
+        run_name = "zheng_truth",
+        genes_cellranger_path = op.join(BASE, 'runs', RUN_NAME),
+        repeats_cellranger_path = op.join(BASE, 'runs', RUN_NAME)
+    output:
+        html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_zheng_truth_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_zheng_truth_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        # aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        # cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        # markers  = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')  
+    log:
+        op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_zheng_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
+    shell:
+        """
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+          output_file = \"{output.html}\", 
+          params = list(identifier = \"{params.run_name}\", 
+           genes_cellranger = \"{params.genes_cellranger_path}\",
+           repeats_cellranger = \"{params.repeats_cellranger_path}\",
+           seurat_output = \"{output.rds}\", 
+           regress_genes_nCount = \"{wildcards.regress_ncount}\", \
+           regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
+           config_fn = \"{input.config_fn}\"))' &> {log}
+        """
+
 rule run_cellranger_standard:
     input:
         flag = op.join(BASE, 'data', RUN_NAME, "{celltype}_fastqs.flag"),
