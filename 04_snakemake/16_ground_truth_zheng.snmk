@@ -180,9 +180,9 @@ rule knit_ad_hoc_zheng:
     output:
         html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_zheng_truth_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
         rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_zheng_truth_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-        # aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-        # cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-        # markers  = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')  
+        aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        markers  = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')  
     log:
         op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_zheng_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
     shell:
@@ -193,6 +193,9 @@ rule knit_ad_hoc_zheng:
            genes_cellranger = \"{params.genes_cellranger_path}\",
            repeats_cellranger = \"{params.repeats_cellranger_path}\",
            seurat_output = \"{output.rds}\", 
+           aris_output = \"{output.aris}\", 
+           cobra_output = \"{output.cobra}\", 
+           markers_output = \"{output.markers}\", 
            regress_genes_nCount = \"{wildcards.regress_ncount}\", \
            regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
            config_fn = \"{input.config_fn}\"))' &> {log}
