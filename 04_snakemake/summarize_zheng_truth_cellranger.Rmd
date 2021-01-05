@@ -217,6 +217,7 @@ d$genes_cellranger <- merge(x = d$genes_cellranger[[1]],
                             project = params$identifier)
 
 
+rownames(d$genes_cellranger@meta.data) <- colnames(d$genes_cellranger)
 ```
 
 Similarly for repeats
@@ -264,6 +265,7 @@ d$repeats_cellranger <- merge(x = d$repeats_cellranger[[1]],
                             add.cell.ids = names(d$repeats_cellranger),
                             project = params$identifier)
 
+rownames(d$repeats_cellranger@meta.data) <- colnames(d$repeats_cellranger)
 ## colnames(d$repeats_cellranger)
 ```
 
@@ -294,6 +296,19 @@ d$both_cellranger <- CreateSeuratObject(
     names.field = 1,
     names.delim = "_",
     meta.data = NULL)
+
+## rownames(d$both_cellranger@meta.data) <- colnames(d$both_cellranger)
+## d$genes_cellranger@meta.data$id <- colnames(d$genes_cellranger)
+
+
+d$both_cellranger@meta.data$orig.ident <- d$genes_cellranger@meta.data[common_cells, 'orig.ident']
+
+
+## head(d$both_cellranger@meta.data)
+## head(d$genes_cellranger@meta.data)
+
+stopifnot(all(d$both_cellranger@meta.data[common_cells, 'orig.ident'] ==
+              d$genes_cellranger@meta.data[common_cells, 'orig.ident'] ))
 
 rm(common_cells)
 
@@ -570,7 +585,7 @@ for (item in names(d)) {
 ## checkpoint
 
 ```{r}
-saveRDS(d, file = params$seurat_output)
+saveRDS(d, file = paste0(params$seurat_output, 'debug1'))
 ```
 
 
@@ -824,12 +839,12 @@ hungarian_weber_with_labels <- function(clus_algorithm, clus_truth) {
 
 ```
 
-```{r, eval = FALSE}
+```{r, eval = TRUE}
 a <- 1
-saveRDS(object = d, file = params$seurat_output) # checkpoint
-saveRDS(object = a, file = params$aris_output)
-saveRDS(object = a, file = params$cobra_output)
-saveRDS(object = a, file = params$markers_output)
+saveRDS(object = d, file = paste0(params$seurat_output, '.debug2')) # checkpoint
+## saveRDS(object = a, file = params$aris_output)
+## saveRDS(object = a, file = params$cobra_output)
+## saveRDS(object = a, file = params$markers_output)
 
 ```
 
@@ -840,15 +855,21 @@ knitr::knit_exit()
 ```{r}
 hung <- list()
 
-d[[flavour]]@meta.data$truth <- d[[flavour]]@meta.data$orig.ident
+## flavour <- 'genes_cellranger'
 
 for (flavour in names(d)) {
+    d[[flavour]]@meta.data$truth <- sapply(
+        strsplit(d[[flavour]]@meta.data$orig.ident, '\n'),
+        function(x) return(x[1]))
+
+    ## head(d[[1]]@meta.data$truth)
+    
     ## rownames(d[[flavour]]@meta.data) <- 
     resolutions <- grep('RNA_snn_res', colnames(d[[flavour]]@meta.data), value = TRUE)
     hung[[flavour]] <- list()
     for (res in resolutions) {
         rownames(d[[flavour]]@meta.data) <- d[[flavour]]@meta.data$cell
-        known <- rownames(d[[flavour]]@meta.data[d[[flavour]]@meta.data$truth != 'unknown',])
+        known <- rownames(d[[flavour]]@meta.data)
 
         length(as.factor(d[[flavour]]@meta.data[known, res]))
         length(as.factor(d[[flavour]]@meta.data[known, 'truth']))
@@ -921,8 +942,8 @@ DT::datatable(as.data.frame(cobra %>%
 ggplot(data = cobra, aes(x = pr, y =  re, group = cell, col = cell)) +
     geom_point() +
     facet_grid(flavour~res, margins = FALSE) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) # +
+    ## scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
 
 ```
 
@@ -931,7 +952,7 @@ ggplot(data = cobra, aes(x = res, y =  F1, group=flavour, col = cell)) +
     geom_point() +
     facet_wrap(~flavour) + 
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) +
+    ## scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) +
     labs(x = 'resolution')
 
 ```
@@ -942,8 +963,8 @@ cobra$resolution <- gsub('RNA_snn_res_', '', cobra$res)
 ggplot(data = cobra, aes(x = re, y =  F1, group=resolution, col =cell)) +
     geom_point() +
     facet_grid(flavour~res) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) # +
+    ## scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
 
 ```
 
@@ -988,4 +1009,5 @@ sessionInfo()
 devtools::session_info()
 
 ```
+
 
