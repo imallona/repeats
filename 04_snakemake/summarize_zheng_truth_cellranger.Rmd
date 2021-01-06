@@ -598,8 +598,8 @@ saveRDS(d, file = paste0(params$seurat_output, 'debug1'))
 for (item in names(d)) {
     cat("### ", item, "\n\n")
     
-    p1 <- DimPlot(d[[item]], reduction = "umap")
-    p2 <- DimPlot(d[[item]], reduction = "tsne")
+    p1 <- DimPlot(d[[item]], reduction = "umap", group.by = 'orig.ident')
+    p2 <- DimPlot(d[[item]], reduction = "tsne", group.by = 'orig.ident')
 
     print(p1 + ggtitle(item))
     print(p2 + ggtitle(item))
@@ -859,7 +859,7 @@ hung <- list()
 
 for (flavour in names(d)) {
     d[[flavour]]@meta.data$truth <- sapply(
-        strsplit(d[[flavour]]@meta.data$orig.ident, '\n'),
+        strsplit(as.character(d[[flavour]]@meta.data$orig.ident), '\n'),
         function(x) return(x[1]))
 
     ## head(d[[1]]@meta.data$truth)
@@ -999,6 +999,8 @@ List of seurat objects
 saveRDS(object = d, file = params$seurat_output)
 saveRDS(object = aris_stored, file = params$aris_output)
 saveRDS(object = ml, file = params$markers_output)
+saveRDS(object = cobra, file = params$cobra_output)
+
 ```
 
 # Timestamp
