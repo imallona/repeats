@@ -50,7 +50,7 @@ FEATURECOUNTS = '~/soft/subread/subread-2.0.0-source/bin/featureCounts'
 SALMON = '~/soft/salmon/salmon-1.1.0_linux_x86_64/bin/salmon'
 CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
 BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
-Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
+Rscript = '/usr/local/R/R-4.0.0/bin/Rscript'
 
 ## this is needed to be hardcoded/config file
 

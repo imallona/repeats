@@ -22,7 +22,6 @@ params:
   repeats_only_multi: ""
   genes_star: ""
   de_output: ""
-  config_fn: ""
 ---
 
 # Config
@@ -168,20 +167,19 @@ read_featurecounts <- function(fn, identifier, add_gene_symbols = FALSE, remove_
 # Data load
 
 ```{r, eval = FALSE}
-params <- list(identifier = "bulk_GSE51984", 
-          genes_star = "/home/imallona/repeats_sc/runs/bulk_GSE51984/star_transcriptome/genes/bulk_GSE51984_star_genes.counts.gz", 
-          repeats_star_unique = "/home/imallona/repeats_sc/runs/bulk_GSE51984/star_transcriptome/repeats/unique_reads/bulk_GSE51984_star_transcriptome_repeats.counts.gz", 
-          repeats_star_multi = "/home/imallona/repeats_sc/runs/bulk_GSE51984/star_transcriptome/repeats/multimappers/bulk_GSE51984_star_transcriptome_repeats.counts.gz", 
-          repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/bulk_GSE51984/bowtie_repeatome/unique_reads/bulk_GSE51984_bowtie_repeats.counts.gz", 
-          repeats_bowtie_multi = "/home/imallona/repeats_sc/runs/bulk_GSE51984/bowtie_repeatome/multimappers/bulk_GSE51984_bowtie_repeats.counts.gz", 
-          repeats_only_unique = "/home/imallona/repeats_sc/runs/bulk_GSE51984/star_transcriptome/repeats_no_overlap/unique_reads/bulk_GSE51984_repeats_no_overlap_genes.counts.gz",
-          repeats_only_multi = "/home/imallona/repeats_sc/runs/bulk_GSE51984/star_transcriptome/repeats_no_overlap/multimappers/bulk_GSE51984_repeats_no_overlap_genes.counts.gz",
-          seurat_output = "/home/imallona/repeats_sc/runs/bulk_GSE51984/bulk_GSE51984_pmbc_smartseq2_regress_nCount_FALSE_nFeature_TRUE.rds", 
-          aris_output = "/home/imallona/repeats_sc/runs/bulk_GSE51984/bulk_GSE51984_aris_regress_nCount_FALSE_nFeature_TRUE.rds", 
-          cobra_output = "/home/imallona/repeats_sc/runs/bulk_GSE51984/bulk_GSE51984_cobra_regress_nCount_FALSE_nFeature_TRUE.rds",
-          config_fn = '/home/imallona/repeats_sc/data/bulk_GSE51984/bulk_GSE51984.conf',
-          regress_genes_nCount = "FALSE",
-          regress_genes_nFeature = "TRUE")
+params <- list(identifier = "bulk_GSE80095", 
+          genes_star = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/genes/bulk_GSE80095_star_genes.counts.gz", 
+          repeats_star_unique = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/repeats/unique_reads/bulk_GSE80095_star_transcriptome_repeats.counts.gz", 
+          repeats_star_multi = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/repeats/multimappers/bulk_GSE80095_star_transcriptome_repeats.counts.gz", 
+          repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bowtie_repeatome/unique_reads/bulk_GSE80095_bowtie_repeats.counts.gz", 
+          repeats_bowtie_multi = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bowtie_repeatome/multimappers/bulk_GSE80095_bowtie_repeats.counts.gz", 
+          repeats_only_unique = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/repeats_no_overlap/unique_reads/bulk_GSE80095_repeats_no_overlap_genes.counts.gz",
+          repeats_only_multi = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/repeats_no_overlap/multimappers/bulk_GSE80095_repeats_no_overlap_genes.counts.gz",
+          seurat_output = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_pmbc_smartseq2_regress_nCount_FALSE_nFeature_TRUE.rds", 
+          aris_output = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_aris_regress_nCount_FALSE_nFeature_TRUE.rds", 
+          cobra_output = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_cobra_regress_nCount_FALSE_nFeature_TRUE.rds",
+     regress_genes_nCount = "FALSE",
+     regress_genes_nFeature = "TRUE")
 
 
 ```
@@ -189,40 +187,54 @@ params <- list(identifier = "bulk_GSE51984",
 Annotation for monocytes
 
 ```{r}
-annot <- read.table(params$config_fn,
+annot1 <- read.table('/home/imallona/repeats_sc/data/bulk_GSE80095/monocytes.conf',
                      header = FALSE, sep = ',',
                      stringsAsFactors = FALSE)
 
-colnames(annot)[1] <- c('srr')
-colnames(annot)[8] <- 'sample'
+colnames(annot1)[1] <- c('srr')
+colnames(annot1)[9] <- 'sample'
 
-rownames(annot) <- annot$srr
+rownames(annot1) <- annot1$srr
+```
+
+Annotation for outgroup
+
+```{r}
+annot2 <- read.table('/home/imallona/repeats_sc/data/bulk_GSE80095/tcells.conf',
+                     header = FALSE, sep = ',',
+                     stringsAsFactors = FALSE)
+
+colnames(annot2)[1] <- c('srr')
+colnames(annot2)[8] <- 'sample'
+
+rownames(annot2) <- annot2$srr
 ```
 
 ```{r}
-table(annot$sample)
-annot$sample <- gsub('-', '_', annot$sample)
-annot$sample <- gsub(' ', '_', annot$sample)
-annot$sample <- gsub('+', '', annot$sample, fixed = TRUE)
-table(annot$sample)
+annot <- data.frame(srr = c(annot1$srr, annot2$srr),
+                    sample = c(annot1$sample, annot2$sample),
+                    stringsAsFactors = FALSE,
+                    row.names = 1)
 
-annot$sample_reduced <- ifelse(annot$sample == 'Monocytes', 'monocytes', 'non_monocytes')
+table(annot$sample)
+annot[annot$sample == 'CD14-Positive Monocytes cells', 'sample'] <- 'monocyte'
+annot[annot$sample == 'CD3+ Lymphocytes', 'sample'] <- 'tcell'
+table(annot$sample)
 
 ```
-
 
 ```{r}
 d <- list()
 
 
-for (item in setdiff(names(params), c('identifier', 'de_output', 'config_fn'))){
+for (item in setdiff(names(params), c('identifier', 'de_output'))){
 
     d[[item]] <- read_featurecounts(
-        params[[item]],
-        identifier = sprintf('%s_%s', params$identifier, params[[item]]),
-        add_gene_symbols = grepl('genes', item))
+    params[[item]],
+    identifier = sprintf('%s_%s', params$identifier, params[[item]]),
+    add_gene_symbols = grepl('genes', item))
 
-    d[[item]] <- DGEList(d[[item]], group = annot$sample_reduced)
+    d[[item]] <- DGEList(d[[item]], group = annot$sample)
 }
 
 str(d)
@@ -248,9 +260,7 @@ logcpms <- lapply(d, function(x) edgeR::cpm(x, log = TRUE))
 # design
 
 ```{r}
-
-
-des <- model.matrix(as.formula('~ 0 + sample_reduced'), data = annot)
+des <- model.matrix(as.formula('~ 0 + sample'), data = annot)
 print(des)
 ```
 
@@ -279,15 +289,11 @@ lapply(d, function(x) plotBCV(x))
 
 # Define contrasts 
 
-Monocytes vs all
-
 ```{r edgeR-define-contrasts}
 (conts <- as.data.frame(
-   makeContrasts(
-       contrasts = 'sample_reducedmonocytes-sample_reducednon_monocytes',
-       levels = des)))
-
-
+    makeContrasts(
+        contrasts = 'samplemonocyte-sampletcell',
+        levels = des)))
 ```
 
 # DGE

@@ -30,6 +30,9 @@ rule integration_pbmcs_10x_plus_smartseq2:
         celseq2 = '/home/imallona/repeats_sc/runs/ding_celseq2/ding_celseq2_pmbc_celseq2_regress_nCount_FALSE_nFeature_FALSE.rds',
         dropseq = '/home/imallona/repeats_sc/runs/ding_dropseq/ding_dropseq_pmbc_dropseq_regress_nCount_FALSE_nFeature_FALSE.rds',
         seqwell = '/home/imallona/repeats_sc/runs/ding_seqwell/ding_seqwell_pmbc_seqwell_regress_nCount_FALSE_nFeature_FALSE.rds',
+        bulk_gse80095 = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_de.rds",
+        bulk_gse94820 = "/home/imallona/repeats_sc/runs/bulk_GSE51984/bulk_GSE51984_de.rds",
+        zheng_truth = "/home/imallona/repeats_sc/runs/zheng_truth/zheng_truth_pbmc_zheng_truth_regress_nCount_FALSE_nFeature_FALSE.rds"
     params:
         rmd = 'integrate_runs_pbmcs.Rmd'
     output:
@@ -47,6 +50,9 @@ rule integration_pbmcs_10x_plus_smartseq2:
              smartseq1 = \"{input.s1}\",
              celseq2 = \"{input.celseq2}\",
              dropseq = \"{input.dropseq}\",
-             seqwell = \"{input.seqwell}\" ))' &> {log}
+             seqwell = \"{input.seqwell}\",
+             bulk_gse80095 = \"{input.bulk_gse80095}\",
+             bulk_gse94820 = \"{input.bulk_gse94820}\",
+             zheng_truth = \"{input.zheng_truth}\"))' &> {log}
         """
 
