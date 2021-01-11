@@ -68,6 +68,7 @@ library(tidyr)
 library(Wind) # https://github.com/haowulab/Wind
 library(gridExtra)
 library(scales)
+library(edgeR)
 
 })
 ```
@@ -80,7 +81,7 @@ BASE <- file.path('/home', 'imallona', 'repeats_sc')
 opts_chunk$set(fig.width = 5,
                fig.height = 5,
                dev = 'png',
-               cache = FALSE,
+               cache = TRUE,
                echo = TRUE,
                include = TRUE,
                cache.lazy = FALSE,
@@ -180,8 +181,6 @@ coef_var <- function(x){
 
 ```
 
-# Data load Seurat objects
-
 ```{r justfordebugging, eval = FALSE}
 ## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
 ##                repeats_cellranger= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
@@ -202,9 +201,10 @@ params <- list( chromium1 = '/home/imallona/repeats_sc/runs/pbmc8k/pbmc8k_pmbc_c
         dropseq = "/home/imallona/repeats_sc/runs/ding_dropseq/ding_dropseq_pmbc_dropseq_regress_nCount_FALSE_nFeature_FALSE.rds",
         celseq2 = "/home/imallona/repeats_sc/runs/ding_celseq2/ding_celseq2_pmbc_celseq2_regress_nCount_FALSE_nFeature_FALSE.rds",
         seqwell = "/home/imallona/repeats_sc/runs/ding_seqwell/ding_seqwell_pmbc_seqwell_regress_nCount_FALSE_nFeature_FALSE.rds",
-        bulk_gse80095 = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_de.rds",
-        bulk_gse94820 = "/home/imallona/repeats_sc/runs/bulk_GSE51984/bulk_GSE51984_de.rds",
+        bulk_gse80095 = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_expression.rds",
+        bulk_gse94820 = "/home/imallona/repeats_sc/runs/bulk_GSE51984/bulk_GSE51984_expression.rds",
         zheng_truth = "/home/imallona/repeats_sc/runs/zheng_truth/zheng_truth_pbmc_zheng_truth_regress_nCount_FALSE_nFeature_FALSE.rds")
+
 ```
 
 
@@ -221,6 +221,7 @@ ding_seqwell,seqwell,ding
 zheng_truth,chromium_v1,zheng", sep = ",", header = TRUE)
 
 rownames(annot) <- annot$id
+
 ```
 
 
@@ -248,9 +249,7 @@ for (rds in params) {
 }
 ```
 
-# Number of cells, flavours table
-
-
+# Number of cells, flavours table  {.tabset .tabset-fade .tabset-pills}
 
 ```{r}
 ## name harmonization
@@ -319,26 +318,34 @@ fd$flavour <- factor(fd$flavour,
 
 ```
 
-```{r, fig.width = 10, fig.height = 5}
+```{r, fig.width = 10, fig.height = 5, results = 'asis'}
+
+cat('## Num cells\n\n')
 
 ggplot(fd, aes( y=num_cells, x=flavour, color = type)) + 
     geom_point() +
     scale_y_continuous(trans='log10') +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     facet_wrap(~dataset, ncol = 3, nrow = 3)
+
+cat('\n\n')
 ```
 
 
-```{r, fig.width =10, fig.height = 5}
+```{r, fig.width =10, fig.height = 5, results = 'asis'}
+cat('## Num reads per cell\n\n')
 
 ggplot(fd, aes( y=avg_num_reads_per_cell, x=flavour, color = type)) + 
     geom_point() +
     scale_y_continuous(trans='log10') +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     facet_wrap(~dataset, ncol = 3, nrow = 3)
+
+cat('\n\n')
 ```
 
-```{r, fig.width = 10, fig.height = 5}
+```{r, fig.width = 10, fig.height = 5, results = 'asis'}
+cat('## Avg genes per cell\n\n')
 
 ggplot(fd, aes( y=avg_num_genes_per_cell, x=flavour, color = type)) + 
     geom_point() +
@@ -346,10 +353,9 @@ ggplot(fd, aes( y=avg_num_genes_per_cell, x=flavour, color = type)) +
     scale_y_continuous(trans='log10') +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     facet_wrap(~dataset, ncol = 3, nrow = 3)
+
+cat('\n\n')
 ```
-
-# Truth annotations/plot
-
 
 
 ```{r}
@@ -373,6 +379,27 @@ rownames(pal) <- pal$identity
 
 
 zheng_pal <- read.table(text = 'truth,identity,color
+memory_t,Memory_T,"#4c6085"
+naive_cytotoxic,Naive_cytotoxic_T_cell,"#1F78B4"
+regulatory_t,Regulatory_T,"#2549d9"
+naive_t,Naive_T,"#a6cee3"
+cd4_t_helper,CD4+_T_cell,"#A6CEE3"
+cytotoxic_t,Cytotoxic_T_cell,"#1F78B4"
+b_cells,B_cell,"#B2DF8A"
+cd56_nk,Natural_killer_cell,"#33A02C"
+cd14_monocytes,CD14+_monocyte,"#FB9A99"
+missing_cd16mono,CD16+_monocyte,"#E31A1C"
+missing_dendritic,Dendritic_cell,"#FDBF6F"
+missing_plasmacytoid,Plasmacytoid_dendritic_cell,"#FF7F00"
+missing_plasma,Plasma_cell,"#CAB2D6"
+missing_platelet,Platelet,"#6A3D9A"
+cd34,CD34+_monocyte,"#FB9A99"
+', header = TRUE, sep = ',', stringsAsFactors = FALSE)
+
+rownames(zheng_pal) <- zheng_pal$truth
+
+## with greys for missing celltypes (when called by scina)
+zheng_pal_grey <- read.table(text = 'truth,identity,color
 cd4_t_helper,CD4+_T_cell,"#A6CEE3"
 cytotoxic_t,Cytotoxic_T_cell,"#1F78B4"
 b_cells,B_cell,"#B2DF8A"
@@ -389,24 +416,46 @@ naive_cytotoxic,Naive_cytotoxic_T_cell,"#1F78B4"
 regulatory_t,Regulatory_T,"#C0C0C0"
 naive_t,Naive_T,"#C0C0C0"', header = TRUE, sep = ',', stringsAsFactors = FALSE)
 
-rownames(zheng_pal) <- zheng_pal$truth
+rownames(zheng_pal_grey) <- zheng_pal_grey$truth
+
 ```
+
+# Zheng's {.tabset .tabset-fade .tabset-pills}
 
 Using Zheng's dataset
 
-```{r}
+```{r, results = 'asis'}
+dataset <- 'zheng_truth'
 for (flavour in names(d$zheng_truth)) {
-    dataset <- 'zheng_truth'
-    print(DimPlot(d[[dataset]][[flavour]], reduction = "tsne", group.by = 'truth',
-                  cols = setNames(zheng_pal$color, zheng_pal$truth)) +
-        theme(legend.position="none", plot.title = element_text(size=14),
-              axis.text=element_text(size=12),
-              axis.title=element_text(size=12)) +
-        ggtitle(sprintf('%s\n%s', dataset, flavour)))
+    cat('## ', flavour, ' {.tabset .tabset-fade .tabset-pills} \n\n')
+
+    ## print(head(d[[dataset]][[flavour]]@meta.data$truth))
+
+    ## d[[dataset]][[flavour]]@meta.data$truth <- as.character(d[[dataset]][[flavour]]@meta.data$orig.ident)
+    stopifnot(all(d[[dataset]][[flavour]]@meta.data$truth %in% zheng_pal$truth))
+
+    for (dimred in c('pca', 'tsne', 'umap')) {
+        cat('### ', dimred, ' \n\n')
+
+        print(DimPlot(d[[dataset]][[flavour]], reduction = dimred, group.by = 'truth',
+                      cols = setNames(zheng_pal$color, zheng_pal$truth)) +
+              theme(legend.position="right",
+                    aspect.ratio = 1,
+                    plot.title = element_text(size=14),
+                    axis.text=element_text(size=12),
+                    axis.title=element_text(size=12)) +
+              ggtitle(sprintf('%s\n%s', dataset, flavour)))
+
+        cat('\n\n')
+    }
+    cat('\n\n')
 }
 ```
 
-SCINA annotations/plot
+
+
+
+# SCINA proportions
 
 
 
@@ -432,51 +481,65 @@ scinas$count <- as.numeric(as.character(scinas$count))
 
 
 ```{r, fig.width = 8, fig.height = 5}
-ggplot(scinas, aes(y = count, x = flavour, fill = identity)) + 
+print(ggplot(scinas, aes(y = count, x = flavour, fill = identity)) + 
     geom_bar(position="fill", stat="identity") +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     ylab('proportion of cells') +
     facet_wrap(~dataset, ncol = 4) +
-    scale_fill_manual(values = setNames(pal$color, as.character(pal$identity)))
+    scale_fill_manual(values = setNames(pal$color, as.character(pal$identity))))
 
 ```
 
 
-# tSNEs {.tabset}
+# Dimensionality reductions (all datasets)  {.tabset .tabset-fade .tabset-pills} 
 
 
-```{r, fig.width = 13, fig.height = 7}
+```{r, fig.width = 10, fig.height = 10, results = 'asis'}
 for (flavour in unique(unlist(sapply(d, names)))){
-    cat(sprintf('## %s \n\n', flavour))
+    cat(sprintf('## %s  {.tabset .tabset-fade .tabset-pills} \n\n', flavour))
     p <- list()
 
-    for (dataset in names(d)) {
-        p[[dataset]] <- tryCatch({
-            DimPlot(d[[dataset]][[flavour]], reduction = "tsne", group.by = 'scina',
-                    cols = setNames(pal$color, pal$identity)) +
-                theme(legend.position="none", plot.title = element_text(size=14),
-                      axis.text=element_text(size=12),
-                      axis.title=element_text(size=12)) +
-                ggtitle(sprintf('%s\n%s', dataset, flavour))
-        }, error = function(x) return(ggplot() + theme_void())
-        )
-        ## gridExtra::grid.arrange(p, ncol = 4)
+    for (dimred in c('pca', 'tsne', 'umap')) {
 
-        ## do.call("grid.arrange", c(p, ncol=4, nrow = 4))
-        
+        cat(sprintf('### %s \n\n', dimred))
+        for (dataset in names(d)) {
 
+            if (dataset != 'zheng_truth') {
+                p[[dataset]] <- tryCatch({
+                    DimPlot(d[[dataset]][[flavour]], reduction = dimred, group.by = 'scina',
+                            cols = setNames(pal$color, pal$identity)) +
+                        theme(aspect.ratio = 1,
+                              legend.position="none", plot.title = element_text(size=14),
+                              axis.text=element_text(size=12),
+                              axis.title=element_text(size=12)) +
+                        ggtitle(sprintf('%s\n%s', dataset, flavour))
+                }, error = function(x) return(ggplot() + theme_void())
+                )
+            }
+            else {
+                ## zheng's truth has another palette
+                p[[dataset]] <- tryCatch({
+                    DimPlot(d[[dataset]][[flavour]], reduction = dimred, group.by = 'truth',
+                            cols = setNames(zheng_pal_grey$color, zheng_pal_grey$truth)) +
+                        theme(aspect.ratio = 1,
+                              legend.position="none", plot.title = element_text(size=14),
+                              axis.text=element_text(size=12),
+                              axis.title=element_text(size=12)) +
+                        ggtitle(sprintf('%s\n%s', dataset, flavour))
+                }, error = function(x) return(ggplot() + theme_void())
+                )
+                
+            }
+            cat(sprintf('\n\n'))
+        }
+        do.call("grid.arrange", c(p, ncol = 3, nrow = 3))
+        cat(sprintf('\n\n'))
     }
-    do.call("grid.arrange", c(p, ncol = 4, nrow = 2))
-    cat(sprintf('\n\n'))
 }
 
 ```
 
-<!-- ```{r} -->
-
-<!-- ``` -->
-
-# F1s
+# F1s  {.tabset .tabset-fade .tabset-pills} 
 
 ```{r}
 cobral <- list()
@@ -515,28 +578,10 @@ cobra$res <- gsub('RNA_snn_res.', 'snn_', cobra$res)
 ```
 
 
-<!-- ```{r} -->
-<!-- pal <- read.table(text = 'identity,color -->
-<!-- CD4+_T_cell,"#A6CEE3" -->
-<!-- Cytotoxic_T_cell,"#1F78B4" -->
-<!-- B_cell,"#B2DF8A" -->
-<!-- Natural_killer_cell,"#33A02C" -->
-<!-- CD14+_monocyte,"#FB9A99" -->
-<!-- CD16+_monocyte,"#E31A1C" -->
-<!-- Dendritic_cell,"#FDBF6F" -->
-<!-- Plasmacytoid_dendritic_cell,"#FF7F00" -->
-<!-- Plasma_cell,"#CAB2D6" -->
-<!-- Platelet,"#6A3D9A" -->
-<!-- unknown,"#C0C0C0"', header = TRUE, sep = ',', stringsAsFactors = FALSE) -->
 
-<!-- rownames(pal) <- pal$identity -->
-<!-- ``` -->
+```{r, fig.width = 18, fig.height = 10, results = 'asis'}
 
-
-
-
-
-```{r, fig.width = 18, fig.height = 10}
+cat('## By flavour \n\n')
 
 ggplot(data = cobra,      
     aes(x = res, y =  F1, group=flavour, col = cell)) +
@@ -548,7 +593,7 @@ ggplot(data = cobra,
 ```
 
 ```{r, fig.width = 11, fig.height = 6}
-
+cat('## By flavour - only alevin \n\n')
 
 ggplot(data = cobra[cobra$flavour %in% c('genes_alevin', 'repeats_alevin', 'both_alevin'),],      
     aes(x = res, y =  F1, group=flavour, col = cell)) +
@@ -561,8 +606,6 @@ ggplot(data = cobra[cobra$flavour %in% c('genes_alevin', 'repeats_alevin', 'both
     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) 
 
 ```
-
-
 
 Add whether the analyte is repeat, genes, or both
 
@@ -605,8 +648,9 @@ table(cobra$overlap, useNA = 'always')
 
 
 
-```{r, fig.width = 12, fig.height = 6}
+```{r, fig.width = 12, fig.height = 6, results = 'asis', eval = FALSE}
 
+cat('## By flavour \n\n')
 ggplot(data = cobra,      
     aes(x = res, y =  F1, group=flavour, col = flavour)) +
     geom_point() +
@@ -618,7 +662,8 @@ ggplot(data = cobra,
 ```
 
 
-```{r, fig.width = 12, fig.height = 6}
+```{r, fig.width = 12, fig.height = 6, results = 'asis'}
+cat('## By analyte \n\n')
 
 ggplot(data = cobra,      
     aes(x = res, y =  F1, group=flavour, col = analyte)) +
@@ -631,7 +676,9 @@ ggplot(data = cobra,
 ```
 
 
-```{r, fig.width = 12, fig.height = 6}
+```{r, fig.width = 12, fig.height = 6, results = 'asis'}
+
+cat('## By multimapping \n\n')
 
 ggplot(data = cobra,      
        aes(x = res, y =  F1, group=flavour, col = multimapper)) +
@@ -644,7 +691,9 @@ ggplot(data = cobra,
 ```
 
 
-```{r, fig.width = 12, fig.height = 6}
+```{r, fig.width = 12, fig.height = 6, results = 'asis'}
+
+cat('## By overlap with genes \n\n')
 
 ggplot(data = cobra,      
     aes(x = res, y =  F1, group=flavour, col = overlap)) +
@@ -657,9 +706,12 @@ ggplot(data = cobra,
 
 ```
 
-In terms of Zheng's truth
+# F1's on Zheng's truth  {.tabset .tabset-fade .tabset-pills} 
 
-```{r}
+```{r, results = 'asis', fig.width =10, fig.height = 5}
+
+cat('## By flavour \n\n')
+
 ggplot(data = cobra_truth,      
     aes(x = res, y =  F1, group=flavour, col = flavour)) +
     geom_point() +
@@ -670,7 +722,8 @@ ggplot(data = cobra_truth,
 ```
 
 
-```{r}
+```{r, results = 'asis', fig.width = 10, fig.height = 5}
+cat('## By identity \n\n')
 
 ggplot(data = cobra_truth,      
     aes(x = res, y =  F1, group=flavour, col = cell)) +
@@ -682,10 +735,11 @@ ggplot(data = cobra_truth,
 ```
 
 
+
 F1 scores gains/losses both genes vs genes only (alevin)
 
 
-```{r}
+```{r, results = 'asis', fig.width =12, fig.height = 8}
 delta <- list()
 
 ## celltypes <- levels(cobra$cell)
@@ -775,13 +829,13 @@ ggplot(data = f1s,
 
 ```
 
-Identical Louvain resolutions have very different meanings in different datasets. Let's get the max for genes, and check whether having also the repeats makes any difference.
+Identical Louvain resolutions have very different meanings in different datasets. 
+
+Wind approach
 
 
-```{r}
-print('todo')
 
-```
+
 
 
 
@@ -799,9 +853,9 @@ print('todo')
 <!-- ``` -->
 
 
-##  For each cell type, get the max F1 stratifying by flavour *regardless of the resolution*.
+#  max F1s *regardless of the resolution*
 
-```{r, message = FALSE}
+```{r, message = FALSE, warning = FALSE}
 
 maxF1 <- list()
 cobra$id <- as.factor(cobra$id)
@@ -835,7 +889,7 @@ tryCatch({
 ```
 
 
-```{r}
+```{r, warning = FALSE}
 
 max_genes <- list()
 
@@ -875,9 +929,9 @@ for (run in levels(cobra$id)) {
     }
 }
 
-str(max_genes)
+## str(max_genes)
 
-table(sapply(max_genes, length))
+## table(sapply(max_genes, length))
 
 max_genes <- do.call(rbind.data.frame, max_genes)
 
@@ -892,7 +946,7 @@ max_genes$cell <- factor(as.character(max_genes$cell),
 
 ```
 
-```{r}
+```{r, results = 'asis', fig.width =12, fig.height = 8}
 head(max_genes)
 
 ggplot(data = max_genes, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
@@ -906,10 +960,10 @@ ggplot(data = max_genes, aes(x= flavour, y = max_F1, col = cell, group = cell)) 
 
 Subtract the genes value to F1s?
 
-```{r}
-max_genes %>%  pivot_wider(id_cols = c('cell', 'run', 'res'),
-                           names_from = 'flavour',
-                           values_from = 'max_F1')
+```{r, results = 'asis', fig.width =12, fig.height = 8}
+## max_genes %>%  pivot_wider(id_cols = c('cell', 'run', 'res'),
+##                            names_from = 'flavour',
+##                            values_from = 'max_F1')
 
 max_genes %>%
     ggplot(aes(flavour, run,  fill = max_F1)) +
@@ -932,11 +986,6 @@ tmp <- max_genes %>%  pivot_wider(id_cols = c('cell', 'run', 'res'),
 
 
 
-Maybe subract the genes value?
-
-```{r}
-
-```
 
 Harmonize/sort flavour levels
 
@@ -1119,7 +1168,10 @@ maxF1 %>%
 
 ```
 
-# Weighted RIs (Wind)
+
+
+
+# Weighted RIs (Wind) 
 
 
 ```{r}
@@ -1208,14 +1260,16 @@ saveRDS(object = nmis_outer, file = '/home/imallona/pbmc_nmis_outer.rds')
 saveRDS(object = weights_outer, file = '/home/imallona/pbmc_weights_outer.rds')
 ```
 
-## Plots wRI / wNMI {.tabset}
+# Plots wRI / wNMI  {.tabset .tabset-fade .tabset-pills} 
+
 
 
 ```{r, fig.width = 8, fig.height = 4, results = 'asis'}
 
 for (dataset in names(nmis_outer)) {
-    cat('### ', dataset, '\n\n')
+    cat('## ', dataset, ' {.tabset .tabset-fade .tabset-pills} \n\n')
     for (method in names(nmis_outer[[dataset]])) {
+        cat('### ', method, ' \n\n')
         par(mfrow = c(1,2))
         barplot(t(aris_outer[[dataset]][[method]][,c(1,4)]), beside=TRUE, ylim=c(0,1.05), 
             legend.text=TRUE, xpd=FALSE, las =2, main = sprintf('%s %s', dataset, method))
@@ -1223,13 +1277,15 @@ for (dataset in names(nmis_outer)) {
 
         barplot(t(nmis_outer[[dataset]][[method]]), beside=TRUE, ylim=c(0,1.05), 
                 legend.text=TRUE, xpd=FALSE, las = 2, main = sprintf('%s %s', dataset, method))
+        cat(sprintf('\n\n'))
     }
     cat(sprintf('\n\n'))
 }
 
 ```
 
-## Weight plots {.tabset}
+## Weight plots  {.tabset .tabset-fade .tabset-pills} 
+
 
 ```{r fig.width = 16, fig.height = 5, results = 'asis'}
 for (id in names(weights_outer)) {
@@ -1254,25 +1310,76 @@ for (id in names(weights_outer)) {
 
 ```
 
-## PBMC 8k in depth
 
 
-```{r fig.width =30, fig.heigh = 5}
+
+## ARIs  {.tabset .tabset-fade .tabset-pills} 
+
+
+```{r fig.width = 5, fig.heigh = 5, results = 'asis'}
 dataset <- 'pbmc8k'
-par(mfrow = c(1,2))
-for (method in names(nmis_outer[[dataset]])) {
-    barplot(t(aris_outer[[dataset]][[method]][,c(1,4)]), beside=TRUE, ylim=c(0,1.05), 
-            legend.text=TRUE, xpd=FALSE, las =2, main = sprintf('%s %s', dataset, method))
-    
+## par(mfrow = c(1,2))
+for (dataset in names(nmis_outer)) {
+    cat ('### ', dataset, ' {.tabset .tabset-fade .tabset-pills}  \n\n')
+    for (method in names(nmis_outer[[dataset]])) {
+        cat ('#### ', method, ' \n\n')
+        barplot(t(aris_outer[[dataset]][[method]][,c(1,4)]), beside=TRUE, ylim=c(0,1.05), 
+                legend.text=TRUE, xpd=FALSE, las =2, main = sprintf('%s %s', dataset, method))
 
-    barplot(t(nmis_outer[[dataset]][[method]]), beside=TRUE, ylim=c(0,1.05), 
-            legend.text=TRUE, xpd=FALSE, las = 2, main = sprintf('%s %s', dataset, method))
+        cat('\n\n')
+    }
+    cat('\n\n')
+
+    ## barplot(t(nmis_outer[[dataset]][[method]]), beside=TRUE, ylim=c(0,1.05), 
+    ##         legend.text=TRUE, xpd=FALSE, las = 2, main = sprintf('%s %s', dataset, method))
 }
 
 
 ```
 
-# Markers {.tabset}
+## NMIS {.tabset .tabset-fade .tabset-pills} 
+
+
+```{r fig.width = 5, fig.heigh = 5, results = 'asis'}
+
+## par(mfrow = c(1,2))
+for (dataset in names(nmis_outer)) {
+    cat ('### ', dataset, ' {.tabset .tabset-fade .tabset-pills}  \n\n')
+    for (method in names(nmis_outer[[dataset]])) {
+        cat ('#### ', method, ' \n\n')
+        barplot(t(nmis_outer[[dataset]][[method]][,c(1,4)]), beside=TRUE, ylim=c(0,1.05), 
+                legend.text=TRUE, xpd=FALSE, las =2, main = sprintf('%s %s', dataset, method))
+
+        cat('\n\n')
+    }
+    cat('\n\n')
+
+    ## barplot(t(nmis_outer[[dataset]][[method]]), beside=TRUE, ylim=c(0,1.05), 
+    ##         legend.text=TRUE, xpd=FALSE, las = 2, main = sprintf('%s %s', dataset, method))
+}
+
+
+```
+
+<!-- # PBMC 8k in depth -->
+
+
+<!-- ```{r fig.width =20, fig.heigh = 5} -->
+<!-- dataset <- 'pbmc8k' -->
+<!-- par(mfrow = c(1,2)) -->
+<!-- for (method in names(nmis_outer[[dataset]])) { -->
+<!--     barplot(t(aris_outer[[dataset]][[method]][,c(1,4)]), beside=TRUE, ylim=c(0,1.05),  -->
+<!--             legend.text=TRUE, xpd=FALSE, las =2, main = sprintf('%s %s', dataset, method)) -->
+    
+
+<!--     barplot(t(nmis_outer[[dataset]][[method]]), beside=TRUE, ylim=c(0,1.05),  -->
+<!--             legend.text=TRUE, xpd=FALSE, las = 2, main = sprintf('%s %s', dataset, method)) -->
+<!-- } -->
+
+
+<!-- ``` -->
+
+# Markers {.tabset .tabset-fade .tabset-pills} 
 
 For each sample, each flavour, and each celltype, get the significant markers. Then, look for overlaps.
 
@@ -1309,14 +1416,14 @@ markers$zheng_truth <- NULL
 markers <- do.call(rbind.data.frame, markers)
 
 
-colnames(markers)
-table(markers$cluster)
-table(markers$flavour)
-table(markers$dataset)
+## colnames(markers)
+## table(markers$cluster)
+## table(markers$flavour)
+## table(markers$dataset)
 ```
 
 
-```{r, fig.width = 7, fig.height=6}
+```{r, fig.width = 6, fig.height=7, results = 'asis'}
 
 markers <- as.data.frame(markers)
 
@@ -1360,18 +1467,19 @@ markers_truth$cluster <- sapply(strsplit(as.character(markers_truth$cluster),
 head(markers_truth)
 ```
 
-# Markers II {.tabset}
+# Markers per cell type, concordance across methods {.tabset .tabset-fade .tabset-pills} 
 
-Per celltype, concordance
 
-```{r, fig.width =8, fig.height=5}
+```{r, fig.width =8, fig.height=4, results = 'asis'}
 
 ul <- list()
 for (celltype in unique(markers$cluster)) {
-    cat('## ', celltype, '\n\n')
+    cat('## ', celltype, ' {.tabset .tabset-fade .tabset-pills}  \n\n')
 
    
     for (flavour in unique(markers[markers$cluster == celltype, 'flavour'])) {
+        cat('### ', flavour, '  \n\n')
+    
         ul <- list()
         for (dataset in unique(markers[markers$cluster == celltype &
                                      markers$flavour == flavour, 'dataset'])) {
@@ -1391,12 +1499,13 @@ for (celltype in unique(markers$cluster)) {
     cat('\n\n')
 
     }
+    cat('\n\n')
 }
 
 
 ```
 
-Per celltype plus truth concordance
+# Per celltype plus truth concordance  {.tabset .tabset-fade .tabset-pills} 
 
 ```{r}
 
@@ -1427,8 +1536,9 @@ for (zheng_id in dict$truth) {
                                                                    'flattened']
 }
 
-table(markers_both$cluster, markers_both$flavour)
+## table(markers_both$cluster, markers_both$flavour)
 markers_both <- markers_both[markers_both$cluster != 'Other',]
+
 ```
 
 Adding the `both_cellranger` as `both_multi`
@@ -1439,13 +1549,14 @@ Adding the `both_cellranger` as `both_multi`
 markers_both$flavour[markers_both$flavour == 'both_cellranger'] <- 'both_multi'
 ```
 
-```{r, fig.width =8, fig.height=5}
+```{r, fig.width =8, fig.height=4, results = 'asis'}
 
 flavour <- 'repeats_cellranger'
 celltype <- "CD14+_monocyte"
 
 
 for (flavour in c('repeats_cellranger', 'genes_cellranger')) {
+    cat('## ', flavour, ' \n\n')
     ul <- list()
     for (dataset in unique(markers_both[markers_both$cluster == celltype &
                                         markers_both$flavour == flavour, 'dataset'])) {
@@ -1461,28 +1572,28 @@ for (flavour in c('repeats_cellranger', 'genes_cellranger')) {
 
     print(upset(fromList(ul), nsets = length(ul)))
     grid.text(paste(celltype, flavour) ,x = 0.65, y=0.95, gp=gpar(fontsize = 10))
-
+    cat('\n\n')
 }
 
 
 ```
 
 
-# Markers III {.tabset}
+# Markers III By celltype, no matter which method  {.tabset .tabset-fade .tabset-pills} 
 
-By celltype, no matter which method
 
-```{r, fig.width =6, fig.height=4}
+
+```{r, fig.width =6, fig.height=4, results = 'asis'}
 
 
 ul <- list()
 for (celltype in unique(markers$cluster)) {
-    cat('## ', celltype, '\n\n')
+    cat('## ', celltype, ' \n\n')
     
     ul[[celltype]] <- NULL
     for (dataset in unique(markers[markers$cluster == celltype, 'dataset'])) {
 
-        print(dataset)
+        ## print(dataset)
             
         ul[[dataset]] <- unique(c(ul[[celltype]], markers[ grepl('repeats', markers$flavour) &
                                                              markers$cluster == celltype &
@@ -1501,14 +1612,13 @@ for (celltype in unique(markers$cluster)) {
 
 
 ```
-
 With added truth
 
-```{r}
+```{r, results = 'asis'}
 
 ul <- list()
 for (celltype in unique(markers_both$cluster)) {
-    cat('## ', celltype, '\n\n')
+    cat('## ', celltype, ' \n\n')
     
     ul[[celltype]] <- NULL
     for (dataset in unique(markers_both[markers_both$cluster == celltype, 'dataset'])) {
@@ -1530,16 +1640,16 @@ for (celltype in unique(markers_both$cluster)) {
 ```
 
 
-# Markers IV {.tabset}
+# Markers IV By celltype, method influence  {.tabset .tabset-fade .tabset-pills}
 
-By celltype, method influence
 
-```{r, fig.width = 8, fig.height=16}
+
+```{r, fig.width = 8, fig.height=8, results = 'asis'}
 
 
 
 for (celltype in 'CD14+_monocyte') {
-    cat('## ', celltype, '\n\n')
+    cat('## ', celltype, ' \n\n')
     
 
     for (dataset in unique(markers[markers$cluster == celltype, 'dataset'])) {
@@ -1569,58 +1679,59 @@ for (celltype in 'CD14+_monocyte') {
 ```
 
 
-# Markers V
+<!-- # Markers V  -->
 
-```{r, fig.width =12, fig.height=5}
-ft <- as.data.frame(table(markers[markers$cluster == 'CD14+_monocyte', 'gene']))
+<!-- ```{r, fig.width =12, fig.height=5, eval = FALSE} -->
+<!-- ft <- as.data.frame(table(markers[markers$cluster == 'CD14+_monocyte', 'gene'])) -->
 
-ft <- ft[order(ft$Freq, decreasing = TRUE),]
-head(ft)
-selected <- as.character(head(ft, 20)$Var1)
+<!-- ft <- ft[order(ft$Freq, decreasing = TRUE),] -->
+<!-- head(ft) -->
+<!-- selected <- as.character(head(ft, 20)$Var1) -->
 
 
-## get cpms from the seurat object, only 5 cells (first 5 indexed)
-foo <- list()
-for (item in names(d)) {
-    ## foo <- list()
-    for (flavour in grep('repeats', names(d[[item]]), value = TRUE)) {
-        tmp <- as.data.frame(FetchData(d[[item]][[flavour]],
-                                       vars = selected,
-                                       slot = 'data'))[1:5,]
-        tmp$cell <- rownames(tmp)
+<!-- ## get cpms from the seurat object, only 5 cells (first 5 indexed) -->
+<!-- foo <- list() -->
+<!-- for (item in names(d)) { -->
+<!--     ## foo <- list() -->
+<!--     for (flavour in grep('repeats', names(d[[item]]), value = TRUE)) { -->
+<!--         tmp <- as.data.frame(FetchData(d[[item]][[flavour]], -->
+<!--                                        vars = selected, -->
+<!--                                        slot = 'data'))[1:5,] -->
+<!--         tmp$cell <- rownames(tmp) -->
 
         
-        tmp <- merge(d[[item]][[flavour]]@meta.data[, c('cell', 'scina')],
-                     tmp, by = 'cell', all.x = TRUE)
-        rownames(tmp) <- tmp$cell
-        tmp <- melt(tmp, id.vars = c('cell', 'scina'))
-        tmp$flavour <- flavour
-        tmp$dataset <-  item
-        foo[[paste(item, flavour)]] <- tmp
+<!--         tmp <- merge(d[[item]][[flavour]]@meta.data[, c('cell', 'scina')], -->
+<!--                      tmp, by = 'cell', all.x = TRUE) -->
+<!--         rownames(tmp) <- tmp$cell -->
+<!--         tmp <- melt(tmp, id.vars = c('cell', 'scina')) -->
+<!--         tmp$flavour <- flavour -->
+<!--         tmp$dataset <-  item -->
+<!--         foo[[paste(item, flavour)]] <- tmp -->
         
         
-    }
-    ## foo <- do.call(rbind.data.frame, foo)
-}
+<!--     } -->
+<!--     ## foo <- do.call(rbind.data.frame, foo) -->
+<!-- } -->
 
-foo <- do.call(rbind.data.frame, foo)
-head(foo)
-
-
-print(ggplot(foo[foo$scina %in% c('CD14+_monocyte', 'CD16+_monoctye', 'CD4+_T_cell'),],
-             aes(x = variable, y = value, fill = flavour)) + 
-      geom_boxplot() +
-      scale_y_continuous(trans='log10') +
-      scale_fill_discrete(drop=FALSE) +
-      facet_grid(dataset ~ scina) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+<!-- foo <- do.call(rbind.data.frame, foo) -->
+<!-- head(foo) -->
 
 
-```
+<!-- print(ggplot(foo[foo$scina %in% c('CD14+_monocyte', 'CD16+_monoctye', 'CD4+_T_cell'),], -->
+<!--              aes(x = variable, y = value, fill = flavour)) +  -->
+<!--       geom_boxplot() + -->
+<!--       scale_y_continuous(trans='log10') + -->
+<!--       scale_fill_discrete(drop=FALSE) + -->
+<!--       facet_grid(dataset ~ scina) + -->
+<!--       theme(axis.text.x = element_text(angle = 90, hjust = 1))) -->
 
-# Cluster techniques and flavours and celltypes?
 
-# Add bulk (both)
+
+<!-- ``` -->
+
+<!-- # Cluster techniques and flavours and celltypes? -->
+
+# Bulk  {.tabset .tabset-fade .tabset-pills}
 
 ```{r}
 
@@ -1632,7 +1743,150 @@ for (bulk_id in grep('bulk', params, value = TRUE)) {
 }
 
 
-str(bulk)
+## str(bulk)
+```
+
+```{r}
+
+monocyte_markers <- unique(markers_both[grepl('repeats', markers_both$flavour) & markers_both$cluster == 'CD14+_monocyte',])
+
+plot(monocyte_markers$pct.1, monocyte_markers$pct.2, cex = monocyte_markers$avg_logFC)
+
+other_markers <- unique(markers_both[grepl('repeats', markers_both$flavour) & !markers_both$cluster == 'CD14+_monocyte',])
+
+length(unique(monocyte_markers$gene))
+
+
+```
+
+Or maybe just go for the count tables and plot log2cpms for some candidates?
+
+
+```{r, eval = FALSE}
+## lapply(bulk, function(x) head(x[[1]], 10))
+
+vs_bulk <- list()
+
+for (gse in names(bulk)) {
+    for (flavour in names(bulk[[gse]])) {
+       
+        common <- intersect(unique(monocyte_markers$gene),
+                            rownames(bulk[[gse]][[flavour]][[1]]))
+
+        vs_bulk[[paste(gse, flavour)]] <- c(
+            length(common),
+            
+            sum(bulk[[gse]][[flavour]][[1]][, 'logFC'] >= 0 &
+                bulk[[gse]][[flavour]][[1]][, 'FDR'] < 0.05),
+            sum(bulk[[gse]][[flavour]][[1]][, 'logFC'] < 0 &
+                bulk[[gse]][[flavour]][[1]][, 'FDR'] < 0.05),
+            
+            sum(bulk[[gse]][[flavour]][[1]][common, 'logFC'] >= 0 &
+                bulk[[gse]][[flavour]][[1]][common, 'FDR'] < 0.05),
+            sum(bulk[[gse]][[flavour]][[1]][common, 'logFC'] < 0 &
+                bulk[[gse]][[flavour]][[1]][common, 'FDR'] < 0.05))
+            
+                                            
+        print(sprintf('%s %s: %s markers', gse, flavour, length(common)))
+        
+        print(max(bulk[[gse]][[flavour]][[1]]$FDR))
+        print(summary((bulk[[gse]][[flavour]][[1]][common, 'logFC'])))
+        print(table(bulk[[gse]][[flavour]][[1]][common, 'logFC'] >= 0 &
+                    bulk[[gse]][[flavour]][[1]][common, 'FDR'] < 0.05))
+    }
+
+}
+```
+
+
+
+
+
+But these are edgeRs of something against something else... maybe we could just have CPMs represented? Did we get a list of markers anyway?
+
+
+
+```{r}
+
+avgs <- list()
+for (gse in names(bulk)) {
+    avgs[[gse]] <- list()
+    for (flavour in grep('repeats', names(bulk[[gse]]), value = TRUE)) {
+        curr <- intersect(monocyte_markers$gene, rownames(cpm(bulk[[gse]][[flavour]])))
+        tmp <- list()
+        for (group in colnames(bulk[[gse]][[flavour]]$design)) {
+            ids <- row.names(bulk[[gse]][[flavour]]$design[bulk[[gse]][[flavour]]$design[,group] == 1,])
+            
+
+            
+           tmp[[paste(gse, flavour, group)]] <-  aveLogCPM(bulk[[gse]][[flavour]]$counts[curr,ids])
+        }
+
+        avgs[[gse]][[flavour]] <- do.call(cbind.data.frame, tmp)
+        rownames(avgs[[gse]][[flavour]]) <- curr
+    }
+}
+
+## str(avgs)
+```
+
+
+```{r}
+par(mfrow = c(3,3))
+for (flavour in unique(sapply(avgs, names))) {
+    for (item in names(d[[flavour]])) {
+
+        
+        common <- intersect(rownames(avgs[[1]][[flavour]][1]),
+                            rownames(GetAssayData(d[[flavour]][[item]])))
+        ## plot(AverageExpression(d[[flavour]][[item]]),
+        ##      avgs[[1]][[flavour]][1])
+        ## }
+
+        ## better normalize this
+        plot(AverageExpression(object = d$pbmc8k$repeats_cellranger)$RNA[common,'CD14+_monocyte'],
+             avgs[[1]][[flavour]][1][common,])
+}
+
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+
+
+```{r, results = 'asis'}
+for (flavour in unique(sapply(avgs, names))) {
+    cat('## ', flavour, '\n\n')
+    par(mfrow = c(1,2)) 
+    boxplot(avgs[[1]][[flavour]])
+    boxplot(avgs[[2]][[flavour]])
+    cat('\n\n')
+
+    ## stripchart(avgs[[1]][[flavour]], vertical = TRUE,data=x, method="jitter",  
+## add=TRUE, pch=19)
+}
+```
+
+here
+
+```{r}
+
+res <- list()
+for (item in names(bulk)) {
+    res[[item]] <- lapply(conts, function(x) {
+        qlf <- glmQLFTest(fit[[item]], contrast = x)
+        tt <- topTags(qlf, n = Inf, sort.by = "PValue")$table
+    })
+}
+
+
+```
+
+
+
+```{r}
 names(bulk)
 
 ## samplemonocyte-sampletcell
@@ -1642,6 +1896,8 @@ selected <- head(selected, 10)
 selected
 
 ```
+
+One 
 
 
 ```{r, fig.width =12, fig.height=5}
@@ -1693,6 +1949,10 @@ date()
 sessionInfo()
 devtools::session_info()
 
+```
+
+```{r}
+knitr::knit_exit()
 ```
 
 
