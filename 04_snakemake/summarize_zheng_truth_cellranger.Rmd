@@ -218,6 +218,8 @@ d$genes_cellranger <- merge(x = d$genes_cellranger[[1]],
 
 
 rownames(d$genes_cellranger@meta.data) <- colnames(d$genes_cellranger)
+d$genes_cellranger@meta.data$cell <- rownames(d$genes_cellranger@meta.data)
+stopifnot(all(rownames(d$genes_cellranger@meta.data) == colnames(d$genes_cellranger)))
 ```
 
 Similarly for repeats

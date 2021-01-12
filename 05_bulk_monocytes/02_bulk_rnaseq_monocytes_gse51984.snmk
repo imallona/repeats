@@ -250,7 +250,8 @@ rule knit:
         run_name = RUN_NAME
     output:
         html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_edger.html'),
-        de = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_de.rds')
+        de = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_de.rds'),
+        expression = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_expression.rds')
     log:
         op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_edger.log')
     shell:
@@ -266,6 +267,7 @@ rule knit:
           repeats_only_unique = \"{input.repeats_only_unique}\",
           repeats_only_multi = \"{input.repeats_only_multi}\",
           config_fn = \"{input.config_fn}\",
+          expression_output = \"{output.expression}\",
           de_output = \"{output.de}\"))' &> {log}
         """
     

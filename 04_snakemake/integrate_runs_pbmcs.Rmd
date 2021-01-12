@@ -426,12 +426,9 @@ Using Zheng's dataset
 
 ```{r, results = 'asis'}
 dataset <- 'zheng_truth'
-for (flavour in names(d$zheng_truth)) {
+for (flavour in names(d[[dataset]])) {
     cat('## ', flavour, ' {.tabset .tabset-fade .tabset-pills} \n\n')
 
-    ## print(head(d[[dataset]][[flavour]]@meta.data$truth))
-
-    ## d[[dataset]][[flavour]]@meta.data$truth <- as.character(d[[dataset]][[flavour]]@meta.data$orig.ident)
     stopifnot(all(d[[dataset]][[flavour]]@meta.data$truth %in% zheng_pal$truth))
 
     for (dimred in c('pca', 'tsne', 'umap')) {
@@ -452,6 +449,17 @@ for (flavour in names(d$zheng_truth)) {
 }
 ```
 
+# debug
+
+```{r}
+print(sort(unique(d$zheng_truth$genes_cellranger@meta.data$truth)))
+print(sort(unique(d$zheng_truth$repeats_cellranger@meta.data$truth)))
+
+print(sort(unique(zheng_pal$truth)))
+saveRDS(d$zheng_truth, file = '~/tmp/debug_zheng.rds')
+
+
+```
 
 
 
@@ -853,7 +861,7 @@ Wind approach
 <!-- ``` -->
 
 
-#  max F1s *regardless of the resolution*
+#  max F1s *resolution-agnostic* {.tabset .tabset-fade .tabset-pills} 
 
 ```{r, message = FALSE, warning = FALSE}
 
@@ -935,10 +943,8 @@ for (run in levels(cobra$id)) {
 
 max_genes <- do.call(rbind.data.frame, max_genes)
 
-
-
 colnames(max_genes) <- c('run', 'flavour', 'cell', 'max_F1', 'res', 'pr', 're')
-table(max_genes$flavour)
+## table(max_genes$flavour)
 max_genes$max_F1 <- as.numeric(as.character(max_genes$max_F1))
     
 max_genes$cell <- factor(as.character(max_genes$cell),
@@ -946,8 +952,10 @@ max_genes$cell <- factor(as.character(max_genes$cell),
 
 ```
 
-```{r, results = 'asis', fig.width =12, fig.height = 8}
-head(max_genes)
+## Scatter
+
+```{r, results = 'asis', fig.width =10, fig.height = 6}
+## head(max_genes)
 
 ggplot(data = max_genes, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
     geom_point() +
@@ -958,9 +966,11 @@ ggplot(data = max_genes, aes(x= flavour, y = max_F1, col = cell, group = cell)) 
 
 ```
 
-Subtract the genes value to F1s?
+## Heatmap
 
-```{r, results = 'asis', fig.width =12, fig.height = 8}
+<!-- Subtract the genes value to F1s? -->
+
+```{r, results = 'asis', fig.width =10, fig.height = 6}
 ## max_genes %>%  pivot_wider(id_cols = c('cell', 'run', 'res'),
 ##                            names_from = 'flavour',
 ##                            values_from = 'max_F1')
@@ -1051,14 +1061,14 @@ maxF1[grepl('genes|cellranger|unique', maxF1$flavour), 'multimapper'] <- 'unique
 
 
 
-table(maxF1$analyte, maxF1$multimapper, useNA = 'always')
+## table(maxF1$analyte, maxF1$multimapper, useNA = 'always')
 
 maxF1$overlap <- 'overlap_allowed'
 maxF1[grepl('repeats_alevin', maxF1$flavour), 'overlap'] <- 'alevin_decoy'
 maxF1[grepl('genes|both', maxF1$flavour), 'overlap'] <- 'genes'
 maxF1[grepl('only', maxF1$flavour), 'overlap'] <- 'no_overlap'
 
-head(maxF1)
+## head(maxF1)
 ```
 
 
@@ -1073,6 +1083,8 @@ head(maxF1)
 
 <!-- ``` -->
 
+## By mapping
+
 ```{r, fig.width = 10, fig.height = 4}
 
 ggplot(data = maxF1[maxF1$analyte %in% c('genes', 'repeats'),],
@@ -1084,8 +1096,9 @@ ggplot(data = maxF1[maxF1$analyte %in% c('genes', 'repeats'),],
 
 ```
 
+## By overlap and analyte
 
-```{r, fig.width = 14, fig.height = 7}
+```{r, fig.width = 12, fig.height = 6}
 
 ggplot(data = maxF1, aes(x= run, y = max_F1, col = as.factor(analyte),
                          shape = as.factor(overlap), group = cell)) +
@@ -1095,6 +1108,7 @@ ggplot(data = maxF1, aes(x= run, y = max_F1, col = as.factor(analyte),
 
 ```
 
+## By overlap
 
 ```{r, fig.width = 10, fig.height = 5}
 
@@ -1106,6 +1120,8 @@ ggplot(data = maxF1, aes(x= run, y = max_F1, col = as.factor(cell), group = cell
 
 ```
 
+## By dataset
+
 ```{r, fig.width = 9, fig.height = 8}
 ggplot(data = maxF1[maxF1$analyte %in% c('genes', 'repeats'),],
         aes(x= overlap, y = max_F1, col = cell, group = cell)) +
@@ -1114,6 +1130,8 @@ ggplot(data = maxF1[maxF1$analyte %in% c('genes', 'repeats'),],
      facet_grid(cell~run) +
      scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
 ```
+
+## By dataset and analyte
 
 ```{r, fig.width = 7, fig.height = 5}
 ggplot(data = maxF1,
@@ -1124,7 +1142,8 @@ ggplot(data = maxF1,
      facet_grid(run~cell)
 ```
 
-# F1s scatterplot and heatmap
+# F1s scatterplot and heatmap {.tabset .tabset-fade .tabset-pills} 
+
 
 ```{r}
 
@@ -1133,6 +1152,8 @@ axels_col <- 'black'
 axes_col <- ifelse(grepl('both', levels(maxF1$flavour)), 'red', 'black')
 
 ```
+
+## Scatter
 
 ```{r, fig.width = 10, fig.height = 5}
 ## help(trans_new)
@@ -1148,8 +1169,7 @@ ggplot(data = maxF1,
 
 ```
 
-
-
+## Heatmap
 
 
 ```{r, fig.width =9, fig.height = 5}
@@ -1277,20 +1297,20 @@ for (dataset in names(nmis_outer)) {
 
         barplot(t(nmis_outer[[dataset]][[method]]), beside=TRUE, ylim=c(0,1.05), 
                 legend.text=TRUE, xpd=FALSE, las = 2, main = sprintf('%s %s', dataset, method))
-        cat(sprintf('\n\n'))
+        cat('\n\n')
     }
-    cat(sprintf('\n\n'))
+    cat('\n\n')
 }
 
 ```
 
-## Weight plots  {.tabset .tabset-fade .tabset-pills} 
+# Weight plots  {.tabset .tabset-fade .tabset-pills} 
 
 
 ```{r fig.width = 16, fig.height = 5, results = 'asis'}
 for (id in names(weights_outer)) {
 
-    cat('### ', id, '\n\n')
+    cat('## ', id, ' \n\n')
     pheatmaps <- list()
 
     pheatmaps[[1]] <- pheatmap(weights_outer[[id]]$W1, main = sprintf('W1 %s', id),
@@ -1423,7 +1443,7 @@ markers <- do.call(rbind.data.frame, markers)
 ```
 
 
-```{r, fig.width = 6, fig.height=7, results = 'asis'}
+```{r, fig.width = 6, fig.height=5, results = 'asis'}
 
 markers <- as.data.frame(markers)
 
@@ -1470,15 +1490,15 @@ head(markers_truth)
 # Markers per cell type, concordance across methods {.tabset .tabset-fade .tabset-pills} 
 
 
-```{r, fig.width =8, fig.height=4, results = 'asis'}
+```{r, fig.width =8, fig.height = 4, results = 'asis'}
 
 ul <- list()
 for (celltype in unique(markers$cluster)) {
-    cat('## ', celltype, ' {.tabset .tabset-fade .tabset-pills}  \n\n')
+    cat('## ', celltype, ' {.tabset .tabset-fade .tabset-pills} \n\n')
 
    
     for (flavour in unique(markers[markers$cluster == celltype, 'flavour'])) {
-        cat('### ', flavour, '  \n\n')
+        cat('### ', flavour, ' \n\n')
     
         ul <- list()
         for (dataset in unique(markers[markers$cluster == celltype &
@@ -1612,7 +1632,8 @@ for (celltype in unique(markers$cluster)) {
 
 
 ```
-With added truth
+
+# Markers III with added truth {.tabset .tabset-fade .tabset-pills} 
 
 ```{r, results = 'asis'}
 
@@ -1623,7 +1644,7 @@ for (celltype in unique(markers_both$cluster)) {
     ul[[celltype]] <- NULL
     for (dataset in unique(markers_both[markers_both$cluster == celltype, 'dataset'])) {
 
-        print(dataset)
+        ## print(dataset)
             
         ul[[dataset]] <- unique(c(ul[[celltype]], markers_both[ grepl('repeats', markers_both$flavour) &
                                                              markers_both$cluster == celltype &
@@ -1644,16 +1665,15 @@ for (celltype in unique(markers_both$cluster)) {
 
 
 
-```{r, fig.width = 8, fig.height=8, results = 'asis'}
+```{r, fig.width = 8, fig.height=6, results = 'asis'}
 
-
-
-for (celltype in 'CD14+_monocyte') {
-    cat('## ', celltype, ' \n\n')
+for (celltype in unique(markers$cluster)) {
+    cat('## ', celltype, ' {.tabset .tabset-fade .tabset-pills} \n\n')
     
 
     for (dataset in unique(markers[markers$cluster == celltype, 'dataset'])) {
-
+        cat('### ', dataset, ' \n\n')
+    
         ul <- list()
         for (flavour in unique(markers[markers$cluster == celltype &
                                      markers$dataset == dataset, 'flavour'])) {
@@ -1669,11 +1689,8 @@ for (celltype in 'CD14+_monocyte') {
         cat('\n\n')
 
     }
+    cat('\n\n')
 }
-
-
-
-
 
 
 ```
@@ -1812,7 +1829,12 @@ avgs <- list()
 for (gse in names(bulk)) {
     avgs[[gse]] <- list()
     for (flavour in grep('repeats', names(bulk[[gse]]), value = TRUE)) {
-        curr <- intersect(monocyte_markers$gene, rownames(cpm(bulk[[gse]][[flavour]])))
+
+        ## on averaging only markers
+        ## curr <- intersect(monocyte_markers$gene, rownames(cpm(bulk[[gse]][[flavour]])))
+
+        ## rather, average everything
+        curr <- rownames(cpm(bulk[[gse]][[flavour]]))
         tmp <- list()
         for (group in colnames(bulk[[gse]][[flavour]]$design)) {
             ids <- row.names(bulk[[gse]][[flavour]]$design[bulk[[gse]][[flavour]]$design[,group] == 1,])
@@ -1831,21 +1853,50 @@ for (gse in names(bulk)) {
 ```
 
 
-```{r}
-par(mfrow = c(3,3))
-for (flavour in unique(sapply(avgs, names))) {
-    for (item in names(d[[flavour]])) {
 
-        
+```{r}
+## this is CPM representation of a seurat object
+
+## RelativeCounts(GetAssayData(d[[1]][[1]], 'counts'), scale.factor = 1e6, verbose = TRUE)
+
+```
+
+```{r, results = 'asis', fig.width = 6, fig.height = 6}
+par(mfrow = c(1,2), pty = 's')
+for (flavour in unique(sapply(avgs, names))) {
+
+    for (item in names(d)) {
+
+        cat('## ', item, ' ', flavour, ' \n\n')
         common <- intersect(rownames(avgs[[1]][[flavour]][1]),
-                            rownames(GetAssayData(d[[flavour]][[item]])))
+                            rownames(GetAssayData(d[[item]][[flavour]])))
+
+        common_markers <- common %in% monocyte_markers$gene
         ## plot(AverageExpression(d[[flavour]][[item]]),
         ##      avgs[[1]][[flavour]][1])
         ## }
 
+        tryCatch({
         ## better normalize this
-        plot(AverageExpression(object = d$pbmc8k$repeats_cellranger)$RNA[common,'CD14+_monocyte'],
-             avgs[[1]][[flavour]][1][common,])
+            plot(x = log1p(AverageExpression(
+                     object = d[[item]][[flavour]])$RNA[common,'CD14+_monocyte']),
+             y = avgs[[1]][[flavour]][1][common,],
+             col = ifelse(common_markers, 'red', ac(col = 'black', alpha = 0.5)),
+             pch = 19,
+             xlab = sprintf('%s %s\n(log ncounts in monocytes)', item, flavour),
+             ylab = sprintf('%s %s\n(log CPMs in monocytes)', names(avgs)[1], flavour))
+             
+
+        plot(log1p(AverageExpression(object = d[[item]][[flavour]])$RNA[common,'CD14+_monocyte']),
+             avgs[[2]][[flavour]][1][common,],
+             col = ifelse(common_markers, 'red', ac(col = 'black', alpha = 0.5)),
+             pch = 19,
+             xlab = sprintf('%s %s\n(log ncounts in monocytes)', item, flavour),
+             ylab = sprintf('%s %s\n(log CPMs in monocytes)', names(avgs)[2], flavour))
+        }, error = function(x) print(x))
+
+        cat('\n\n')
+    }
 }
 
 ```
@@ -1856,91 +1907,91 @@ knitr::knit_exit()
 
 
 
-```{r, results = 'asis'}
-for (flavour in unique(sapply(avgs, names))) {
-    cat('## ', flavour, '\n\n')
-    par(mfrow = c(1,2)) 
-    boxplot(avgs[[1]][[flavour]])
-    boxplot(avgs[[2]][[flavour]])
-    cat('\n\n')
+<!-- ```{r, results = 'asis'} -->
+<!-- for (flavour in unique(sapply(avgs, names))) { -->
+<!--     cat('## ', flavour, '\n\n') -->
+<!--     par(mfrow = c(1,2))  -->
+<!--     boxplot(avgs[[1]][[flavour]]) -->
+<!--     boxplot(avgs[[2]][[flavour]]) -->
+<!--     cat('\n\n') -->
 
-    ## stripchart(avgs[[1]][[flavour]], vertical = TRUE,data=x, method="jitter",  
-## add=TRUE, pch=19)
-}
-```
+<!--     ## stripchart(avgs[[1]][[flavour]], vertical = TRUE,data=x, method="jitter",   -->
+<!-- ## add=TRUE, pch=19) -->
+<!-- } -->
+<!-- ``` -->
 
-here
+<!-- here -->
 
-```{r}
+<!-- ```{r} -->
 
-res <- list()
-for (item in names(bulk)) {
-    res[[item]] <- lapply(conts, function(x) {
-        qlf <- glmQLFTest(fit[[item]], contrast = x)
-        tt <- topTags(qlf, n = Inf, sort.by = "PValue")$table
-    })
-}
-
-
-```
+<!-- res <- list() -->
+<!-- for (item in names(bulk)) { -->
+<!--     res[[item]] <- lapply(conts, function(x) { -->
+<!--         qlf <- glmQLFTest(fit[[item]], contrast = x) -->
+<!--         tt <- topTags(qlf, n = Inf, sort.by = "PValue")$table -->
+<!--     }) -->
+<!-- } -->
 
 
-
-```{r}
-names(bulk)
-
-## samplemonocyte-sampletcell
-bulk_yardstick <- bulk[[1]][['repeats_star_multi']][[1]]
-selected <- rownames(bulk_yardstick[bulk_yardstick$FDR < 0.05 & abs(bulk_yardstick$logFC) >= 2,])
-selected <- head(selected, 10)
-selected
-
-```
-
-One 
+<!-- ``` -->
 
 
-```{r, fig.width =12, fig.height=5}
 
-## get cpms from the seurat object, only 5 cells (first 5 indexed)
-foo <- list()
-for (item in names(d)) {
-    ## foo <- list()
-    for (flavour in grep('repeats', names(d[[item]]), value = TRUE)) {
-        tmp <- as.data.frame(FetchData(d[[item]][[flavour]],
-                                       vars = selected,
-                                       slot = 'data'))[1:5,]
-        tmp$cell <- rownames(tmp)
+<!-- ```{r} -->
+<!-- names(bulk) -->
+
+<!-- ## samplemonocyte-sampletcell -->
+<!-- bulk_yardstick <- bulk[[1]][['repeats_star_multi']][[1]] -->
+<!-- selected <- rownames(bulk_yardstick[bulk_yardstick$FDR < 0.05 & abs(bulk_yardstick$logFC) >= 2,]) -->
+<!-- selected <- head(selected, 10) -->
+<!-- selected -->
+
+<!-- ``` -->
+
+<!-- One  -->
+
+
+<!-- ```{r, fig.width =12, fig.height=5} -->
+
+<!-- ## get cpms from the seurat object, only 5 cells (first 5 indexed) -->
+<!-- foo <- list() -->
+<!-- for (item in names(d)) { -->
+<!--     ## foo <- list() -->
+<!--     for (flavour in grep('repeats', names(d[[item]]), value = TRUE)) { -->
+<!--         tmp <- as.data.frame(FetchData(d[[item]][[flavour]], -->
+<!--                                        vars = selected, -->
+<!--                                        slot = 'data'))[1:5,] -->
+<!--         tmp$cell <- rownames(tmp) -->
 
         
-        tmp <- merge(d[[item]][[flavour]]@meta.data[, c('cell', 'scina')],
-                     tmp, by = 'cell', all.x = TRUE)
-        rownames(tmp) <- tmp$cell
+<!--         tmp <- merge(d[[item]][[flavour]]@meta.data[, c('cell', 'scina')], -->
+<!--                      tmp, by = 'cell', all.x = TRUE) -->
+<!--         rownames(tmp) <- tmp$cell -->
 
-        tmp <- melt(tmp, id.vars = c('cell', 'scina'))
-        tmp <- tmp[grepl('T_cell|monocyte', tmp$scina),]
-        tmp$flavour <- flavour
-        tmp$dataset <-  item
-        foo[[paste(item, flavour)]] <- tmp
+<!--         tmp <- melt(tmp, id.vars = c('cell', 'scina')) -->
+<!--         tmp <- tmp[grepl('T_cell|monocyte', tmp$scina),] -->
+<!--         tmp$flavour <- flavour -->
+<!--         tmp$dataset <-  item -->
+<!--         foo[[paste(item, flavour)]] <- tmp -->
         
         
-    }
-    ## foo <- do.call(rbind.data.frame, foo)
-}
+<!--     } -->
+<!--     ## foo <- do.call(rbind.data.frame, foo) -->
+<!-- } -->
 
-foo <- do.call(rbind.data.frame, foo)
-head(foo)
-foo$scina <- as.character(foo$scina)
-table(foo$scina)
+<!-- foo <- do.call(rbind.data.frame, foo) -->
+<!-- head(foo) -->
+<!-- foo$scina <- as.character(foo$scina) -->
+<!-- table(foo$scina) -->
 
-print(ggplot(foo,
-             aes(x = variable, y = value, fill = flavour)) + 
-      geom_boxplot() +
-      scale_fill_discrete(drop=FALSE) +
-      facet_grid(dataset ~ scina) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+<!-- print(ggplot(foo, -->
+<!--              aes(x = variable, y = value, fill = flavour)) +  -->
+<!--       geom_boxplot() + -->
+<!--       scale_fill_discrete(drop=FALSE) + -->
+<!--       facet_grid(dataset ~ scina) + -->
+<!--       theme(axis.text.x = element_text(angle = 90, hjust = 1))) -->
 
-```
+<!-- ``` -->
 
 # Timestamp
 
