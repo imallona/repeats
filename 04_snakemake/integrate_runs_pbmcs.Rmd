@@ -71,6 +71,7 @@ library(scales)
 library(edgeR)
 
 })
+
 ```
 
 ```{r}
@@ -447,18 +448,6 @@ for (flavour in names(d[[dataset]])) {
     }
     cat('\n\n')
 }
-```
-
-# debug
-
-```{r}
-print(sort(unique(d$zheng_truth$genes_cellranger@meta.data$truth)))
-print(sort(unique(d$zheng_truth$repeats_cellranger@meta.data$truth)))
-
-print(sort(unique(zheng_pal$truth)))
-saveRDS(d$zheng_truth, file = '~/tmp/debug_zheng.rds')
-
-
 ```
 
 
@@ -1767,12 +1756,15 @@ for (bulk_id in grep('bulk', params, value = TRUE)) {
 
 monocyte_markers <- unique(markers_both[grepl('repeats', markers_both$flavour) & markers_both$cluster == 'CD14+_monocyte',])
 
-plot(monocyte_markers$pct.1, monocyte_markers$pct.2, cex = monocyte_markers$avg_logFC)
+plot(monocyte_markers$pct.1, monocyte_markers$pct.2, cex = monocyte_markers$avg_logFC,
+     col = ifelse(monocyte_markers$avg_logFC < 1, 'red', 'black'))
 
-other_markers <- unique(markers_both[grepl('repeats', markers_both$flavour) & !markers_both$cluster == 'CD14+_monocyte',])
+monocyte_markers <- unique(markers_both[grepl('repeats', markers_both$flavour) & markers_both$cluster == 'CD14+_monocyte' & markers_both$avg_logFC >= 1,])
 
-length(unique(monocyte_markers$gene))
+plot(monocyte_markers$pct.1, monocyte_markers$pct.2, cex = monocyte_markers$avg_logFC,
+     col = ifelse(monocyte_markers$avg_logFC < 1, 'red', 'black'))
 
+other_markers <- unique(markers_both[grepl('repeats', markers_both$flavour) & !markers_both$cluster == 'CD14+_monocyte' & markers_both$avg_logFC >= 1,])
 
 ```
 
@@ -1852,7 +1844,7 @@ for (gse in names(bulk)) {
 ## str(avgs)
 ```
 
-
+## Monocyte markers bulk vs scRNA-seq 
 
 ```{r}
 ## this is CPM representation of a seurat object
@@ -1862,7 +1854,8 @@ for (gse in names(bulk)) {
 ```
 
 ```{r, results = 'asis', fig.width = 6, fig.height = 6}
-par(mfrow = c(1,2), pty = 's')
+ ## bottom, left, top, and right. 
+par(mfrow = c(1,2), pty = 's', mar=c(6.1, 6.1, 4.1, 2.1))
 for (flavour in unique(sapply(avgs, names))) {
 
     for (item in names(d)) {
@@ -1901,10 +1894,164 @@ for (flavour in unique(sapply(avgs, names))) {
 
 ```
 
+## Monocyte markers in sc monocytes vs bulk  nonmonocytes
+
+
+
 ```{r}
-knitr::knit_exit()
+## bottom, left, top, and right. 
+par(mfrow = c(1,2), pty = 's', mar=c(6.1, 6.1, 4.1, 2.1))
+
+for (flavour in unique(sapply(avgs, names))) {
+
+    for (item in names(d)) {
+
+        cat('## ', item, ' ', flavour, ' \n\n')
+        common <- intersect(rownames(avgs[[1]][[flavour]][1]),
+                            rownames(GetAssayData(d[[item]][[flavour]])))
+
+        common_markers <- common %in% monocyte_markers$gene
+        ## plot(AverageExpression(d[[flavour]][[item]]),
+        ##      avgs[[1]][[flavour]][1])
+        ## }
+
+        tryCatch({
+        ## better normalize this
+            plot(x = log1p(AverageExpression(
+                     object = d[[item]][[flavour]])$RNA[common,'CD14+_monocyte']),
+             y = avgs[[1]][[flavour]][2][common,],
+             col = ifelse(common_markers, 'red', ac(col = 'black', alpha = 0.5)),
+             pch = 19,
+             xlab = sprintf('%s %s\n(log ncounts in monocytes)', item, flavour),
+             ylab = sprintf('%s %s\n(log CPMs in non monocytes)', names(avgs)[1], flavour))
+             
+
+        plot(log1p(AverageExpression(object = d[[item]][[flavour]])$RNA[common,'CD14+_monocyte']),
+             avgs[[2]][[flavour]][2][common,],
+             col = ifelse(common_markers, 'red', ac(col = 'black', alpha = 0.5)),
+             pch = 19,
+             xlab = sprintf('%s %s\n(log ncounts in monocytes)', item, flavour),
+             ylab = sprintf('%s %s\n(log CPMs in non monocytes)', names(avgs)[2], flavour))
+        }, error = function(x) print(x))
+
+        cat('\n\n')
+    }
+}
+
 ```
 
+## logFC representations
+
+Also, do the top repeat markers show a difference in the bulk datasets? Maybe use log2FC?
+
+```{r}
+## repeats detected in at least 3 datasets with at least 3 methods
+
+tmp <- apply(as.data.frame.matrix(table(monocyte_markers$gene, monocyte_markers$dataset)) > 0,
+      1,
+      sum)
+
+length(tmp[tmp >= 3])
+
+
+
+top_monocyte_markers <- names(tmp[tmp >= 3])
+## top_monocyte_markers <- head(monocyte_markers[order(monocyte_markers$avg_logFC, decreasing = TRUE), 'gene'], 10)
+length(unique(top_monocyte_markers))
+
+```
+
+```{r, fig.width = 6, fig.height = 6}
+top <- list()
+for (marker in top_monocyte_markers) {
+    for (gse in names(avgs)) {
+        for (flavour in names(avgs[[gse]])) {
+            for (ssample in colnames(avgs[[gse]][[flavour]])) {
+                top[[paste(marker, flavour, ssample, gse)]] <- c(marker, gse, flavour, ssample,
+                                               avgs[[gse]][[flavour]][marker, ssample])
+            }
+        }
+    }
+}
+
+top <- do.call(rbind.data.frame, top)
+head(top)
+colnames(top) <- c('marker', 'gse', 'flavour', 'id', 'avg_cpm')
+
+table(top$id)
+top$celltype <- ifelse(!grepl('T_cells|tcell', top$id), 'monocyte', 't_cell')
+top$paired <- paste(top$gse, top$flavour, top$marker)
+table(top$paired)
+top$avg_cpm <- as.numeric(top$avg_cpm)
+                          
+top %>%
+  ggplot(aes(y = avg_cpm, x  = celltype)) +
+    geom_point(aes(color = marker)) +
+    facet_grid(gse ~ flavour) +
+    geom_line(aes(group = paired)) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+
+```{r, fig.width = 6, fig.height = 6}
+top %>%
+  ggplot(aes(y = avg_cpm, x  = celltype)) +
+    geom_point(aes(color = gse)) +
+    facet_grid(marker ~ flavour) +
+    geom_line(aes(group = paired)) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+
+these top markers, how do they behave in our single cell data?
+https://pubmed.ncbi.nlm.nih.gov/11601494/
+
+```{r}
+
+monocyte_markers %>%
+    filter(gene %in% top_monocyte_markers) %>%
+    ggplot(aes(y = avg_logFC, x  = dataset)) +
+    geom_point(aes(color = flavour)) +
+    facet_grid(gene ~ flavour) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+# Repeat markers in dimreds  {.tabset .tabset-fade .tabset-pills} 
+
+
+```{r, fig.width = 10, fig.height = 10, results = 'asis'}
+for (flavour in grep('repeats|both', unique(unlist(sapply(d, names))))){
+    cat(sprintf('## %s  {.tabset .tabset-fade .tabset-pills} \n\n', flavour))
+    p <- list()
+
+    for (dimred in c('pca', 'tsne', 'umap')) {
+        cat(sprintf('### %s  {.tabset .tabset-fade .tabset-pills} \n\n', dimred))
+        for (feature in top_monocyte_markers) {
+            cat(sprintf('#### %s \n\n', feature))
+            for (dataset in names(d)) {
+                
+                p[[dataset]] <- tryCatch({
+                    FeaturePlot(d[[dataset]][[flavour]], reduction = dimred,
+                                features = feature) +
+                        theme(aspect.ratio = 1,
+                              legend.position="none", plot.title = element_text(size=14),
+                              axis.text=element_text(size=12),
+                              axis.title=element_text(size=12)) +
+                        ggtitle(sprintf('%s\n%s', dataset, flavour))
+                }, error = function(x) return(ggplot() + theme_void())
+                )
+                
+            }
+            do.call("grid.arrange", c(p, ncol = 3, nrow = 3, top = feature))
+            cat('\n\n')
+        }
+        cat(sprintf('\n\n'))
+    }
+    
+    cat(sprintf('\n\n'))
+}
+
+```
 
 
 <!-- ```{r, results = 'asis'} -->

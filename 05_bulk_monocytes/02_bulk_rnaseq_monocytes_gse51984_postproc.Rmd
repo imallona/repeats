@@ -206,6 +206,12 @@ annot$sample <- gsub('-', '_', annot$sample)
 annot$sample <- gsub(' ', '_', annot$sample)
 annot$sample <- gsub('+', '', annot$sample, fixed = TRUE)
 table(annot$sample)
+```
+
+Get rid of anything not a Monocyte or T-cell
+
+```{r}
+annot <- annot[annot$sample %in% c('Monocytes', 'T_cells'),]
 
 annot$sample_reduced <- ifelse(annot$sample == 'Monocytes', 'monocytes', 'non_monocytes')
 
@@ -221,9 +227,10 @@ for (item in setdiff(names(params), c('identifier', 'de_output', 'config_fn', 'e
     d[[item]] <- read_featurecounts(
         params[[item]],
         identifier = sprintf('%s_%s', params$identifier, params[[item]]),
-        add_gene_symbols = grepl('genes', item))
+        add_gene_symbols = grepl('genes', item))[,annot$srr]
+    
 
-    d[[item]] <- DGEList(d[[item]], group = annot$sample_reduced)
+    d[[item]] <- DGEList(d[[item]], group = annot$sample)
 }
 
 str(d)
@@ -250,8 +257,7 @@ logcpms <- lapply(d, function(x) edgeR::cpm(x, log = TRUE))
 
 ```{r}
 
-
-des <- model.matrix(as.formula('~ 0 + sample_reduced'), data = annot)
+des <- model.matrix(as.formula('~ 0 + sample'), data = annot)
 print(des)
 ```
 
@@ -280,12 +286,12 @@ lapply(d, function(x) plotBCV(x))
 
 # Define contrasts 
 
-Monocytes vs all
+Monocytes vs T cells
 
 ```{r edgeR-define-contrasts}
 (conts <- as.data.frame(
    makeContrasts(
-       contrasts = 'sample_reducedmonocytes-sample_reducednon_monocytes',
+       contrasts = 'sampleMonocytes-sampleT_cells',
        levels = des)))
 
 
@@ -307,11 +313,9 @@ for (item in names(d)) {
 lapply(res, function(x) head(x[[1]], 10)) 
 ```
 
-
 # Trace
 
 ## Save outputs
-
 
 ```{r}
 saveRDS(object = d, file = params$expression_output)
