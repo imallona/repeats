@@ -69,7 +69,10 @@ library(Wind) # https://github.com/haowulab/Wind
 library(gridExtra)
 library(scales)
 library(edgeR)
-
+## devtools::install_github("fionarhuang/TreeHeatmap")
+library(ggtree)
+library(TreeHeatmap)
+library(ggnewscale)
 })
 
 ```
@@ -1736,6 +1739,124 @@ for (celltype in unique(markers$cluster)) {
 <!-- ``` -->
 
 <!-- # Cluster techniques and flavours and celltypes? -->
+
+
+# Markers cluster dendrogram
+
+With manhattan distances over binary data (presence/ausence of the positive marker). Equivalent to Hamming distance.
+
+For genes
+
+```{r}
+detected <- unique(markers[grepl('genes', markers$flavour), 'gene'])
+
+length(detected)
+
+fc <- list()
+annot <- list()
+for (flavour in unique(grep('genes', markers$flavour, value = TRUE))) {
+    for (dataset in unique (markers[markers$flavour == flavour, 'dataset'])) {
+        tmp  <- markers[markers$flavour == flavour & markers$dataset == dataset, 'gene']
+
+        fc[[paste(flavour, dataset)]] <- as.numeric(detected %in% tmp)
+        annot[[paste(flavour, dataset)]] <- c(flavour, dataset,
+                                              sum(fc[[paste(flavour, dataset)]]))
+    }
+}
+
+fc <- do.call(cbind.data.frame, fc)
+
+annot <- do.call(rbind.data.frame, annot)
+colnames(annot) <- c('flavour', 'dataset', 'num_markers')
+annot$num_markers <- as.numeric(annot$num_markers)
+rownames(annot) <- paste(annot$flavour, annot$dataset)
+rownames(fc) <- detected
+## fc <- listfeature = detected)
+
+plot(hclust(dist(t(fc), method = 'manhattan')))
+
+```
+
+
+```{r}
+
+rownames(annot) <- paste(annot$flavour, annot$dataset)
+
+ggtree(hclust(dist(t(fc), method = 'manhattan')),
+              branch.length = "none", size = 0.1) +
+    geom_th_heatmap(th_data = annot['num_markers'], name = "hm3", gap = 0.2,
+                    rel_width = 0.1) +
+    scale_fill_viridis_c() +
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot['flavour'], name = "hm1", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot['dataset'], name = "hm2", gap = 0.2, 
+                    cluster_column = FALSE, color_coltree = "blue",
+                    size_coltree = 0.5,
+                    rel_width = 0.1)
+
+
+```
+
+For repeats
+
+```{r}
+detected <- unique(markers[grepl('repeats', markers$flavour), 'gene'])
+
+
+length(detected)
+
+fc <- list()
+annot <- list()
+for (flavour in unique(grep('repeats', markers$flavour, value = TRUE))) {
+    for (dataset in unique (markers[markers$flavour == flavour, 'dataset'])) {
+        tmp  <- markers[markers$flavour == flavour & markers$dataset == dataset, 'gene']
+
+        fc[[paste(flavour, dataset)]] <- as.numeric(detected %in% tmp)
+        
+        annot[[paste(flavour, dataset)]] <- c(flavour, dataset,
+                                              sum(fc[[paste(flavour, dataset)]]))
+    }
+}
+
+fc <- do.call(cbind.data.frame, fc)
+
+annot <- do.call(rbind.data.frame, annot)
+colnames(annot) <- c('flavour', 'dataset', 'num_markers')
+rownames(fc) <- detected
+## fc <- listfeature = detected)
+
+plot(hclust(dist(t(fc), method = 'manhattan')))
+```
+
+```{r}
+## head(fc)
+head(annot)
+
+rownames(annot) <- paste(annot$flavour, annot$dataset)
+annot$num_markers <- as.numeric(annot$num_markers)
+
+ggtree(hclust(dist(t(fc), method = 'manhattan')),
+              branch.length = "none", size = 0.1) +
+    geom_th_heatmap(th_data = annot['num_markers'], name = "hm3", gap = 0.2,
+                    rel_width = 0.1) +
+    scale_fill_viridis_c() +
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot['flavour'], name = "hm1", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot['dataset'], name = "hm2", gap = 0.2, 
+                    cluster_column = FALSE, color_coltree = "blue",
+                    size_coltree = 0.5,
+                    rel_width = 0.1)
+
+
+```
 
 # Bulk  {.tabset .tabset-fade .tabset-pills}
 
