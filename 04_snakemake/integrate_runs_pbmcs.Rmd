@@ -21,6 +21,9 @@ params:
   celseq2: ""
   dropseq: ""
   seqwell: ""
+  bulk_gse80095: ""
+  bulk_gse94820: ""
+  zheng_truth: ""
 ---
 
 
@@ -59,8 +62,22 @@ library(viridis)
 library(UpSetR)
 library(ggplot2)
 library(grid)
+library(gridExtra)
+library(scales)
+library(tidyr)
+library(Wind) # https://github.com/haowulab/Wind
+library(gridExtra)
+library(scales)
+library(edgeR)
+## devtools::install_github("fionarhuang/TreeHeatmap")
+library(ggtree)
+library(TreeHeatmap)
+library(ggnewscale)
+library(cowplot)   # get_legend() & plot_grid() functions
+library(patchwork) # blank plot: plot_spacer()
 
 })
+
 ```
 
 ```{r}
@@ -71,7 +88,7 @@ BASE <- file.path('/home', 'imallona', 'repeats_sc')
 opts_chunk$set(fig.width = 5,
                fig.height = 5,
                dev = 'png',
-               cache = FALSE,
+               cache = TRUE,
                echo = TRUE,
                include = TRUE,
                cache.lazy = FALSE,
@@ -171,8 +188,6 @@ coef_var <- function(x){
 
 ```
 
-# Data load Seurat objects
-
 ```{r justfordebugging, eval = FALSE}
 ## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
 ##                repeats_cellranger= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
@@ -192,7 +207,11 @@ params <- list( chromium1 = '/home/imallona/repeats_sc/runs/pbmc8k/pbmc8k_pmbc_c
         chromium4 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
         dropseq = "/home/imallona/repeats_sc/runs/ding_dropseq/ding_dropseq_pmbc_dropseq_regress_nCount_FALSE_nFeature_FALSE.rds",
         celseq2 = "/home/imallona/repeats_sc/runs/ding_celseq2/ding_celseq2_pmbc_celseq2_regress_nCount_FALSE_nFeature_FALSE.rds",
-        seqwell = "/home/imallona/repeats_sc/runs/ding_seqwell/ding_seqwell_pmbc_seqwell_regress_nCount_FALSE_nFeature_FALSE.rds")
+        seqwell = "/home/imallona/repeats_sc/runs/ding_seqwell/ding_seqwell_pmbc_seqwell_regress_nCount_FALSE_nFeature_FALSE.rds",
+        bulk_gse80095 = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_expression.rds",
+        bulk_gse94820 = "/home/imallona/repeats_sc/runs/bulk_GSE51984/bulk_GSE51984_expression.rds",
+        zheng_truth = "/home/imallona/repeats_sc/runs/zheng_truth/zheng_truth_pbmc_zheng_truth_regress_nCount_FALSE_nFeature_FALSE.rds")
+
 ```
 
 
@@ -205,9 +224,11 @@ pbmcs_smartseq2_ding,smartseq2,ding
 frozen_pbmc_donor_a,chromium_v1,tenx
 ding_dropseq,dropseq,ding
 ding_celseq2,celseq2,ding
-ding_seqwell,seqwell,ding", sep = ",", header = TRUE)
+ding_seqwell,seqwell,ding
+zheng_truth,chromium_v1,zheng", sep = ",", header = TRUE)
 
 rownames(annot) <- annot$id
+
 ```
 
 
@@ -219,23 +240,23 @@ d <- list()
 ## cr cellranger
 ## fc featurecounts
 for (rds in params) {
-    
-    ## d[[run]] <- list()
-    ## d[[run]]$genes_cr <- load_standard_cellranger_genes(run_name = run)
-    ## d[[run]]$reps_cr <- load_cellranger_repeats(run_name = run)
-    ## d[[run]]$reps_fc <- load_featurecounts_repeats(run_name = run)
+    ## only reading single cell files here
+    if (grepl('regress', rds)) {
+        ## d[[run]] <- list()
+        ## d[[run]]$genes_cr <- load_standard_cellranger_genes(run_name = run)
+        ## d[[run]]$reps_cr <- load_cellranger_repeats(run_name = run)
+        ## d[[run]]$reps_fc <- load_featurecounts_repeats(run_name = run)
 
-    tryCatch({
-        d[[sapply(strsplit(dirname(rds), .Platform$file.sep),
-                  function(x) return(x[6]))]] <- readRDS(file = rds)
-    },
-    error = function(x) print(sprintf('error detected and ignored loading data: \n%s\n', x)))
+        tryCatch({
+            d[[sapply(strsplit(dirname(rds), .Platform$file.sep),
+                      function(x) return(x[6]))]] <- readRDS(file = rds)
+        },
+        error = function(x) print(sprintf('error detected and ignored loading data: \n%s\n', x)))
+    }
 }
 ```
 
-# Number of cells, flavours table
-
-
+# Number of cells, flavours table  {.tabset .tabset-fade .tabset-pills}
 
 ```{r}
 ## name harmonization
@@ -289,38 +310,59 @@ for (item in c('num_cells',
 ```{r}
 
 fd <- merge(fd, annot, by.x = 'dataset', by.y = 'id', all = TRUE)
+
+fd$flavour <- factor(fd$flavour,
+                        levels = c('genes_cellranger', 'genes_alevin',
+                                   'genes_star',
+                                   'both_unique', 'both_multi', 'both_alevin', 'both_cellranger',
+                                   'repeats_cellranger', 'repeats_alevin',
+                                   'repeats_bowtie_unique', 'repeats_bowtie_multi',
+                                   'repeats_star_unique', 'repeats_star_multi',
+                                   'repeats_only_unique', 'repeats_only_multi'))
+
+
+
+
 ```
 
-```{r, fig.width =8, fig.height = 8}
+```{r, fig.width = 10, fig.height = 5, results = 'asis'}
+
+cat('## Num cells\n\n')
 
 ggplot(fd, aes( y=num_cells, x=flavour, color = type)) + 
     geom_point() +
     scale_y_continuous(trans='log10') +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    facet_wrap(~dataset)
+    facet_wrap(~dataset, ncol = 3, nrow = 3)
+
+cat('\n\n')
 ```
 
 
-```{r, fig.width =8, fig.height = 8}
+```{r, fig.width =10, fig.height = 5, results = 'asis'}
+cat('## Num reads per cell\n\n')
 
 ggplot(fd, aes( y=avg_num_reads_per_cell, x=flavour, color = type)) + 
     geom_point() +
     scale_y_continuous(trans='log10') +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    facet_wrap(~dataset)
+    facet_wrap(~dataset, ncol = 3, nrow = 3)
+
+cat('\n\n')
 ```
 
-```{r, fig.width =8, fig.height = 8}
+```{r, fig.width = 10, fig.height = 5, results = 'asis'}
+cat('## Avg genes per cell\n\n')
 
 ggplot(fd, aes( y=avg_num_genes_per_cell, x=flavour, color = type)) + 
     geom_point() +
+    ylab('avg_num_features_per_cell') +
     scale_y_continuous(trans='log10') +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    facet_wrap(~dataset)
+    facet_wrap(~dataset, ncol = 3, nrow = 3)
+
+cat('\n\n')
 ```
-
-
-SCINA annotations/plot
 
 
 ```{r}
@@ -339,6 +381,130 @@ unknown,"#C0C0C0"', header = TRUE, sep = ',', stringsAsFactors = FALSE)
 
 rownames(pal) <- pal$identity
 ```
+
+```{r}
+
+
+zheng_pal <- read.table(text = 'truth,identity,color
+memory_t,Memory_T,"#4c6085"
+naive_cytotoxic,Naive_cytotoxic_T_cell,"#1F78B4"
+regulatory_t,Regulatory_T,"#2549d9"
+naive_t,Naive_T,"#a6cee3"
+cd4_t_helper,CD4+_T_cell,"#A6CEE3"
+cytotoxic_t,Cytotoxic_T_cell,"#1F78B4"
+b_cells,B_cell,"#B2DF8A"
+cd56_nk,Natural_killer_cell,"#33A02C"
+cd14_monocytes,CD14+_monocyte,"#FB9A99"
+missing_cd16mono,CD16+_monocyte,"#E31A1C"
+missing_dendritic,Dendritic_cell,"#FDBF6F"
+missing_plasmacytoid,Plasmacytoid_dendritic_cell,"#FF7F00"
+missing_plasma,Plasma_cell,"#CAB2D6"
+missing_platelet,Platelet,"#6A3D9A"
+cd34,CD34+_monocyte,"#FB9A99"
+', header = TRUE, sep = ',', stringsAsFactors = FALSE)
+
+rownames(zheng_pal) <- zheng_pal$truth
+
+## with greys for missing celltypes (when called by scina)
+zheng_pal_grey <- read.table(text = 'truth,identity,color
+cd4_t_helper,CD4+_T_cell,"#A6CEE3"
+cytotoxic_t,Cytotoxic_T_cell,"#1F78B4"
+b_cells,B_cell,"#B2DF8A"
+cd56_nk,Natural_killer_cell,"#33A02C"
+cd14_monocytes,CD14+_monocyte,"#FB9A99"
+missing_cd16mono,CD16+_monocyte,"#E31A1C"
+missing_dendritic,Dendritic_cell,"#FDBF6F"
+missing_plasmacytoid,Plasmacytoid_dendritic_cell,"#FF7F00"
+missing_plasma,Plasma_cell,"#CAB2D6"
+missing_platelet,Platelet,"#6A3D9A"
+cd34,CD34+_monocyte,"#FB9A99"
+memory_t,Memory_T,"#C0C0C0"
+naive_cytotoxic,Naive_cytotoxic_T_cell,"#1F78B4"
+regulatory_t,Regulatory_T,"#C0C0C0"
+naive_t,Naive_T,"#C0C0C0"', header = TRUE, sep = ',', stringsAsFactors = FALSE)
+
+rownames(zheng_pal_grey) <- zheng_pal_grey$truth
+
+```
+
+Palettes
+
+```{r}
+
+palettes <- list(
+    cell = read.table(text = 'id,color
+CD4+_T_cell,"#A6CEE3"
+Cytotoxic_T_cell,"#1F78B4"
+B_cell,"#B2DF8A"
+Natural_killer_cell,"#33A02C"
+CD14+_monocyte,"#FB9A99"
+CD16+_monocyte,"#E31A1C"
+Dendritic_cell,"#FDBF6F"
+Plasmacytoid_dendritic_cell,"#FF7F00"
+Plasma_cell,"#CAB2D6"
+Platelet,"#6A3D9A"
+unknown,"#C0C0C0"', header = TRUE, sep = ',', stringsAsFactors = FALSE))
+
+palettes$technology <- data.frame(
+    id = c("chromium", "smartseq2", "seqwell", "dropseq", "celseq2"),
+    color = c("#5C2751", "#6457A6", "#9DACFF", "#76E5FC", "#4BC0D9"))
+
+palettes$multimapper <- data.frame(
+    id = c('unique', 'multi', 'deduplicated'),
+    color = c('#85BDA6', "#2F4B26", "#BEDCFE"))
+
+palettes$counter <- data.frame(
+    id = c('featurecounts', 'alevin', 'cellranger'),
+    color = c('#656256', "#9EBC9F", "#D3B88C"))
+
+palettes$mapper <- data.frame(
+    id = c('alevin', 'bowtie', 'star', 'cellranger'),
+    color = c('#301A4B', '#6DB1BF', '#F39A9D', '#3F6C51'))
+
+palettes$analyte <- data.frame(
+    id = c('repeats', 'genes', 'both'),
+    color = c('#157A6E', '#C2C5BB', '#B4654A'))
+
+palettes$overlap <- data.frame(
+    id = c('overlap_allowed', 'no_overlap', 'alevin_decoy'),
+    color = c('#F1F7EE', '#92AA83', '#E7F59E'))
+                               
+```
+
+
+# Zheng's {.tabset .tabset-fade .tabset-pills}
+
+Using Zheng's dataset
+
+```{r, results = 'asis'}
+dataset <- 'zheng_truth'
+for (flavour in names(d[[dataset]])) {
+    cat('## ', flavour, ' {.tabset .tabset-fade .tabset-pills} \n\n')
+
+    stopifnot(all(d[[dataset]][[flavour]]@meta.data$truth %in% zheng_pal$truth))
+
+    for (dimred in c('pca', 'tsne', 'umap')) {
+        cat('### ', dimred, ' \n\n')
+
+        print(DimPlot(d[[dataset]][[flavour]], reduction = dimred, group.by = 'truth',
+                      cols = setNames(zheng_pal$color, zheng_pal$truth)) +
+              theme(legend.position="right",
+                    aspect.ratio = 1,
+                    plot.title = element_text(size=14),
+                    axis.text=element_text(size=12),
+                    axis.title=element_text(size=12)) +
+              ggtitle(sprintf('%s\n%s', dataset, flavour)))
+
+        cat('\n\n')
+    }
+    cat('\n\n')
+}
+```
+
+
+
+# SCINA proportions
+
 
 
 ```{r}
@@ -362,38 +528,85 @@ scinas$count <- as.numeric(as.character(scinas$count))
 ```
 
 
-```{r, fig.width = 10, fig.height = 10}
-ggplot(scinas, aes(y = count, x = flavour, fill = identity)) + 
+```{r, fig.width = 8, fig.height = 5}
+print(ggplot(scinas, aes(y = count, x = flavour, fill = identity)) + 
     geom_bar(position="fill", stat="identity") +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     ylab('proportion of cells') +
-    facet_wrap(~dataset) +
-    scale_fill_manual(values = setNames(pal$color, as.character(pal$identity)))
+    facet_wrap(~dataset, ncol = 4) +
+    scale_fill_manual(values = setNames(pal$color, as.character(pal$identity))))
 
 ```
 
-<!-- ```{r} -->
 
-<!-- ``` -->
+# Dimensionality reductions (all datasets)  {.tabset .tabset-fade .tabset-pills} 
 
-# F1s
+
+```{r, fig.width = 10, fig.height = 10, results = 'asis'}
+for (flavour in unique(unlist(sapply(d, names)))){
+    cat(sprintf('## %s  {.tabset .tabset-fade .tabset-pills} \n\n', flavour))
+    p <- list()
+
+    for (dimred in c('pca', 'tsne', 'umap')) {
+
+        cat(sprintf('### %s \n\n', dimred))
+        for (dataset in names(d)) {
+
+            if (dataset != 'zheng_truth') {
+                p[[dataset]] <- tryCatch({
+                    DimPlot(d[[dataset]][[flavour]], reduction = dimred, group.by = 'scina',
+                            cols = setNames(pal$color, pal$identity)) +
+                        theme(aspect.ratio = 1,
+                              legend.position="none", plot.title = element_text(size=14),
+                              axis.text=element_text(size=12),
+                              axis.title=element_text(size=12)) +
+                        ggtitle(sprintf('%s\n%s', dataset, flavour))
+                }, error = function(x) return(ggplot() + theme_void())
+                )
+            }
+            else {
+                ## zheng's truth has another palette
+                p[[dataset]] <- tryCatch({
+                    DimPlot(d[[dataset]][[flavour]], reduction = dimred, group.by = 'truth',
+                            cols = setNames(zheng_pal_grey$color, zheng_pal_grey$truth)) +
+                        theme(aspect.ratio = 1,
+                              legend.position="none", plot.title = element_text(size=14),
+                              axis.text=element_text(size=12),
+                              axis.title=element_text(size=12)) +
+                        ggtitle(sprintf('%s\n%s', dataset, flavour))
+                }, error = function(x) return(ggplot() + theme_void())
+                )
+                
+            }
+            cat(sprintf('\n\n'))
+        }
+        do.call("grid.arrange", c(p, ncol = 3, nrow = 3))
+        cat(sprintf('\n\n'))
+    }
+}
+
+```
+
+# F1s  {.tabset .tabset-fade .tabset-pills} 
 
 ```{r}
-cobra <- list()
+cobral <- list()
 
 
 for (rds in params) {
     fn <- list.files(dirname(rds), pattern = '.*cobra.*TRUE.*TRUE.*')
-   
+
     tryCatch({
-        cobra[[sapply(strsplit(dirname(rds), .Platform$file.sep),
+        cobral[[sapply(strsplit(dirname(rds), .Platform$file.sep),
                       function(x) return(x[6]))]] <- readRDS(file = file.path(dirname(rds), fn))
 
     }, error = function(x) sprintf('caught error %s\n', x)) 
 }
 
-
-cobra <- do.call(rbind.data.frame, cobra)
+cobra_truth <- cobral$zheng_truth
+cobral$zheng_truth <- NULL
+    
+cobra <- do.call(rbind.data.frame, cobral)
 ```
 
 ```{r}
@@ -413,30 +626,30 @@ cobra$res <- gsub('RNA_snn_res.', 'snn_', cobra$res)
 ```
 
 
-```{r}
-pal <- read.table(text = 'identity,color
-CD4+_T_cell,"#A6CEE3"
-Cytotoxic_T_cell,"#1F78B4"
-B_cell,"#B2DF8A"
-Natural_killer_cell,"#33A02C"
-CD14+_monocyte,"#FB9A99"
-CD16+_monocyte,"#E31A1C"
-Dendritic_cell,"#FDBF6F"
-Plasmacytoid_dendritic_cell,"#FF7F00"
-Plasma_cell,"#CAB2D6"
-Platelet,"#6A3D9A"
-unknown,"#C0C0C0"', header = TRUE, sep = ',', stringsAsFactors = FALSE)
 
-rownames(pal) <- pal$identity
-```
+```{r, fig.width = 18, fig.height = 10, results = 'asis'}
 
-
-```{r, fig.width = 12, fig.height = 6}
+cat('## By flavour \n\n')
 
 ggplot(data = cobra,      
     aes(x = res, y =  F1, group=flavour, col = cell)) +
     geom_point() +
-    facet_grid(id~flavour) + 
+    facet_grid(id~flavour) +    
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) 
+
+```
+
+```{r, fig.width = 11, fig.height = 6}
+cat('## By flavour - only alevin \n\n')
+
+ggplot(data = cobra[cobra$flavour %in% c('genes_alevin', 'repeats_alevin', 'both_alevin'),],      
+    aes(x = res, y =  F1, group=flavour, col = cell)) +
+    geom_point() +
+    facet_grid(flavour~id) +
+    scale_y_continuous(trans = 'atanh') +
+    ylab('F1 score') +
+    xlab('SNN resolution') +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) 
 
@@ -483,8 +696,9 @@ table(cobra$overlap, useNA = 'always')
 
 
 
-```{r, fig.width = 12, fig.height = 6}
+```{r, fig.width = 12, fig.height = 6, results = 'asis', eval = FALSE}
 
+cat('## By flavour \n\n')
 ggplot(data = cobra,      
     aes(x = res, y =  F1, group=flavour, col = flavour)) +
     geom_point() +
@@ -496,7 +710,8 @@ ggplot(data = cobra,
 ```
 
 
-```{r, fig.width = 12, fig.height = 6}
+```{r, fig.width = 12, fig.height = 6, results = 'asis'}
+cat('## By analyte \n\n')
 
 ggplot(data = cobra,      
     aes(x = res, y =  F1, group=flavour, col = analyte)) +
@@ -509,7 +724,9 @@ ggplot(data = cobra,
 ```
 
 
-```{r, fig.width = 12, fig.height = 6}
+```{r, fig.width = 12, fig.height = 6, results = 'asis'}
+
+cat('## By multimapping \n\n')
 
 ggplot(data = cobra,      
        aes(x = res, y =  F1, group=flavour, col = multimapper)) +
@@ -522,7 +739,9 @@ ggplot(data = cobra,
 ```
 
 
-```{r, fig.width = 12, fig.height = 6}
+```{r, fig.width = 12, fig.height = 6, results = 'asis'}
+
+cat('## By overlap with genes \n\n')
 
 ggplot(data = cobra,      
     aes(x = res, y =  F1, group=flavour, col = overlap)) +
@@ -532,7 +751,142 @@ ggplot(data = cobra,
     xlab('unsup. clust. resolution') +
     ylab('F1 score')
 
+
 ```
+
+# F1's on Zheng's truth  {.tabset .tabset-fade .tabset-pills} 
+
+```{r, results = 'asis', fig.width =10, fig.height = 5}
+
+cat('## By flavour \n\n')
+
+ggplot(data = cobra_truth,      
+    aes(x = res, y =  F1, group=flavour, col = flavour)) +
+    geom_point() +
+    facet_grid(id~cell) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    xlab('unsup. clust. resolution') +
+    ylab('F1 score')
+```
+
+
+```{r, results = 'asis', fig.width = 10, fig.height = 5}
+cat('## By identity \n\n')
+
+ggplot(data = cobra_truth,      
+    aes(x = res, y =  F1, group=flavour, col = cell)) +
+    geom_point() +
+    facet_grid(id~flavour) +    
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    scale_colour_manual(values = setNames(zheng_pal$color, as.character(zheng_pal$truth))) 
+
+```
+
+
+
+F1 scores gains/losses both genes vs genes only (alevin)
+
+
+```{r, results = 'asis', fig.width =12, fig.height = 8}
+delta <- list()
+
+## celltypes <- levels(cobra$cell)
+## resolutions <- levels(cobra$res)
+
+for (run in names(cobral)) {
+    delta[[run]] <- list()
+    for (score in c('F1', 'pr', 're')) {
+    delta[[run]][[score]] <- list()
+
+        ## delta[[run]] <- matrix(NA, ncol = length(celltypes), nrow = length(resolutions))
+
+    if ('genes_alevin' %in% cobral[[run]]$flavour){
+
+        label <- 'alevin'
+        genes <- cobral[[run]][cobral[[run]]$flavour == 'genes_alevin',] %>%
+            select(cell, res, score) %>% spread(res, score)
+   
+
+        both <- cobral[[run]][cobral[[run]]$flavour ==  'both_alevin',] %>%
+            select(cell, res, score) %>%
+            spread(res, score)
+    } else {
+        tryCatch({
+        label <- 'star'
+        genes <- cobral[[run]][cobral[[run]]$flavour == 'genes_star',] %>%
+            select(cell, res, score) %>% spread(res, score)
+   
+        both <- cobral[[run]][cobral[[run]]$flavour ==  'both_star',] %>%
+            select(cell, res, score) %>%
+            spread(res, score)
+        }, error = function(x) print(x))
+        
+    }
+
+    tryCatch({
+        both_vs_genes <- data.frame(cell = genes$cell,
+                                    both - genes)[,-2]
+        rownames(both_vs_genes) <- genes$cell
+
+        head(both_vs_genes)
+        head(both_vs_genes  %>%  pivot_longer(!cell, names_to = "resolution", values_to = score))
+        
+        delta[[run]][[score]] <- data.frame(
+            both_vs_genes  %>%
+            pivot_longer(!cell, names_to = "resolution", values_to = score),
+            score = score,
+            run = run,
+            type = 'both__minus__genes',
+            mapper = label)
+    }, error = function(x) print(x))
+
+    }
+}
+
+f1s <- do.call(rbind.data.frame, sapply(delta, function(x) return(x['F1'])))
+f1s$res <- as.numeric(as.character(gsub('RNA_snn_res.', '', f1s$resolution)))
+
+```
+
+```{r, eval = FALSE}
+ggplot(data = f1s,      
+    aes(x = res, y =  F1, group= run, col = run)) +
+    geom_point(aes(shape= run)) +
+    facet_grid(~cell) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    xlab('unsup. clust. resolution') +
+    ylab('F1 score with repeats vs only genes') +
+    geom_smooth()
+
+```
+
+
+```{r, eval = FALSE}
+
+
+ggplot(data = f1s,      
+    aes(x = res, y =  F1,  col = cell)) +
+    geom_point() +
+    facet_grid(~run) + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    xlab('unsup. clust. resolution') +
+    ylab('F1 score with repeats vs only genes') +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) +
+    geom_smooth()
+
+
+```
+
+Identical Louvain resolutions have very different meanings in different datasets. 
+
+Wind approach
+
+
+
+
+
+
+
 
 <!-- ## T cells vs Monocytes only -->
 
@@ -547,9 +901,9 @@ ggplot(data = cobra,
 <!-- ``` -->
 
 
-##  For each cell type, get the max F1 stratifying by flavour *regardless of the resolution*.
+#  max F1s *resolution-agnostic* {.tabset .tabset-fade .tabset-pills} 
 
-```{r, message = FALSE}
+```{r, message = FALSE, warning = FALSE}
 
 maxF1 <- list()
 cobra$id <- as.factor(cobra$id)
@@ -582,6 +936,107 @@ tryCatch({
 }, error = function(x) print(x))
 ```
 
+
+```{r, warning = FALSE}
+
+max_genes <- list()
+
+for (run in levels(cobra$id)) {
+    ## for (flavour in levels(cobra$flavour)) {
+    for (cell in levels(cobra$cell)) {
+        genes_flavour <-  'genes_alevin'
+
+        curr <- cobra[cobra$flavour == genes_flavour &
+                      cobra$cell == cell &
+                      cobra$id == run,]
+        
+        if (is.finite(max(curr$F1))) {
+            genes <- head(curr[order(curr$F1, decreasing = TRUE),], 1)
+            max_genes[[paste(run, genes_flavour, cell)]] <- c(
+                run, genes_flavour, cell, genes$F1, genes$res, genes$pr, genes$re )
+        
+            
+
+            for (flavour in grep('repeats|both', levels(cobra$flavour), value = TRUE)) {
+                
+                other <- cobra[cobra$flavour == flavour &
+                               cobra$cell == cell &
+                               cobra$id == run &
+                               cobra$res == genes$res,]
+
+                if(nrow(other) > 0) {
+                
+                ## print(sprintf('%s %s', run, cell, flavourdim(other))
+                
+                    max_genes[[paste(run, flavour, cell)]] <- c(
+                        run, flavour, cell, other$F1, other$res, other$pr, other$re )
+                }
+            }
+            
+        }
+    }
+}
+
+## str(max_genes)
+
+## table(sapply(max_genes, length))
+
+max_genes <- do.call(rbind.data.frame, max_genes)
+
+colnames(max_genes) <- c('run', 'flavour', 'cell', 'max_F1', 'res', 'pr', 're')
+## table(max_genes$flavour)
+max_genes$max_F1 <- as.numeric(as.character(max_genes$max_F1))
+    
+max_genes$cell <- factor(as.character(max_genes$cell),
+                         levels = unique(as.character(max_genes$cell[order(max_genes$max_F1)])))
+
+```
+
+## Scatter
+
+```{r, results = 'asis', fig.width =10, fig.height = 6}
+## head(max_genes)
+
+ggplot(data = max_genes, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
+    geom_point() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    facet_wrap(~run) +
+    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+
+
+```
+
+## Heatmap
+
+<!-- Subtract the genes value to F1s? -->
+
+```{r, results = 'asis', fig.width =10, fig.height = 6}
+## max_genes %>%  pivot_wider(id_cols = c('cell', 'run', 'res'),
+##                            names_from = 'flavour',
+##                            values_from = 'max_F1')
+
+max_genes %>%
+    ggplot(aes(flavour, run,  fill = max_F1)) +
+    geom_tile(aes(fill=max_F1)) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    facet_wrap(~cell, ncol = 5) +
+    ylab('dataset') +
+    xlab('method') +
+    scale_fill_gradientn(colours = c("white",  "blue", "red"),
+                         values = c(0, 0.5, 1)) 
+
+## geom_text(data=maxF1, aes(flavour, run, label = max_F1))
+tmp <- max_genes %>%  pivot_wider(id_cols = c('cell', 'run', 'res'),
+                                  names_from = 'flavour',
+                                  values_from = 'max_F1')
+
+## apply (tmp[]
+```
+
+
+
+
 Harmonize/sort flavour levels
 
 
@@ -606,6 +1061,12 @@ maxF1$flavour <- factor(maxF1$flavour,
                                    'repeats_star_unique', 'repeats_star_multi',
                                    'repeats_only_unique', 'repeats_only_multi'))
 
+maxF1$run <- as.character(maxF1$run)
+maxF1$run[maxF1$run == 'Drop-seq'] <- 'ding_dropseq'
+maxF1$run[maxF1$run == 'CEL-Seq2'] <- 'ding_celseq2'
+maxF1$run[maxF1$run == 'Seq-Well'] <- 'ding_seqwell'
+
+## table(maxF1$run)
 
 maxF1$run <-  factor(maxF1$run,
                      levels = c("frozen_pbmc_donor_a",
@@ -617,7 +1078,7 @@ maxF1$run <-  factor(maxF1$run,
                                 "ding_seqwell",                                     
                                 "pbmcs_smartseq2_ding"))
 
-## table(maxF1$flavour, useNA = 'always')
+table(maxF1$run, useNA = 'always')
 ## head(maxF1)
 
 ```
@@ -640,36 +1101,29 @@ maxF1[grepl('genes|cellranger|unique', maxF1$flavour), 'multimapper'] <- 'unique
 
 
 
-table(maxF1$analyte, maxF1$multimapper, useNA = 'always')
+## table(maxF1$analyte, maxF1$multimapper, useNA = 'always')
 
 maxF1$overlap <- 'overlap_allowed'
 maxF1[grepl('repeats_alevin', maxF1$flavour), 'overlap'] <- 'alevin_decoy'
 maxF1[grepl('genes|both', maxF1$flavour), 'overlap'] <- 'genes'
 maxF1[grepl('only', maxF1$flavour), 'overlap'] <- 'no_overlap'
 
-head(maxF1)
-```
-
-```{r, fig.width = 5, fig.height = 4}
-
-ggplot(data = maxF1, aes(x= flavour, y = max_F1, col = cell, group = cell)) +
-    geom_point() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
-
+## head(maxF1)
 ```
 
 
-```{r, fig.width = 10, fig.height = 6}
+<!-- ```{r, fig.width = 10, fig.height = 6} -->
 
-ggplot(data = maxF1[maxF1$analyte %in% c('genes', 'repeats'),],
-       aes(x= overlap, y = max_F1, col = cell, group = cell)) +
-    geom_point() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    facet_grid(cell~run) +
-    scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
+<!-- ggplot(data = maxF1[maxF1$analyte %in% c('genes', 'repeats'),], -->
+<!--        aes(x= overlap, y = max_F1, col = cell, group = cell)) + -->
+<!--     geom_point() + -->
+<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--     facet_grid(cell~run) + -->
+<!--     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) -->
 
-```
+<!-- ``` -->
+
+## By mapping
 
 ```{r, fig.width = 10, fig.height = 4}
 
@@ -677,13 +1131,14 @@ ggplot(data = maxF1[maxF1$analyte %in% c('genes', 'repeats'),],
        aes(x= overlap, y = max_F1, col = cell, group = cell)) +
     geom_point() +
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    facet_grid(analyte~run) +
+    facet_grid(~run) +
     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
 
 ```
 
+## By overlap and analyte
 
-```{r, fig.width = 16, fig.height = 8}
+```{r, fig.width = 12, fig.height = 6}
 
 ggplot(data = maxF1, aes(x= run, y = max_F1, col = as.factor(analyte),
                          shape = as.factor(overlap), group = cell)) +
@@ -693,6 +1148,7 @@ ggplot(data = maxF1, aes(x= run, y = max_F1, col = as.factor(analyte),
 
 ```
 
+## By overlap
 
 ```{r, fig.width = 10, fig.height = 5}
 
@@ -704,7 +1160,9 @@ ggplot(data = maxF1, aes(x= run, y = max_F1, col = as.factor(cell), group = cell
 
 ```
 
-```{r, fig.width = 10, fig.height = 10}
+## By dataset
+
+```{r, fig.width = 9, fig.height = 8}
 ggplot(data = maxF1[maxF1$analyte %in% c('genes', 'repeats'),],
         aes(x= overlap, y = max_F1, col = cell, group = cell)) +
     geom_point() +
@@ -712,6 +1170,8 @@ ggplot(data = maxF1[maxF1$analyte %in% c('genes', 'repeats'),],
      facet_grid(cell~run) +
      scale_colour_manual(values = setNames(pal$color, as.character(pal$identity)))
 ```
+
+## By dataset and analyte
 
 ```{r, fig.width = 7, fig.height = 5}
 ggplot(data = maxF1,
@@ -722,7 +1182,8 @@ ggplot(data = maxF1,
      facet_grid(run~cell)
 ```
 
-# F1s dotplot and heatmap
+# F1s scatterplot and heatmap {.tabset .tabset-fade .tabset-pills} 
+
 
 ```{r}
 
@@ -732,21 +1193,23 @@ axes_col <- ifelse(grepl('both', levels(maxF1$flavour)), 'red', 'black')
 
 ```
 
-```{r, fig.width = 7, fig.height = 5}
+## Scatter
+
+```{r, fig.width = 10, fig.height = 5}
+## help(trans_new)
+
 ggplot(data = maxF1,
        aes(x= flavour, y = max_F1, col = cell, group = cell, shape = analyte)) +
-    facet_grid(~run) +
+    facet_wrap(~run, ncol = 4, nrow = 2) +
     geom_point(size = 2) +
-    scale_y_continuous(trans = 'sqrt') +
-    ## scale_shape_manual(values=c(0, 4, 1)) +
+    scale_y_continuous(trans = 'atanh') +
     theme_bw() +
     theme(axis.text.x = element_text(angle = 90, hjust = 1, colour = axes_col)) +
     scale_colour_manual(values = setNames(pal$color, as.character(pal$identity))) 
 
 ```
 
-
-
+## Heatmap
 
 
 ```{r, fig.width =9, fig.height = 5}
@@ -766,7 +1229,217 @@ maxF1 %>%
 ```
 
 
-# Markers {.tabset}
+
+
+# Weighted RIs (Wind) 
+
+
+```{r}
+
+
+nmis_outer <- list()
+aris_outer <- list()
+weights_outer <- list()
+
+for (run in names(d)) {
+    ## print(run)
+
+    if (! 'genes_alevin' %in% names(d[[run]])) next
+    ## only for the common cells not labelled 'unknown'
+    common_cells <- Reduce(intersect, sapply(d[[run]], function (x) return(x@meta.data$cell)))
+
+    common_cells <- intersect(
+        common_cells,
+        rownames(d[[run]]$genes_alevin@meta.data[d[[run]]$genes_alevin@meta.data$scina != 'unknown',]))
+
+    nmis <- list()
+    aris <- list()
+
+    for (method in names(d[[run]])) {
+        tryCatch({
+            ## print(sprintf('%s %s', run, method))
+            Y <- as.matrix(GetAssayData(d[[run]][[method]],
+                                        slot = 'counts')[,common_cells])
+            
+            trueclass <- d[[run]]$genes_alevin@meta.data[common_cells, 'scina']
+            ctStruct <- createRef(Y, trueclass)
+
+
+            clusters <- list()
+
+            for (res in grep('snn', colnames(d[[run]][[method]]@meta.data), value = TRUE)) {
+                ## clusters <- sapply(d, function(x) return(x@meta.data[common_cells, res]))
+                clusters[[res]] <- d[[run]][[method]]@meta.data[common_cells, res]
+            }
+
+            ## str(    clusters)
+            resolutions <- names(clusters)
+
+            ## NMI
+            allNMI = matrix(0, nrow=length(resolutions), ncol=2)
+            rownames(allNMI) = resolutions
+            colnames(allNMI) = c("NMI", "wNMI")
+
+            for(i in 1:length(clusters)) {
+                allNMI[i,1] = wNMI(ctStruct, trueclass, clusters[[i]], FALSE)
+                allNMI[i,2] = wNMI(ctStruct, trueclass, clusters[[i]])
+            }
+
+            nmis[[method]] <- allNMI
+            
+            ## ARI
+            weights <- createWeights(Y, trueclass)
+            ## str(weights)
+            
+            allRI = matrix(0, nrow=length(resolutions), ncol=6)
+            rownames(allRI) = resolutions
+            allRI
+
+            colnames(allRI) = c("RI", "NI1","NI2","wRI","wNI1","wNI2")
+            for(i in 1:length(clusters)) {
+                allRI[i,1:3] = wRI(as.character(trueclass), as.numeric(clusters[[i]])) [1:3]
+                allRI[i,4:6] = wRI(as.character(trueclass), as.numeric(clusters[[i]]), 
+                                   weights$W0, weights$W1)[1:3]
+            }
+
+            aris[[method]] <- allRI
+            weights_outer[[paste(run, method)]] <- weights
+        }, error = function(x) print(x))
+    }
+
+    aris_outer[[run]] <- aris
+    nmis_outer[[run]] <- nmis
+
+    
+}
+```
+
+```{r}
+saveRDS(object = aris_outer, file = '/home/imallona/pbmc_aris_outer.rds')
+saveRDS(object = nmis_outer, file = '/home/imallona/pbmc_nmis_outer.rds')
+saveRDS(object = weights_outer, file = '/home/imallona/pbmc_weights_outer.rds')
+```
+
+# Plots wRI / wNMI  {.tabset .tabset-fade .tabset-pills} 
+
+
+
+```{r, fig.width = 8, fig.height = 4, results = 'asis'}
+
+for (dataset in names(nmis_outer)) {
+    cat('## ', dataset, ' {.tabset .tabset-fade .tabset-pills} \n\n')
+    for (method in names(nmis_outer[[dataset]])) {
+        cat('### ', method, ' \n\n')
+        par(mfrow = c(1,2))
+        barplot(t(aris_outer[[dataset]][[method]][,c(1,4)]), beside=TRUE, ylim=c(0,1.05), 
+            legend.text=TRUE, xpd=FALSE, las =2, main = sprintf('%s %s', dataset, method))
+    
+
+        barplot(t(nmis_outer[[dataset]][[method]]), beside=TRUE, ylim=c(0,1.05), 
+                legend.text=TRUE, xpd=FALSE, las = 2, main = sprintf('%s %s', dataset, method))
+        cat('\n\n')
+    }
+    cat('\n\n')
+}
+
+```
+
+# Weight plots  {.tabset .tabset-fade .tabset-pills} 
+
+
+```{r fig.width = 16, fig.height = 5, results = 'asis'}
+for (id in names(weights_outer)) {
+
+    cat('## ', id, ' \n\n')
+    pheatmaps <- list()
+
+    pheatmaps[[1]] <- pheatmap(weights_outer[[id]]$W1, main = sprintf('W1 %s', id),
+                               silent = TRUE)[[4]]
+
+    pheatmaps[[2]] <- pheatmap(weights_outer[[id]]$W0, main = sprintf('W0 %s', id),
+                               silent = TRUE)[[4]]
+
+    pheatmaps[[3]] <- pheatmap(weights_outer[[id]]$W1/weights_outer[[id]]$W0,
+                               main = sprintf('W1/W0 %s', id),
+                               silent = TRUE)[[4]]
+
+    print(grid.arrange(arrangeGrob(grobs= pheatmaps, ncol=3)))
+
+     cat(sprintf('\n\n'))
+}
+
+```
+
+
+
+
+## ARIs  {.tabset .tabset-fade .tabset-pills} 
+
+
+```{r fig.width = 5, fig.heigh = 5, results = 'asis'}
+dataset <- 'pbmc8k'
+## par(mfrow = c(1,2))
+for (dataset in names(nmis_outer)) {
+    cat ('### ', dataset, ' {.tabset .tabset-fade .tabset-pills}  \n\n')
+    for (method in names(nmis_outer[[dataset]])) {
+        cat ('#### ', method, ' \n\n')
+        barplot(t(aris_outer[[dataset]][[method]][,c(1,4)]), beside=TRUE, ylim=c(0,1.05), 
+                legend.text=TRUE, xpd=FALSE, las =2, main = sprintf('%s %s', dataset, method))
+
+        cat('\n\n')
+    }
+    cat('\n\n')
+
+    ## barplot(t(nmis_outer[[dataset]][[method]]), beside=TRUE, ylim=c(0,1.05), 
+    ##         legend.text=TRUE, xpd=FALSE, las = 2, main = sprintf('%s %s', dataset, method))
+}
+
+
+```
+
+## NMIS {.tabset .tabset-fade .tabset-pills} 
+
+
+```{r fig.width = 5, fig.heigh = 5, results = 'asis'}
+
+## par(mfrow = c(1,2))
+for (dataset in names(nmis_outer)) {
+    cat ('### ', dataset, ' {.tabset .tabset-fade .tabset-pills}  \n\n')
+    for (method in names(nmis_outer[[dataset]])) {
+        cat ('#### ', method, ' \n\n')
+        barplot(t(nmis_outer[[dataset]][[method]][,c(1,4)]), beside=TRUE, ylim=c(0,1.05), 
+                legend.text=TRUE, xpd=FALSE, las =2, main = sprintf('%s %s', dataset, method))
+
+        cat('\n\n')
+    }
+    cat('\n\n')
+
+    ## barplot(t(nmis_outer[[dataset]][[method]]), beside=TRUE, ylim=c(0,1.05), 
+    ##         legend.text=TRUE, xpd=FALSE, las = 2, main = sprintf('%s %s', dataset, method))
+}
+
+
+```
+
+<!-- # PBMC 8k in depth -->
+
+
+<!-- ```{r fig.width =20, fig.heigh = 5} -->
+<!-- dataset <- 'pbmc8k' -->
+<!-- par(mfrow = c(1,2)) -->
+<!-- for (method in names(nmis_outer[[dataset]])) { -->
+<!--     barplot(t(aris_outer[[dataset]][[method]][,c(1,4)]), beside=TRUE, ylim=c(0,1.05),  -->
+<!--             legend.text=TRUE, xpd=FALSE, las =2, main = sprintf('%s %s', dataset, method)) -->
+    
+
+<!--     barplot(t(nmis_outer[[dataset]][[method]]), beside=TRUE, ylim=c(0,1.05),  -->
+<!--             legend.text=TRUE, xpd=FALSE, las = 2, main = sprintf('%s %s', dataset, method)) -->
+<!-- } -->
+
+
+<!-- ``` -->
+
+# Markers {.tabset .tabset-fade .tabset-pills} 
 
 For each sample, each flavour, and each celltype, get the significant markers. Then, look for overlaps.
 
@@ -780,6 +1453,7 @@ for (rds in params) {
     ##       function(x) return(x[6]))]] <- list()
     fns <- list.files(dirname(rds), pattern = 'markers.*TRUE.*TRUE.*rds')
     for (fn in fns) {
+        id <- gsub('_markers_regress_nCount_TRUE_nFeature_TRUE.rds', '', fn)
         curr_nest <- readRDS(file.path(dirname(rds), fn))
         for (item in names(curr_nest)) {
             curr_nest[[item]]$flavour <- item
@@ -789,23 +1463,27 @@ for (rds in params) {
 
         curr_nest <- lapply(curr_nest, function(x) x %>%
                                                    group_by(cluster))
-        
-        markers[[fn]] <- do.call(rbind.data.frame, curr_nest)
-        markers[[fn]] <- markers[[fn]][markers[[fn]]$p_val_adj < 0.05,]
+
+        markers[[id]] <- do.call(rbind.data.frame, curr_nest)
+        markers[[id]] <- markers[[id]][markers[[id]]$p_val_adj < 0.05,]
     }
 }
+
+markers_truth <- markers$zheng_truth
+
+markers$zheng_truth <- NULL
 
 markers <- do.call(rbind.data.frame, markers)
 
 
-colnames(markers)
-table(markers$cluster)
-table(markers$flavour)
-table(markers$dataset)
+## colnames(markers)
+## table(markers$cluster)
+## table(markers$flavour)
+## table(markers$dataset)
 ```
 
 
-```{r, fig.width = 7, fig.height=6}
+```{r, fig.width = 6, fig.height=5, results = 'asis'}
 
 markers <- as.data.frame(markers)
 
@@ -839,19 +1517,29 @@ for (celltype in unique(markers$cluster)) {
 
 ```
 
-# Markers II {.tabset}
+```{r}
+head(markers)
 
-Per celltype, concordance
+markers_truth <- as.data.frame(markers_truth)
+markers_truth$cluster <- sapply(strsplit(as.character(markers_truth$cluster),
+                                         split = '\n', fixed = TRUE),
+                                function(x) return(x[1]))
+head(markers_truth)
+```
 
-```{r, fig.width =8, fig.height=5}
+# Markers per cell type, concordance across methods {.tabset .tabset-fade .tabset-pills} 
 
+
+```{r, fig.width =8, fig.height = 4, results = 'asis'}
 
 ul <- list()
 for (celltype in unique(markers$cluster)) {
-    cat('## ', celltype, '\n\n')
+    cat('## ', celltype, ' {.tabset .tabset-fade .tabset-pills} \n\n')
 
    
     for (flavour in unique(markers[markers$cluster == celltype, 'flavour'])) {
+        cat('### ', flavour, ' \n\n')
+    
         ul <- list()
         for (dataset in unique(markers[markers$cluster == celltype &
                                      markers$flavour == flavour, 'dataset'])) {
@@ -871,26 +1559,101 @@ for (celltype in unique(markers$cluster)) {
     cat('\n\n')
 
     }
+    cat('\n\n')
 }
 
 
 ```
 
-# Markers III {.tabset}
+# Per celltype plus truth concordance  {.tabset .tabset-fade .tabset-pills} 
 
-By celltype, no matter which method
+```{r}
 
-```{r, fig.width =6, fig.height=4}
+## dict <- zheng_pal[!grepl('missing', zheng_pal$truth),]
+
+dict <- structure(list(
+    truth = c("cd4_t_helper", "cytotoxic_t", "b_cells", 
+              "cd56_nk", "cd14_monocytes", "cd34", "memory_t", "naive_cytotoxic", 
+              "regulatory_t", "naive_t"),
+    identity = c("CD4+_T_cell", "Cytotoxic_T_cell", 
+                 "B_cell", "Natural_killer_cell", "CD14+_monocyte", "CD34+_monocyte", 
+                 "Memory_T", "Naive_cytotoxic_T_cell", "Regulatory_T", "Naive_T"),
+    flattened = c("CD4+_T_cell", "Cytotoxic_T_cell", 
+                 "B_cell", "Natural_killer_cell", "CD14+_monocyte", "CD16+_monocyte", 
+                 "Other", "Other", "Other", "Other"),
+    color = c("#A6CEE3", "#1F78B4", "#B2DF8A", "#33A02C", "#FB9A99", 
+              "#FB9A99", "#C0C0C0", "#1F78B4", "#C0C0C0", "#C0C0C0")),
+    row.names = c("cd4_t_helper", "cytotoxic_t", "b_cells", "cd56_nk", "cd14_monocytes", "cd34", 
+                  "memory_t", "naive_cytotoxic", "regulatory_t", "naive_t"),
+    class = "data.frame")
+
+markers_both <- rbind(markers, markers_truth)
+
+markers_both <- markers_both[markers_both$cluster %in% c(levels(markers$cluster), dict$truth),]
+markers_both$cluster <- as.character(markers_both$cluster)
+for (zheng_id in dict$truth) {
+    markers_both$cluster[markers_both$cluster == zheng_id] <- dict[dict$truth == zheng_id,
+                                                                   'flattened']
+}
+
+## table(markers_both$cluster, markers_both$flavour)
+markers_both <- markers_both[markers_both$cluster != 'Other',]
+
+```
+
+Adding the `both_cellranger` as `both_multi`
+
+
+```{r}
+
+markers_both$flavour[markers_both$flavour == 'both_cellranger'] <- 'both_multi'
+```
+
+```{r, fig.width =8, fig.height=4, results = 'asis'}
+
+flavour <- 'repeats_cellranger'
+celltype <- "CD14+_monocyte"
+
+
+for (flavour in c('repeats_cellranger', 'genes_cellranger')) {
+    cat('## ', flavour, ' \n\n')
+    ul <- list()
+    for (dataset in unique(markers_both[markers_both$cluster == celltype &
+                                        markers_both$flavour == flavour, 'dataset'])) {
+
+        ul[[paste(dataset, flavour, sep = "_")]] <- markers_both[
+            markers_both$flavour == flavour  &
+            markers_both$cluster == celltype &
+            markers_both$dataset == dataset, 'gene']
+        
+        
+    }
+    ## str(ul)
+
+    print(upset(fromList(ul), nsets = length(ul)))
+    grid.text(paste(celltype, flavour) ,x = 0.65, y=0.95, gp=gpar(fontsize = 10))
+    cat('\n\n')
+}
+
+
+```
+
+
+# Markers III By celltype, no matter which method  {.tabset .tabset-fade .tabset-pills} 
+
+
+
+```{r, fig.width =6, fig.height=4, results = 'asis'}
 
 
 ul <- list()
 for (celltype in unique(markers$cluster)) {
-    cat('## ', celltype, '\n\n')
+    cat('## ', celltype, ' \n\n')
     
     ul[[celltype]] <- NULL
     for (dataset in unique(markers[markers$cluster == celltype, 'dataset'])) {
 
-        print(dataset)
+        ## print(dataset)
             
         ul[[dataset]] <- unique(c(ul[[celltype]], markers[ grepl('repeats', markers$flavour) &
                                                              markers$cluster == celltype &
@@ -910,20 +1673,47 @@ for (celltype in unique(markers$cluster)) {
 
 ```
 
-# Markers IV {.tabset}
+# Markers III with added truth {.tabset .tabset-fade .tabset-pills} 
 
-By celltype, method influence
+```{r, results = 'asis'}
 
-```{r, fig.width = 8, fig.height=16}
+ul <- list()
+for (celltype in unique(markers_both$cluster)) {
+    cat('## ', celltype, ' \n\n')
+    
+    ul[[celltype]] <- NULL
+    for (dataset in unique(markers_both[markers_both$cluster == celltype, 'dataset'])) {
+
+        ## print(dataset)
+            
+        ul[[dataset]] <- unique(c(ul[[celltype]], markers_both[ grepl('repeats', markers_both$flavour) &
+                                                             markers_both$cluster == celltype &
+                                                             markers_both$dataset == dataset, 'gene']))
+
+         
+    }
+    
+   
+    print(upset(fromList(ul), nsets  = length(ul)))
+    grid.text(paste(celltype) ,x = 0.65, y=0.95, gp=gpar(fontsize = 10))
+    cat('\n\n')
+}
+```
+
+
+# Markers IV By celltype, method influence  {.tabset .tabset-fade .tabset-pills}
 
 
 
-for (celltype in 'CD14+_monocyte') {
-    cat('## ', celltype, '\n\n')
+```{r, fig.width = 8, fig.height=6, results = 'asis'}
+
+for (celltype in unique(markers$cluster)) {
+    cat('## ', celltype, ' {.tabset .tabset-fade .tabset-pills} \n\n')
     
 
     for (dataset in unique(markers[markers$cluster == celltype, 'dataset'])) {
-
+        cat('### ', dataset, ' \n\n')
+    
         ul <- list()
         for (flavour in unique(markers[markers$cluster == celltype &
                                      markers$dataset == dataset, 'flavour'])) {
@@ -939,124 +1729,1467 @@ for (celltype in 'CD14+_monocyte') {
         cat('\n\n')
 
     }
+    cat('\n\n')
 }
-
-
-
-
 
 
 ```
 
 
-# Markers V
+<!-- # Markers V  -->
 
-```{r, fig.width =12, fig.height=5}
-ft <- as.data.frame(table(markers[markers$cluster == 'CD14+_monocyte', 'gene']))
+<!-- ```{r, fig.width =12, fig.height=5, eval = FALSE} -->
+<!-- ft <- as.data.frame(table(markers[markers$cluster == 'CD14+_monocyte', 'gene'])) -->
 
-ft <- ft[order(ft$Freq, decreasing = TRUE),]
-head(ft)
-selected <- as.character(head(ft, 20)$Var1)
+<!-- ft <- ft[order(ft$Freq, decreasing = TRUE),] -->
+<!-- head(ft) -->
+<!-- selected <- as.character(head(ft, 20)$Var1) -->
 
 
-## get cpms from the seurat object, only 5 cells (first 5 indexed)
-foo <- list()
-for (item in names(d)) {
-    ## foo <- list()
-    for (flavour in grep('repeats', names(d[[item]]), value = TRUE)) {
-        tmp <- as.data.frame(FetchData(d[[item]][[flavour]],
-                                       vars = selected,
-                                       slot = 'data'))[1:5,]
-        tmp$cell <- rownames(tmp)
+<!-- ## get cpms from the seurat object, only 5 cells (first 5 indexed) -->
+<!-- foo <- list() -->
+<!-- for (item in names(d)) { -->
+<!--     ## foo <- list() -->
+<!--     for (flavour in grep('repeats', names(d[[item]]), value = TRUE)) { -->
+<!--         tmp <- as.data.frame(FetchData(d[[item]][[flavour]], -->
+<!--                                        vars = selected, -->
+<!--                                        slot = 'data'))[1:5,] -->
+<!--         tmp$cell <- rownames(tmp) -->
 
         
-        tmp <- merge(d[[item]][[flavour]]@meta.data[, c('cell', 'scina')],
-                     tmp, by = 'cell', all.x = TRUE)
-        rownames(tmp) <- tmp$cell
-        tmp <- melt(tmp, id.vars = c('cell', 'scina'))
-        tmp$flavour <- flavour
-        tmp$dataset <-  item
-        foo[[paste(item, flavour)]] <- tmp
+<!--         tmp <- merge(d[[item]][[flavour]]@meta.data[, c('cell', 'scina')], -->
+<!--                      tmp, by = 'cell', all.x = TRUE) -->
+<!--         rownames(tmp) <- tmp$cell -->
+<!--         tmp <- melt(tmp, id.vars = c('cell', 'scina')) -->
+<!--         tmp$flavour <- flavour -->
+<!--         tmp$dataset <-  item -->
+<!--         foo[[paste(item, flavour)]] <- tmp -->
         
         
-    }
-    ## foo <- do.call(rbind.data.frame, foo)
-}
+<!--     } -->
+<!--     ## foo <- do.call(rbind.data.frame, foo) -->
+<!-- } -->
 
-foo <- do.call(rbind.data.frame, foo)
-head(foo)
-
-
-print(ggplot(foo[foo$scina %in% c('CD14+_monocyte', 'CD16+_monoctye', 'CD4+_T_cell'),],
-             aes(x = variable, y = value, fill = flavour)) + 
-      geom_boxplot() +
-      scale_y_continuous(trans='log10') +
-      scale_fill_discrete(drop=FALSE) +
-      facet_grid(dataset ~ scina) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+<!-- foo <- do.call(rbind.data.frame, foo) -->
+<!-- head(foo) -->
 
 
-```
+<!-- print(ggplot(foo[foo$scina %in% c('CD14+_monocyte', 'CD16+_monoctye', 'CD4+_T_cell'),], -->
+<!--              aes(x = variable, y = value, fill = flavour)) +  -->
+<!--       geom_boxplot() + -->
+<!--       scale_y_continuous(trans='log10') + -->
+<!--       scale_fill_discrete(drop=FALSE) + -->
+<!--       facet_grid(dataset ~ scina) + -->
+<!--       theme(axis.text.x = element_text(angle = 90, hjust = 1))) -->
 
-# Cluster techniques and flavours and celltypes?
 
-# Add bulk
+
+<!-- ``` -->
+
+<!-- # Cluster techniques and flavours and celltypes? -->
+
+
+# Markers cluster dendrogram
+
+With manhattan distances over binary data (presence/ausence of the positive marker). Equivalent to Hamming distance.
+
+For genes
 
 ```{r}
-bulk <- readRDS('/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_de.rds')
-str(bulk)
-names(bulk)
 
-## samplemonocyte-sampletcell
-bulk_yardstick <- bulk[['repeats_star_multi']][[1]]
-selected <- rownames(bulk_yardstick[bulk_yardstick$FDR < 0.05 & abs(bulk_yardstick$logFC) >= 2,])
-selected <- head(selected, 10)
+fc <- list()
+annot <- list()
+for (celltype in unique(markers$cluster)) {
+    fc[[celltype]] <- list()
+    annot[[celltype]] <- list()
 
-
-```
-
-
-```{r, fig.width =12, fig.height=5}
-
-## get cpms from the seurat object, only 5 cells (first 5 indexed)
-foo <- list()
-for (item in names(d)) {
-    ## foo <- list()
-    for (flavour in grep('repeats', names(d[[item]]), value = TRUE)) {
-        tmp <- as.data.frame(FetchData(d[[item]][[flavour]],
-                                       vars = selected,
-                                       slot = 'data'))[1:5,]
-        tmp$cell <- rownames(tmp)
-
-        
-        tmp <- merge(d[[item]][[flavour]]@meta.data[, c('cell', 'scina')],
-                     tmp, by = 'cell', all.x = TRUE)
-        rownames(tmp) <- tmp$cell
-
-        tmp <- melt(tmp, id.vars = c('cell', 'scina'))
-        tmp <- tmp[grepl('T_cell|monocyte', tmp$scina),]
-        tmp$flavour <- flavour
-        tmp$dataset <-  item
-        foo[[paste(item, flavour)]] <- tmp
-        
-        
+    ## table(markers$cluster)
+    ## detected <- unique(markers[grepl('genes', markers$flavour), 'gene'])
+    detected <- unique(markers[grepl('genes', markers$flavour) &
+                               markers$cluster == celltype, 'gene'])
+            
+    length(detected)
+    
+    for (flavour in unique(grep('genes', markers[markers$cluster == celltype, 'flavour'],
+                                value = TRUE))) {
+        for (dataset in unique (markers[markers$flavour == flavour &
+                                      markers$cluster == celltype, 'dataset'])) {
+            tmp  <- markers[markers$flavour == flavour &
+                            markers$dataset == dataset &
+                            markers$cluster == celltype, 'gene']
+            
+            fc[[celltype]][[paste(flavour, dataset, celltype)]] <- as.numeric(detected %in% tmp)
+            annot[[celltype]][[paste(flavour, dataset,
+                                     celltype)]] <- c(flavour, dataset,
+                                                      celltype,
+                                                      sum(fc[[celltype]][[paste(flavour, dataset, celltype)]]))
+        }
     }
-    ## foo <- do.call(rbind.data.frame, foo)
+
+    
+    fc[[celltype]] <- do.call(cbind.data.frame, fc[[celltype]])
+
+    annot[[celltype]] <- do.call(rbind.data.frame, annot[[celltype]])
+    colnames(annot[[celltype]]) <- c('flavour', 'dataset', 'celltype', 'num_markers')
+    annot[[celltype]]$num_markers <- as.numeric(annot[[celltype]]$num_markers)
+    rownames(annot[[celltype]]) <- paste(annot[[celltype]]$flavour,
+                                         annot[[celltype]]$dataset,
+                                         annot[[celltype]]$celltype)
+    rownames(fc[[celltype]]) <- detected
+
+    stopifnot(all(rownames(annot[[celltype]]) == colnames(fc[[celltype]])))
 }
 
-foo <- do.call(rbind.data.frame, foo)
-head(foo)
-foo$scina <- as.character(foo$scina)
-table(foo$scina)
+## fc <- listfeature = detected)
 
-print(ggplot(foo,
-             aes(x = variable, y = value, fill = flavour)) + 
-      geom_boxplot() +
-      scale_fill_discrete(drop=FALSE) +
-      facet_grid(dataset ~ scina) +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+## plot(hclust(dist(t(fc), method = 'manhattan')))
 
 ```
+
+<!-- ```{r} -->
+<!-- for (ct in names(annot)) { -->
+<!--     annot[[ct]]$num_markers <- as.numeric(annot[[ct]]$num_markers) -->
+
+<!--     annot[[ct]]$analyte <- 'NA' -->
+<!--     annot[[ct]][grepl('genes', annot[[ct]]$flavour), 'analyte'] <- 'genes' -->
+<!--     annot[[ct]][grepl('repeats', annot[[ct]]$flavour), 'analyte'] <- 'repeats' -->
+<!--     annot[[ct]][grepl('both', annot[[ct]]$flavour), 'analyte'] <- 'both' -->
+
+<!--     annot[[ct]]$analyte <- factor(annot[[ct]]$analyte, levels = c('genes', 'both', 'repeats')) -->
+
+<!--     annot[[ct]]$multimapper <- 'NA' -->
+<!--     annot[[ct]][grepl('multi', annot[[ct]]$flavour), 'multimapper'] <- 'multi' -->
+<!--     annot[[ct]][grepl('alevin', annot[[ct]]$flavour), 'multimapper'] <- 'deduplicated' -->
+<!--     annot[[ct]][grepl('genes|cellranger|unique', annot[[ct]]$flavour), 'multimapper'] <- 'unique' -->
+
+<!--     ## table(annot[[ct]]$analyte, annot[[ct]]$multimapper, useNA = 'always') -->
+
+<!--     annot[[ct]]$overlap <- 'overlap_allowed' -->
+<!--     annot[[ct]][grepl('repeats_alevin', annot[[ct]]$flavour), 'overlap'] <- 'alevin_decoy' -->
+<!--     annot[[ct]][grepl('genes|both', annot[[ct]]$flavour), 'overlap'] <- 'genes' -->
+<!--     annot[[ct]][grepl('only', annot[[ct]]$flavour), 'overlap'] <- 'no_overlap' -->
+
+<!--     annot[[ct]]$mapper <- 'NA' -->
+<!--     annot[[ct]][grepl('cellranger|star|featurecounts|only', annot[[ct]]$flavour), 'mapper'] <- 'star' -->
+<!--     annot[[ct]][grepl('bowtie', annot[[ct]]$flavour), 'mapper'] <- 'bowtie' -->
+<!--     annot[[ct]][grepl('alevin', annot[[ct]]$flavour), 'mapper'] <- 'alevin' -->
+<!--     table(annot[[ct]]$mapper) -->
+
+<!--     annot[[ct]]$counter <- 'featurecounts' -->
+<!--     annot[[ct]][grepl('alevin', annot[[ct]]$flavour), 'counter'] <- 'alevin' -->
+
+<!--     annot[[ct]]$technology <- 'chromium' -->
+<!--     annot[[ct]][grepl('smartseq2', annot[[ct]]$dataset), 'technology'] <- 'smartseq2' -->
+<!--     annot[[ct]][grepl('celseq', annot[[ct]]$dataset), 'technology'] <- 'celseq2' -->
+<!--     annot[[ct]][grepl('dropseq', annot[[ct]]$dataset), 'technology'] <- 'dropseq' -->
+<!--     annot[[ct]][grepl('seqwell', annot[[ct]]$dataset), 'technology'] <- 'seqwell' -->
+<!-- } -->
+
+<!-- ``` -->
+
+
+```{r}
+for (ct in names(annot)) {
+    annot[[ct]]$num_markers <- as.numeric(annot[[ct]]$num_markers)
+
+    annot[[ct]]$analyte <- 'NA'
+    annot[[ct]][grepl('genes', annot[[ct]]$flavour), 'analyte'] <- 'genes'
+    annot[[ct]][grepl('repeats', annot[[ct]]$flavour), 'analyte'] <- 'repeats'
+    annot[[ct]][grepl('both', annot[[ct]]$flavour), 'analyte'] <- 'both'
+
+    annot[[ct]]$analyte <- factor(annot[[ct]]$analyte, levels = c('genes', 'both', 'repeats'))
+
+    annot[[ct]]$multimapper <- 'NA'
+    annot[[ct]][grepl('multi', annot[[ct]]$flavour), 'multimapper'] <- 'multi'
+    annot[[ct]][grepl('alevin', annot[[ct]]$flavour), 'multimapper'] <- 'deduplicated'
+    annot[[ct]][grepl('genes|cellranger|unique', annot[[ct]]$flavour), 'multimapper'] <- 'unique'
+
+    ## table(annot[[ct]]$analyte, annot[[ct]]$multimapper, useNA = 'always')
+
+    annot[[ct]]$overlap <- 'overlap_allowed'
+    annot[[ct]][grepl('repeats_alevin', annot[[ct]]$flavour), 'overlap'] <- 'alevin_decoy'
+    annot[[ct]][grepl('genes|both', annot[[ct]]$flavour), 'overlap'] <- 'genes'
+    annot[[ct]][grepl('only', annot[[ct]]$flavour), 'overlap'] <- 'no_overlap'
+
+    annot[[ct]]$mapper <- 'NA'
+    annot[[ct]][grepl('cellranger', annot[[ct]]$flavour), 'mapper'] <- 'cellranger'
+    annot[[ct]][grepl('star|featurecounts|only', annot[[ct]]$flavour), 'mapper'] <- 'star'
+    annot[[ct]][grepl('bowtie', annot[[ct]]$flavour), 'mapper'] <- 'bowtie'
+    annot[[ct]][grepl('alevin', annot[[ct]]$flavour), 'mapper'] <- 'alevin'
+    table(annot[[ct]]$mapper)
+
+    annot[[ct]]$counter <- 'featurecounts'
+    annot[[ct]][grepl('cellranger', annot[[ct]]$flavour), 'counter'] <- 'cellranger'
+    annot[[ct]][grepl('alevin', annot[[ct]]$flavour), 'counter'] <- 'alevin'
+
+    annot[[ct]]$technology <- 'chromium'
+    annot[[ct]][grepl('smartseq2', annot[[ct]]$dataset), 'technology'] <- 'smartseq2'
+    annot[[ct]][grepl('celseq', annot[[ct]]$dataset), 'technology'] <- 'celseq2'
+    annot[[ct]][grepl('dropseq', annot[[ct]]$dataset), 'technology'] <- 'dropseq'
+    annot[[ct]][grepl('seqwell', annot[[ct]]$dataset), 'technology'] <- 'seqwell'
+}
+
+```
+
+<!-- ```{r} -->
+<!-- item <- 'CD14+_monocyte' -->
+
+<!-- ham_d <- dist(t(fc[[item]]), method = 'manhattan') -->
+<!-- hc <- hclust(ham_d, method = 'ward.D2') -->
+
+<!-- tree <- ggtree(hc, -->
+<!--        branch.length = "none", size = 0.1)  -->
+
+<!-- dd <- tree$data -->
+<!-- dd <- dd[dd$isTip,] -->
+<!-- lab <- dd$label[order(dd$y, decreasing = T)] -->
+
+
+<!-- full <- tree + -->
+<!--     geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab], -->
+<!--                     name = "hm0", gap = 0.2,  -->
+<!--                     cluster_column = FALSE, -->
+<!--                     show_coltree = FALSE, -->
+<!--                     rel_width = 2) + -->
+<!--     labs(fill = "Hamming distance") + -->
+<!--     scale_fill_viridis_c(direction = -1) + -->
+<!--     geom_th_addvalue(name = "hm0", color = "white", size = 4) + -->
+    
+<!--     new_scale_fill() + -->
+<!--     geom_th_heatmap(th_data = annot[[item]]['dataset'], name = "hm1", gap = 0.2,  -->
+<!--                     cluster_column = FALSE, -->
+<!--                     size_coltree = 0.5, -->
+<!--                     rel_width = 0.1) + -->
+<!--     scale_fill_brewer(palette = "Set2") + -->
+<!--     labs(fill = "Dataset") + -->
+<!--     geom_th_text(name = "hm1", side = "top", nudge_y = 0.5, -->
+<!--                  angle = 90, size = 3) + -->
+
+<!--     new_scale_fill() + -->
+<!--     geom_th_heatmap(th_data = annot[[item]]['technology'], name = "hmtech", gap = 0.2,  -->
+<!--                     cluster_column = FALSE, -->
+<!--                     size_coltree = 0.5, -->
+<!--                     rel_width = 0.1) + -->
+<!--     scale_fill_brewer(palette = "Set2") + -->
+<!--     labs(fill = "Technology") + -->
+<!--     geom_th_text(name = "hmtech", side = "top", nudge_y = 0.5, -->
+<!--                  angle = 90, size = 3) + -->
+
+    
+<!--     new_scale_fill() + -->
+<!--     geom_th_heatmap(th_data = annot[[item]]['mapper'], name = "hm2", gap = 0.2,  -->
+<!--                     cluster_column = FALSE, -->
+<!--                     size_coltree = 0.5, -->
+<!--                     rel_width = 0.1) + -->
+<!--     scale_fill_brewer(palette = "Set1") + -->
+<!--     labs(fill = "Mapper")+ -->
+<!--     geom_th_text(name = "hm2", side = "top", nudge_y = 0.5, -->
+<!--                  angle = 90, size = 3) + -->
+
+
+<!--     new_scale_fill() + -->
+<!--     geom_th_heatmap(th_data = annot[[item]]['counter'], name = "hm3", gap = 0.2,  -->
+<!--                     cluster_column = FALSE, -->
+<!--                     size_coltree = 0.5, -->
+<!--                     rel_width = 0.1) + -->
+<!--     scale_fill_brewer(palette = "Set1") + -->
+<!--     labs(fill = "Counter") + -->
+<!--      geom_th_text(name = "hm3", side = "top", nudge_y = 0.5, -->
+<!--                   angle = 90, size = 3) + -->
+    
+<!--     new_scale_fill() + -->
+<!--     geom_th_heatmap(th_data = annot[[item]]['overlap'], name = "hm4", gap = 0.2,  -->
+<!--                     cluster_column = FALSE, -->
+<!--                     size_coltree = 0.5, -->
+<!--                     rel_width = 0.1) + -->
+<!--     scale_fill_brewer(palette = "Set1") + -->
+<!--     labs(fill = "Overlap") + -->
+<!--     geom_th_text(name = "hm4", side = "top", nudge_y = 0.5, -->
+<!--                  angle = 90, size = 3) + -->
+<!--     new_scale_fill() + -->
+    
+<!--     geom_th_heatmap(th_data = annot[[item]]['multimapper'], name = "hm5", gap = 0.2,  -->
+<!--                     cluster_column = FALSE, -->
+<!--                     size_coltree = 0.5, -->
+<!--                     rel_width = 0.1) + -->
+<!--     scale_fill_brewer(palette = "Set1") + -->
+<!--     labs(fill = "Multimappers")+ -->
+<!--     geom_th_text(name = "hm5", side = "top", nudge_y = 0.5, -->
+<!--                  angle = 90, size = 3) + -->
+
+    
+<!--     new_scale_fill() + -->
+<!--     geom_th_heatmap(th_data = annot[[item]]['num_markers'], name = "hm6", gap = 0.2, -->
+<!--                     rel_width = 0.1) + -->
+<!--     labs(fill = "Num. markers")+ -->
+<!--     scale_fill_viridis_c() + -->
+<!--     geom_th_text(name = "hm6", side = "top", nudge_y = 0.5, -->
+<!--                  angle = 90, size = 3) + -->
+<!--     geom_th_title(name = "hm0", side = "top", -->
+<!--                   label = "Num. discordant markers", nudge_y = -0.8) + -->
+    
+<!--     theme(plot.margin=unit(c(2, 1, 1.5, 1.2),"cm")) -->
+
+<!-- ``` -->
+
+<!-- By chunks -->
+
+<!-- ```{r} -->
+
+<!-- p1 <- tree + -->
+<!--     geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab], -->
+<!--                     name = "hm0", gap = 0.2,  -->
+<!--                     cluster_column = FALSE, -->
+<!--                     show_coltree = FALSE, -->
+<!--                     rel_width = 2) + -->
+<!--     labs(fill = "Hamming distance") + -->
+<!--     scale_fill_viridis_c(direction = -1) + -->
+<!--     geom_th_addvalue(name = "hm0", color = "white", size = 4) + -->
+<!--     geom_th_title(name = "hm0", side = "top", -->
+<!--                   label = "Num. discordant markers", nudge_y = -0.8) -->
+
+    
+<!-- p2 <- tree + -->
+<!--     new_scale_fill() + -->
+<!--     geom_th_heatmap(th_data = annot[[item]]['dataset'], name = "hm1", gap = 0.2,  -->
+<!--                     cluster_column = FALSE, -->
+<!--                     size_coltree = 0.5, -->
+<!--                     rel_width = 0.1) + -->
+<!--     scale_fill_brewer(palette = "Set2") + -->
+<!--     labs(fill = "Dataset") + -->
+<!--     geom_th_text(name = "hm1", side = "top", nudge_y = 0.5, -->
+<!--                  angle = 90, size = 3) -->
+
+<!-- p3 <-  tree + -->
+<!--     new_scale_fill() + -->
+<!--     geom_th_heatmap(th_data = annot[[item]]['technology'], name = "hmtech", gap = 0.2,  -->
+<!--                     cluster_column = FALSE, -->
+<!--                     size_coltree = 0.5, -->
+<!--                     rel_width = 0.1) + -->
+<!--     scale_fill_brewer(palette = "Set2") + -->
+<!--     labs(fill = "Technology") + -->
+<!--     geom_th_text(name = "hmtech", side = "top", nudge_y = 0.5, -->
+<!--                  angle = 90, size = 3)  -->
+
+<!-- p4 <- tree +     -->
+<!--     new_scale_fill() + -->
+<!--     geom_th_heatmap(th_data = annot[[item]]['mapper'], name = "hm2", gap = 0.2,  -->
+<!--                     cluster_column = FALSE, -->
+<!--                     size_coltree = 0.5, -->
+<!--                     rel_width = 0.1) + -->
+<!--     scale_fill_brewer(palette = "Set1") + -->
+<!--     labs(fill = "Mapper")+ -->
+<!--     geom_th_text(name = "hm2", side = "top", nudge_y = 0.5, -->
+<!--                  angle = 90, size = 3) -->
+
+<!-- p5 <- tree + -->
+<!--     new_scale_fill() + -->
+<!--     geom_th_heatmap(th_data = annot[[item]]['counter'], name = "hm3", gap = 0.2,  -->
+<!--                     cluster_column = FALSE, -->
+<!--                     size_coltree = 0.5, -->
+<!--                     rel_width = 0.1) + -->
+<!--     scale_fill_brewer(palette = "Set1") + -->
+<!--     labs(fill = "Counter") + -->
+<!--      geom_th_text(name = "hm3", side = "top", nudge_y = 0.5, -->
+<!--                   angle = 90, size = 3) -->
+
+
+<!-- p6 <- tree +     -->
+<!--     new_scale_fill() + -->
+<!--     geom_th_heatmap(th_data = annot[[item]]['overlap'], name = "hm4", gap = 0.2,  -->
+<!--                     cluster_column = FALSE, -->
+<!--                     size_coltree = 0.5, -->
+<!--                     rel_width = 0.1) + -->
+<!--     scale_fill_brewer(palette = "Set1") + -->
+<!--     labs(fill = "Overlap") + -->
+<!--     geom_th_text(name = "hm4", side = "top", nudge_y = 0.5, -->
+<!--                  angle = 90, size = 3)  -->
+
+<!-- p7 <- tree + -->
+<!--     new_scale_fill() + -->
+    
+<!--     geom_th_heatmap(th_data = annot[[item]]['multimapper'], name = "hm5", gap = 0.2,  -->
+<!--                     cluster_column = FALSE, -->
+<!--                     size_coltree = 0.5, -->
+<!--                     rel_width = 0.1) + -->
+<!--     scale_fill_brewer(palette = "Set1") + -->
+<!--     labs(fill = "Multimappers")+ -->
+<!--     geom_th_text(name = "hm5", side = "top", nudge_y = 0.5, -->
+<!--                  angle = 90, size = 3) -->
+
+<!-- p8 <- tree +     -->
+<!--     new_scale_fill() + -->
+<!--     geom_th_heatmap(th_data = annot[[item]]['num_markers'], name = "hm6", gap = 0.2, -->
+<!--                     rel_width = 0.1) + -->
+<!--     labs(fill = "Num. markers")+ -->
+<!--     scale_fill_viridis_c() + -->
+<!--     geom_th_text(name = "hm6", side = "top", nudge_y = 0.5, -->
+<!--                  angle = 90, size = 3) -->
+<!-- ``` -->
+
+<!-- Arrange legends -->
+
+<!-- ```{r} -->
+
+<!-- leg <- list() -->
+
+<!-- for (item in paste0('p', 1:8)) { -->
+
+<!--     leg[[item]] <- get_legend(get(item)) -->
+<!-- } -->
+
+
+<!-- leg12 <- plot_grid(leg[[1]], leg[[2]],  ncol = 1) -->
+<!-- leg35 <- plot_grid(leg[[3]], leg[[4]], leg[[5]], ncol = 1) -->
+<!-- leg68 <- plot_grid(leg[[6]], leg[[7]], leg[[8]],  ncol = 1) -->
+
+<!-- plot_grid(full + theme(legend.position = "none"), leg12, leg35, leg68, -->
+<!--           ncol = 4, -->
+<!--           rel_widths = c(5,1,1,1)) -->
+
+<!-- ``` -->
+
+
+```{r}
+item <- 'CD14+_monocyte'
+
+ham_d <- dist(t(fc[[item]]), method = 'manhattan')
+hc <- hclust(ham_d, method = 'ward.D2')
+
+tree <- ggtree(hc,
+       branch.length = "none", size = 0.1) 
+
+dd <- tree$data
+dd <- dd[dd$isTip,]
+lab <- dd$label[order(dd$y, decreasing = T)]
+
+
+full <- tree +
+    coord_cartesian(clip = 'off') +
+    ## top, right, bottom, left
+    ## theme(plot.margin = margin(60, 20, 20, 20)) +
+    geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab],
+                    name = "hm0", gap = 0.2, 
+                    cluster_column = FALSE,
+                    show_coltree = FALSE,
+                    rel_width = 2) +
+    labs(fill = "Hamming dist.") +
+    scale_fill_viridis_c(direction = -1) +
+    ## geom_th_addvalue(name = "hm0", color = "white", size = 2) +
+    geom_th_title(name = "hm0", side = "top",
+                  label = "Num. discordant markers (Hamming dist.)", nudge_y = -0.2) +
+    
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['num_markers'], name = "hm6", gap = 0.2,
+                    rel_width = 0.1) +
+    labs(fill = "Num. markers")+
+    scale_colour_gradient() +
+    geom_th_text(name = "hm6", side = "top", nudge_y = 0.8,
+                 angle = 90, size = 3) +
+
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['dataset'], name = "hm1", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_brewer(palette = "Set2") +
+    labs(fill = "Dataset") +
+    geom_th_text(name = "hm1", side = "top", nudge_y = 0.5,
+                 angle = 90, size = 3) +
+
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['technology'], name = "hmtech", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    ## scale_fill_brewer(palette = "Set2") +
+    scale_fill_manual(values = setNames(palettes$technology$color, palettes$technology$id)) +
+    labs(fill = "Technology") +
+    geom_th_text(name = "hmtech", side = "top", nudge_y = 0.8,
+                 angle = 90, size = 3) +
+
+    
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['mapper'], name = "hm2", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_manual(values = setNames(palettes$mapper$color, palettes$mapper$id)) +
+    labs(fill = "Mapper")+
+    geom_th_text(name = "hm2", side = "top", nudge_y = 0.5,
+                 angle = 90, size = 3) +
+
+
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['counter'], name = "hm3", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_manual(values = setNames(palettes$counter$color, palettes$counter$id)) +
+    labs(fill = "Counter") +
+     geom_th_text(name = "hm3", side = "top", nudge_y = 0.8,
+                 angle = 90, size = 3) +
+    
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['overlap'], name = "hm4", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_manual(values = setNames(palettes$overlap$color, palettes$overlap$id)) +
+    labs(fill = "Overlap") +
+    geom_th_text(name = "hm4", side = "top", nudge_y = 0.8,
+                 angle = 90, size = 3) +
+    new_scale_fill() +
+    
+    geom_th_heatmap(th_data = annot[[item]]['multimapper'], name = "hm5", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_manual(values = setNames(palettes$multimapper$color, palettes$multimapper$id)) +
+    labs(fill = "Multimappers")+
+    geom_th_text(name = "hm5", side = "top", nudge_y = 0.8,
+                 angle = 90, size = 3)
+
+## full
+## ?geom_th_text
+
+```
+
+
+By chunks
+
+```{r}
+
+p1 <- tree +
+    geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab],
+                    name = "hm0", gap = 0.2, 
+                    cluster_column = FALSE,
+                    show_coltree = FALSE,
+                    rel_width = 2) +
+    labs(fill = "Hamming dist.") +
+    scale_fill_viridis_c(direction = -1) +
+    ## geom_th_addvalue(name = "hm0", color = "white", size = 2) +
+    geom_th_title(name = "hm0", side = "top",
+                  label = "Num. discordant markers (Hamming dist.)", nudge_y = -0.2)
+
+p2 <- tree +
+    
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['num_markers'], name = "hm6", gap = 0.2,
+                    rel_width = 0.1) +
+    labs(fill = "Num. markers")+
+    scale_colour_gradient() +
+    geom_th_text(name = "hm6", side = "top", nudge_y = 2.5,
+                 angle = 90, size = 3)
+
+p3 <- tree +
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['dataset'], name = "hm1", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_brewer(palette = "Set2") +
+    labs(fill = "Dataset") +
+    geom_th_text(name = "hm1", side = "top", nudge_y = 2,
+                 angle = 90, size = 3)
+p4 <- tree +
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['technology'], name = "hmtech", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    ## scale_fill_brewer(palette = "Set2") +
+    scale_fill_manual(values = setNames(palettes$technology$color, palettes$technology$id)) +
+    labs(fill = "Technology") +
+    geom_th_text(name = "hmtech", side = "top", nudge_y = 2.5,
+                 angle = 90, size = 3)
+
+p5 <- tree +
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['mapper'], name = "hm2", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_manual(values = setNames(palettes$mapper$color, palettes$mapper$id)) +
+    labs(fill = "Mapper")+
+    geom_th_text(name = "hm2", side = "top", nudge_y = 2.5,
+                 angle = 90, size = 3)
+
+p6 <- tree +
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['counter'], name = "hm3", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_manual(values = setNames(palettes$counter$color, palettes$counter$id)) +
+    labs(fill = "Counter") +
+     geom_th_text(name = "hm3", side = "top", nudge_y = 2.5,
+                  angle = 90, size = 3)
+
+p7 <- tree +
+    
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['overlap'], name = "hm4", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_manual(values = setNames(palettes$overlap$color, palettes$overlap$id)) +
+    labs(fill = "Overlap") +
+    geom_th_text(name = "hm4", side = "top", nudge_y = 2.5,
+                 angle = 90, size = 3) +
+    new_scale_fill()
+
+p8 <- tree +  
+    geom_th_heatmap(th_data = annot[[item]]['multimapper'], name = "hm5", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_manual(values = setNames(palettes$multimapper$color, palettes$multimapper$id)) +
+    labs(fill = "Multimappers")+
+    geom_th_text(name = "hm5", side = "top", nudge_y = 2.5,
+                 angle = 90, size = 3) 
+
+
+```
+
+Arrange legends
+
+```{r, fig.width = 10, fig.height = 5}
+
+leg <- list()
+
+for (legend in paste0('p', 1:8)) {
+
+    leg[[legend]] <- get_legend(get(legend))
+}
+
+
+leg13 <- plot_grid(leg[[1]],
+                   leg[[2]],
+                   leg[[3]],
+                   ncol = 3, align = 'hv')
+
+## plot_grid(leg13)
+
+leg46 <- plot_grid(leg[[4]], leg[[5]], leg[[6]], ncol = 3, align = 'hv')
+
+leg78 <- plot_grid(leg[[7]], leg[[8]], ncol = 2, align = 'hv')
+
+legs <- plot_grid(leg13, leg46, leg78, align = 'v', nrow = 3)
+
+plot_grid(full + theme(legend.position = "none"), legs,
+          ncol = 2,
+          align = 'hv',
+          rel_widths = c(5, 1.5),
+          rel_heights = c(1, 0.6))
+
+```
+
+
+## For repeats
+
+
+```{r}
+
+fc <- list()
+annot <- list()
+for (celltype in unique(markers$cluster)) {
+    fc[[celltype]] <- list()
+    annot[[celltype]] <- list()
+
+    ## table(markers$cluster)
+    ## detected <- unique(markers[grepl('genes', markers$flavour), 'gene'])
+    detected <- unique(markers[grepl('repeats', markers$flavour) &
+                               markers$cluster == celltype, 'gene'])
+            
+    length(detected)
+    
+    for (flavour in unique(grep('repeats', markers[markers$cluster == celltype, 'flavour'],
+                                value = TRUE))) {
+        for (dataset in unique (markers[markers$flavour == flavour &
+                                      markers$cluster == celltype, 'dataset'])) {
+            tmp  <- markers[markers$flavour == flavour &
+                            markers$dataset == dataset &
+                            markers$cluster == celltype, 'gene']
+            
+            fc[[celltype]][[paste(flavour, dataset, celltype)]] <- as.numeric(detected %in% tmp)
+            annot[[celltype]][[paste(flavour, dataset,
+                                     celltype)]] <- c(flavour, dataset,
+                                                      celltype,
+                                                      sum(fc[[celltype]][[paste(flavour, dataset, celltype)]]))
+        }
+    }
+
+    
+    fc[[celltype]] <- do.call(cbind.data.frame, fc[[celltype]])
+
+    annot[[celltype]] <- do.call(rbind.data.frame, annot[[celltype]])
+    colnames(annot[[celltype]]) <- c('flavour', 'dataset', 'celltype', 'num_markers')
+    annot[[celltype]]$num_markers <- as.numeric(annot[[celltype]]$num_markers)
+    rownames(annot[[celltype]]) <- paste(annot[[celltype]]$flavour,
+                                         annot[[celltype]]$dataset,
+                                         annot[[celltype]]$celltype)
+    rownames(fc[[celltype]]) <- detected
+
+    stopifnot(all(rownames(annot[[celltype]]) == colnames(fc[[celltype]])))
+}
+
+## fc <- listfeature = detected)
+
+## plot(hclust(dist(t(fc), method = 'manhattan')))
+
+```
+
+```{r}
+for (ct in names(annot)) {
+    annot[[ct]]$num_markers <- as.numeric(annot[[ct]]$num_markers)
+
+    annot[[ct]]$analyte <- 'NA'
+    annot[[ct]][grepl('genes', annot[[ct]]$flavour), 'analyte'] <- 'genes'
+    annot[[ct]][grepl('repeats', annot[[ct]]$flavour), 'analyte'] <- 'repeats'
+    annot[[ct]][grepl('both', annot[[ct]]$flavour), 'analyte'] <- 'both'
+
+    annot[[ct]]$analyte <- factor(annot[[ct]]$analyte, levels = c('genes', 'both', 'repeats'))
+
+    annot[[ct]]$multimapper <- 'NA'
+    annot[[ct]][grepl('multi', annot[[ct]]$flavour), 'multimapper'] <- 'multi'
+    annot[[ct]][grepl('alevin', annot[[ct]]$flavour), 'multimapper'] <- 'deduplicated'
+    annot[[ct]][grepl('genes|cellranger|unique', annot[[ct]]$flavour), 'multimapper'] <- 'unique'
+
+    ## table(annot[[ct]]$analyte, annot[[ct]]$multimapper, useNA = 'always')
+
+    annot[[ct]]$overlap <- 'overlap_allowed'
+    annot[[ct]][grepl('repeats_alevin', annot[[ct]]$flavour), 'overlap'] <- 'alevin_decoy'
+    annot[[ct]][grepl('genes|both', annot[[ct]]$flavour), 'overlap'] <- 'genes'
+    annot[[ct]][grepl('only', annot[[ct]]$flavour), 'overlap'] <- 'no_overlap'
+
+    annot[[ct]]$mapper <- 'NA'
+    annot[[ct]][grepl('cellranger', annot[[ct]]$flavour), 'mapper'] <- 'cellranger'
+    annot[[ct]][grepl('star|featurecounts|only', annot[[ct]]$flavour), 'mapper'] <- 'star'
+    annot[[ct]][grepl('bowtie', annot[[ct]]$flavour), 'mapper'] <- 'bowtie'
+    annot[[ct]][grepl('alevin', annot[[ct]]$flavour), 'mapper'] <- 'alevin'
+    table(annot[[ct]]$mapper)
+
+    annot[[ct]]$counter <- 'featurecounts'
+    annot[[ct]][grepl('cellranger', annot[[ct]]$flavour), 'counter'] <- 'cellranger'
+    annot[[ct]][grepl('alevin', annot[[ct]]$flavour), 'counter'] <- 'alevin'
+
+    annot[[ct]]$technology <- 'chromium'
+    annot[[ct]][grepl('smartseq2', annot[[ct]]$dataset), 'technology'] <- 'smartseq2'
+    annot[[ct]][grepl('celseq', annot[[ct]]$dataset), 'technology'] <- 'celseq2'
+    annot[[ct]][grepl('dropseq', annot[[ct]]$dataset), 'technology'] <- 'dropseq'
+    annot[[ct]][grepl('seqwell', annot[[ct]]$dataset), 'technology'] <- 'seqwell'
+}
+
+```
+
+
+```{r}
+item <- 'CD14+_monocyte'
+
+ham_d <- dist(t(fc[[item]]), method = 'manhattan')
+hc <- hclust(ham_d, method = 'ward.D2')
+
+tree <- ggtree(hc,
+       branch.length = "none", size = 0.1) 
+
+dd <- tree$data
+dd <- dd[dd$isTip,]
+lab <- dd$label[order(dd$y, decreasing = T)]
+
+
+full <- tree +
+    coord_cartesian(clip = 'off') +
+    ## top, right, bottom, left
+    theme(plot.margin = margin(60, 20, 20, 20)) +
+    geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab],
+                    name = "hm0", gap = 0.2, 
+                    cluster_column = FALSE,
+                    show_coltree = FALSE,
+                    rel_width = 2) +
+    labs(fill = "Hamming dist.") +
+    scale_fill_viridis_c(direction = -1) +
+    ## geom_th_addvalue(name = "hm0", color = "white", size = 2) +
+    geom_th_title(name = "hm0", side = "top",
+                  label = "Num. discordant markers (Hamming dist.)", nudge_y = -0.2) +
+    
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['num_markers'], name = "hm6", gap = 0.2,
+                    rel_width = 0.1) +
+    labs(fill = "Num. markers")+
+    scale_colour_gradient() +
+    geom_th_text(name = "hm6", side = "top", nudge_y = 3.5,
+                 angle = 90, size = 3) +
+
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['dataset'], name = "hm1", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_brewer(palette = "Set2") +
+    labs(fill = "Dataset") +
+    geom_th_text(name = "hm1", side = "top", nudge_y = 2,
+                 angle = 90, size = 3) +
+
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['technology'], name = "hmtech", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    ## scale_fill_brewer(palette = "Set2") +
+    scale_fill_manual(values = setNames(palettes$technology$color, palettes$technology$id)) +
+    labs(fill = "Technology") +
+    geom_th_text(name = "hmtech", side = "top", nudge_y = 3.5,
+                 angle = 90, size = 3) +
+
+    
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['mapper'], name = "hm2", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_manual(values = setNames(palettes$mapper$color, palettes$mapper$id)) +
+    labs(fill = "Mapper")+
+    geom_th_text(name = "hm2", side = "top", nudge_y = 2.5,
+                 angle = 90, size = 3) +
+
+
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['counter'], name = "hm3", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_manual(values = setNames(palettes$counter$color, palettes$counter$id)) +
+    labs(fill = "Counter") +
+     geom_th_text(name = "hm3", side = "top", nudge_y = 2.5,
+                  angle = 90, size = 3) +
+    
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['overlap'], name = "hm4", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_manual(values = setNames(palettes$overlap$color, palettes$overlap$id)) +
+    labs(fill = "Overlap") +
+    geom_th_text(name = "hm4", side = "top", nudge_y = 2.5,
+                 angle = 90, size = 3) +
+    new_scale_fill() +
+    
+    geom_th_heatmap(th_data = annot[[item]]['multimapper'], name = "hm5", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_manual(values = setNames(palettes$multimapper$color, palettes$multimapper$id)) +
+    labs(fill = "Multimappers")+
+    geom_th_text(name = "hm5", side = "top", nudge_y = 3.5,
+                 angle = 90, size = 3)
+
+## full
+## ?geom_th_text
+
+```
+
+
+By chunks
+
+```{r}
+
+p1 <- tree +
+    geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab],
+                    name = "hm0", gap = 0.2, 
+                    cluster_column = FALSE,
+                    show_coltree = FALSE,
+                    rel_width = 2) +
+    labs(fill = "Hamming dist.") +
+    scale_fill_viridis_c(direction = -1) +
+    ## geom_th_addvalue(name = "hm0", color = "white", size = 2) +
+    geom_th_title(name = "hm0", side = "top",
+                  label = "Num. discordant markers (Hamming dist.)", nudge_y = -0.2)
+
+p2 <- tree +
+    
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['num_markers'], name = "hm6", gap = 0.2,
+                    rel_width = 0.1) +
+    labs(fill = "Num. markers")+
+    scale_colour_gradient() +
+    geom_th_text(name = "hm6", side = "top", nudge_y = 2.5,
+                 angle = 90, size = 3)
+
+p3 <- tree +
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['dataset'], name = "hm1", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_brewer(palette = "Set2") +
+    labs(fill = "Dataset") +
+    geom_th_text(name = "hm1", side = "top", nudge_y = 2,
+                 angle = 90, size = 3)
+p4 <- tree +
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['technology'], name = "hmtech", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    ## scale_fill_brewer(palette = "Set2") +
+    scale_fill_manual(values = setNames(palettes$technology$color, palettes$technology$id)) +
+    labs(fill = "Technology") +
+    geom_th_text(name = "hmtech", side = "top", nudge_y = 2.5,
+                 angle = 90, size = 3)
+
+p5 <- tree +
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['mapper'], name = "hm2", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_manual(values = setNames(palettes$mapper$color, palettes$mapper$id)) +
+    labs(fill = "Mapper")+
+    geom_th_text(name = "hm2", side = "top", nudge_y = 2.5,
+                 angle = 90, size = 3)
+
+p6 <- tree +
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['counter'], name = "hm3", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_manual(values = setNames(palettes$counter$color, palettes$counter$id)) +
+    labs(fill = "Counter") +
+     geom_th_text(name = "hm3", side = "top", nudge_y = 2.5,
+                  angle = 90, size = 3)
+
+p7 <- tree +
+    
+    new_scale_fill() +
+    geom_th_heatmap(th_data = annot[[item]]['overlap'], name = "hm4", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_manual(values = setNames(palettes$overlap$color, palettes$overlap$id)) +
+    labs(fill = "Overlap") +
+    geom_th_text(name = "hm4", side = "top", nudge_y = 2.5,
+                 angle = 90, size = 3) +
+    new_scale_fill()
+
+p8 <- tree +  
+    geom_th_heatmap(th_data = annot[[item]]['multimapper'], name = "hm5", gap = 0.2, 
+                    cluster_column = FALSE,
+                    size_coltree = 0.5,
+                    rel_width = 0.1) +
+    scale_fill_manual(values = setNames(palettes$multimapper$color, palettes$multimapper$id)) +
+    labs(fill = "Multimappers")+
+    geom_th_text(name = "hm5", side = "top", nudge_y = 2.5,
+                 angle = 90, size = 3) 
+
+
+```
+
+Arrange legends
+
+```{r , fig.width = 11, fig.height = 5}
+
+leg <- list()
+
+for (legend in paste0('p', 1:8)) {
+
+    leg[[legend]] <- get_legend(get(legend))
+}
+
+
+leg13 <- plot_grid(leg[[1]],
+                   leg[[2]],
+                   leg[[3]],
+                   ncol = 3, align = 'hv')
+
+## plot_grid(leg13)
+
+leg46 <- plot_grid(leg[[4]], leg[[5]], leg[[6]], ncol = 3, align = 'hv')
+
+leg78 <- plot_grid(leg[[7]], leg[[8]], ncol = 2, align = 'hv')
+
+legs <- plot_grid(leg13, leg46, leg78, align = 'v', nrow = 3)
+
+plot_grid(full + theme(legend.position = "none"), legs,
+          ncol = 2,
+          align = 'hv',
+          rel_widths = c(5, 1.5),
+          rel_heights = c(1, 0.6))
+
+```
+
+
+# Bulk  {.tabset .tabset-fade .tabset-pills}
+
+```{r}
+opts_chunk$set(fig.width = 5,
+               fig.height = 5,
+               dev = 'png',
+               cache = FALSE,
+               echo = TRUE,
+               include = TRUE,
+               cache.lazy = FALSE,
+               warning = TRUE,
+               error = TRUE,
+               message = FALSE)
+```
+
+```{r}
+
+bulk <- list()
+for (bulk_id in grep('bulk', params, value = TRUE)) {
+    short_id <- sapply(strsplit(dirname(bulk_id), .Platform$file.sep),
+                       function(x) return(x[6]))
+    bulk[[short_id]] <- readRDS(bulk_id)
+}
+
+
+## str(bulk)
+```
+
+```{r}
+
+monocyte_markers <- unique(markers_both[grepl('repeats', markers_both$flavour) & markers_both$cluster == 'CD14+_monocyte',])
+
+plot(monocyte_markers$pct.1, monocyte_markers$pct.2, cex = monocyte_markers$avg_logFC,
+     col = ifelse(monocyte_markers$avg_logFC < 1, 'red', 'black'))
+
+monocyte_markers <- unique(markers_both[grepl('repeats', markers_both$flavour) & markers_both$cluster == 'CD14+_monocyte' & markers_both$avg_logFC >= 1,])
+
+plot(monocyte_markers$pct.1, monocyte_markers$pct.2, cex = monocyte_markers$avg_logFC,
+     col = ifelse(monocyte_markers$avg_logFC < 1, 'red', 'black'))
+
+other_markers <- unique(markers_both[grepl('repeats', markers_both$flavour) & !markers_both$cluster == 'CD14+_monocyte' & markers_both$avg_logFC >= 1,])
+
+```
+
+Or maybe just go for the count tables and plot log2cpms for some candidates?
+
+
+```{r, eval = FALSE}
+## lapply(bulk, function(x) head(x[[1]], 10))
+
+vs_bulk <- list()
+
+for (gse in names(bulk)) {
+    for (flavour in names(bulk[[gse]])) {
+       
+        common <- intersect(unique(monocyte_markers$gene),
+                            rownames(bulk[[gse]][[flavour]][[1]]))
+
+        vs_bulk[[paste(gse, flavour)]] <- c(
+            length(common),
+            
+            sum(bulk[[gse]][[flavour]][[1]][, 'logFC'] >= 0 &
+                bulk[[gse]][[flavour]][[1]][, 'FDR'] < 0.05),
+            sum(bulk[[gse]][[flavour]][[1]][, 'logFC'] < 0 &
+                bulk[[gse]][[flavour]][[1]][, 'FDR'] < 0.05),
+            
+            sum(bulk[[gse]][[flavour]][[1]][common, 'logFC'] >= 0 &
+                bulk[[gse]][[flavour]][[1]][common, 'FDR'] < 0.05),
+            sum(bulk[[gse]][[flavour]][[1]][common, 'logFC'] < 0 &
+                bulk[[gse]][[flavour]][[1]][common, 'FDR'] < 0.05))
+            
+                                            
+        print(sprintf('%s %s: %s markers', gse, flavour, length(common)))
+        
+        print(max(bulk[[gse]][[flavour]][[1]]$FDR))
+        print(summary((bulk[[gse]][[flavour]][[1]][common, 'logFC'])))
+        print(table(bulk[[gse]][[flavour]][[1]][common, 'logFC'] >= 0 &
+                    bulk[[gse]][[flavour]][[1]][common, 'FDR'] < 0.05))
+    }
+
+}
+```
+
+
+
+
+
+But these are edgeRs of something against something else... maybe we could just have CPMs represented? Did we get a list of markers anyway?
+
+
+
+```{r}
+
+avgs <- list()
+for (gse in names(bulk)) {
+    avgs[[gse]] <- list()
+    for (flavour in grep('repeats', names(bulk[[gse]]), value = TRUE)) {
+
+        ## on averaging only markers
+        ## curr <- intersect(monocyte_markers$gene, rownames(cpm(bulk[[gse]][[flavour]])))
+
+        ## rather, average everything
+        curr <- rownames(cpm(bulk[[gse]][[flavour]]))
+        tmp <- list()
+        for (group in colnames(bulk[[gse]][[flavour]]$design)) {
+            ids <- row.names(bulk[[gse]][[flavour]]$design[bulk[[gse]][[flavour]]$design[,group] == 1,])
+            
+
+            
+           tmp[[paste(gse, flavour, group)]] <-  aveLogCPM(bulk[[gse]][[flavour]]$counts[curr,ids])
+        }
+
+        avgs[[gse]][[flavour]] <- do.call(cbind.data.frame, tmp)
+        rownames(avgs[[gse]][[flavour]]) <- curr
+    }
+}
+
+## str(avgs)
+```
+
+## Monocyte markers bulk vs scRNA-seq 
+
+```{r}
+## this is CPM representation of a seurat object
+
+## RelativeCounts(GetAssayData(d[[1]][[1]], 'counts'), scale.factor = 1e6, verbose = TRUE)
+
+```
+
+```{r, results = 'asis', fig.width = 6, fig.height = 6}
+ ## bottom, left, top, and right. 
+par(mfrow = c(1,2), pty = 's', mar=c(6.1, 6.1, 4.1, 2.1))
+for (flavour in unique(sapply(avgs, names))) {
+
+    for (item in names(d)) {
+
+        cat('### ', item, ' ', flavour, ' \n\n')
+        common <- intersect(rownames(avgs[[1]][[flavour]][1]),
+                            rownames(GetAssayData(d[[item]][[flavour]])))
+
+        common_markers <- common %in% monocyte_markers$gene
+        ## plot(AverageExpression(d[[flavour]][[item]]),
+        ##      avgs[[1]][[flavour]][1])
+        ## }
+
+        tryCatch({
+        ## better normalize this
+            plot(x = log1p(AverageExpression(
+                     object = d[[item]][[flavour]])$RNA[common,'CD14+_monocyte']),
+             y = avgs[[1]][[flavour]][1][common,],
+             col = ifelse(common_markers, 'red', ac(col = 'black', alpha = 0.5)),
+             pch = 19,
+             xlab = sprintf('%s %s\n(log ncounts in monocytes)', item, flavour),
+             ylab = sprintf('%s %s\n(log CPMs in monocytes)', names(avgs)[1], flavour))
+             
+
+        plot(log1p(AverageExpression(object = d[[item]][[flavour]])$RNA[common,'CD14+_monocyte']),
+             avgs[[2]][[flavour]][1][common,],
+             col = ifelse(common_markers, 'red', ac(col = 'black', alpha = 0.5)),
+             pch = 19,
+             xlab = sprintf('%s %s\n(log ncounts in monocytes)', item, flavour),
+             ylab = sprintf('%s %s\n(log CPMs in monocytes)', names(avgs)[2], flavour))
+        }, error = function(x) print(x))
+
+        cat('\n\n')
+    }
+}
+
+```
+
+## Monocyte markers in sc monocytes vs bulk  nonmonocytes
+
+
+
+```{r, fig.width = 10, fig.height = 10}
+## bottom, left, top, and right. 
+par(mfrow = c(1,2), pty = 's', mar=c(6.1, 6.1, 4.1, 2.1))
+
+for (flavour in unique(sapply(avgs, names))) {
+
+    for (item in names(d)) {
+
+        cat('### ', item, ' ', flavour, ' \n\n')
+        common <- intersect(rownames(avgs[[1]][[flavour]][1]),
+                            rownames(GetAssayData(d[[item]][[flavour]])))
+
+        common_markers <- common %in% monocyte_markers$gene
+        ## plot(AverageExpression(d[[flavour]][[item]]),
+        ##      avgs[[1]][[flavour]][1])
+        ## }
+
+        tryCatch({
+        ## better normalize this
+            plot(x = log1p(AverageExpression(
+                     object = d[[item]][[flavour]])$RNA[common,'CD14+_monocyte']),
+             y = avgs[[1]][[flavour]][2][common,],
+             col = ifelse(common_markers, 'red', ac(col = 'black', alpha = 0.5)),
+             pch = 19,
+             xlab = sprintf('%s %s\n(log ncounts in monocytes)', item, flavour),
+             ylab = sprintf('%s %s\n(log CPMs in non monocytes)', names(avgs)[1], flavour))
+             
+
+        plot(log1p(AverageExpression(object = d[[item]][[flavour]])$RNA[common,'CD14+_monocyte']),
+             avgs[[2]][[flavour]][2][common,],
+             col = ifelse(common_markers, 'red', ac(col = 'black', alpha = 0.5)),
+             pch = 19,
+             xlab = sprintf('%s %s\n(log ncounts in monocytes)', item, flavour),
+             ylab = sprintf('%s %s\n(log CPMs in non monocytes)', names(avgs)[2], flavour))
+        }, error = function(x) print(x))
+
+        cat('\n\n')
+    }
+}
+
+```
+
+# Paired monocyte vs T cell plots
+
+Also, do the top repeat markers show a difference in the bulk datasets? Maybe use log2FC? For that we would need to have logFC that are monocytes vs T cell sonly, and parse the bulk `de` files and not the expression ones.
+
+
+```{r}
+## repeats detected in at least 3 datasets with at least 3 methods
+
+tmp <- apply(as.data.frame.matrix(table(monocyte_markers$gene, monocyte_markers$dataset)) > 0,
+      1,
+      sum)
+
+## length(tmp[tmp >= 3])
+
+
+
+top_monocyte_markers <- names(tmp[tmp >= 3])
+## top_monocyte_markers <- head(monocyte_markers[order(monocyte_markers$avg_logFC, decreasing = TRUE), 'gene'], 10)
+## length(unique(top_monocyte_markers))
+
+```
+
+```{r, fig.width = 6, fig.height = 4}
+top <- list()
+for (marker in top_monocyte_markers) {
+    for (gse in names(avgs)) {
+        for (flavour in names(avgs[[gse]])) {
+            for (ssample in colnames(avgs[[gse]][[flavour]])) {
+                top[[paste(marker, flavour, ssample, gse)]] <- c(marker, gse, flavour, ssample,
+                                               avgs[[gse]][[flavour]][marker, ssample])
+            }
+        }
+    }
+}
+
+top <- do.call(rbind.data.frame, top)
+## head(top)
+colnames(top) <- c('marker', 'gse', 'flavour', 'id', 'avg_cpm')
+
+## table(top$id)
+top$celltype <- ifelse(!grepl('T_cells|tcell', top$id), 'monocyte', 't_cell')
+top$paired <- paste(top$gse, top$flavour, top$marker)
+## table(top$paired)
+top$avg_cpm <- as.numeric(top$avg_cpm)
+                          
+top %>%
+  ggplot(aes(y = avg_cpm, x  = celltype)) +
+    geom_point(aes(color = marker)) +
+    facet_grid(gse ~ flavour) +
+    geom_line(aes(group = paired)) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+
+```{r, fig.width = 6, fig.height = 4}
+top %>%
+  ggplot(aes(y = avg_cpm, x  = celltype)) +
+    geom_point(aes(color = gse)) +
+    facet_grid(marker ~ flavour) +
+    geom_line(aes(group = paired)) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+
+
+these top markers, how do they behave in our single cell data?
+https://pubmed.ncbi.nlm.nih.gov/11601494/
+
+
+This is very unefficient, todo fix
+
+```{r, fig.width = 8, fig.height =6}
+## top_monocyte_markers
+avges <- list()
+for (marker in top_monocyte_markers){
+    for (run in names(d)) {
+        for (flavour in grep('repeats', names(d[[run]]), value = TRUE)) {
+            tryCatch({
+                avges[[paste(run, flavour, marker, 'mono')]] <- c(
+                    log1p(AverageExpression(
+                        object = d[[run]][[flavour]])$RNA[marker,]$'CD14+_monocyte'),
+                    marker, run, flavour, 'CD14+_monocyte')
+                
+                avges[[paste(run, flavour, marker, 't')]] <- c(
+                    log1p(AverageExpression(
+                        object = d[[run]][[flavour]])$RNA[marker,]$'Cytotoxic_T_cell'),
+                    marker, run, flavour, 'Cytotoxic_T_cell')
+                }, error = function(x) print(x))
+        }
+    }
+}
+## names(avges)
+
+avges <- do.call(rbind.data.frame, avges)
+colnames(avges) <- c('log1p_ave_expr', 'marker', 'flavour', 'run', 'cell')
+avges$log1p_ave_expr <- as.numeric(as.character(avges$log1p_ave_expr))
+
+avges$paired <- paste(avges$run, avgs$flavour, avges$marker)
+
+avges %>%
+  ggplot(aes(y = log1p_ave_expr, x  = cell)) +
+    geom_point(aes(color = run)) +
+    facet_grid(marker ~ flavour) +
+    geom_line(aes(group = paired)) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+
+```{r, fig.width = 8, fig.height = 10}
+
+monocyte_markers %>%
+    filter(gene %in% top_monocyte_markers) %>%
+    ggplot(aes(y = avg_logFC, x  = dataset)) +
+    geom_point(aes(color = flavour)) +
+    facet_grid(gene ~ flavour) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+
+Add bulk data, would need logFCs too
+
+
+```{r, fig.width = 7, fig.height = 7}
+monocyte_markers %>%
+    filter(gene %in% top_monocyte_markers) %>%
+    ggplot(aes(y = avg_logFC, x  = flavour)) +
+    geom_point(aes(color = dataset)) +
+    facet_grid(gene ~ dataset) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+# Repeat markers in dimreds  {.tabset .tabset-fade .tabset-pills} 
+
+
+```{r, fig.width = 10, fig.height = 10, results = 'asis'}
+for (flavour in grep('repeats|both', unique(unlist(sapply(d, names))), value = TRUE)){
+    cat(sprintf('## %s  {.tabset .tabset-fade .tabset-pills} \n\n', flavour))
+    p <- list()
+
+    for (dimred in c('pca', 'tsne', 'umap')) {
+        cat(sprintf('### %s  {.tabset .tabset-fade .tabset-pills} \n\n', dimred))
+        for (feature in top_monocyte_markers) {
+            cat(sprintf('#### %s \n\n', feature))
+            for (dataset in names(d)) {
+                
+                p[[dataset]] <- tryCatch({
+                    FeaturePlot(d[[dataset]][[flavour]], reduction = dimred,
+                                features = feature) +
+                        theme(aspect.ratio = 1,
+                              legend.position="none", plot.title = element_text(size=14),
+                              axis.text=element_text(size=12),
+                              axis.title=element_text(size=12)) +
+                        ggtitle(sprintf('%s\n%s', dataset, flavour))
+                }, error = function(x) return(ggplot() + theme_void())
+                )
+                
+            }
+            do.call("grid.arrange", c(p, ncol = 3, nrow = 3, top = feature))
+            cat('\n\n')
+        }
+        cat(sprintf('\n\n'))
+    }
+    
+    cat(sprintf('\n\n'))
+}
+
+```
+
+
+<!-- ```{r, results = 'asis'} -->
+<!-- for (flavour in unique(sapply(avgs, names))) { -->
+<!--     cat('## ', flavour, '\n\n') -->
+<!--     par(mfrow = c(1,2))  -->
+<!--     boxplot(avgs[[1]][[flavour]]) -->
+<!--     boxplot(avgs[[2]][[flavour]]) -->
+<!--     cat('\n\n') -->
+
+<!--     ## stripchart(avgs[[1]][[flavour]], vertical = TRUE,data=x, method="jitter",   -->
+<!-- ## add=TRUE, pch=19) -->
+<!-- } -->
+<!-- ``` -->
+
+<!-- here -->
+
+<!-- ```{r} -->
+
+<!-- res <- list() -->
+<!-- for (item in names(bulk)) { -->
+<!--     res[[item]] <- lapply(conts, function(x) { -->
+<!--         qlf <- glmQLFTest(fit[[item]], contrast = x) -->
+<!--         tt <- topTags(qlf, n = Inf, sort.by = "PValue")$table -->
+<!--     }) -->
+<!-- } -->
+
+
+<!-- ``` -->
+
+
+
+<!-- ```{r} -->
+<!-- names(bulk) -->
+
+<!-- ## samplemonocyte-sampletcell -->
+<!-- bulk_yardstick <- bulk[[1]][['repeats_star_multi']][[1]] -->
+<!-- selected <- rownames(bulk_yardstick[bulk_yardstick$FDR < 0.05 & abs(bulk_yardstick$logFC) >= 2,]) -->
+<!-- selected <- head(selected, 10) -->
+<!-- selected -->
+
+<!-- ``` -->
+
+<!-- One  -->
+
+
+<!-- ```{r, fig.width =12, fig.height=5} -->
+
+<!-- ## get cpms from the seurat object, only 5 cells (first 5 indexed) -->
+<!-- foo <- list() -->
+<!-- for (item in names(d)) { -->
+<!--     ## foo <- list() -->
+<!--     for (flavour in grep('repeats', names(d[[item]]), value = TRUE)) { -->
+<!--         tmp <- as.data.frame(FetchData(d[[item]][[flavour]], -->
+<!--                                        vars = selected, -->
+<!--                                        slot = 'data'))[1:5,] -->
+<!--         tmp$cell <- rownames(tmp) -->
+
+        
+<!--         tmp <- merge(d[[item]][[flavour]]@meta.data[, c('cell', 'scina')], -->
+<!--                      tmp, by = 'cell', all.x = TRUE) -->
+<!--         rownames(tmp) <- tmp$cell -->
+
+<!--         tmp <- melt(tmp, id.vars = c('cell', 'scina')) -->
+<!--         tmp <- tmp[grepl('T_cell|monocyte', tmp$scina),] -->
+<!--         tmp$flavour <- flavour -->
+<!--         tmp$dataset <-  item -->
+<!--         foo[[paste(item, flavour)]] <- tmp -->
+        
+        
+<!--     } -->
+<!--     ## foo <- do.call(rbind.data.frame, foo) -->
+<!-- } -->
+
+<!-- foo <- do.call(rbind.data.frame, foo) -->
+<!-- head(foo) -->
+<!-- foo$scina <- as.character(foo$scina) -->
+<!-- table(foo$scina) -->
+
+<!-- print(ggplot(foo, -->
+<!--              aes(x = variable, y = value, fill = flavour)) +  -->
+<!--       geom_boxplot() + -->
+<!--       scale_fill_discrete(drop=FALSE) + -->
+<!--       facet_grid(dataset ~ scina) + -->
+<!--       theme(axis.text.x = element_text(angle = 90, hjust = 1))) -->
+
+<!-- ``` -->
 
 # Timestamp
 
@@ -1065,6 +3198,10 @@ date()
 sessionInfo()
 devtools::session_info()
 
+```
+
+```{r}
+knitr::knit_exit()
 ```
 
 

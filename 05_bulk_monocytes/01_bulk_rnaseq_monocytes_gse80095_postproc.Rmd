@@ -22,6 +22,7 @@ params:
   repeats_only_multi: ""
   genes_star: ""
   de_output: ""
+  expression_output: ""
 ---
 
 # Config
@@ -227,7 +228,7 @@ table(annot$sample)
 d <- list()
 
 
-for (item in setdiff(names(params), c('identifier', 'de_output'))){
+for (item in setdiff(names(params), c('identifier', 'de_output', 'expression_output'))){
 
     d[[item]] <- read_featurecounts(
     params[[item]],
@@ -319,6 +320,7 @@ lapply(res, function(x) head(x[[1]], 10))
 
 
 ```{r}
+saveRDS(object = d, file = params$expression_output)
 saveRDS(object = res, file = params$de_output)
 ```
 

@@ -28,6 +28,7 @@ params:
   markers_output: ""
   regress_genes_nCount: ""
   regress_genes_nFeature: ""
+  config_fn: ""
 ---
 
 
@@ -72,6 +73,8 @@ library(SCINA)
 library(DT)
 library(tximeta)
 library(SummarizedExperiment)
+library(GEOquery)
+library(scater)
 })
 ```
 
@@ -113,7 +116,7 @@ coef_var <- function(x){
 
 ```{r justfordebugging, eval = FALSE}
 
-params <- list(identifier = "celseq2",
+params <- list(identifier = "CEL-Seq2",
                seurat_output = "/home/imallona/tmp/test.rds",
                repeats_alevin = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/repeats',
                genes_alevin = '/home/imallona/repeats_sc/runs/ding_celseq2/alevin/genes',
@@ -125,12 +128,13 @@ params <- list(identifier = "celseq2",
                repeats_only_multi = "/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/repeats_no_overlap/multimappers",
                genes_featurecounts = "/home/imallona/repeats_sc/runs/ding_celseq2/star_transcriptome/genes",
                regress_genes_nCount = FALSE,
-               regress_genes_nFeatures = FALSE)
+               regress_genes_nFeatures = FALSE,
+               config_fn = '/home/imallona/repeats_sc/data/ding_celseq2/celseq2_ding.conf')
 
-params <- list(identifier = "seqwell",
+params <- list(identifier = "Seq-Well",
                seurat_output = "/home/imallona/tmp/test.rds",
-               repeats_alevin = '/home/imallona/repeats_sc/runs/ding_seqwell/alevin/repeats/alevin/quants_mat.gz',
-               genes_alevin = '/home/imallona/repeats_sc/runs/ding_seqwell/alevin/genes/alevin/quants_mat.gz',
+               repeats_alevin = '/home/imallona/repeats_sc/runs/ding_seqwell/alevin/repeats',
+               genes_alevin = '/home/imallona/repeats_sc/runs/ding_seqwell/alevin/genes',
                repeats_star_unique = "/home/imallona/repeats_sc/runs/ding_seqwell/star_transcriptome/repeats/unique_reads", 
                repeats_star_multi = "/home/imallona/repeats_sc/runs/ding_seqwell/star_transcriptome/repeats/multimappers", 
                repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/ding_seqwell/bowtie_repeatome/unique_reads", 
@@ -139,12 +143,244 @@ params <- list(identifier = "seqwell",
                repeats_only_multi = "/home/imallona/repeats_sc/runs/ding_seqwell/star_transcriptome/repeats_no_overlap/multimappers",
                genes_featurecounts = "/home/imallona/repeats_sc/runs/ding_seqwell/star_transcriptome/genes",
                regress_genes_nCount = FALSE,
-               regress_genes_nFeatures = FALSE)
+               regress_genes_nFeatures = FALSE,
+               config_fn = '/home/imallona/repeats_sc/data/ding_seqwell/seqwell_ding.conf')
 
 
+params <- list(identifier = "Drop-seq",
+               seurat_output = "/home/imallona/tmp/test.rds",
+               repeats_alevin = '/home/imallona/repeats_sc/runs/ding_dropseq/alevin/repeats',
+               genes_alevin = '/home/imallona/repeats_sc/runs/ding_dropseq/alevin/genes',
+               repeats_star_unique = "/home/imallona/repeats_sc/runs/ding_dropseq/star_transcriptome/repeats/unique_reads", 
+               repeats_star_multi = "/home/imallona/repeats_sc/runs/ding_dropseq/star_transcriptome/repeats/multimappers", 
+               repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/ding_dropseq/bowtie_repeatome/unique_reads", 
+               repeats_bowtie_multi = "/home/imallona/repeats_sc/runs/ding_dropseq/bowtie_repeatome/multimappers", 
+               repeats_only_unique = "/home/imallona/repeats_sc/runs/ding_dropseq/star_transcriptome/repeats_no_overlap/unique_reads",
+               repeats_only_multi = "/home/imallona/repeats_sc/runs/ding_dropseq/star_transcriptome/repeats_no_overlap/multimappers",
+               genes_featurecounts = "/home/imallona/repeats_sc/runs/ding_dropseq/star_transcriptome/genes",
+               regress_genes_nCount = FALSE,
+               regress_genes_nFeatures = FALSE,
+               config_fn = '/home/imallona/repeats_sc/data/ding_dropseq/dropseq_ding.conf')
 
 
 ```
+
+
+
+## Filtering barcodes used by Ding et al
+
+```{r, eval = TRUE, message = FALSE}
+
+## Data from GEO, e.g. srx and runname (to get the biological replicate)
+
+gseid <- 'GSE132044'
+
+gse <- getGEO(gseid, GSEMatrix=FALSE)
+
+runmeta <- as.data.frame(t(sapply(GSMList(gse),
+                                  function(x) return( c(Meta(x)$relation, Meta(x)$title)))))
+
+runmeta$srx <- sapply(strsplit(as.character(runmeta$V2), split = "="), function(x) return(x[2]))
+head(runmeta$srx)
+
+
+##  cell metadata from Ding et al (to get the used barcodes)
+
+supp <- getGEOSuppFiles(gseid, makeDirectory = TRUE, baseDir = getwd(),
+  fetch_files = TRUE, filter_regex = 'GSE132044_pbmc_hg38_cell.tsv.gz')
+
+cellmeta <- read.table(rownames(supp), sep = '.', col.names = c('replicate', 'tech', 'id'))
+cellmeta <- cellmeta[cellmeta$tech == params$id,]
+
+cellmeta$barcode <- gsub('R?[0-9]+-', '', cellmeta$id)
+
+if (params$id == 'CEL-Seq2') {
+    cellmeta$run<- paste(cellmeta$tech, gsub('-[A-Z]+', '', cellmeta$id), sep = "-")
+} else if (params$id == "Seq-Well"){
+    ## cellmeta$run <-  paste0('Seq-Well-', gsub('-[A-Z]+', '', cellmeta$id))
+    cellmeta$run <-  paste0('Seq-Well-',
+                            sapply(strsplit(as.character(cellmeta$id), split ='-'),
+                                   function(x) return(x[1])))
+} else if (params$id == 'Drop-seq') {
+    cellmeta$run <- sprintf('%s-%s', params$id, cellmeta$replicate)
+}
+tail(cellmeta)
+
+## our srr downloaded files (to be annotated for biological replicate/used barcodes)
+
+## conf <- list.files(dirname(params$genes_alevin, '..', '*conf'))
+
+conf <- read.csv(params$config_fn, header = FALSE)
+head(conf)
+
+```
+
+```{r}
+
+generate_dict <- function(conf, runmeta) {
+    dict <- merge(conf[,c('V13', 'V1')], runmeta[,c('srx', 'V3' )], by.x = 'V13', by.y ='srx')
+
+    dict$pbmc <- sapply(strsplit(as.character(dict$V3), split ='\\.'), function(x) return (x[1]))
+
+    if (params$id == 'CEL-Seq2') {
+        dict$rep <- substr(as.character(dict$V3),
+                           nchar(as.character(dict$V3)),
+                           nchar(as.character(dict$V3)))
+    } else if (params$id == "Seq-Well") {
+        ## this weird thing is because cellmeta and  the GEO runs are unconsistent
+        dict$rep <- gsub('_NA', '', sapply(strsplit(as.character(dict$V3), '_'),
+                                           function(x) return(paste0(x[2], '_', x[3]))))
+
+        dict$rep <- gsub('V1', '', dict$rep)
+    } else {
+        dict$rep <- dict$V3
+    }
+
+    if (params$id %in% c('Seq-Well', 'CEL-Seq2')) {
+        dict$run <- paste(params$identifier, dict$rep, sep = '-')
+    } else if (params$id == 'Drop-seq') {
+        dict$run <- sprintf('%s-%s', params$id, dict$pbmc)
+    }
+
+    if(params$id == 'Drop-seq') {
+        colnames(dict) <- c('srx', 'srr', 'full', 'pbmc', 'rep', 'run')
+    } else {
+        colnames(dict) <- c('srx', 'srr', 'full', 'rep', 'pbmc', 'run')
+    }
+
+    return(dict)
+}
+
+
+```
+
+```{r}
+(dict <- generate_dict(conf = conf, runmeta = runmeta))
+
+```
+
+Now, subset the genes/repeats alevin slots to contain only Ding's approved barcodes
+
+```{r}
+
+get_ding_approved_barcodes <- function(cellmeta, dict, srr) {
+    dict <- dict[dict$srr == srr,]
+    tmp <- merge(cellmeta, dict, by = 'run')
+    ## if (append_srr)
+    ##     return(paste(tmp$srr, tmp$barcode, sep = "_"))
+    ## else
+    ##     return(as.character(tmp$barcode))
+    if (params$id == 'Seq-Well')
+        tmp$barcode <- gsub('S3_', '', tmp$barcode)
+    return(tmp$barcode)
+}
+
+get_ding_run <- function(cellmeta, dict, srr) {
+    dict <- dict[dict$srr == srr,]
+    tmp <- merge(cellmeta, dict, by = 'run')
+    ## if (append_srr)
+    ##     return(paste(tmp$srr, tmp$barcode, sep = "_"))
+    ## else
+    ##     return(as.character(tmp$barcode))
+    return(unique(paste(tmp$tech, tmp$pbmc, sep = '-')))
+}
+
+
+## get_ding_approved_barcodes(cellmeta = cellmeta, dict = dict, srr = 'SRR9169176')
+## get_ding_approved_barcodes(cellmeta = cellmeta, dict = dict, srr = 'SRR9169186')
+
+
+get_count_table_grouped_by_dings_run <- function(alevin_fns, dict, cellmeta,
+                                                 flavour = 'genes_alevin') {
+
+    counts <- list()
+    
+    ## which runs correspond these to?
+
+    ding <- data.frame(fns = alevin_fns,
+                       srr = gsub('/alevin', '', dirname(alevin_fns)),
+                       stringsAsFactors = FALSE)
+
+    ## if (params$id == 'CEL-Seq2'){
+        ding$run <- sapply(ding$srr, function(x) get_ding_run(cellmeta = cellmeta,
+                                                              dict = dict,
+                                                              srr = x))
+    ## } else {
+        
+    ## }
+    
+    for (run in unique(ding$run)) {
+
+        counts[[run]] <- list()
+
+        for (fn in ding[ding$run == run, 'fns']) {
+
+            srr <- gsub('/alevin','', dirname(fn))
+
+            counts[[run]][[srr]] <- tximeta::tximeta(coldata = data.frame(
+                                                         names = flavour,
+                                                         files = file.path(params[[flavour]], fn),
+                                                         stringsAsFactors = FALSE
+                                                     ), type = "alevin")
+
+            counts[[run]][[srr]] <-  as.data.frame(assays(counts[[run]][[srr]])$counts)
+
+            ## get_ding_approved_barcodes(cellmeta = cellmeta,
+            ##                            dict = dict,
+            ##                            srr = srr)
+                                       
+            selected <- intersect(get_ding_approved_barcodes(cellmeta = cellmeta,
+                                                             dict = dict,
+                                                             srr = srr),
+                                  colnames(counts[[run]][[srr]]))
+            
+            counts[[run]][[srr]] <- counts[[run]][[srr]][,selected]
+        }
+        ## summing up identical barcodes, regardles of the srr (is the run what matters)
+
+        ## rather than merge them, sum them
+        genenames <-  rownames(counts[[run]][[srr]])
+        ## cbs <- unique(unlist(sapply(counts[[run]], colnames)))
+        cbs <- gsub('S3_', '', cellmeta[cellmeta$run == run, 'barcode'])
+        tmp  <- data.frame(matrix(0,
+                                  nrow = length(genenames),
+                                  ncol = length(cbs)),
+                           row.names = genenames)
+        colnames(tmp) <- cbs
+        for (srr in names(counts[[run]])) {
+            for (cell in colnames(counts[[run]][[srr]])) {
+                tmp[,cell] <- tmp[,cell] + counts[[run]][[srr]][genenames, cell]
+            }
+        }
+
+        ## remove cells with no data (happens in seqwell)
+        idx <- cbs[colSums(tmp, na.rm = TRUE) > 0]
+        tmp <- tmp[,idx]
+        
+        ## tmp[is.na(tmp)] <- 0
+        counts[[run]] <- NULL
+        counts[[run]] <- tmp
+        rm(tmp)
+
+        ## colnames(counts[[run]]) <- paste(run,
+        ##                                  colnames(counts[[run]]),
+        ##                                  sep = "_")
+
+        genes <- rownames(counts[[run]])
+    }
+
+    counts <- do.call(cbind.data.frame, counts)
+    ## str(counts)
+    rownames(counts) <- genes
+
+    colnames(counts) <- gsub('quants_mat.gz.', '', basename(colnames(counts)))
+
+    return(counts)
+
+}
+```
+
+
 
 ```{r start}
 d <- list()
@@ -157,33 +393,18 @@ List samples
 counts <- list()
 
 genes_fns <- list.files(params$genes_alevin, pattern = 'quants_mat.gz',
-                                  recursive = TRUE)
+                        recursive = TRUE)
 
-for (run in genes_fns) {
-    counts[[run]] <- tximeta::tximeta(coldata = data.frame(
-                                names = "genes",
-                                files = file.path(params$genes_alevin, run),
-                                stringsAsFactors = FALSE
-                                ), type = "alevin")
+counts <- get_count_table_grouped_by_dings_run(alevin_fns = genes_fns,
+                                               dict = generate_dict(conf, runmeta),
+                                               cellmeta = cellmeta,
+                                               flavour = 'genes_alevin') 
 
-    counts[[run]] <-  as.data.frame(assays(counts[[run]])$counts)
-    colnames(counts[[run]]) <- paste(gsub('/alevin', '', dirname(run)), colnames(counts[[run]]),
-                                     sep = "_")
-
-    genes <- rownames(counts[[run]])
-}
-
-counts <- do.call(cbind.data.frame, counts)
-## str(counts)
-rownames(counts) <- genes
-
-colnames(counts) <- gsub('quants_mat.gz.', '', basename(colnames(counts)))
 ```
 
 Annotate genes
 
 ```{r annotate}
-
 
 annot <- list()
 
@@ -236,46 +457,64 @@ grep('-MT-', rownames(d$genes_alevin), value = TRUE)
 
 Repeats alevin
 
-```{r multiplealevin, eval = TRUE}
+<!-- ```{r multiplealevin, eval = TRUE} -->
 
-counts <- list()
+<!-- counts <- list() -->
+
+<!-- repeats_fns <- list.files(params$repeats_alevin, pattern = 'quants_mat.gz', -->
+<!--                                   recursive = TRUE) -->
+
+<!-- for (run in repeats_fns) { -->
+<!--     counts[[run]] <- tximeta::tximeta(coldata = data.frame( -->
+<!--                                 names = "repeats", -->
+<!--                                 files = file.path(params$repeats_alevin, run), -->
+<!--                                 stringsAsFactors = FALSE -->
+<!--                                 ), type = "alevin") -->
+
+<!--     counts[[run]] <-  as.data.frame(assays(counts[[run]])$counts) -->
+<!--     colnames(counts[[run]]) <- paste(gsub('/alevin', '', dirname(run)), colnames(counts[[run]]), -->
+<!--                                      sep = "_") -->
+
+<!--     genes <- rownames(counts[[run]]) -->
+
+<!--     ## counts[[run]] <- counts[[run]][,setdiff(colnames(counts[[run]]), 'gene')] -->
+
+<!-- } -->
+
+<!-- counts <- do.call(cbind.data.frame, counts) -->
+<!-- ## str(counts) -->
+<!-- rownames(counts) <- genes -->
+
+<!-- colnames(counts) <- gsub('quants_mat.gz.', '', basename(colnames(counts))) -->
+
+<!-- counts[1:3, 1:3] -->
+<!-- ``` -->
+
+
+<!-- ```{r singlealevin, eval = FALSE} -->
+<!-- counts <- as.data.frame(assays(tximeta::tximeta(coldata = data.frame( -->
+<!--                                 names = "repeats", -->
+<!--                                 files = params$repeats_alevin, -->
+<!--                                 stringsAsFactors = FALSE -->
+<!--                                 ), type = "alevin"))$counts) -->
+
+<!-- ``` -->
+
+
+
+
+```{r}
+
+counts <- NULL
 
 repeats_fns <- list.files(params$repeats_alevin, pattern = 'quants_mat.gz',
-                                  recursive = TRUE)
+                        recursive = TRUE)
 
-for (run in repeats_fns) {
-    counts[[run]] <- tximeta::tximeta(coldata = data.frame(
-                                names = "repeats",
-                                files = file.path(params$repeats_alevin, run),
-                                stringsAsFactors = FALSE
-                                ), type = "alevin")
-
-    counts[[run]] <-  as.data.frame(assays(counts[[run]])$counts)
-    colnames(counts[[run]]) <- paste(gsub('/alevin', '', dirname(run)), colnames(counts[[run]]),
-                                     sep = "_")
-
-    genes <- rownames(counts[[run]])
-
-    ## counts[[run]] <- counts[[run]][,setdiff(colnames(counts[[run]]), 'gene')]
-
-}
-
-counts <- do.call(cbind.data.frame, counts)
-## str(counts)
-rownames(counts) <- genes
-
-colnames(counts) <- gsub('quants_mat.gz.', '', basename(colnames(counts)))
-
-counts[1:3, 1:3]
-```
-
-
-```{r singlealevin, eval = FALSE}
-counts <- as.data.frame(assays(tximeta::tximeta(coldata = data.frame(
-                                names = "repeats",
-                                files = params$repeats_alevin,
-                                stringsAsFactors = FALSE
-                                ), type = "alevin"))$counts)
+counts <- get_count_table_grouped_by_dings_run(
+    alevin_fns =  repeats_fns,
+    dict = generate_dict(conf, runmeta),
+    cellmeta = cellmeta,
+    flavour = 'repeats_alevin') 
 
 ```
 
@@ -297,6 +536,11 @@ rm(counts)
 
 ```
 
+
+
+
+
+## Both
 
 Both alevin 
 
@@ -320,11 +564,11 @@ d$both_alevin <- CreateSeuratObject(
 
 ## Other modalities
 
-```{r}
+```{r eval = TRUE}
 
 process_featurecounts_grouped_by_cb_umi <- function(fn, id = "",
                                                     annotate_genes = FALSE,
-                                                    accepted_barcodes = 'all') {
+                                                    accepted_barcodes = 'void') {
      ## Featurecounts-based repeats
     counts <- data.table::fread(fn, header = FALSE)
     ## cb first, umi second
@@ -335,7 +579,7 @@ process_featurecounts_grouped_by_cb_umi <- function(fn, id = "",
     }, error = function(x) print(paste(head(counts, 1), collapse = ";")))
 
 
-    counts$cb <- paste(id, counts$cb, sep = "_") # not needed
+    ## counts$cb <- paste(id, counts$cb, sep = "_") # not needed
 
     if (length(accepted_barcodes) > 1) {
         counts2 <- counts[counts$cb %in% accepted_barcodes,]
@@ -403,7 +647,6 @@ process_featurecounts_grouped_by_cb_umi <- function(fn, id = "",
 }
 ```
 
-
 ```{r}
 
 for (item in grep('repeats|genes',
@@ -413,59 +656,82 @@ for (item in grep('repeats|genes',
                                   recursive = TRUE)
     d[[item]] <- list()
     tmp <- list()
-    for (fn in fns) {
-        id <- sapply(strsplit(basename(fn), '[\\._]'), function(x) return(x[1]))
 
-        ## stop(head(gsub(paste0(id, '_'), '', colnames(d$genes_alevin))))
-        
-        ## try({
-        ##     tmp[[id]] <- process_featurecounts_grouped_by_cb_umi(
-        ##         file.path(params[[item]], fn),
-        ##         annotate_genes = grepl('genes', item),
-        ##         accepted_barcodes = gsub(paste0(id, '_'), '', colnames(d$genes_alevin)))
+    ding <- data.frame(fns = fns,
+                       srr = sapply(strsplit(basename(fns), '[\\._]'), function(x) return(x[1])),
+                       stringsAsFactors = FALSE)
+
+    ding$run <- sapply(ding$srr, function(x) get_ding_run(cellmeta = cellmeta,
+                                                          dict = dict,
+                                                          srr = x))
+    head(ding)
+
+    counts <- list()
+    for (run in unique(as.character(ding$run))) {
+        print(sprintf('%s %s', item, run))
+        counts[[run]] <- list()
+        for (fn in ding[ding$run == run, 'fns']) {
+            print(fn)
             
-        ##     colnames(tmp[[id]]) <- paste(id, colnames(tmp[[id]]), sep = '_')
-        ## })
+            srr <- sapply(strsplit(basename(fn), '[\\._]'), function(x) return(x[1]))
+            
+            ## print(get_ding_approved_barcodes(cellmeta, dict, srr))
+            counts[[run]][[srr]] <- process_featurecounts_grouped_by_cb_umi(
+                file.path(params[[item]], fn),
+                annotate_genes = FALSE,
+                accepted_barcodes = get_ding_approved_barcodes(cellmeta, dict, srr))
+        }
+        
+        ## rather than merge them, sum them
+        genenames <-  unique(unlist(lapply(counts[[run]], rownames)))
 
-        ## let's try again, just in case, with the same cellbarcodes as in alevin
+        cbs <- unique(gsub('[0-9SR_]', '', cellmeta[cellmeta$run == run, 'barcode']))
         
-        tmp[[id]] <- process_featurecounts_grouped_by_cb_umi(
-            file.path(params[[item]], fn),
-            ## annotate_genes = grepl('genes', item),
-            annotate_genes = FALSE,
-            accepted_barcodes = colnames(d$genes_alevin),
-            id = id)
+        tmp <- data.frame(matrix(0,
+                                 nrow = length(genenames),
+                                 ncol = length(cbs)),
+                          row.names = genenames)
+        colnames(tmp) <- cbs
+        rownames(tmp) <- genenames
+        for (srr in names(counts[[run]])) {
+            print(srr)
+            for (cell in colnames(counts[[run]][[srr]])) {
+                tmp[genenames,cell] <- tmp[genenames,cell] + counts[[run]][[srr]][genenames, cell]
+            }
+        }
+        counts[[run]] <- NULL
+        ## remove cells with no data (happens in seqwell)
+        idx <- cbs[colSums(tmp, na.rm = TRUE) > 0]
+        tmp <- tmp[,idx]
         
-        ## colnames(tmp[[id]]) <- paste(id, colnames(tmp[[id]]), sep = '_')
+        counts[[run]] <- tmp
+        rm(tmp)
+        genes <- rownames(counts[[run]])
+
+        
+        ## colnames(counts[[run]]) <- sprintf('%s_%s', run, colnames(counts[[run]]))
+    }
+
+    ## check to add undetected features
+    genenames <- unique(unlist(sapply(counts, rownames)))
+    for (run in names(counts)) {
+        missing <- setdiff(genenames, rownames(counts[[run]]))
+        zeroes <- as.data.frame(matrix(0, ncol = ncol(counts[[run]]), nrow = length(missing)))
+        colnames(zeroes) <- colnames(counts[[run]])
+        rownames(zeroes) <- missing
+        counts[[run]] <- rbind(counts[[run]], zeroes)
+        counts[[run]] <- counts[[run]][genenames,]
         
     }
-    ## merge them
-    d[[item]]  <- Reduce(
-        function(x, y) merge(x, y, by = "id", all = TRUE),
-        lapply(tmp, function(x) { x$id <- rownames(x); x }))
 
-    rownames(d[[item]]) <- d[[item]]$id
     
-    d[[item]][is.na(d[[item]])] <- 0
-    
-    ## ## rather than merge them, sum them
-    ## genenames <-  rownames(tmp[[1]])
-    ## cbs <- colnames(d$genes_alevin)
-    ## d[[item]] <- data.frame(matrix(0,
-    ##                                nrow = length(genenames),
-    ##                                ncol = length(cbs)),
-    ##                         row.names = genenames)
-    ## colnames(d[[item]]) <- cbs
-    ## for (id in names(tmp)) {
-    ##     d[[item]] <- d[[item]] + tmp[[id]][genenames, cbs]
-    ## }
-
-    ## d[[item]][is.na(d[[item]])] <- 0
-
-    ## rownames(d[[item]]) <- genenames
+    counts <- do.call(cbind.data.frame, counts)
+    ## str(counts)
+    rownames(counts) <- genenames
+    counts[is.na(counts)] <- 0
     
     d[[item]] <- CreateSeuratObject(
-        d[[item]][,-1],
+        counts,
         project = item,
         assay = "RNA",
         min.cells = 0,
@@ -491,7 +757,7 @@ saveRDS(d, file = paste0(params$seurat_output, '.debug') ) # todo remove
 GetAssayData(d$repeats_alevin)[1:3, 1:3]
 GetAssayData(d$genes_alevin)[1:3, 1:3]
 GetAssayData(d$genes_featurecounts)[1:3, 1:3]
-GetAssayData(d$repeats_star_unique)[1:30, 1:3]
+GetAssayData(d$repeats_star_unique)[1:3, 1:3]
 
 ```
 
@@ -552,21 +818,35 @@ colnames(summarized) <- c('dataset','filter', 'ncells',
 print(summarized)
 ```
 
-## QC after filtering {.tabset}
-
-Filtering out cells according to the repeats expression, and forwarding the selection to other layers
-
-```{r subset}
-d$genes_alevin <- subset(d$genes_alevin, subset = percent.mt < 18| is.na(percent.mt))
-
-selected_cells <- colnames(d$genes_alevin)
-length(selected_cells)
-
-for (item in names(d)) {
-    d[[item]] <- subset(d[[item]], cells = selected_cells)
-}
 
 
+## QC filtering
+
+```{r debugpreqc}
+saveRDS(object =d, file = paste0(params$seurat_output, '.debugpreqc')) # todo remove
+```
+
+
+```{r}
+## QC is based upon genes 
+item <- 'genes_alevin'
+
+libsize.drop <- isOutlier(d$genes_alevin$nCount_RNA, nmads = 3, type = "both", log = TRUE)
+feature.drop <- isOutlier(d$genes_alevin$nFeature_RNA, nmads = 3, type = "both", log = TRUE)
+mito.drop <- isOutlier(d$genes_alevin$percent.mt, nmads = 3, type = "higher")
+
+selected_cells <- colnames(d$genes_alevin)[!(libsize.drop | feature.drop | mito.drop)]
+
+```
+
+
+Outlier tagging results
+
+```{r}
+print(data.frame(ByLibSize = sum(libsize.drop),
+                 ByFeature = sum(feature.drop), 
+                 ByMito = sum(mito.drop),
+                 Remaining = length(selected_cells)))
 ```
 
 ```{r, results = 'asis', fig.width = 8, fig.height = 4}
@@ -574,9 +854,12 @@ for (item in names(d)) {
     cat("### ", item, "\n\n")
     ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
     if (item == 'genes_alevin') {
-        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]],
-                                                          pattern = "ENS.*[0-9]+-MT-.*")
-        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt"))
+        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "-MT-")
+
+        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt") +
+              geom_vline(xintercept = attributes(libsize.drop)$thresholds) +
+              geom_hline(yintercept = attributes(mito.drop)$thresholds))
+        
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
                       ncol = 3))
 
@@ -584,14 +867,35 @@ for (item in names(d)) {
         print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2))
     
     }
-    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA"))
+
+    d[[item]]@meta.data$qc_pass <- rownames(d[[item]]@meta.data) %in% selected_cells
+    
+    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA",
+                         group.by = 'qc_pass', shape.by = 'qc_pass'))
+    
     cat('\n\n')
 }
 
-
-
-
 ```
+
+
+
+## QC after filtering {.tabset}
+
+
+Filtering out cells according to the genes expression, and forwarding the selection to other layers
+
+
+
+```{r}
+## the subsetting applies to all slots, even though the metrics come from genes only
+for (item in names(d)) {
+    d[[item]] <- subset(d[[item]], cells = selected_cells)
+}
+
+(d)
+```
+
 
 ## Basic stats post-QC
 
@@ -654,10 +958,10 @@ for (item in names(d)) {
 ## Dimred PCA {.tabset}
 
 
-```{r debug}
-saveRDS(object =d, file = params$seurat_output) # todo remove
+<!-- ```{r debug} -->
+<!-- saveRDS(object =d, file = params$seurat_output) # todo remove -->
 
-```
+<!-- ``` -->
 
 ```{r, message = FALSE, results ='asis'}
 

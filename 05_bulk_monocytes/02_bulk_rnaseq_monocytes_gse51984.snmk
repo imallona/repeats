@@ -1,0 +1,855 @@
+#!/usr/bin/env snakemake -s
+## 
+## Started 05 jan 2021
+##
+## Izaskun Mallona
+## GPLv3
+
+import os.path as op
+from glob import glob
+import re
+
+
+print('This is human')
+
+## Folder structure start --------------------------------------------------------------------- ##
+
+
+#@FIXME to be moved to config, not hardcoded!
+BASE = op.join('/home', 'imallona', 'repeats_sc')
+NTHREADS = 20
+LOCAL_MEM_GB = 100
+
+
+RUN_NAME  = 'bulk_GSE51984'
+RUN_TECH = 'bulk'
+GENOME = 'GRCh38'
+CONF = op.join(BASE, 'data', RUN_NAME, RUN_NAME + '.conf')
+
+GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
+# GENES_GTF_URL =  'ftp://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz'
+GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
+REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
+
+## @FIXME to be moved to config
+GTF_MAKING_SCRIPT = '~/src/repeats_sc/04_snakemake/gtf_maker.R'
+GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/gtf_parser.R'
+
+BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
+BOWTIE = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'
+
+FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
+PREFETCH= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/prefetch' # fastq-dump : 2.10.4
+VDBVALIDATE= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate' # fastq-dump : 2.10.4
+
+##pigz 2.3.1
+PIGZ = '/usr/bin/pigz'
+BIOPYTHON_CONVERT='biopython.convert'
+STAR = '~/soft/star/STAR-2.7.3a/source/STAR'
+FEATURECOUNTS = '~/soft/subread/subread-2.0.0-source/bin/featureCounts'
+SALMON = '~/soft/salmon/salmon-1.1.0_linux_x86_64/bin/salmon'
+CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
+BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
+Rscript = '/usr/local/R/R-4.0.0/bin/Rscript'
+
+## this is needed to be hardcoded/config file
+
+try:
+   if not op.exists(op.dirname(op.join(BASE, 'annotation'))):
+      os.makedirs(op.join(BASE, 'annotation'))
+except OSError as err:
+   print(err)
+      
+for item in ['bowtie', 'star', 'salmon']:
+   try:
+      if not op.exists(op.dirname(op.join(BASE, 'indices', item))):
+         os.makedirs(op.join(BASE, 'indices', item))
+   except OSError as err:
+      print(err)
+
+## Folder structure end ----------------------------------------------------------------------- ##
+
+
+
+def write_config(fn):
+   conf = CONF
+   path = op.join(BASE, "data", RUN_NAME)
+   if not op.exists(path):
+      os.makedirs(path)
+        
+   with open(conf, "w+") as fh:
+      fh.writelines("""SRR1022936,RNA-Seq,200,2300938600,PRJNA225999,SAMN02390109,1441081321,Total white blood cells,GEO,public,"fastq,sra","gs,s3,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX372044,GSM1256809,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256809,unsorted,healthy adult,SRP032455,peripheral blood
+SRR1022937,RNA-Seq,200,2308183600,PRJNA225999,SAMN02390109,1445168447,Total white blood cells,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372044,GSM1256809,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256809,unsorted,healthy adult,SRP032455,peripheral blood
+SRR1022938,RNA-Seq,200,2526606400,PRJNA225999,SAMN02390109,1627664281,Total white blood cells,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372044,GSM1256809,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256809,unsorted,healthy adult,SRP032455,peripheral blood
+SRR1022939,RNA-Seq,200,2182538400,PRJNA225999,SAMN02390107,1359287081,Total white blood cells,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372045,GSM1256810,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256810,unsorted,healthy adult,SRP032455,peripheral blood
+SRR1022940,RNA-Seq,200,2202067800,PRJNA225999,SAMN02390107,1371095222,Total white blood cells,GEO,public,"sra,fastq","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372045,GSM1256810,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256810,unsorted,healthy adult,SRP032455,peripheral blood
+SRR1022941,RNA-Seq,200,2343426000,PRJNA225999,SAMN02390107,1502524134,Total white blood cells,GEO,public,"fastq,sra","gs,s3,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX372045,GSM1256810,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256810,unsorted,healthy adult,SRP032455,peripheral blood
+SRR1022942,RNA-Seq,200,2825614000,PRJNA225999,SAMN02390087,1753076074,Total white blood cells,GEO,public,"fastq,sra","gs,s3,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX372046,GSM1256811,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256811,unsorted,healthy adult,SRP032455,peripheral blood
+SRR1022943,RNA-Seq,200,3018624000,PRJNA225999,SAMN02390087,1897342476,Total white blood cells,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372046,GSM1256811,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256811,unsorted,healthy adult,SRP032455,peripheral blood
+SRR1022944,RNA-Seq,200,3247017000,PRJNA225999,SAMN02390087,2085111025,Total white blood cells,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372046,GSM1256811,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256811,unsorted,healthy adult,SRP032455,peripheral blood
+SRR1022945,RNA-Seq,200,2202039600,PRJNA225999,SAMN02390100,1368171106,B-cells,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372047,GSM1256812,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256812,CD19+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022946,RNA-Seq,200,2206869800,PRJNA225999,SAMN02390100,1368438891,B-cells,GEO,public,"sra,fastq","gs,s3,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX372047,GSM1256812,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256812,CD19+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022947,RNA-Seq,200,2374683800,PRJNA225999,SAMN02390100,1513225788,B-cells,GEO,public,"sra,fastq","ncbi,gs,s3","gs.US,s3.us-east-1,ncbi.public",SRX372047,GSM1256812,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256812,CD19+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022948,RNA-Seq,200,4211524400,PRJNA225999,SAMN02390091,2630399571,B-cells,GEO,public,"sra,fastq","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372048,GSM1256813,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256813,CD19+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022949,RNA-Seq,200,4483270400,PRJNA225999,SAMN02390091,2835899594,B-cells,GEO,public,"sra,fastq","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372048,GSM1256813,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256813,CD19+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022950,RNA-Seq,200,4802892000,PRJNA225999,SAMN02390091,3101278159,B-cells,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372048,GSM1256813,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256813,CD19+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022951,RNA-Seq,200,3819529200,PRJNA225999,SAMN02390110,2276427641,B-cells,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372049,GSM1256814,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256814,CD19+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022952,RNA-Seq,200,4007470800,PRJNA225999,SAMN02390110,2426367870,B-cells,GEO,public,"fastq,sra","gs,s3,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX372049,GSM1256814,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256814,CD19+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022953,RNA-Seq,200,4299179000,PRJNA225999,SAMN02390110,2656138822,B-cells,GEO,public,"fastq,sra","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372049,GSM1256814,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256814,CD19+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022954,RNA-Seq,200,3767143000,PRJNA225999,SAMN02390113,2327840259,B-cells,GEO,public,"sra,fastq","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372050,GSM1256815,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256815,CD19+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022955,RNA-Seq,200,3968801800,PRJNA225999,SAMN02390113,2484391078,B-cells,GEO,public,"sra,fastq","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372050,GSM1256815,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256815,CD19+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022956,RNA-Seq,200,4324809000,PRJNA225999,SAMN02390113,2765250744,B-cells,GEO,public,"sra,fastq","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372050,GSM1256815,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256815,CD19+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022957,RNA-Seq,200,3172097200,PRJNA225999,SAMN02390112,2052907302,B-cells,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372051,GSM1256816,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256816,CD19+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022958,RNA-Seq,200,2956781600,PRJNA225999,SAMN02390112,1900572869,B-cells,GEO,public,"fastq,sra","gs,s3,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX372051,GSM1256816,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256816,CD19+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022959,RNA-Seq,200,2745465200,PRJNA225999,SAMN02390090,1625027445,Granulocytes,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372052,GSM1256817,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256817,CD33+ within granulocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022960,RNA-Seq,200,2731485000,PRJNA225999,SAMN02390090,1609295412,Granulocytes,GEO,public,"sra,fastq","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372052,GSM1256817,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256817,CD33+ within granulocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022961,RNA-Seq,200,2870508400,PRJNA225999,SAMN02390090,1740041867,Granulocytes,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372052,GSM1256817,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256817,CD33+ within granulocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022962,RNA-Seq,200,2315483200,PRJNA225999,SAMN02390099,1447104369,Granulocytes,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372053,GSM1256818,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256818,CD33+ within granulocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022963,RNA-Seq,200,2327331600,PRJNA225999,SAMN02390099,1453556729,Granulocytes,GEO,public,"fastq,sra","gs,s3,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX372053,GSM1256818,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256818,CD33+ within granulocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022964,RNA-Seq,200,2524903400,PRJNA225999,SAMN02390099,1622779503,Granulocytes,GEO,public,"sra,fastq","ncbi,s3,gs","gs.US,s3.us-east-1,ncbi.public",SRX372053,GSM1256818,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256818,CD33+ within granulocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022965,RNA-Seq,200,3299966400,PRJNA225999,SAMN02390106,1978832391,Granulocytes,GEO,public,"fastq,sra","gs,s3,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX372054,GSM1256819,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256819,CD33+ within granulocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022966,RNA-Seq,200,3421839200,PRJNA225999,SAMN02390106,2083384991,Granulocytes,GEO,public,"fastq,sra","ncbi,gs,s3","gs.US,s3.us-east-1,ncbi.public",SRX372054,GSM1256819,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256819,CD33+ within granulocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022967,RNA-Seq,200,3707415200,PRJNA225999,SAMN02390106,2307267693,Granulocytes,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372054,GSM1256819,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256819,CD33+ within granulocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022968,RNA-Seq,200,3201373800,PRJNA225999,SAMN02390086,1989858619,Granulocytes,GEO,public,"sra,fastq","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372055,GSM1256820,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256820,CD33+ within granulocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022969,RNA-Seq,200,3326279800,PRJNA225999,SAMN02390086,2093899792,Granulocytes,GEO,public,"fastq,sra","gs,s3,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX372055,GSM1256820,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256820,CD33+ within granulocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022970,RNA-Seq,200,3683618200,PRJNA225999,SAMN02390086,2367151835,Granulocytes,GEO,public,"sra,fastq","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372055,GSM1256820,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256820,CD33+ within granulocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022971,RNA-Seq,200,3451987400,PRJNA225999,SAMN02390101,2203667234,Granulocytes,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,s3.us-east-1,ncbi.public",SRX372056,GSM1256821,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256821,CD33+ within granulocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022972,RNA-Seq,200,3240517000,PRJNA225999,SAMN02390101,2054952242,Granulocytes,GEO,public,"fastq,sra","ncbi,gs,s3","gs.US,s3.us-east-1,ncbi.public",SRX372056,GSM1256821,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256821,CD33+ within granulocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022973,RNA-Seq,200,2479011800,PRJNA225999,SAMN02390094,1544368217,Monocytes,GEO,public,"fastq,sra","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372057,GSM1256822,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256822,CD14+ within monocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022974,RNA-Seq,200,2491355600,PRJNA225999,SAMN02390094,1551332667,Monocytes,GEO,public,"fastq,sra","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372057,GSM1256822,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256822,CD14+ within monocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022975,RNA-Seq,200,2702982000,PRJNA225999,SAMN02390094,1732419678,Monocytes,GEO,public,"fastq,sra","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372057,GSM1256822,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256822,CD14+ within monocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022976,RNA-Seq,200,2447994200,PRJNA225999,SAMN02390105,1525989339,Monocytes,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372058,GSM1256823,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256823,CD14+ within monocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022977,RNA-Seq,200,2460108400,PRJNA225999,SAMN02390105,1533266374,Monocytes,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372058,GSM1256823,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256823,CD14+ within monocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022978,RNA-Seq,200,2650400800,PRJNA225999,SAMN02390105,1700459444,Monocytes,GEO,public,"fastq,sra","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372058,GSM1256823,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256823,CD14+ within monocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022979,RNA-Seq,200,3741006600,PRJNA225999,SAMN02390104,2331727625,Monocytes,GEO,public,"sra,fastq","gs,s3,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX372059,GSM1256824,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256824,CD14+ within monocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022980,RNA-Seq,200,3976055800,PRJNA225999,SAMN02390104,2510294339,Monocytes,GEO,public,"fastq,sra","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372059,GSM1256824,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256824,CD14+ within monocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022981,RNA-Seq,200,4318581000,PRJNA225999,SAMN02390104,2784404170,Monocytes,GEO,public,"sra,fastq","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372059,GSM1256824,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256824,CD14+ within monocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022982,RNA-Seq,200,3367846600,PRJNA225999,SAMN02390096,2040835493,Monocytes,GEO,public,"fastq,sra","gs,s3,ncbi","ncbi.public,s3.us-east-1,gs.US",SRX372060,GSM1256825,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256825,CD14+ within monocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022983,RNA-Seq,200,3563713800,PRJNA225999,SAMN02390096,2190651516,Monocytes,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372060,GSM1256825,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256825,CD14+ within monocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022984,RNA-Seq,200,3802019400,PRJNA225999,SAMN02390096,2385816079,Monocytes,GEO,public,"sra,fastq","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372060,GSM1256825,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256825,CD14+ within monocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022985,RNA-Seq,200,3929582800,PRJNA225999,SAMN02390108,2524550737,Monocytes,GEO,public,"fastq,sra","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372061,GSM1256826,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256826,CD14+ within monocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022986,RNA-Seq,200,3794911600,PRJNA225999,SAMN02390108,2418507771,Monocytes,GEO,public,"fastq,sra","gs,s3,ncbi","ncbi.public,s3.us-east-1,gs.US",SRX372061,GSM1256826,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256826,CD14+ within monocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022987,RNA-Seq,200,3741021200,PRJNA225999,SAMN02390102,2193594631,peripheral blood CD34+ cells,GEO,public,"fastq,sra","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372062,GSM1256827,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256827,CD34+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022988,RNA-Seq,200,3919216200,PRJNA225999,SAMN02390102,2335852145,peripheral blood CD34+ cells,GEO,public,"sra,fastq","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372062,GSM1256827,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256827,CD34+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022989,RNA-Seq,200,4193320200,PRJNA225999,SAMN02390102,2558768483,peripheral blood CD34+ cells,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372062,GSM1256827,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256827,CD34+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022990,RNA-Seq,200,2904631200,PRJNA225999,SAMN02390097,1811095902,T-cells,GEO,public,"fastq,sra","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372063,GSM1256828,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256828,CD3+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022991,RNA-Seq,200,2917225400,PRJNA225999,SAMN02390097,1817701639,T-cells,GEO,public,"sra,fastq","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372063,GSM1256828,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256828,CD3+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022992,RNA-Seq,200,3186940200,PRJNA225999,SAMN02390097,2042343195,T-cells,GEO,public,"sra,fastq","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372063,GSM1256828,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256828,CD3+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022993,RNA-Seq,200,2817477200,PRJNA225999,SAMN02390088,1764160363,T-cells,GEO,public,"sra,fastq","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372064,GSM1256829,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256829,CD3+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022994,RNA-Seq,200,2998920200,PRJNA225999,SAMN02390088,1902370353,T-cells,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372064,GSM1256829,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256829,CD3+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022995,RNA-Seq,200,3229361200,PRJNA225999,SAMN02390088,2091313399,T-cells,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372064,GSM1256829,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256829,CD3+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022996,RNA-Seq,200,3697152800,PRJNA225999,SAMN02390098,2280168453,T-cells,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372065,GSM1256830,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256830,CD3+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022997,RNA-Seq,200,4158400400,PRJNA225999,SAMN02390098,2597436626,T-cells,GEO,public,"fastq,sra","gs,s3,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX372065,GSM1256830,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256830,CD3+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022998,RNA-Seq,200,4462314200,PRJNA225999,SAMN02390098,2845956750,T-cells,GEO,public,"fastq,sra","gs,s3,ncbi","ncbi.public,s3.us-east-1,gs.US",SRX372065,GSM1256830,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256830,CD3+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1022999,RNA-Seq,200,3108944000,PRJNA225999,SAMN02390093,1907893756,T-cells,GEO,public,"sra,fastq","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX372066,GSM1256831,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256831,CD3+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1023000,RNA-Seq,200,3299204600,PRJNA225999,SAMN02390093,2052571418,T-cells,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX372066,GSM1256831,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256831,CD3+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1023001,RNA-Seq,200,3493592400,PRJNA225999,SAMN02390093,2218255450,T-cells,GEO,public,"fastq,sra","gs,ncbi,s3","ncbi.public,s3.us-east-1,gs.US",SRX372066,GSM1256831,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256831,CD3+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1023002,RNA-Seq,200,4321714000,PRJNA225999,SAMN02390103,2791927103,T-cells,GEO,public,"fastq,sra","gs,ncbi,s3","gs.US,s3.us-east-1,ncbi.public",SRX372067,GSM1256832,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256832,CD3+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood
+SRR1023003,RNA-Seq,200,4135969800,PRJNA225999,SAMN02390103,2653097497,T-cells,GEO,public,"sra,fastq","ncbi,s3,gs","gs.US,s3.us-east-1,ncbi.public",SRX372067,GSM1256832,Illumina HiSeq 2000,PAIRED,cDNA,TRANSCRIPTOMIC,Homo sapiens,ILLUMINA,2016-07-20T00:00:00Z,GSM1256832,CD3+ within lymphocyte gate,healthy adult,SRP032455,peripheral blood""")
+
+def get_samples(fn):
+    # samples = pd.read_table(fn)
+   if not op.isfile(fn):
+      write_config(fn)
+   
+   samples = []
+   with open(fn) as fh:
+    for line in fh: 
+        samples.append(line.split(',')[0].strip())
+    return(samples)
+
+
+print(get_samples(CONF))
+
+
+
+rule all:
+    input:
+        expand(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"), srr = get_samples(CONF)),
+        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome",
+                       "{srr}.bam"), srr = get_samples(CONF)),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome",
+                       "{srr}_Aligned.sortedByCoord.out.bam"), srr = get_samples(CONF)),
+        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
+                RUN_NAME + '_star_genes.counts.gz'),        
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{multimappers}",
+                       RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
+               multimappers = ['multimappers', 'unique_reads']),
+        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                       RUN_NAME + "_bowtie_repeats.counts.gz"),
+               multimappers = ['multimappers', 'unique_reads']),
+        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
+                       "{multimappers}", RUN_NAME + "_repeats_no_overlap_genes.counts.gz"),
+               multimappers = ['multimappers', 'unique_reads']),
+        ##,
+        expand(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"), srr = get_samples(CONF)),
+        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome",
+                       "{srr}.bam"), srr = get_samples(CONF)),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome",
+                       "{srr}_Aligned.sortedByCoord.out.bam"), srr = get_samples(CONF)),
+        op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_edger.html')
+
+rule get_data:
+    input:
+        conf = CONF
+    output:
+        # r1_uncomp = temp(op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq")),
+        # r2_uncomp = temp(op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq")),
+        r1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
+        r2 = op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq.gz"),
+        sra = temp(op.join(BASE, "data", RUN_NAME, "{srr}.sra"))
+    params:
+        path = op.join(BASE, "data", RUN_NAME)
+    threads:
+        ## to avoid much download
+        round(NTHREADS / 3)
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+        
+        ## in case there was a download attempt before that got stuck
+        rm -f {wildcards.srr}.sra.lock
+
+        if [ -f "{output.r1}" ]
+        then
+           echo "skipped download"
+           touch {output.r1}
+           touch {output.r2}
+        else 
+            # {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
+            
+            {PREFETCH} {wildcards.srr} --output-file {wildcards.srr}.sra &> \
+                   {wildcards.srr}_prefetch.log
+    
+            {VDBVALIDATE} {wildcards.srr}.sra &> {wildcards.srr}_vdbvalidation.log
+            
+            {FASTQDUMP}  --gzip --split-files  {wildcards.srr}.sra
+        fi
+        """
+
+rule knit:
+    input:
+        genes_star = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'genes',
+                             RUN_NAME + '_star_genes.counts.gz'),
+        repeats_star_unique = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats',
+                                      "unique_reads", RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
+        repeats_star_multi = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats',
+                                      "multimappers", RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
+        repeats_only_unique = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
+                                      "unique_reads", RUN_NAME + '_repeats_no_overlap_genes.counts.gz'),
+        repeats_only_multi = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
+                                      "multimappers", RUN_NAME + '_repeats_no_overlap_genes.counts.gz'),
+        repeats_bowtie_unique = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome',
+                                        'unique_reads', RUN_NAME + '_bowtie_repeats.counts.gz'),
+        repeats_bowtie_multi = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome',
+                                        'multimappers', RUN_NAME + '_bowtie_repeats.counts.gz'),
+        config_fn = CONF
+    params:
+        rmd = '02_bulk_rnaseq_monocytes_gse51984_postproc.Rmd',
+        run_name = RUN_NAME
+    output:
+        html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_edger.html'),
+        de = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_de.rds'),
+        expression = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_expression.rds')
+    log:
+        op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_edger.log')
+    shell:
+        """
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+          output_file = \"{output.html}\", 
+          params = list(identifier = \"{params.run_name}\", 
+          genes_star = \"{input.genes_star}\", 
+          repeats_star_unique = \"{input.repeats_star_unique}\", 
+          repeats_star_multi = \"{input.repeats_star_multi}\", 
+          repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\", 
+          repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\", 
+          repeats_only_unique = \"{input.repeats_only_unique}\",
+          repeats_only_multi = \"{input.repeats_only_multi}\",
+          config_fn = \"{input.config_fn}\",
+          expression_output = \"{output.expression}\",
+          de_output = \"{output.de}\"))' &> {log}
+        """
+    
+rule fake_gtf_repeatome_in_repeats_coordinates:
+    input:
+        fa = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.gz')
+    output:
+        fai = temp(op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.fai')),
+        fauncomp = temp(op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa')),
+        fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
+    params:
+        rscript = GTF_MAKING_SCRIPT,
+        path = op.join(BASE, 'annotation')
+    threads:
+        NTHREADS
+    shell:
+        """
+        cd {params.path}
+        {PIGZ} -k --decompress -p {threads} {input.fa}
+
+        samtools faidx {output.fauncomp}
+        
+        {Rscript} {params.rscript} -f {output.fai} | {PIGZ} -c -p {threads} > {output.fake_repeatome_gtf}
+        
+        """
+
+rule feature_counts_repeats_no_overlap_genes_spawned_bams:
+    input:
+        expand(op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', "{srr}.bam"),
+               srr = get_samples(CONF)),
+        expand(op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', "{srr}.bam"),
+                srr = get_samples(CONF)),
+         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL) + '_minus_' + op.basename(GENES_GTF_URL))
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome')
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
+                               "{multimappers}", RUN_NAME + "_repeats_no_overlap_genes.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
+                            "{multimappers}", RUN_NAME + "_repeats_no_overlap_genes.counts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
+                          "{multimappers}",
+                          RUN_NAME + "_repeats_no_overlap_genes.counts.summary")        
+    log :
+        log = op.join(BASE, "runs",  RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', "{multimappers}",
+                      'feature_counts_no_overlap_genes.log'),
+    threads:
+        NTHREADS
+    run:
+        if wildcards.multimappers == 'multimappers':
+           shell("""
+           echo multimappers allowed
+
+           cd {params.path}
+
+           {FEATURECOUNTS} -T {threads} \
+           -p \
+           -t exon \
+           -g gene_id \
+           -a {input.gtf} \
+           -o  {output.counts} \
+           -M \
+           --fraction \
+           {params.path}/*bam  2>&1 > {log}
+
+           {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+           """)
+        elif wildcards.multimappers == 'unique_reads':
+           shell("""
+           echo unique only
+
+           cd {params.path}
+
+           {FEATURECOUNTS} -T {threads} \
+           -p \
+           -t exon \
+           -g gene_id \
+           -a {input.gtf} \
+           -o  {output.counts} \
+           {params.path}/*bam  2>&1 > {log}
+
+           {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+           """)
+
+# @todo NOTE THE MULTIMAPPING ALLOWED!
+rule featurecounts_repeats_repeatome_pe:
+    input:
+        expand(op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', "{srr}.bam"),
+               srr = get_samples(CONF)),
+        expand(op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', "{srr}.bam"),
+               srr = get_samples(CONF)),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
+        fake_repeatome_gtf = op.join(BASE, 'annotation',
+                                     'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                               RUN_NAME + "_bowtie_repeats.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                            RUN_NAME + "_bowtie_repeats.counts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                          RUN_NAME + "_bowtie_repeats.counts.summary")
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome")
+    log :
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                "bowtie_repeats_featurecounts.log"),
+    threads:
+        NTHREADS
+    run:
+        if wildcards.multimappers == 'multimappers':
+           shell("""
+           echo multimappers allowed
+
+           cd {params.path}
+
+           {FEATURECOUNTS} -T {threads} \
+           -p \
+           -t exon \
+           -g gene_id \
+           -a {input.fake_repeatome_gtf} \
+           -o  {output.counts} \
+           -M \
+           --fraction \
+           {params.path}/*bam  2>&1 > {log}
+
+           {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+           """)
+        elif wildcards.multimappers == 'unique_reads':
+           shell("""
+           echo unique only
+
+           cd {params.path}
+
+           {FEATURECOUNTS} -T {threads} \
+           -p \
+           -t exon \
+           -g gene_id \
+           -a {input.fake_repeatome_gtf} \
+           -o  {output.counts} \
+           {params.path}/*bam  2>&1 > {log}
+
+           {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+           """)
+
+    # shell:
+    #    """
+    #    ## note multimappers are counted
+    #    {FEATURECOUNTS} -T {threads} \
+    #    -p \
+    #    -t exon \
+    #    -g gene_id \
+    #    -a {input.fake_repeatome_gtf} \
+    #    -o  {output.counts} \
+    #    -M \
+    #    {params.path}/*bam  &> {log}
+
+    #    {PIGZ} --keep  -p {threads} {output.counts}
+    #    """
+
+rule featurecounts_repeats_transcriptome_pe:
+    input:
+        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
+                 srr = get_samples(CONF)),
+        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
+                 srr = get_samples(CONF)),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    output:
+        counts  = temp(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats',
+                                "{multimappers}", RUN_NAME + '_star_transcriptome_repeats.counts')),
+        gz_counts = op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats',
+                             "{multimappers}", RUN_NAME + '_star_transcriptome_repeats.counts.gz'),
+        summary =  op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats',
+                             "{multimappers}", RUN_NAME + '_star_transcriptome_repeats.counts.summary')
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome')
+    log :
+        op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',  "{multimappers}",
+                "star_repeats_featurecounts.log"),
+    threads:
+        NTHREADS
+    # shell:
+    #    """
+    #    {FEATURECOUNTS} -T {threads} \
+    #    -p \
+    #    -t exon \
+    #    -g gene_id \
+    #    -a {input.gtf} \
+    #    -o  {output.counts} \
+    #    {params.path}/*bam  &> {log}
+
+    #    {PIGZ} --keep -p {threads} {output.counts}
+    #    """
+    run:
+        if wildcards.multimappers == 'multimappers':
+           shell("""
+           echo multimappers allowed
+
+           cd {params.path}
+
+           {FEATURECOUNTS} -T {threads} \
+           -p \
+           -t exon \
+           -g gene_id \
+           -a {input.gtf} \
+           -o  {output.counts} \
+           -M \
+           --fraction \
+           {params.path}/*bam  2>&1 > {log}
+
+           {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+           """)
+        elif wildcards.multimappers == 'unique_reads':
+           shell("""
+           echo unique only
+
+           cd {params.path}
+
+           {FEATURECOUNTS} -T {threads} \
+           -p \
+           -t exon \
+           -g gene_id \
+           -a {input.gtf} \
+           -o  {output.counts} \
+           {params.path}/*bam  2>&1 > {log}
+
+           {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+           """)
+           
+rule featurecounts_genes_transcriptome_pe:
+    input:
+        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
+               srr = get_samples(CONF)),
+        expand(op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
+               srr = get_samples(CONF)),
+        gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', RUN_NAME + "_star_genes.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', RUN_NAME + "_star_genes.counts.gz")
+    params:
+        path =  op.join(BASE, "runs", RUN_NAME, 'star_transcriptome')
+    log :
+        op.join(BASE, "runs",RUN_NAME, 'star_transcriptome', 'genes', "star_genes_featurecounts.log"),
+    threads:
+        NTHREADS
+    shell:
+       """
+       {FEATURECOUNTS} -T {threads} \
+       -p \
+       -t exon \
+       -g gene_id \
+       -a {input.gtf} \
+       -o  {output.counts} \
+       {params.path}/*bam  &> {log}
+
+       {PIGZ} --keep -p {threads} {output.counts}
+       """
+        
+# rule featurecounts_repeats_transcriptome:
+#     input:
+#         bam = op.join(BASE, "runs",RUN_NAME, 'star_transcriptome', "{srr}_Aligned.sortedByCoord.out.bam"),
+#         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+#     output:
+#         counts  = temp(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats',
+#                                "{multimappers}", "{srr}_repeats.counts")),
+#         gz_counts = op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats',
+#                             "{multimappers}", "{srr}_repeats.counts.gz")
+#     log :
+#         op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats', "{multimappers}", "{srr}_repeats_featurecounts.log")
+#     threads:
+#         NTHREADS
+#     run:
+#         if wildcards.multimappers == 'multimappers':
+#            shell("""
+#            echo multimappers allowed
+
+#            cd {params.path}
+
+#            {FEATURECOUNTS} -T {threads} \
+#            -t exon \
+#            -g gene_id \
+#            -a {input.gtf} \
+#            -o  {output.counts} \
+#            -M \
+#            --fraction \
+#            {params.path}/*bam  2>&1 > {log}
+
+#            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+#            """)
+#         elif wildcards.multimappers == 'unique_reads':
+#            shell("""
+#            echo unique only
+
+#            cd {params.path}
+
+#            {FEATURECOUNTS} -T {threads} \
+#            -t exon \
+#            -g gene_id \
+#            -a {input.gtf} \
+#            -o  {output.counts} \
+#            {params.path}/*bam  2>&1 > {log}
+
+#            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+#            """)
+
+
+## Mapping start ------------------------------------------------------------------------------ ##
+
+# rule map_alevin:
+# #@untested @todo @current
+# ## fix to take into account the different indices to map against
+# ## fix the cutadapt sickle thing
+rule map_star_transcriptome_pe:
+    input:
+        star_index_flag = op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrName.txt'), 
+        fastq1 = op.join(BASE, "data", RUN_NAME, "{fastq}_1.fastq.gz"),
+        fastq2 = op.join(BASE, "data", RUN_NAME,  "{fastq}_2.fastq.gz"),
+    params:
+        star_index = op.join(BASE, 'indices', 'star', GENOME, 'transcriptome'),
+        path = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome'),
+        prefix = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_")
+    output:
+        bam = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_Aligned.sortedByCoord.out.bam"),
+        star_tmp = temp(directory(op.join(BASE, 'runs', 'star_transcriptome', "{fastq}_STARtmp")))
+    threads:
+        NTHREADS
+    log:
+        op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', "{fastq}_star.log")
+    # benchmark:
+    #     op.join(BASE, 'run/{sample}/{sample}_star_benchmark.txt')
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+        
+        {STAR} --genomeDir {params.star_index} \
+        --readFilesIn {input.fastq1} {input.fastq2} \
+        --runThreadN {threads} \
+        --outFileNamePrefix {params.prefix} \
+        --outSAMtype BAM SortedByCoordinate \
+        --readFilesCommand zcat  2> {log}
+
+        ## in case STAR managed to delete its own folder (doesn't always happen)
+        mkdir -p {output.star_tmp}
+        """
+
+
+        
+rule map_bowtie_repeatome_pe:
+    params:
+        repeatome = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0]),
+        sample = RUN_NAME,
+        path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome")
+    input:
+        fastq1 = op.join(BASE, "data", RUN_NAME, "{srr}_1.fastq.gz"),
+        fastq2 = op.join(BASE, "data", RUN_NAME, "{srr}_2.fastq.gz"),
+        repeatome_tag_file = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt')
+    output:
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{srr}.bam")
+    log:
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{srr}_bowtie_repeatome.log")
+    threads :
+        NTHREADS
+    shell:
+        """
+        mkdir -p {params.path}
+
+        ( {BOWTIE} -q \
+        -1 <( {PIGZ} --keep --processes {threads} --to-stdout --decompress {input.fastq1} ) \
+        -2 <( {PIGZ} --keep --processes {threads} --to-stdout --decompress {input.fastq2} ) \
+        -v 2 \
+        --threads {threads} \
+        -k 2 --best --strata \
+        --sam \
+        --chunkmbs 128 {params.repeatome} |  samtools view -@ {threads} -bS - > {output} ) 2> {log}
+        """
+
+rule index_repeats_genome_star:
+    params:
+        genome_dir = op.join(BASE, 'indices', 'star', GENOME, 'repeatome'),
+    input:
+        fa = op.join(BASE, 'annotation', op.basename(GENOME_URL)),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    log:
+        op.join(BASE, 'indices', 'star', GENOME, 'repeatome', 'repeats_star_index.log')
+    threads:
+        NTHREADS
+    output:
+        op.join(BASE, 'indices', 'star', GENOME, 'repeatome', 'chrName.txt'),
+        op.join(BASE, 'indices', 'star', GENOME, 'repeatome', 'chrStart.txt'),
+        op.join(BASE, 'indices', 'star', GENOME, 'repeatome', 'chrNameLength.txt'),
+        fa_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])),
+        gtf_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(REP_GTF_URL))[0]))
+    shell:
+        """
+        mkdir -p {params.genome_dir}
+
+        {PIGZ} -k --decompress -p {threads} {input.gtf}
+        {PIGZ} -k --decompress -p {threads} {input.fa}
+
+        ({STAR}  \
+        --runMode genomeGenerate \
+        --runThreadN {threads} \
+        --sjdbGTFfile {output.gtf_decomp} \
+        --genomeDir {params.genome_dir} \
+        --genomeFastaFiles {output.fa_decomp}) 2> {log}
+
+        touch {output}
+        """
+
+rule index_genes_genome_star:
+    params:
+        genome_dir = op.join(BASE, 'indices', 'star', GENOME, 'transcriptome'),
+    input:
+        fa = op.join(BASE, 'annotation', op.basename(GENOME_URL)),
+        gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
+    output:    
+        op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrName.txt'),
+        op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrStart.txt'),
+        op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrNameLength.txt'),
+        fa_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])),
+        gtf_decomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENES_GTF_URL))[0]))
+
+    log:
+        op.join(BASE, 'indices', 'star', 'transcriptome', 'genes_star_index.log')
+    threads:
+        NTHREADS
+    shell:
+        """
+        mkdir -p {params.genome_dir}
+
+        {PIGZ} -k --decompress -p {threads} {input.gtf}
+        
+        {PIGZ} -k --decompress -p {threads} {input.fa}
+
+        ({STAR}  \
+        --runMode genomeGenerate \
+        --runThreadN {threads} \
+        --sjdbGTFfile {output.gtf_decomp} \
+        --genomeDir {params.genome_dir} \
+        --genomeFastaFiles {output.fa_decomp}) 2> {log}
+
+        touch {output}
+        """
+
+        
+rule bowtie_index_repeatome_bowtie:
+    input:
+        fa = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.gz')
+    threads: NTHREADS
+    params:
+        label = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome',  op.splitext(op.basename(REP_GTF_URL))[0]),
+        path =  op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome')
+    log:
+        op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', 'bowtie_repeatome.log')
+    output:
+        fa_uncomp = temp(op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa')),
+        o1 = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt') #,
+        # o1 = op.join(BASE, 'indices', 'bowtie', 'repeatome', op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.1.ebwt',
+        # o2 = op.join(BASE, 'indices', 'bowtie', 'repeatome',
+        #              op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.2.ebwt',
+        # o3 = op.join(BASE, 'indices', 'bowtie', 'repeatome',
+        #              op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.3.ebwt',
+        # o4 = op.join(BASE, 'indices', 'bowtie', 'repeatome',
+        #              op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.4.ebwt',
+        # o1rev = op.join(BASE, 'indices', 'bowtie', 'repeatome',
+        #                 op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.rev.1.ebwt',
+        # o2rev = op.join(BASE, 'indices', 'bowtie', 'repeatome',
+        #                 op.splitext(op.basename(DFAM_EMBL_URL))[0]) + '.rev.2.ebwt'
+    shell:
+        """
+        mkdir -p {params.path}
+        
+        {PIGZ} -k --decompress -p {threads} {input.fa}
+        
+        ({BOWTIE_BUILD} {output.fa_uncomp} {params.label} --threads {threads}) 2> {log}
+        """
+
+
+## Genome, transcriptome and repeatome retrieval start ---------------------------------------- ##
+
+rule uncompress_genome:
+    params:
+        genome_dir = op.join(BASE, 'annotation'),
+    input:
+        fagz = op.join(BASE, 'annotation', op.basename(GENOME_URL))
+    output:
+        temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0]))
+    shell:
+        """
+        {PIGZ} -k --decompress -p {threads}  {input.fagz}
+        """
+
+rule extract_repeatome_from_gtf:
+    priority: 100
+    input:
+        genome = op.join(BASE, 'annotation', op.basename(GENOME_URL)),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    output:
+        genome_uncompressed = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])) + '.temp_extract',
+        fai = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])) + '.temp_extract.fai',
+        fasta = temp(op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.fa'),
+        gtftemp = op.join(BASE, 'annotation', 'temp_' + op.basename(REP_GTF_URL)),
+        fastagz = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.fa.gz'
+    params :
+        rscript = GTF_PARSING_RSCRIPT
+    threads:
+        NTHREADS
+    shell:
+        """
+        {PIGZ} --keep --decompress -p {threads} -c  {input.genome} > {output.genome_uncompressed}
+
+        ## faking the GTF to describe the instance and not the 'exon'
+
+        {Rscript} {params.rscript} -g {input.gtf} | {PIGZ} -c -p {threads} > \
+          {output.gtftemp}
+        
+        # {BEDTOOLS} getfasta -name -s -fi {output.fasta} \
+        #   -bed {output.gtftemp} -fo {output.fasta}
+
+        {BEDTOOLS} getfasta -name -s -fi {output.genome_uncompressed} \
+          -bed {output.gtftemp} -fo {output.fasta}
+
+        ## remove the coordinates appended by bedtools!
+        sed 's/:/ /g' {output.fasta} | cut -f1 -d" " | \
+          {PIGZ}  -p {threads} -c > {output.fastagz}
+        
+        """
+
+rule add_chr_strings_to_genome:
+    priority:
+        100
+    input:
+        op.join(BASE, 'annotation', 'without_chr_' + op.basename(GENOME_URL))
+    output:
+        op.join(BASE, 'annotation', op.basename(GENOME_URL))
+    params:
+        url = GENOME_URL
+    threads:
+        NTHREADS
+    shell:
+        """
+        {PIGZ} --keep --decompress -p {threads} -c {input} | \
+           sed 's/>/>chr/g' | {PIGZ} -p {threads} -c > {output}
+        """
+    
+rule get_genome_fasta:
+    priority:
+        100
+    output:
+        temp(op.join(BASE, 'annotation', 'without_chr_' + op.basename(GENOME_URL)))
+    params:
+        url = GENOME_URL
+    shell:
+        """
+        curl -s -L -C - {params.url} -o {output}
+        """
+      
+rule get_repeats_gtf:
+    priority:
+        100
+    params:
+        url = REP_GTF_URL,
+        genome_path = op.join(BASE, 'annotation')
+    output:
+        op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    shell:
+        """        
+        curl -s -L -C - {params.url} -o {output}
+        """
+        
+rule get_genes_gtf:
+    priority:
+        100
+    params:
+        url = GENES_GTF_URL
+    output:
+        gtf = op.join(BASE, 'annotation', op.basename(GENES_GTF_URL))
+    shell:
+        """    
+        curl -s -L -C - {params.url} -o {output.gtf}
+        """

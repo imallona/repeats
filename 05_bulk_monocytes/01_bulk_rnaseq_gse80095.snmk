@@ -120,11 +120,12 @@ rule knit:
         repeats_bowtie_multi = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome',
                                         'multimappers', RUN_NAME + '_bowtie_repeats.counts.gz')
     params:
-        rmd = 'bulk_rnaseq_monocytes.Rmd',
+        rmd = '01_bulk_rnaseq_monocytes_gse80095_postproc.Rmd',
         run_name = RUN_NAME
     output:
         html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_edger.html'),
-        de = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_de.rds')
+        de = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_de.rds'),
+        expression = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_expression.rds')
     log:
         op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_edger.log')
     shell:
@@ -139,6 +140,7 @@ rule knit:
           repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\", 
           repeats_only_unique = \"{input.repeats_only_unique}\",
           repeats_only_multi = \"{input.repeats_only_multi}\",
+          expression_output = \"{output.expression}\",
           de_output = \"{output.de}\"))' &> {log}
         """
     
