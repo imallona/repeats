@@ -10,89 +10,6 @@ from glob import glob
 
 
 
-rule run_alevin_repeats_celseq2:
-    input:        
-        tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
-        idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
-        # cb = list_cbs,
-        # r2 = list_r2s
-        cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
-        r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
-        
-    output:
-        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}",  'alevin', 'quants_mat.gz')
-    threads:
-        NTHREADS
-    params:
-        fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', "{srr}"),
-        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
-        # cb = list_cbs,
-        # r2 = list_r2s
-        cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
-        r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
-    log:
-        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_celseq_{srr}.log')
-    shell:
-        """
-    mkdir -p {params.processing_path}
-    cd {params.processing_path}
-
-    ({SALMON} alevin \
-    -l ISR \
-    -1 {params.cb} \
-    -2 {params.r2} \
-    --celseq2 \
-    --dumpFeatures \
-    -i {params.salmon_idx} \
-    -p {threads} -o {params.processing_path} \
-    --tgMap {input.tgmap} ) 2> {log}
-
-    touch -c {output}
-        """
-
-
-rule run_alevin_genes_celseq2:
-    input:        
-        tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'txp2gene.tsv'),
-        idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'duplicate_clusters.tsv'),
-        # cb = list_cbs,
-        # r2 = list_r2s,
-        cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
-        r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
-        
-    output:
-        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  "{srr}",  'alevin',  'quants_mat.gz')
-    threads:
-        NTHREADS
-    params:
-        fastqs_path = op.join(BASE, 'data', RUN_NAME),
-        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes',  "{srr}"),
-        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon'),
-        # cb = list_cbs,
-        # r2 = list_r2s
-        cb = op.join(BASE, 'data', RUN_NAME, "{srr}_1_trim.fastq.gz"),
-        r2 = op.join(BASE, 'data', RUN_NAME, "{srr}_2.fastq.gz")
-    log:
-        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_genes_celseq_{srr}.log')
-    shell:
-        """
-    mkdir -p {params.processing_path}
-    cd {params.processing_path}
-
-    ({SALMON} alevin \
-    -l ISR \
-    -1 {params.cb} \
-    -2 {params.r2} \
-    --celseq2 \
-    --dumpFeatures \
-    -i {params.salmon_idx} \
-    -p {threads} -o {params.processing_path} \
-    --tgMap {input.tgmap} ) 2> {log}
-
-    touch -c {output}
-        """
-
 
 
       
@@ -253,11 +170,19 @@ rule featurecounts_repeats_repeatome_bowtie:
        --Rpath {params.path} \
        {input.bam}  &> {log}
 
-       ## any CB:UMI pair that was seen is removed from the output (awk array)
+       # ## any CB:UMI pair that was seen is removed from the output (awk array)
+       # grep 'Assigned' {output.detailed} | \
+       #   awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
+       #   sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+       #   {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+
        grep 'Assigned' {output.detailed} | \
-         awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
-         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+        awk 'BEGIN {{ "\\t"}}
+        {{
+            split ($1, a, "[_.]") 
+            !x[a[3], a[4]]++;
+            print a[3],a[4],$4
+         }}' |  {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}  
             """)
@@ -274,10 +199,18 @@ rule featurecounts_repeats_repeatome_bowtie:
        {input.bam}  &> {log}
 
        ## any CB:UMI pair that was seen is removed from the output (awk array)
+       # grep 'Assigned' {output.detailed} | \
+       #   awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
+       #   sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+       #   {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+
        grep 'Assigned' {output.detailed} | \
-         awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
-         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+        awk 'BEGIN {{ "\\t"}}
+        {{
+            split ($1, a, "[_.]") 
+            !x[a[3], a[4]]++;
+            print a[3],a[4],$4
+         }}' |  {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}  
           
@@ -325,10 +258,18 @@ rule feature_counts_repeats_not_overlapping_genes:
        {input.bam}  &> {log}
 
        ## any CB:UMI pair that was seen is removed from the output (awk array)
+       # grep 'Assigned' {output.detailed} | \
+       #   awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
+       #   sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+       #   {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+
        grep 'Assigned' {output.detailed} | \
-         awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
-         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+        awk 'BEGIN {{ "\\t"}}
+        {{
+            split ($1, a, "[_.]") 
+            !x[a[3], a[4]]++;
+            print a[3],a[4],$4
+         }}' |  {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}  
             """)
@@ -345,10 +286,18 @@ rule feature_counts_repeats_not_overlapping_genes:
        {input.bam}  &> {log}
 
        ## any CB:UMI pair that was seen is removed from the output (awk array)
+       # grep 'Assigned' {output.detailed} | \
+       #   awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
+       #   sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+       #   {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+
        grep 'Assigned' {output.detailed} | \
-         awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
-         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+        awk 'BEGIN {{ "\\t"}}
+        {{
+            split ($1, a, "[_.]") 
+            !x[a[3], a[4]]++;
+            print a[3],a[4],$4
+         }}' |  {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}            
             """)
@@ -387,9 +336,17 @@ rule featurecounts_genes:
        # awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | cut -f2,3,6 | \
        # {PIGZ} --keep  -p {threads} --stdout > {output.genes_gz_detailed}
 
+       # grep 'Assigned' {output.genes_detailed} |  \
+       #   awk -F'[_.\t]' '{{OFS="\t"; print $3,$4, $8}}' | \
+       #    {PIGZ} --keep  -p {threads} --stdout > {output.genes_gz_detailed}
 
-       grep 'Assigned' {output.genes_detailed} |  awk -F'[_.\t]' '{{OFS="\t"; print $3,$4, $8}}' | \
-       {PIGZ} --keep  -p {threads} --stdout > {output.genes_gz_detailed}
+      grep 'Assigned' {output.genes_detailed} | \
+        awk 'BEGIN {{ "\\t"}}
+        {{
+            split ($1, a, "[_.]") 
+            !x[a[3], a[4]]++;
+            print a[3],a[4],$4
+         }}' |  {PIGZ} --keep  -p {threads} --stdout > {output.genes_gz_detailed}
 
        {PIGZ} --keep -p {threads} {output.genes_counts}
        
@@ -437,10 +394,18 @@ rule featurecounts_repeats_from_star:
        {input.bam}  &> {log}
 
        ## any CB:UMI pair that was seen is removed from the output (awk array)
+       # grep 'Assigned' {output.detailed} | \
+       #   awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
+       #   sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+       #   {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+
        grep 'Assigned' {output.detailed} | \
-         awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
-         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+        awk 'BEGIN {{ "\\t"}}
+        {{
+            split ($1, a, "[_.]") 
+            !x[a[3], a[4]]++;
+            print a[3],a[4],$4
+         }}' |  {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}  
             """)
@@ -457,10 +422,18 @@ rule featurecounts_repeats_from_star:
        {input.bam}  &> {log}
 
        ## any CB:UMI pair that was seen is removed from the output (awk array)
+       # grep 'Assigned' {output.detailed} | \
+       #   awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
+       #   sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
+       #   {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+
        grep 'Assigned' {output.detailed} | \
-         awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | \
-         sed 's/_/\t/g' |  awk '{{OFS=FS="\t"; print $2,$3,$6""$7""$8}}' | \
-         {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
+        awk 'BEGIN {{ "\\t"}}
+        {{
+            split ($1, a, "[_.]") 
+            !x[a[3], a[4]]++;
+            print a[3],a[4],$4
+         }}' |  {PIGZ} --keep  -p {threads} --stdout > {output.gz_detailed}
 
        {PIGZ} --keep  -p {threads} {output.counts}            
             """)
@@ -561,3 +534,27 @@ rule map_star_transcriptome_se:
         ## in case STAR managed to delete its own folder (doesn't always happen)
         mkdir -p {output.star_tmp}
         """
+
+rule umitools_whitelist:
+    input:
+        r1_trim = op.join(BASE, "data", RUN_NAME, "{srr}_1_trim.fastq.gz")
+    output:
+        whitelist = temp(op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.txt")),
+        whitelist_gz = op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.txt.gz")
+    params:
+        bc_pattern = BARCODE_PATTERN,
+        num_cells = NUM_CELLS,
+        threads = PER_TASK_MAX_THREADS
+    log:
+        op.join(BASE, "runs", RUN_NAME, "{srr}_cb_whitelist.log")
+    shell:
+        """
+        umi_tools whitelist --stdin {input.r1_trim} \
+                    --bc-pattern={params.bc_pattern} \
+                    --set-cell-number={params.num_cells} \
+                    --log = {log} \
+                    -S {output.whitelist}
+
+        {PIGZ} --keep  -p {threads} {output.whitelist}
+
+    """

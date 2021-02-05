@@ -35,13 +35,30 @@ include: "/home/imallona/src/repeats_sc/04_snakemake/rnaseq_like.snmk"
 
 rule all:
     input:
-        op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt'),
-        op.join(BASE, 'indices', 'star', GENOME, 'repeatome', 'chrName.txt'),
-        op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrName.txt'),
-        op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]+ '.fa.gz'),
-        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.counts.gz"), fastq = FASTQS),
-        expand(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', "{fastq}_repeats.counts.gz"), fastq = FASTQS),
-        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{fastq}_genes.counts.gz"), fastq = FASTQS)
+        # op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt'),
+        # op.join(BASE, 'indices', 'star', GENOME, 'repeatome', 'chrName.txt'),
+        # op.join(BASE, 'indices', 'star', GENOME, 'transcriptome', 'chrName.txt'),
+        # op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]+ '.fa.gz'),
+        # expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.counts.gz"), fastq = FASTQS),
+        # expand(op.join(BASE, "runs",RUN_NAME, "star_transcriptome", 'repeats', "{fastq}_repeats.counts.gz"), fastq = FASTQS),
+        # expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes', "{fastq}_genes.counts.gz"), fastq = FASTQS)
+        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                       "{fastq}.bam.featureCounts.gz"),
+               fastq = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers']),
+         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'genes',
+                       "{fastq}_genes.counts.gz"), 
+               fastq = get_samples(CONF)),
+        expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats',
+                       "{multimappers}", "{fastq}_repeats.counts..gz"), 
+               fastq = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers']),
+         expand(op.join(BASE, "runs", RUN_NAME, "star_transcriptome", 'repeats_no_overlap',
+                       "{multimappers}", "{fastq}_repeats.counts.gz"), 
+               fastq = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers'])
+
+
 
         
 
