@@ -11,7 +11,7 @@ from glob import glob
 BASE = op.join('/home', 'imallona', 'repeats_sc')
 NTHREADS = 40
 LOCAL_MEM_GB = 100
-Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
+Rscript = '/usr/local/R/R-4.0.0/bin/Rscript'
 
 rule all:
     input:
