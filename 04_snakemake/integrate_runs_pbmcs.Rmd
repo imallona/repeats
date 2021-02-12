@@ -463,7 +463,7 @@ palettes$mapper <- data.frame(
 
 palettes$analyte <- data.frame(
     id = c('repeats', 'genes', 'both'),
-    color = c('#157A6E', '#C2C5BB', '#B4654A'))
+    color = c('#157A6E', '#60615b', '#B4654A'))
 
 palettes$overlap <- data.frame(
     id = c('overlap_allowed', 'no_overlap', 'alevin_decoy'),
@@ -1475,17 +1475,61 @@ markers$zheng_truth <- NULL
 
 markers <- do.call(rbind.data.frame, markers)
 
+markers <- as.data.frame(markers)
 
-## colnames(markers)
-## table(markers$cluster)
-## table(markers$flavour)
-## table(markers$dataset)
+```
+
+```{r}
+## head(markers)
+
+markers_truth <- as.data.frame(markers_truth)
+markers_truth$cluster <- sapply(strsplit(as.character(markers_truth$cluster),
+                                         split = '\n', fixed = TRUE),
+                                function(x) return(x[1]))
+## head(markers_truth)
+```
+
+```{r}
+dict <- structure(list(
+    truth = c("cd4_t_helper", "cytotoxic_t", "b_cells", 
+              "cd56_nk", "cd14_monocytes", "cd34", "memory_t", "naive_cytotoxic", 
+              "regulatory_t", "naive_t"),
+    identity = c("CD4+_T_cell", "Cytotoxic_T_cell", 
+                 "B_cell", "Natural_killer_cell", "CD14+_monocyte", "CD34+_monocyte", 
+                 "Memory_T", "Naive_cytotoxic_T_cell", "Regulatory_T", "Naive_T"),
+    flattened = c("CD4+_T_cell", "Cytotoxic_T_cell", 
+                 "B_cell", "Natural_killer_cell", "CD14+_monocyte", "CD16+_monocyte", 
+                 "Other", "Other", "Other", "Other"),
+    color = c("#A6CEE3", "#1F78B4", "#B2DF8A", "#33A02C", "#FB9A99", 
+              "#FB9A99", "#C0C0C0", "#1F78B4", "#C0C0C0", "#C0C0C0")),
+    row.names = c("cd4_t_helper", "cytotoxic_t", "b_cells", "cd56_nk", "cd14_monocytes", "cd34", 
+                  "memory_t", "naive_cytotoxic", "regulatory_t", "naive_t"),
+    class = "data.frame")
+
+markers_both <- rbind(markers, markers_truth)
+
+markers_both <- markers_both[markers_both$cluster %in% c(levels(markers$cluster), dict$truth),]
+markers_both$cluster <- as.character(markers_both$cluster)
+for (zheng_id in dict$truth) {
+    markers_both$cluster[markers_both$cluster == zheng_id] <- dict[dict$truth == zheng_id,
+                                                                   'flattened']
+}
+
+## table(markers_both$cluster, markers_both$flavour)
+markers_both <- markers_both[markers_both$cluster != 'Other',]
+
+```
+
+Adding the `both_cellranger` as `both_multi`
+
+
+```{r}
+markers_both$flavour[markers_both$flavour == 'both_cellranger'] <- 'both_multi'
 ```
 
 
-```{r, fig.width = 6, fig.height=5, results = 'asis'}
 
-markers <- as.data.frame(markers)
+```{r, fig.width = 6, fig.height=5, results = 'asis', eval = TRUE}
 
 
 for (celltype in unique(markers$cluster)) {
@@ -1517,15 +1561,6 @@ for (celltype in unique(markers$cluster)) {
 
 ```
 
-```{r}
-head(markers)
-
-markers_truth <- as.data.frame(markers_truth)
-markers_truth$cluster <- sapply(strsplit(as.character(markers_truth$cluster),
-                                         split = '\n', fixed = TRUE),
-                                function(x) return(x[1]))
-head(markers_truth)
-```
 
 # Markers per cell type, concordance across methods {.tabset .tabset-fade .tabset-pills} 
 
@@ -1567,47 +1602,6 @@ for (celltype in unique(markers$cluster)) {
 
 # Per celltype plus truth concordance  {.tabset .tabset-fade .tabset-pills} 
 
-```{r}
-
-## dict <- zheng_pal[!grepl('missing', zheng_pal$truth),]
-
-dict <- structure(list(
-    truth = c("cd4_t_helper", "cytotoxic_t", "b_cells", 
-              "cd56_nk", "cd14_monocytes", "cd34", "memory_t", "naive_cytotoxic", 
-              "regulatory_t", "naive_t"),
-    identity = c("CD4+_T_cell", "Cytotoxic_T_cell", 
-                 "B_cell", "Natural_killer_cell", "CD14+_monocyte", "CD34+_monocyte", 
-                 "Memory_T", "Naive_cytotoxic_T_cell", "Regulatory_T", "Naive_T"),
-    flattened = c("CD4+_T_cell", "Cytotoxic_T_cell", 
-                 "B_cell", "Natural_killer_cell", "CD14+_monocyte", "CD16+_monocyte", 
-                 "Other", "Other", "Other", "Other"),
-    color = c("#A6CEE3", "#1F78B4", "#B2DF8A", "#33A02C", "#FB9A99", 
-              "#FB9A99", "#C0C0C0", "#1F78B4", "#C0C0C0", "#C0C0C0")),
-    row.names = c("cd4_t_helper", "cytotoxic_t", "b_cells", "cd56_nk", "cd14_monocytes", "cd34", 
-                  "memory_t", "naive_cytotoxic", "regulatory_t", "naive_t"),
-    class = "data.frame")
-
-markers_both <- rbind(markers, markers_truth)
-
-markers_both <- markers_both[markers_both$cluster %in% c(levels(markers$cluster), dict$truth),]
-markers_both$cluster <- as.character(markers_both$cluster)
-for (zheng_id in dict$truth) {
-    markers_both$cluster[markers_both$cluster == zheng_id] <- dict[dict$truth == zheng_id,
-                                                                   'flattened']
-}
-
-## table(markers_both$cluster, markers_both$flavour)
-markers_both <- markers_both[markers_both$cluster != 'Other',]
-
-```
-
-Adding the `both_cellranger` as `both_multi`
-
-
-```{r}
-
-markers_both$flavour[markers_both$flavour == 'both_cellranger'] <- 'both_multi'
-```
 
 ```{r, fig.width =8, fig.height=4, results = 'asis'}
 
@@ -1789,13 +1783,258 @@ for (celltype in unique(markers$cluster)) {
 <!-- # Cluster techniques and flavours and celltypes? -->
 
 
-# Markers cluster dendrogram
+# Markers cluster dendrogram {.tabset}
 
 With manhattan distances over binary data (presence/ausence of the positive marker). Equivalent to Hamming distance.
 
-For genes
+
+
+## For everything
+
 
 ```{r}
+
+fc <- list()
+annot <- list()
+for (celltype in unique(markers$cluster)) {
+    fc[[celltype]] <- list()
+    annot[[celltype]] <- list()
+
+    ## table(markers$cluster)
+    ## detected <- unique(markers[grepl('genes', markers$flavour), 'gene'])
+    detected <- unique(markers[markers$cluster == celltype, 'gene'])
+            
+    length(detected)
+    
+    for (flavour in unique(markers[markers$cluster == celltype, 'flavour'])) {
+        for (dataset in unique (markers[markers$flavour == flavour &
+                                      markers$cluster == celltype, 'dataset'])) {
+            tmp  <- markers[markers$flavour == flavour &
+                            markers$dataset == dataset &
+                            markers$cluster == celltype, 'gene']
+            
+            fc[[celltype]][[paste(flavour, dataset, celltype)]] <- as.numeric(detected %in% tmp)
+            annot[[celltype]][[paste(flavour, dataset,
+                                     celltype)]] <- c(flavour, dataset,
+                                                      celltype,
+                                                      sum(fc[[celltype]][[paste(flavour, dataset, celltype)]]))
+        }
+    }
+
+    
+    fc[[celltype]] <- do.call(cbind.data.frame, fc[[celltype]])
+
+    annot[[celltype]] <- do.call(rbind.data.frame, annot[[celltype]])
+    colnames(annot[[celltype]]) <- c('flavour', 'dataset', 'celltype', 'num_markers')
+    annot[[celltype]]$num_markers <- as.numeric(annot[[celltype]]$num_markers)
+    rownames(annot[[celltype]]) <- paste(annot[[celltype]]$flavour,
+                                         annot[[celltype]]$dataset,
+                                         annot[[celltype]]$celltype)
+    rownames(fc[[celltype]]) <- detected
+
+    stopifnot(all(rownames(annot[[celltype]]) == colnames(fc[[celltype]])))
+}
+
+## fc <- listfeature = detected)
+
+## plot(hclust(dist(t(fc), method = 'manhattan')))
+
+
+```
+
+
+Also cluster them all: all cells, all methods, and even genes
+
+```{r}
+
+all_markers <- unique(unlist(lapply(fc, row.names)))
+
+havoc <- matrix(data = 0, nrow = length(all_markers),
+                ncol = sum(as.numeric(lapply(fc, ncol))))
+
+havoc <- as.data.frame(havoc, row.names = all_markers)
+
+## celltype
+i <- 1
+for (ct in names(fc)) {
+    ## method
+    for (met in colnames(fc[[ct]])) {
+        havoc[rownames(fc[[ct]][met]), i] <- fc[[ct]][,met]
+        ## colnames(havoc)[i] <- paste(ct, met, sep = "__")
+        colnames(havoc)[i] <- met
+        i <- i + 1
+    }
+}
+
+dim(havoc)
+```
+
+```{r, fig.width = 10, fig.height = 6}
+ham_d <- dist(t(havoc), method = 'binary')
+hc <- hclust(ham_d, method = 'ward.D2')
+
+
+meta <- data.frame(
+    analyte = sapply(strsplit(colnames(havoc), split = " "), function(x) return (x[1])),
+    dataset = sapply(strsplit(colnames(havoc), split = " "), function(x) return (x[2])),
+    celltype = sapply(strsplit(colnames(havoc), split = " "), function(x) return (x[3])),
+    broad = ifelse(grepl('genes|both', colnames(havoc)), 'genes', 'repeats'),
+    row.names = colnames(havoc))
+
+meta$broad[grepl('both', rownames(meta))] <- 'genes+repeats'
+meta$broad[grepl('only', rownames(meta))] <- 'repeats_only'
+
+tree <- ggtree(hc,
+       branch.length = "none", size = 0.1) 
+
+dd <- tree$data
+dd <- dd[dd$isTip,]
+lab <- dd$label[order(dd$y, decreasing = TRUE)]
+full <- tree +
+    coord_cartesian(clip = 'off') 
+
+# Define custom palettes for when there are 1-2, 3, or 4-6 levels
+opts <- options(
+  ggplot2.discrete.fill = list(
+    c("skyblue", "orange"),
+    RColorBrewer::brewer.pal(3, "Set2"),
+    RColorBrewer::brewer.pal(6, "Accent"),
+    RColorBrewer::brewer.pal(12, "Set3")
+  )
+)
+
+
+full + geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab],
+                    name = "hm0", gap = 0.2, 
+                    cluster_column = FALSE,
+                    show_coltree = FALSE,
+                    rel_width = 2) +
+    labs(fill = "Binary distance") +
+    scale_fill_viridis_c(direction = -1) +
+    ## geom_th_addvalue(name = "hm0", color = "white", size = 2) +
+    geom_th_title(name = "hm0", side = "top",
+                  label = "", nudge_y = -0.2) +
+    
+    ## new_scale_fill() +
+    ## geom_th_heatmap(th_data = meta[1], name = "hm1", gap = 0.2,
+    ##                 rel_width = 0.1) +
+    ## scale_colour_gradient() +
+    ## geom_th_text(name = "hm1", side = "top", nudge_y = 0.8,
+    ##              angle = 90, size = 3) +
+
+    ## new_scale_fill() +
+    ## geom_th_heatmap(th_data = meta[2], name = "hm2", gap = 0.2,
+    ##                 rel_width = 0.1) +
+    ## scale_colour_gradient() +
+    ## geom_th_text(name = "hm2", side = "top", nudge_y = 0.8,
+    ##              angle = 90, size = 3) +
+
+    new_scale_fill() +
+    geom_th_heatmap(th_data = meta[3], name = "hm3", gap = 0.2,
+                    rel_width = 0.1) +
+    scale_colour_gradient() +
+    ## scale_fill_manual(values = setNames(palettes$celltype$color, palettes$celltype$id)) 
+    geom_th_text(name = "hm3", side = "top", nudge_y = 0.8,
+                 angle = 90, size = 3) +
+
+    new_scale_fill() +
+    geom_th_heatmap(th_data = meta[4], name = "hm4", gap = 0.2,
+                    rel_width = 0.1) +
+    scale_colour_gradient() +
+    geom_th_text(name = "hm4", side = "top", nudge_y = 0.8,
+                 angle = 90, size = 3)
+
+
+```
+
+What about repeats-only?
+
+```{r}
+
+havoc <- havoc[,grep('repeats', colnames(havoc))]
+## dim(havoc)
+ham_d <- dist(t(havoc), method = 'binary')
+hc <- hclust(ham_d, method = 'ward.D2')
+
+
+meta <- data.frame(
+    analyte = sapply(strsplit(colnames(havoc), split = " "), function(x) return (x[1])),
+    dataset = sapply(strsplit(colnames(havoc), split = " "), function(x) return (x[2])),
+    celltype = sapply(strsplit(colnames(havoc), split = " "), function(x) return (x[3])),
+    broad = ifelse(grepl('genes|both', colnames(havoc)), 'genes', 'repeats'),
+    row.names = colnames(havoc))
+
+meta$broad[grepl('both', rownames(meta))] <- 'genes+repeats'
+meta$broad[grepl('only', rownames(meta))] <- 'repeats_only'
+
+tree <- ggtree(hc,
+       branch.length = "none", size = 0.1) 
+
+dd <- tree$data
+dd <- dd[dd$isTip,]
+lab <- dd$label[order(dd$y, decreasing = TRUE)]
+full <- tree +
+    coord_cartesian(clip = 'off') 
+
+# Define custom palettes for when there are 1-2, 3, or 4-6 levels
+opts <- options(
+  ggplot2.discrete.fill = list(
+    c("skyblue", "orange"),
+    RColorBrewer::brewer.pal(3, "Set2"),
+    RColorBrewer::brewer.pal(6, "Accent"),
+    RColorBrewer::brewer.pal(12, "Set3")
+  )
+)
+
+
+full + geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab],
+                    name = "hm0", gap = 0.2, 
+                    cluster_column = FALSE,
+                    show_coltree = FALSE,
+                    rel_width = 2) +
+    labs(fill = "Binary distance") +
+    scale_fill_viridis_c(direction = -1) +
+    ## geom_th_addvalue(name = "hm0", color = "white", size = 2) +
+    geom_th_title(name = "hm0", side = "top",
+                  label = "", nudge_y = -0.2) +
+    
+    ## new_scale_fill() +
+    ## geom_th_heatmap(th_data = meta[1], name = "hm1", gap = 0.2,
+    ##                 rel_width = 0.1) +
+    ## scale_colour_gradient() +
+    ## geom_th_text(name = "hm1", side = "top", nudge_y = 0.8,
+    ##              angle = 90, size = 3) +
+
+    ## new_scale_fill() +
+    ## geom_th_heatmap(th_data = meta[2], name = "hm2", gap = 0.2,
+    ##                 rel_width = 0.1) +
+    ## scale_colour_gradient() +
+    ## geom_th_text(name = "hm2", side = "top", nudge_y = 0.8,
+    ##              angle = 90, size = 3) +
+
+    new_scale_fill() +
+    geom_th_heatmap(th_data = meta[3], name = "hm3", gap = 0.2,
+                    rel_width = 0.1) +
+    scale_colour_gradient() +
+    ## scale_fill_manual(values = setNames(palettes$celltype$color, palettes$celltype$id)) 
+    geom_th_text(name = "hm3", side = "top", nudge_y = 0.8,
+                 angle = 90, size = 3) +
+
+    new_scale_fill() +
+    geom_th_heatmap(th_data = meta[4], name = "hm4", gap = 0.2,
+                    rel_width = 0.1) +
+    scale_colour_gradient() +
+    geom_th_text(name = "hm4", side = "top", nudge_y = 0.8,
+                 angle = 90, size = 3)
+
+
+
+```
+
+
+## For genes
+
+```{r, results = 'asis'}
 
 fc <- list()
 annot <- list()
@@ -1844,48 +2083,8 @@ for (celltype in unique(markers$cluster)) {
 
 ## plot(hclust(dist(t(fc), method = 'manhattan')))
 
+
 ```
-
-<!-- ```{r} -->
-<!-- for (ct in names(annot)) { -->
-<!--     annot[[ct]]$num_markers <- as.numeric(annot[[ct]]$num_markers) -->
-
-<!--     annot[[ct]]$analyte <- 'NA' -->
-<!--     annot[[ct]][grepl('genes', annot[[ct]]$flavour), 'analyte'] <- 'genes' -->
-<!--     annot[[ct]][grepl('repeats', annot[[ct]]$flavour), 'analyte'] <- 'repeats' -->
-<!--     annot[[ct]][grepl('both', annot[[ct]]$flavour), 'analyte'] <- 'both' -->
-
-<!--     annot[[ct]]$analyte <- factor(annot[[ct]]$analyte, levels = c('genes', 'both', 'repeats')) -->
-
-<!--     annot[[ct]]$multimapper <- 'NA' -->
-<!--     annot[[ct]][grepl('multi', annot[[ct]]$flavour), 'multimapper'] <- 'multi' -->
-<!--     annot[[ct]][grepl('alevin', annot[[ct]]$flavour), 'multimapper'] <- 'deduplicated' -->
-<!--     annot[[ct]][grepl('genes|cellranger|unique', annot[[ct]]$flavour), 'multimapper'] <- 'unique' -->
-
-<!--     ## table(annot[[ct]]$analyte, annot[[ct]]$multimapper, useNA = 'always') -->
-
-<!--     annot[[ct]]$overlap <- 'overlap_allowed' -->
-<!--     annot[[ct]][grepl('repeats_alevin', annot[[ct]]$flavour), 'overlap'] <- 'alevin_decoy' -->
-<!--     annot[[ct]][grepl('genes|both', annot[[ct]]$flavour), 'overlap'] <- 'genes' -->
-<!--     annot[[ct]][grepl('only', annot[[ct]]$flavour), 'overlap'] <- 'no_overlap' -->
-
-<!--     annot[[ct]]$mapper <- 'NA' -->
-<!--     annot[[ct]][grepl('cellranger|star|featurecounts|only', annot[[ct]]$flavour), 'mapper'] <- 'star' -->
-<!--     annot[[ct]][grepl('bowtie', annot[[ct]]$flavour), 'mapper'] <- 'bowtie' -->
-<!--     annot[[ct]][grepl('alevin', annot[[ct]]$flavour), 'mapper'] <- 'alevin' -->
-<!--     table(annot[[ct]]$mapper) -->
-
-<!--     annot[[ct]]$counter <- 'featurecounts' -->
-<!--     annot[[ct]][grepl('alevin', annot[[ct]]$flavour), 'counter'] <- 'alevin' -->
-
-<!--     annot[[ct]]$technology <- 'chromium' -->
-<!--     annot[[ct]][grepl('smartseq2', annot[[ct]]$dataset), 'technology'] <- 'smartseq2' -->
-<!--     annot[[ct]][grepl('celseq', annot[[ct]]$dataset), 'technology'] <- 'celseq2' -->
-<!--     annot[[ct]][grepl('dropseq', annot[[ct]]$dataset), 'technology'] <- 'dropseq' -->
-<!--     annot[[ct]][grepl('seqwell', annot[[ct]]$dataset), 'technology'] <- 'seqwell' -->
-<!-- } -->
-
-<!-- ``` -->
 
 
 ```{r}
@@ -1931,261 +2130,57 @@ for (ct in names(annot)) {
 
 ```
 
-<!-- ```{r} -->
-<!-- item <- 'CD14+_monocyte' -->
-
-<!-- ham_d <- dist(t(fc[[item]]), method = 'manhattan') -->
-<!-- hc <- hclust(ham_d, method = 'ward.D2') -->
-
-<!-- tree <- ggtree(hc, -->
-<!--        branch.length = "none", size = 0.1)  -->
-
-<!-- dd <- tree$data -->
-<!-- dd <- dd[dd$isTip,] -->
-<!-- lab <- dd$label[order(dd$y, decreasing = T)] -->
-
-
-<!-- full <- tree + -->
-<!--     geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab], -->
-<!--                     name = "hm0", gap = 0.2,  -->
-<!--                     cluster_column = FALSE, -->
-<!--                     show_coltree = FALSE, -->
-<!--                     rel_width = 2) + -->
-<!--     labs(fill = "Hamming distance") + -->
-<!--     scale_fill_viridis_c(direction = -1) + -->
-<!--     geom_th_addvalue(name = "hm0", color = "white", size = 4) + -->
-    
-<!--     new_scale_fill() + -->
-<!--     geom_th_heatmap(th_data = annot[[item]]['dataset'], name = "hm1", gap = 0.2,  -->
-<!--                     cluster_column = FALSE, -->
-<!--                     size_coltree = 0.5, -->
-<!--                     rel_width = 0.1) + -->
-<!--     scale_fill_brewer(palette = "Set2") + -->
-<!--     labs(fill = "Dataset") + -->
-<!--     geom_th_text(name = "hm1", side = "top", nudge_y = 0.5, -->
-<!--                  angle = 90, size = 3) + -->
-
-<!--     new_scale_fill() + -->
-<!--     geom_th_heatmap(th_data = annot[[item]]['technology'], name = "hmtech", gap = 0.2,  -->
-<!--                     cluster_column = FALSE, -->
-<!--                     size_coltree = 0.5, -->
-<!--                     rel_width = 0.1) + -->
-<!--     scale_fill_brewer(palette = "Set2") + -->
-<!--     labs(fill = "Technology") + -->
-<!--     geom_th_text(name = "hmtech", side = "top", nudge_y = 0.5, -->
-<!--                  angle = 90, size = 3) + -->
-
-    
-<!--     new_scale_fill() + -->
-<!--     geom_th_heatmap(th_data = annot[[item]]['mapper'], name = "hm2", gap = 0.2,  -->
-<!--                     cluster_column = FALSE, -->
-<!--                     size_coltree = 0.5, -->
-<!--                     rel_width = 0.1) + -->
-<!--     scale_fill_brewer(palette = "Set1") + -->
-<!--     labs(fill = "Mapper")+ -->
-<!--     geom_th_text(name = "hm2", side = "top", nudge_y = 0.5, -->
-<!--                  angle = 90, size = 3) + -->
-
-
-<!--     new_scale_fill() + -->
-<!--     geom_th_heatmap(th_data = annot[[item]]['counter'], name = "hm3", gap = 0.2,  -->
-<!--                     cluster_column = FALSE, -->
-<!--                     size_coltree = 0.5, -->
-<!--                     rel_width = 0.1) + -->
-<!--     scale_fill_brewer(palette = "Set1") + -->
-<!--     labs(fill = "Counter") + -->
-<!--      geom_th_text(name = "hm3", side = "top", nudge_y = 0.5, -->
-<!--                   angle = 90, size = 3) + -->
-    
-<!--     new_scale_fill() + -->
-<!--     geom_th_heatmap(th_data = annot[[item]]['overlap'], name = "hm4", gap = 0.2,  -->
-<!--                     cluster_column = FALSE, -->
-<!--                     size_coltree = 0.5, -->
-<!--                     rel_width = 0.1) + -->
-<!--     scale_fill_brewer(palette = "Set1") + -->
-<!--     labs(fill = "Overlap") + -->
-<!--     geom_th_text(name = "hm4", side = "top", nudge_y = 0.5, -->
-<!--                  angle = 90, size = 3) + -->
-<!--     new_scale_fill() + -->
-    
-<!--     geom_th_heatmap(th_data = annot[[item]]['multimapper'], name = "hm5", gap = 0.2,  -->
-<!--                     cluster_column = FALSE, -->
-<!--                     size_coltree = 0.5, -->
-<!--                     rel_width = 0.1) + -->
-<!--     scale_fill_brewer(palette = "Set1") + -->
-<!--     labs(fill = "Multimappers")+ -->
-<!--     geom_th_text(name = "hm5", side = "top", nudge_y = 0.5, -->
-<!--                  angle = 90, size = 3) + -->
-
-    
-<!--     new_scale_fill() + -->
-<!--     geom_th_heatmap(th_data = annot[[item]]['num_markers'], name = "hm6", gap = 0.2, -->
-<!--                     rel_width = 0.1) + -->
-<!--     labs(fill = "Num. markers")+ -->
-<!--     scale_fill_viridis_c() + -->
-<!--     geom_th_text(name = "hm6", side = "top", nudge_y = 0.5, -->
-<!--                  angle = 90, size = 3) + -->
-<!--     geom_th_title(name = "hm0", side = "top", -->
-<!--                   label = "Num. discordant markers", nudge_y = -0.8) + -->
-    
-<!--     theme(plot.margin=unit(c(2, 1, 1.5, 1.2),"cm")) -->
-
-<!-- ``` -->
-
-<!-- By chunks -->
-
-<!-- ```{r} -->
-
-<!-- p1 <- tree + -->
-<!--     geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab], -->
-<!--                     name = "hm0", gap = 0.2,  -->
-<!--                     cluster_column = FALSE, -->
-<!--                     show_coltree = FALSE, -->
-<!--                     rel_width = 2) + -->
-<!--     labs(fill = "Hamming distance") + -->
-<!--     scale_fill_viridis_c(direction = -1) + -->
-<!--     geom_th_addvalue(name = "hm0", color = "white", size = 4) + -->
-<!--     geom_th_title(name = "hm0", side = "top", -->
-<!--                   label = "Num. discordant markers", nudge_y = -0.8) -->
-
-    
-<!-- p2 <- tree + -->
-<!--     new_scale_fill() + -->
-<!--     geom_th_heatmap(th_data = annot[[item]]['dataset'], name = "hm1", gap = 0.2,  -->
-<!--                     cluster_column = FALSE, -->
-<!--                     size_coltree = 0.5, -->
-<!--                     rel_width = 0.1) + -->
-<!--     scale_fill_brewer(palette = "Set2") + -->
-<!--     labs(fill = "Dataset") + -->
-<!--     geom_th_text(name = "hm1", side = "top", nudge_y = 0.5, -->
-<!--                  angle = 90, size = 3) -->
-
-<!-- p3 <-  tree + -->
-<!--     new_scale_fill() + -->
-<!--     geom_th_heatmap(th_data = annot[[item]]['technology'], name = "hmtech", gap = 0.2,  -->
-<!--                     cluster_column = FALSE, -->
-<!--                     size_coltree = 0.5, -->
-<!--                     rel_width = 0.1) + -->
-<!--     scale_fill_brewer(palette = "Set2") + -->
-<!--     labs(fill = "Technology") + -->
-<!--     geom_th_text(name = "hmtech", side = "top", nudge_y = 0.5, -->
-<!--                  angle = 90, size = 3)  -->
-
-<!-- p4 <- tree +     -->
-<!--     new_scale_fill() + -->
-<!--     geom_th_heatmap(th_data = annot[[item]]['mapper'], name = "hm2", gap = 0.2,  -->
-<!--                     cluster_column = FALSE, -->
-<!--                     size_coltree = 0.5, -->
-<!--                     rel_width = 0.1) + -->
-<!--     scale_fill_brewer(palette = "Set1") + -->
-<!--     labs(fill = "Mapper")+ -->
-<!--     geom_th_text(name = "hm2", side = "top", nudge_y = 0.5, -->
-<!--                  angle = 90, size = 3) -->
-
-<!-- p5 <- tree + -->
-<!--     new_scale_fill() + -->
-<!--     geom_th_heatmap(th_data = annot[[item]]['counter'], name = "hm3", gap = 0.2,  -->
-<!--                     cluster_column = FALSE, -->
-<!--                     size_coltree = 0.5, -->
-<!--                     rel_width = 0.1) + -->
-<!--     scale_fill_brewer(palette = "Set1") + -->
-<!--     labs(fill = "Counter") + -->
-<!--      geom_th_text(name = "hm3", side = "top", nudge_y = 0.5, -->
-<!--                   angle = 90, size = 3) -->
-
-
-<!-- p6 <- tree +     -->
-<!--     new_scale_fill() + -->
-<!--     geom_th_heatmap(th_data = annot[[item]]['overlap'], name = "hm4", gap = 0.2,  -->
-<!--                     cluster_column = FALSE, -->
-<!--                     size_coltree = 0.5, -->
-<!--                     rel_width = 0.1) + -->
-<!--     scale_fill_brewer(palette = "Set1") + -->
-<!--     labs(fill = "Overlap") + -->
-<!--     geom_th_text(name = "hm4", side = "top", nudge_y = 0.5, -->
-<!--                  angle = 90, size = 3)  -->
-
-<!-- p7 <- tree + -->
-<!--     new_scale_fill() + -->
-    
-<!--     geom_th_heatmap(th_data = annot[[item]]['multimapper'], name = "hm5", gap = 0.2,  -->
-<!--                     cluster_column = FALSE, -->
-<!--                     size_coltree = 0.5, -->
-<!--                     rel_width = 0.1) + -->
-<!--     scale_fill_brewer(palette = "Set1") + -->
-<!--     labs(fill = "Multimappers")+ -->
-<!--     geom_th_text(name = "hm5", side = "top", nudge_y = 0.5, -->
-<!--                  angle = 90, size = 3) -->
-
-<!-- p8 <- tree +     -->
-<!--     new_scale_fill() + -->
-<!--     geom_th_heatmap(th_data = annot[[item]]['num_markers'], name = "hm6", gap = 0.2, -->
-<!--                     rel_width = 0.1) + -->
-<!--     labs(fill = "Num. markers")+ -->
-<!--     scale_fill_viridis_c() + -->
-<!--     geom_th_text(name = "hm6", side = "top", nudge_y = 0.5, -->
-<!--                  angle = 90, size = 3) -->
-<!-- ``` -->
-
-<!-- Arrange legends -->
-
-<!-- ```{r} -->
-
-<!-- leg <- list() -->
-
-<!-- for (item in paste0('p', 1:8)) { -->
-
-<!--     leg[[item]] <- get_legend(get(item)) -->
-<!-- } -->
-
-
-<!-- leg12 <- plot_grid(leg[[1]], leg[[2]],  ncol = 1) -->
-<!-- leg35 <- plot_grid(leg[[3]], leg[[4]], leg[[5]], ncol = 1) -->
-<!-- leg68 <- plot_grid(leg[[6]], leg[[7]], leg[[8]],  ncol = 1) -->
-
-<!-- plot_grid(full + theme(legend.position = "none"), leg12, leg35, leg68, -->
-<!--           ncol = 4, -->
-<!--           rel_widths = c(5,1,1,1)) -->
-
-<!-- ``` -->
-
 
 ```{r}
-item <- 'CD14+_monocyte'
+## distances
+dl <- list(manhattan = list(), binary = list())
+## hclusts
+hcl <- list(manhattan = list(), binary = list())
 
-ham_d <- dist(t(fc[[item]]), method = 'manhattan')
-hc <- hclust(ham_d, method = 'ward.D2')
+for (dd in c('binary', 'manhattan')) {
+    for (ct in unique(markers$cluster)) {
+        dl[[dd]][[ct]] <- dist(t(fc[[ct]]), method = dd)
+        hcl[[dd]][[ct]] <- hclust(dl[[dd]][[ct]], method = 'ward.D2')
+    }
+}
 
-tree <- ggtree(hc,
-       branch.length = "none", size = 0.1) 
+```
 
-dd <- tree$data
-dd <- dd[dd$isTip,]
-lab <- dd$label[order(dd$y, decreasing = T)]
+```{r, results = 'asis', fig.width = 10, fig.height = 5}
 
+for (item in levels(markers$cluster)) {
+    cat('### ', item, '\n\n')
+    tree <- ggtree(hcl$binary[[item]],
+                   branch.length = "none", size = 0.1) 
 
-full <- tree +
-    coord_cartesian(clip = 'off') +
-    ## top, right, bottom, left
-    ## theme(plot.margin = margin(60, 20, 20, 20)) +
-    geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab],
-                    name = "hm0", gap = 0.2, 
-                    cluster_column = FALSE,
-                    show_coltree = FALSE,
-                    rel_width = 2) +
-    labs(fill = "Hamming dist.") +
-    scale_fill_viridis_c(direction = -1) +
-    ## geom_th_addvalue(name = "hm0", color = "white", size = 2) +
-    geom_th_title(name = "hm0", side = "top",
-                  label = "Num. discordant markers (Hamming dist.)", nudge_y = -0.2) +
+    ham_d <- dl$binary[[item]]
     
-    new_scale_fill() +
-    geom_th_heatmap(th_data = annot[[item]]['num_markers'], name = "hm6", gap = 0.2,
-                    rel_width = 0.1) +
-    labs(fill = "Num. markers")+
-    scale_colour_gradient() +
-    geom_th_text(name = "hm6", side = "top", nudge_y = 0.8,
-                 angle = 90, size = 3) +
+    dd <- tree$data
+    dd <- dd[dd$isTip,]
+    lab <- dd$label[order(dd$y, decreasing = TRUE)]
+
+    full <- tree +
+        coord_cartesian(clip = 'off') +
+        ## top, right, bottom, left
+        ## theme(plot.margin = margin(60, 20, 20, 20)) +
+        geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab],
+                        name = "hm0", gap = 0.2, 
+                        cluster_column = FALSE,
+                        show_coltree = FALSE,
+                        rel_width = 2) +
+        labs(fill = "Hamming dist.") +
+        scale_fill_viridis_c(direction = -1) +
+        ## geom_th_addvalue(name = "hm0", color = "white", size = 2) +
+        geom_th_title(name = "hm0", side = "top",
+                      label = "Num. discordant markers (Hamming dist.)", nudge_y = -0.2) +
+        
+        new_scale_fill() +
+        geom_th_heatmap(th_data = annot[[item]]['num_markers'], name = "hm6", gap = 0.2,
+                        rel_width = 0.1) +
+        labs(fill = "Num. markers")+
+        scale_colour_gradient() +
+        geom_th_text(name = "hm6", side = "top", nudge_y = 0.8,
+                     angle = 90, size = 3) +
 
     new_scale_fill() +
     geom_th_heatmap(th_data = annot[[item]]['dataset'], name = "hm1", gap = 0.2, 
@@ -2208,7 +2203,6 @@ full <- tree +
     geom_th_text(name = "hmtech", side = "top", nudge_y = 0.8,
                  angle = 90, size = 3) +
 
-    
     new_scale_fill() +
     geom_th_heatmap(th_data = annot[[item]]['mapper'], name = "hm2", gap = 0.2, 
                     cluster_column = FALSE,
@@ -2227,7 +2221,7 @@ full <- tree +
                     rel_width = 0.1) +
     scale_fill_manual(values = setNames(palettes$counter$color, palettes$counter$id)) +
     labs(fill = "Counter") +
-     geom_th_text(name = "hm3", side = "top", nudge_y = 0.8,
+    geom_th_text(name = "hm3", side = "top", nudge_y = 0.8,
                  angle = 90, size = 3) +
     
     new_scale_fill() +
@@ -2249,139 +2243,135 @@ full <- tree +
     labs(fill = "Multimappers")+
     geom_th_text(name = "hm5", side = "top", nudge_y = 0.8,
                  angle = 90, size = 3)
-
-## full
-## ?geom_th_text
-
-```
-
-
-By chunks
-
-```{r}
-
-p1 <- tree +
-    geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab],
-                    name = "hm0", gap = 0.2, 
-                    cluster_column = FALSE,
-                    show_coltree = FALSE,
-                    rel_width = 2) +
-    labs(fill = "Hamming dist.") +
-    scale_fill_viridis_c(direction = -1) +
-    ## geom_th_addvalue(name = "hm0", color = "white", size = 2) +
-    geom_th_title(name = "hm0", side = "top",
-                  label = "Num. discordant markers (Hamming dist.)", nudge_y = -0.2)
-
-p2 <- tree +
     
-    new_scale_fill() +
-    geom_th_heatmap(th_data = annot[[item]]['num_markers'], name = "hm6", gap = 0.2,
-                    rel_width = 0.1) +
-    labs(fill = "Num. markers")+
-    scale_colour_gradient() +
-    geom_th_text(name = "hm6", side = "top", nudge_y = 2.5,
-                 angle = 90, size = 3)
 
-p3 <- tree +
-    new_scale_fill() +
-    geom_th_heatmap(th_data = annot[[item]]['dataset'], name = "hm1", gap = 0.2, 
-                    cluster_column = FALSE,
-                    size_coltree = 0.5,
-                    rel_width = 0.1) +
-    scale_fill_brewer(palette = "Set2") +
-    labs(fill = "Dataset") +
-    geom_th_text(name = "hm1", side = "top", nudge_y = 2,
-                 angle = 90, size = 3)
-p4 <- tree +
-    new_scale_fill() +
-    geom_th_heatmap(th_data = annot[[item]]['technology'], name = "hmtech", gap = 0.2, 
-                    cluster_column = FALSE,
-                    size_coltree = 0.5,
-                    rel_width = 0.1) +
-    ## scale_fill_brewer(palette = "Set2") +
-    scale_fill_manual(values = setNames(palettes$technology$color, palettes$technology$id)) +
-    labs(fill = "Technology") +
-    geom_th_text(name = "hmtech", side = "top", nudge_y = 2.5,
-                 angle = 90, size = 3)
+    p1 <- tree +
+        geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab],
+                        name = "hm0", gap = 0.2, 
+                        cluster_column = FALSE,
+                        show_coltree = FALSE,
+                        rel_width = 2) +
+        labs(fill = "Hamming dist.") +
+        scale_fill_viridis_c(direction = -1) +
+        ## geom_th_addvalue(name = "hm0", color = "white", size = 2) +
+        geom_th_title(name = "hm0", side = "top",
+                      label = "Num. discordant markers (Hamming dist.)", nudge_y = -0.2)
 
-p5 <- tree +
-    new_scale_fill() +
-    geom_th_heatmap(th_data = annot[[item]]['mapper'], name = "hm2", gap = 0.2, 
-                    cluster_column = FALSE,
-                    size_coltree = 0.5,
-                    rel_width = 0.1) +
-    scale_fill_manual(values = setNames(palettes$mapper$color, palettes$mapper$id)) +
-    labs(fill = "Mapper")+
-    geom_th_text(name = "hm2", side = "top", nudge_y = 2.5,
-                 angle = 90, size = 3)
+    p2 <- tree +
+        
+        new_scale_fill() +
+        geom_th_heatmap(th_data = annot[[item]]['num_markers'], name = "hm6", gap = 0.2,
+                        rel_width = 0.1) +
+        labs(fill = "Num. markers")+
+        scale_colour_gradient() +
+        geom_th_text(name = "hm6", side = "top", nudge_y = 2.5,
+                     angle = 90, size = 3)
 
-p6 <- tree +
-    new_scale_fill() +
-    geom_th_heatmap(th_data = annot[[item]]['counter'], name = "hm3", gap = 0.2, 
-                    cluster_column = FALSE,
-                    size_coltree = 0.5,
-                    rel_width = 0.1) +
-    scale_fill_manual(values = setNames(palettes$counter$color, palettes$counter$id)) +
-    labs(fill = "Counter") +
-     geom_th_text(name = "hm3", side = "top", nudge_y = 2.5,
-                  angle = 90, size = 3)
+    p3 <- tree +
+        new_scale_fill() +
+        geom_th_heatmap(th_data = annot[[item]]['dataset'], name = "hm1", gap = 0.2, 
+                        cluster_column = FALSE,
+                        size_coltree = 0.5,
+                        rel_width = 0.1) +
+        scale_fill_brewer(palette = "Set2") +
+        labs(fill = "Dataset") +
+        geom_th_text(name = "hm1", side = "top", nudge_y = 2,
+                     angle = 90, size = 3)
+    p4 <- tree +
+        new_scale_fill() +
+        geom_th_heatmap(th_data = annot[[item]]['technology'], name = "hmtech", gap = 0.2, 
+                        cluster_column = FALSE,
+                        size_coltree = 0.5,
+                        rel_width = 0.1) +
+        ## scale_fill_brewer(palette = "Set2") +
+        scale_fill_manual(values = setNames(palettes$technology$color, palettes$technology$id)) +
+        labs(fill = "Technology") +
+        geom_th_text(name = "hmtech", side = "top", nudge_y = 2.5,
+                     angle = 90, size = 3)
 
-p7 <- tree +
+    p5 <- tree +
+        new_scale_fill() +
+        geom_th_heatmap(th_data = annot[[item]]['mapper'], name = "hm2", gap = 0.2, 
+                        cluster_column = FALSE,
+                        size_coltree = 0.5,
+                        rel_width = 0.1) +
+        scale_fill_manual(values = setNames(palettes$mapper$color, palettes$mapper$id)) +
+        labs(fill = "Mapper")+
+        geom_th_text(name = "hm2", side = "top", nudge_y = 2.5,
+                     angle = 90, size = 3)
+
+    p6 <- tree +
+        new_scale_fill() +
+        geom_th_heatmap(th_data = annot[[item]]['counter'], name = "hm3", gap = 0.2, 
+                        cluster_column = FALSE,
+                        size_coltree = 0.5,
+                        rel_width = 0.1) +
+        scale_fill_manual(values = setNames(palettes$counter$color, palettes$counter$id)) +
+        labs(fill = "Counter") +
+        geom_th_text(name = "hm3", side = "top", nudge_y = 2.5,
+                     angle = 90, size = 3)
+
+    p7 <- tree +
+        
+        new_scale_fill() +
+        geom_th_heatmap(th_data = annot[[item]]['overlap'], name = "hm4", gap = 0.2, 
+                        cluster_column = FALSE,
+                        size_coltree = 0.5,
+                        rel_width = 0.1) +
+        scale_fill_manual(values = setNames(palettes$overlap$color, palettes$overlap$id)) +
+        labs(fill = "Overlap") +
+        geom_th_text(name = "hm4", side = "top", nudge_y = 2.5,
+                     angle = 90, size = 3) +
+        new_scale_fill()
+
+    p8 <- tree +  
+        geom_th_heatmap(th_data = annot[[item]]['multimapper'], name = "hm5", gap = 0.2, 
+                        cluster_column = FALSE,
+                        size_coltree = 0.5,
+                        rel_width = 0.1) +
+        scale_fill_manual(values = setNames(palettes$multimapper$color, palettes$multimapper$id)) +
+        labs(fill = "Multimappers")+
+        geom_th_text(name = "hm5", side = "top", nudge_y = 2.5,
+                     angle = 90, size = 3) 
     
-    new_scale_fill() +
-    geom_th_heatmap(th_data = annot[[item]]['overlap'], name = "hm4", gap = 0.2, 
-                    cluster_column = FALSE,
-                    size_coltree = 0.5,
-                    rel_width = 0.1) +
-    scale_fill_manual(values = setNames(palettes$overlap$color, palettes$overlap$id)) +
-    labs(fill = "Overlap") +
-    geom_th_text(name = "hm4", side = "top", nudge_y = 2.5,
-                 angle = 90, size = 3) +
-    new_scale_fill()
+    leg <- list()
 
-p8 <- tree +  
-    geom_th_heatmap(th_data = annot[[item]]['multimapper'], name = "hm5", gap = 0.2, 
-                    cluster_column = FALSE,
-                    size_coltree = 0.5,
-                    rel_width = 0.1) +
-    scale_fill_manual(values = setNames(palettes$multimapper$color, palettes$multimapper$id)) +
-    labs(fill = "Multimappers")+
-    geom_th_text(name = "hm5", side = "top", nudge_y = 2.5,
-                 angle = 90, size = 3) 
+    for (legend in paste0('p', 1:8)) {
+
+        leg[[legend]] <- get_legend(get(legend))
+    }
 
 
-```
+    leg12 <- plot_grid(leg[[1]],
+                       leg[[2]],
+                       ncol = 2,
+                       align = 'v')
 
-Arrange legends
+    leg13 <- plot_grid(leg12, leg[[3]], rel.heights = c(1, 0.9))
 
-```{r, fig.width = 10, fig.height = 5}
+    ## (plot_grid(leg12) | plot_grid(leg[[3]])) +  
+    ##     plot_layout(guides = 'collect') &
+    ##     theme(legend.justification = "left")
 
-leg <- list()
+    ## (plot_grid(leg[[1]]) | plot_grid(leg[[2]]) | plot_grid(leg[[3]])) +  
+    ##     plot_layout(guides = 'collect') &
+    ##     theme(legend.justification = "left")
 
-for (legend in paste0('p', 1:8)) {
+    ## print(leg13)
 
-    leg[[legend]] <- get_legend(get(legend))
+    leg46 <- plot_grid(leg[[4]], leg[[5]], leg[[6]], ncol = 3, align = 'hv')
+
+    leg78 <- plot_grid(leg[[7]], leg[[8]], ncol = 2, align = 'hv')
+
+    legs <- plot_grid(leg13, leg46, leg78, align = 'v', nrow = 3)
+
+    plot_grid(full + theme(legend.position = "none"), legs,
+              ncol = 2,
+              align = 'hv',
+              rel_widths = c(5, 1.5),
+              rel_heights = c(1, 0.6))
+    cat('\n\n')
 }
-
-
-leg13 <- plot_grid(leg[[1]],
-                   leg[[2]],
-                   leg[[3]],
-                   ncol = 3, align = 'hv')
-
-## plot_grid(leg13)
-
-leg46 <- plot_grid(leg[[4]], leg[[5]], leg[[6]], ncol = 3, align = 'hv')
-
-leg78 <- plot_grid(leg[[7]], leg[[8]], ncol = 2, align = 'hv')
-
-legs <- plot_grid(leg13, leg46, leg78, align = 'v', nrow = 3)
-
-plot_grid(full + theme(legend.position = "none"), legs,
-          ncol = 2,
-          align = 'hv',
-          rel_widths = c(5, 1.5),
-          rel_heights = c(1, 0.6))
 
 ```
 
@@ -2484,42 +2474,56 @@ for (ct in names(annot)) {
 ```
 
 
-```{r}
-item <- 'CD14+_monocyte'
+```{r distances_genes}
+## distances
+dl <- list(manhattan = list(), binary = list())
+## hclusts
+hcl <- list(manhattan = list(), binary = list())
 
-ham_d <- dist(t(fc[[item]]), method = 'manhattan')
-hc <- hclust(ham_d, method = 'ward.D2')
+for (dd in c('binary', 'manhattan')) {
+    for (ct in unique(markers$cluster)) {
+        dl[[dd]][[ct]] <- dist(t(fc[[ct]]), method = dd)
+        hcl[[dd]][[ct]] <- hclust(dl[[dd]][[ct]], method = 'ward.D2')
+    }
+}
 
-tree <- ggtree(hc,
-       branch.length = "none", size = 0.1) 
+```
 
-dd <- tree$data
-dd <- dd[dd$isTip,]
-lab <- dd$label[order(dd$y, decreasing = T)]
+```{r, results= 'asis', fig.width = 16, fig.height = 6}
+for (item in levels(markers$cluster)) {
+    cat('### ', item, '\n\n')
 
-
-full <- tree +
-    coord_cartesian(clip = 'off') +
-    ## top, right, bottom, left
-    theme(plot.margin = margin(60, 20, 20, 20)) +
-    geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab],
-                    name = "hm0", gap = 0.2, 
-                    cluster_column = FALSE,
-                    show_coltree = FALSE,
-                    rel_width = 2) +
-    labs(fill = "Hamming dist.") +
-    scale_fill_viridis_c(direction = -1) +
-    ## geom_th_addvalue(name = "hm0", color = "white", size = 2) +
-    geom_th_title(name = "hm0", side = "top",
-                  label = "Num. discordant markers (Hamming dist.)", nudge_y = -0.2) +
+    ham_d <- dl$binary[[item]]
+    tree <- ggtree(hcl$binary[[item]],
+               branch.length = "none", size = 0.1) 
     
-    new_scale_fill() +
-    geom_th_heatmap(th_data = annot[[item]]['num_markers'], name = "hm6", gap = 0.2,
-                    rel_width = 0.1) +
-    labs(fill = "Num. markers")+
-    scale_colour_gradient() +
-    geom_th_text(name = "hm6", side = "top", nudge_y = 3.5,
-                 angle = 90, size = 3) +
+    dd <- tree$data
+    dd <- dd[dd$isTip,]
+    lab <- dd$label[order(dd$y, decreasing = T)]
+
+
+    full <- tree +
+        coord_cartesian(clip = 'off') +
+        ## top, right, bottom, left
+        theme(plot.margin = margin(60, 20, 20, 20)) +
+        geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab],
+                        name = "hm0", gap = 0.2, 
+                        cluster_column = FALSE,
+                        show_coltree = FALSE,
+                        rel_width = 2) +
+        labs(fill = "Hamming dist.") +
+        scale_fill_viridis_c(direction = -1) +
+        ## geom_th_addvalue(name = "hm0", color = "white", size = 2) +
+        geom_th_title(name = "hm0", side = "top",
+                      label = "Num. discordant markers (Hamming dist.)", nudge_y = -0.2) +
+        
+        new_scale_fill() +
+        geom_th_heatmap(th_data = annot[[item]]['num_markers'], name = "hm6", gap = 0.2,
+                        rel_width = 0.1) +
+        labs(fill = "Num. markers")+
+        scale_colour_gradient() +
+        geom_th_text(name = "hm6", side = "top", nudge_y = 3.5,
+                     angle = 90, size = 3) +
 
     new_scale_fill() +
     geom_th_heatmap(th_data = annot[[item]]['dataset'], name = "hm1", gap = 0.2, 
@@ -2561,8 +2565,8 @@ full <- tree +
                     rel_width = 0.1) +
     scale_fill_manual(values = setNames(palettes$counter$color, palettes$counter$id)) +
     labs(fill = "Counter") +
-     geom_th_text(name = "hm3", side = "top", nudge_y = 2.5,
-                  angle = 90, size = 3) +
+    geom_th_text(name = "hm3", side = "top", nudge_y = 2.5,
+                 angle = 90, size = 3) +
     
     new_scale_fill() +
     geom_th_heatmap(th_data = annot[[item]]['overlap'], name = "hm4", gap = 0.2, 
@@ -2583,139 +2587,122 @@ full <- tree +
     labs(fill = "Multimappers")+
     geom_th_text(name = "hm5", side = "top", nudge_y = 3.5,
                  angle = 90, size = 3)
-
-## full
-## ?geom_th_text
-
-```
-
-
-By chunks
-
-```{r}
-
-p1 <- tree +
-    geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab],
-                    name = "hm0", gap = 0.2, 
-                    cluster_column = FALSE,
-                    show_coltree = FALSE,
-                    rel_width = 2) +
-    labs(fill = "Hamming dist.") +
-    scale_fill_viridis_c(direction = -1) +
-    ## geom_th_addvalue(name = "hm0", color = "white", size = 2) +
-    geom_th_title(name = "hm0", side = "top",
-                  label = "Num. discordant markers (Hamming dist.)", nudge_y = -0.2)
-
-p2 <- tree +
     
-    new_scale_fill() +
-    geom_th_heatmap(th_data = annot[[item]]['num_markers'], name = "hm6", gap = 0.2,
-                    rel_width = 0.1) +
-    labs(fill = "Num. markers")+
-    scale_colour_gradient() +
-    geom_th_text(name = "hm6", side = "top", nudge_y = 2.5,
-                 angle = 90, size = 3)
+    p1 <- tree +
+        geom_th_heatmap(th_data = as.data.frame(as.matrix(ham_d))[lab,lab],
+                        name = "hm0", gap = 0.2, 
+                        cluster_column = FALSE,
+                        show_coltree = FALSE,
+                        rel_width = 2) +
+        labs(fill = "Hamming dist.") +
+        scale_fill_viridis_c(direction = -1) +
+        ## geom_th_addvalue(name = "hm0", color = "white", size = 2) +
+        geom_th_title(name = "hm0", side = "top",
+                      label = "Num. discordant markers (Hamming dist.)", nudge_y = -0.2)
 
-p3 <- tree +
-    new_scale_fill() +
-    geom_th_heatmap(th_data = annot[[item]]['dataset'], name = "hm1", gap = 0.2, 
-                    cluster_column = FALSE,
-                    size_coltree = 0.5,
-                    rel_width = 0.1) +
-    scale_fill_brewer(palette = "Set2") +
-    labs(fill = "Dataset") +
-    geom_th_text(name = "hm1", side = "top", nudge_y = 2,
-                 angle = 90, size = 3)
-p4 <- tree +
-    new_scale_fill() +
-    geom_th_heatmap(th_data = annot[[item]]['technology'], name = "hmtech", gap = 0.2, 
-                    cluster_column = FALSE,
-                    size_coltree = 0.5,
-                    rel_width = 0.1) +
-    ## scale_fill_brewer(palette = "Set2") +
-    scale_fill_manual(values = setNames(palettes$technology$color, palettes$technology$id)) +
-    labs(fill = "Technology") +
-    geom_th_text(name = "hmtech", side = "top", nudge_y = 2.5,
-                 angle = 90, size = 3)
+    p2 <- tree +
+        
+        new_scale_fill() +
+        geom_th_heatmap(th_data = annot[[item]]['num_markers'], name = "hm6", gap = 0.2,
+                        rel_width = 0.1) +
+        labs(fill = "Num. markers")+
+        scale_colour_gradient() +
+        geom_th_text(name = "hm6", side = "top", nudge_y = 2.5,
+                     angle = 90, size = 3)
 
-p5 <- tree +
-    new_scale_fill() +
-    geom_th_heatmap(th_data = annot[[item]]['mapper'], name = "hm2", gap = 0.2, 
-                    cluster_column = FALSE,
-                    size_coltree = 0.5,
-                    rel_width = 0.1) +
-    scale_fill_manual(values = setNames(palettes$mapper$color, palettes$mapper$id)) +
-    labs(fill = "Mapper")+
-    geom_th_text(name = "hm2", side = "top", nudge_y = 2.5,
-                 angle = 90, size = 3)
+    p3 <- tree +
+        new_scale_fill() +
+        geom_th_heatmap(th_data = annot[[item]]['dataset'], name = "hm1", gap = 0.2, 
+                        cluster_column = FALSE,
+                        size_coltree = 0.5,
+                        rel_width = 0.1) +
+        scale_fill_brewer(palette = "Set2") +
+        labs(fill = "Dataset") +
+        geom_th_text(name = "hm1", side = "top", nudge_y = 2,
+                     angle = 90, size = 3)
+    p4 <- tree +
+        new_scale_fill() +
+        geom_th_heatmap(th_data = annot[[item]]['technology'], name = "hmtech", gap = 0.2, 
+                        cluster_column = FALSE,
+                        size_coltree = 0.5,
+                        rel_width = 0.1) +
+        ## scale_fill_brewer(palette = "Set2") +
+        scale_fill_manual(values = setNames(palettes$technology$color, palettes$technology$id)) +
+        labs(fill = "Technology") +
+        geom_th_text(name = "hmtech", side = "top", nudge_y = 2.5,
+                     angle = 90, size = 3)
 
-p6 <- tree +
-    new_scale_fill() +
-    geom_th_heatmap(th_data = annot[[item]]['counter'], name = "hm3", gap = 0.2, 
-                    cluster_column = FALSE,
-                    size_coltree = 0.5,
-                    rel_width = 0.1) +
-    scale_fill_manual(values = setNames(palettes$counter$color, palettes$counter$id)) +
-    labs(fill = "Counter") +
-     geom_th_text(name = "hm3", side = "top", nudge_y = 2.5,
-                  angle = 90, size = 3)
+    p5 <- tree +
+        new_scale_fill() +
+        geom_th_heatmap(th_data = annot[[item]]['mapper'], name = "hm2", gap = 0.2, 
+                        cluster_column = FALSE,
+                        size_coltree = 0.5,
+                        rel_width = 0.1) +
+        scale_fill_manual(values = setNames(palettes$mapper$color, palettes$mapper$id)) +
+        labs(fill = "Mapper")+
+        geom_th_text(name = "hm2", side = "top", nudge_y = 2.5,
+                     angle = 90, size = 3)
 
-p7 <- tree +
+    p6 <- tree +
+        new_scale_fill() +
+        geom_th_heatmap(th_data = annot[[item]]['counter'], name = "hm3", gap = 0.2, 
+                        cluster_column = FALSE,
+                        size_coltree = 0.5,
+                        rel_width = 0.1) +
+        scale_fill_manual(values = setNames(palettes$counter$color, palettes$counter$id)) +
+        labs(fill = "Counter") +
+        geom_th_text(name = "hm3", side = "top", nudge_y = 2.5,
+                     angle = 90, size = 3)
+
+    p7 <- tree +
+        
+        new_scale_fill() +
+        geom_th_heatmap(th_data = annot[[item]]['overlap'], name = "hm4", gap = 0.2, 
+                        cluster_column = FALSE,
+                        size_coltree = 0.5,
+                        rel_width = 0.1) +
+        scale_fill_manual(values = setNames(palettes$overlap$color, palettes$overlap$id)) +
+        labs(fill = "Overlap") +
+        geom_th_text(name = "hm4", side = "top", nudge_y = 2.5,
+                     angle = 90, size = 3) +
+        new_scale_fill()
+
+    p8 <- tree +  
+        geom_th_heatmap(th_data = annot[[item]]['multimapper'], name = "hm5", gap = 0.2, 
+                        cluster_column = FALSE,
+                        size_coltree = 0.5,
+                        rel_width = 0.1) +
+        scale_fill_manual(values = setNames(palettes$multimapper$color, palettes$multimapper$id)) +
+        labs(fill = "Multimappers")+
+        geom_th_text(name = "hm5", side = "top", nudge_y = 2.5,
+                     angle = 90, size = 3) 
     
-    new_scale_fill() +
-    geom_th_heatmap(th_data = annot[[item]]['overlap'], name = "hm4", gap = 0.2, 
-                    cluster_column = FALSE,
-                    size_coltree = 0.5,
-                    rel_width = 0.1) +
-    scale_fill_manual(values = setNames(palettes$overlap$color, palettes$overlap$id)) +
-    labs(fill = "Overlap") +
-    geom_th_text(name = "hm4", side = "top", nudge_y = 2.5,
-                 angle = 90, size = 3) +
-    new_scale_fill()
+    leg <- list()
 
-p8 <- tree +  
-    geom_th_heatmap(th_data = annot[[item]]['multimapper'], name = "hm5", gap = 0.2, 
-                    cluster_column = FALSE,
-                    size_coltree = 0.5,
-                    rel_width = 0.1) +
-    scale_fill_manual(values = setNames(palettes$multimapper$color, palettes$multimapper$id)) +
-    labs(fill = "Multimappers")+
-    geom_th_text(name = "hm5", side = "top", nudge_y = 2.5,
-                 angle = 90, size = 3) 
+    for (legend in paste0('p', 1:8)) {
 
+        leg[[legend]] <- get_legend(get(legend))
+    }
 
-```
+    
+    leg13 <- plot_grid(leg[[1]],
+                       leg[[2]],
+                       leg[[3]],
+                       ncol = 3, align = 'hv')
 
-Arrange legends
+    leg46 <- plot_grid(leg[[4]], leg[[5]], leg[[6]], ncol = 3, align = 'hv')
 
-```{r , fig.width = 11, fig.height = 5}
+    leg78 <- plot_grid(leg[[7]], leg[[8]], ncol = 2, align = 'hv')
 
-leg <- list()
+    legs <- plot_grid(leg13, leg46, leg78, align = 'v', nrow = 3)
 
-for (legend in paste0('p', 1:8)) {
-
-    leg[[legend]] <- get_legend(get(legend))
+    plot_grid(full + theme(legend.position = "none"), legs,
+              ncol = 2,
+              align = 'hv',
+              rel_widths = c(5, 1.5),
+              rel_heights = c(1, 0.6))
+    cat('\n\n')
 }
-
-
-leg13 <- plot_grid(leg[[1]],
-                   leg[[2]],
-                   leg[[3]],
-                   ncol = 3, align = 'hv')
-
-## plot_grid(leg13)
-
-leg46 <- plot_grid(leg[[4]], leg[[5]], leg[[6]], ncol = 3, align = 'hv')
-
-leg78 <- plot_grid(leg[[7]], leg[[8]], ncol = 2, align = 'hv')
-
-legs <- plot_grid(leg13, leg46, leg78, align = 'v', nrow = 3)
-
-plot_grid(full + theme(legend.position = "none"), legs,
-          ncol = 2,
-          align = 'hv',
-          rel_widths = c(5, 1.5),
-          rel_heights = c(1, 0.6))
 
 ```
 
