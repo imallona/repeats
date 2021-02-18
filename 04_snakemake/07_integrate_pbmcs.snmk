@@ -12,11 +12,51 @@ BASE = op.join('/home', 'imallona', 'repeats_sc')
 NTHREADS = 40
 LOCAL_MEM_GB = 100
 Rscript = '/usr/local/R/R-4.0.0/bin/Rscript'
+PROFILE_ALL_RSCRIPT = '~/src/repeats_sc/04_snakemake/profile_mapping_rates.R'
 
 rule all:
     input:
+        expand(op.join(BASE, "runs", "{run_name}", "profile_mapping.txt"),
+               run_name = ['pbmc8k', '5k_pbmc_v3', 'pbmcs_smartseq2_ding', 'pbmc_10k_v3',
+                           'frozen_pbmc_donor_a', 'ding_celseq2', 'ding_dropseq', 'ding_seqwell',
+                           'zheng_truth',
+                           'bulk_GSE80095',
+                           'bulk_GSE51984']),
         op.join(BASE, 'runs', 'pbmc_integration.html')
 
+
+
+
+rule profile_all_missing_mapping_rates:
+    input:
+        c1 = '/home/imallona/repeats_sc/runs/pbmc8k/pbmc8k_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
+        c2 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
+        s1 = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/pbmcs_smartseq2_ding_pmbc_smartseq2_regress_nCount_FALSE_nFeature_FALSE.rds',
+        c3 = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
+        c4 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
+        celseq2 = '/home/imallona/repeats_sc/runs/ding_celseq2/ding_celseq2_pmbc_celseq2_regress_nCount_FALSE_nFeature_FALSE.rds',
+        dropseq = '/home/imallona/repeats_sc/runs/ding_dropseq/ding_dropseq_pmbc_dropseq_regress_nCount_FALSE_nFeature_FALSE.rds',
+        seqwell = '/home/imallona/repeats_sc/runs/ding_seqwell/ding_seqwell_pmbc_seqwell_regress_nCount_FALSE_nFeature_FALSE.rds',
+        bulk_gse80095 = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_expression.rds",
+        bulk_gse94820 = "/home/imallona/repeats_sc/runs/bulk_GSE51984/bulk_GSE51984_expression.rds",
+        zheng_truth = "/home/imallona/repeats_sc/runs/zheng_truth/zheng_truth_pbmc_zheng_truth_regress_nCount_FALSE_nFeature_FALSE.rds"
+    params:
+        path = op.join(op.join(BASE, "runs", "{run_name}")),
+        script = PROFILE_ALL_RSCRIPT
+    output:
+        txt = op.join(BASE, "runs", "{run_name}", "profile_mapping.txt")
+    threads: 1
+    shell:
+       """
+       cd {params.path}
+       
+       {Rscript} {params.script} --path {params.path} --output {output.txt} -i {wildcards.run_name}
+
+       touch {output.flag}
+       """
+        
+        
+    
 ## srrwhatever is  not a pbmc!
 # @todo this comes from other reports, fix!
 rule integration_pbmcs_10x_plus_smartseq2:

@@ -35,6 +35,7 @@ CELLRANGER_HG38_URL = 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellrange
 
 GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/gtf_parser.R'
 FEATURECOUNTS_RSCRIPT= '~/src/repeats_sc/04_snakemake/plot_featurecounts_profile.R'
+PROFILE_ALL_RSCRIPT = '~/src/repeats_sc/04_snakemake/profile_mapping_rates.R'
 
 BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
 BOWTIE = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'
@@ -161,7 +162,8 @@ rule all:
         expand( op.join(BASE, 'runs', RUN_NAME,
                         RUN_NAME + '_pbmc_zheng_truth_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
                 regress_ncount = ['TRUE', 'FALSE'],
-                regress_nfeature = ['TRUE', 'FALSE'])
+                regress_nfeature = ['TRUE', 'FALSE']),
+        op.join(BASE, "runs", RUN_NAME, "profile_mapping.txt")
 
 rule knit_ad_hoc_zheng:
     input:
@@ -201,6 +203,39 @@ rule knit_ad_hoc_zheng:
            config_fn = \"{input.config_fn}\"))' &> {log}
         """
 
+# rule combine_gtfs_to_profile_mapping:
+#     input:
+#         "" # a bam
+#     output:
+#         "" # the summary of featurecounts
+#     shell:
+#         """
+#         echo 1
+#         """
+
+rule profile_mappings_rate_all:
+    input:
+        genes_cellranger = list_cellranger_outputs(basepath = op.join(BASE, 'runs', RUN_NAME),
+                              conf = CONF,
+                              flavour = 'cellranger_standard'),
+        repeats_cellranger = list_cellranger_outputs(basepath = op.join(BASE, 'runs', RUN_NAME),
+                              conf = CONF,
+                              flavour = 'cellranger_repeats'),
+        config_fn = CONF
+    params:
+        path = op.join(BASE, "runs", RUN_NAME),
+        script = PROFILE_ALL_RSCRIPT,
+        run_id = RUN_NAME
+    output:
+        txt = op.join(BASE, "runs", RUN_NAME, "profile_mapping.txt")
+    threads: 1
+    shell:
+       """
+       cd {params.path}
+       
+       {Rscript} {params.script} --path {params.path} --output {output.txt} -i {params.run_id}
+       """
+        
 rule run_cellranger_standard:
     input:
         flag = op.join(BASE, 'data', RUN_NAME, "{celltype}_fastqs.flag"),
