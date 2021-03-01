@@ -141,12 +141,13 @@ rule all:
           sample = get_samples()),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
-        expand(op.join(BASE, "runs", RUN_NAME, "{sample}",
-                       'bowtie_repeatome', "{sample}"
-                       '{multimappers}',
-                       "all_cells_repeats.counts.gz"),
-               sample = get_samples(),
-               multimappers = ['multimappers', 'unique_reads']),
+        op.join(BASE, 'runs', 'kumar_integration.html'),
+        # expand(op.join(BASE, "runs", RUN_NAME, "{sample}",
+        #                'bowtie_repeatome', "{sample}"
+        #                '{multimappers}',
+        #                "all_cells_repeats.counts.gz"),
+        #        sample = get_samples(),
+        #        multimappers = ['multimappers', 'unique_reads']),
         expand(op.join(BASE, "runs", RUN_NAME, '{sample}', 
                        "count_repeats_on_cellranger_standard",
                        "{multimappers}",
@@ -159,11 +160,115 @@ rule all:
                        RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
                multimappers = ['multimappers', 'unique_reads'],
                sample = get_samples()),
-        # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        # expand(op.join(BASE, 'runs', RUN_NAME, '{sample}', '{sample}_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        #        sample = get_samples(),
         #        regress_ncount = ['TRUE', 'FALSE'],
         #        regress_nfeature = ['TRUE', 'FALSE'])
-       
+
+        ## files: just two files, from the many generated during the process
+
+rule integration_kumar:
+    input:
+        expand(op.join(BASE, 'data', RUN_NAME, '{sample}' + '_S1_L001_R1_001.fastq.gz'),
+               sample = get_samples()),
+        expand(op.join(BASE, 'runs', RUN_NAME, "{sample}", 'cellranger_standard', 'outs', 'web_summary.html'),
+          sample = get_samples()),
+        expand(op.join(BASE, 'runs', RUN_NAME, "{sample}", 'cellranger_repeats', 'outs', 'web_summary.html'),
+          sample = get_samples()),
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
+        expand(op.join(BASE, "runs", RUN_NAME, '{sample}', 
+                       "count_repeats_on_cellranger_standard",
+                       "{multimappers}",
+                       RUN_NAME + "_transcriptome_repeats.counts.summary.png"),
+               multimappers = ['multimappers', 'unique_reads'],
+               sample = get_samples()),
+        expand(op.join(BASE, "runs", RUN_NAME, '{sample}',
+                       "count_repeats_on_cellranger_standard_not_overlapping_genes",
+                       "{multimappers}",
+                       RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
+               multimappers = ['multimappers', 'unique_reads'],
+               sample = get_samples())
+    params:
+        rmd = 'integrate_runs_kumar.Rmd',
+        data_path = op.join(BASE, 'runs', RUN_NAME)
+    output:
+        html = op.join(BASE, 'runs', 'kumar_integration.html')
+    log:
+        op.join(BASE, 'runs', 'kumar_integration.log')
+    shell:
+        """
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+          output_file = \"{output.html}\", 
+          params = list(results_path= \"{params.data_path}\"))' &> {log}
+        """
         
+# rule knit_report_chromium_agnostic_per_sample:
+#     input:
+#         genes = op.join(BASE, 'runs', RUN_NAME, '{sample}', 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+#         repeats = op.join(BASE, 'runs', RUN_NAME, '{sample}', 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+#         featurecounts_multi = op.join(BASE, "runs", RUN_NAME, '{sample}',
+#                                       'count_repeats_on_cellranger_standard',
+#                                       'multimappers',
+#                                       RUN_NAME + "_repeats.counts.gz"),
+#         featurecounts_unique = op.join(BASE, "runs", RUN_NAME, '{sample}',
+#                                       'count_repeats_on_cellranger_standard',
+#                                       'unique_reads',
+#                                       RUN_NAME + "_repeats.counts.gz"),
+#         repeats_only_featurecounts_control_multi = op.join(
+#             BASE, "runs", RUN_NAME, '{sample}',
+#             'count_repeats_on_cellranger_standard_not_overlapping_genes',
+#             'multimappers',
+#             RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+#         repeats_only_featurecounts_control_unique = op.join(
+#             BASE, "runs", RUN_NAME, '{sample}',
+#             'count_repeats_on_cellranger_standard_not_overlapping_genes',
+#             'unique_reads',
+#             RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+#         repeats_bowtie_multi = op.join(
+#             BASE, "runs", RUN_NAME, '{sample}',
+#             'bowtie_repeatome',
+#             'multimappers',
+#             'all_cells_repeats.counts.gz'),
+#         repeats_bowtie_unique = op.join(
+#             BASE, "runs", RUN_NAME, '{sample}',
+#             'bowtie_repeatome',
+#             'unique_reads',
+#             'all_cells_repeats.counts.gz'),
+#         genes_alevin = op.join(BASE, 'runs', RUN_NAME,  'alevin', 'genes', 'alevin',
+#                                'quants_mat.gz'),
+#         repeats_alevin = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin',
+#                                  'quants_mat.gz')
+#     params:
+#         rmd = 'summarize_chromium_run_markers_agnostic.Rmd',
+#         run_name = RUN_NAME
+#     output:
+#         html = op.join(BASE, 'runs', RUN_NAME, '{sample}', '{sample}_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+#         rds = op.join(BASE, 'runs', RUN_NAME, '{sample}',  '{sample}_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+#         aris = op.join(BASE, 'runs', RUN_NAME, '{sample}',  '{sample}_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
+#     log:
+#         op.join(BASE, 'runs', RUN_NAME, '{sample}', '{sample}_summarize_chromium_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
+#     shell: """
+#         {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+#           output_file = \"{output.html}\", 
+#           params = list(identifier = \"{params.run_name}\", 
+#                      genes_cellranger = \"{input.genes}\", 
+#                      repeats_cellranger = \"{input.repeats}\", 
+#                      repeats_featurecounts_multi = \"{input.featurecounts_multi}\", 
+#                      repeats_featurecounts_unique = \"{input.featurecounts_unique}\",
+#                      repeats_only_featurecounts_control_multi = \"{input.repeats_only_featurecounts_control_multi}\", 
+#                      repeats_only_featurecounts_control_unique = \"{input.repeats_only_featurecounts_control_unique}\",
+#                      seurat_output = \"{output.rds}\", 
+#                      aris_output = \"{output.aris}\", 
+#                      regress_genes_nCount = \"{wildcards.regress_ncount}\", 
+#                      regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
+#                      repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
+#                      repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\", 
+#                      genes_alevin = \"{input.genes_alevin}\",
+#                      repeats_alevin = \"{input.repeats_alevin}\"))' &> {log}
+#         """
+
+    
 # read 1 should contain the cell barcode and UMI tag -> _2.fastq here
 # read 2 should contain cDNA sequence -> _3.fastq here
 # i1 should contain the sample index -> _1.fastq here
