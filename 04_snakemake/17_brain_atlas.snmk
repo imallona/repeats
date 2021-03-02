@@ -1,0 +1,707 @@
+#!/usr/bin/env snakemake -s
+## 
+## Started 02 Mar 2021
+##
+## Izaskun Mallona
+## GPLv3
+
+import os.path as op
+from glob import glob
+
+RUN_NAME  = 'brain'
+CHEMISTRY = 'SC3Pv1'
+DEMUX = True
+
+#@FIXME to be moved to config, not hardcoded!
+BASE = op.join('/home', 'imallona', 'repeats_sc')
+NTHREADS = 30
+LOCAL_MEM_GB = 100
+GENOME = 'GRCh38'
+CONF = op.join(BASE, 'data', RUN_NAME, 'brain.conf')
+
+
+
+## @FIXME to be moved to config
+GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-99/fasta/mus_musculus/dna/Mus_musculus.GRCm38.dna.primary_assembly.fa.gz'
+
+GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M24/gencode.vM24.annotation.gtf.gz'
+
+REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/mm10_rmsk_TE.gtf.gz'
+
+# DFAM_EMBL_URL = 'https://www.dfam.org/releases/current/families/Dfam.embl.gz'
+# TRANSCRIPTOME_URL= 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh38.cdna.all.fa.gz'
+# TRANSCRIPTOME_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.pc_transcripts.fa.gz'
+TRANSCRIPTOME_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M24/gencode.vM24.pc_transcripts.fa.gz'
+
+# this is actually mouse not hg38! @todo rename
+CELLRANGER_DB_URL = 'https://cf.10xgenomics.com/supp/cell-exp/refdata-gex-mm10-2020-A.tar.gz'
+CELLRANGER_DB_ID = 'refdata-gex-mm10-2020-A'
+
+
+
+## @FIXME to be moved to config
+
+GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/gtf_parser.R'
+FEATURECOUNTS_RSCRIPT= '~/src/repeats_sc/04_snakemake/plot_featurecounts_profile.R'
+PROFILE_ALL_RSCRIPT = '~/src/repeats_sc/04_snakemake/profile_mapping_rates.R'
+
+BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
+BOWTIE = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'
+
+##pigz 2.3.1
+PIGZ = '/usr/bin/pigz'
+BIOPYTHON_CONVERT='biopython.convert'
+STAR = '~/soft/star/STAR-2.7.3a/source/STAR'
+FEATURECOUNTS = '~/soft/subread/subread-2.0.0-source/bin/featureCounts'
+# SALMON = '~/soft/salmon/salmon-1.1.0_linux_x86_64/bin/salmon'
+SALMON='/home/imallona/soft/salmon/salmon-1.2.1/bin/salmon'
+SALMON_V1_10X_RUN='/home/imallona/soft/salmon/salmon-1.2.1_src/scripts/v1_10x/run.sh'
+SALMON_V1_10X_WRAPPER='/home/imallona/soft/salmon/salmon-1.2.1_src/scripts/v1_10x/wrapper'
+CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
+BIOAWK = '~/soft/bioawk/bioawk'
+BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
+Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
+FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
+PREFETCH= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/prefetch' # fastq-dump : 2.10.4
+VDBVALIDATE= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate' # fastq-dump : 2.10.4
+
+
+try:
+   if not op.exists(op.dirname(op.join(BASE, 'annotation'))):
+      os.makedirs(op.join(BASE, 'annotation'))
+except OSError as err:
+   print(err)
+      
+for item in ['bowtie', 'star', 'salmon']:
+   try:
+      if not op.exists(op.dirname(op.join(BASE, 'indices', item))):
+         os.makedirs(op.join(BASE, 'indices', item))
+   except OSError as err:
+      print(err)
+      
+## Folder structure end ----------------------------------------------------------------------- ##
+
+
+# config file
+       
+def get_samples(conf, stage):
+   if not op.isfile(conf):
+      write_config(conf)
+   
+   samples = []
+   with open(conf) as fh:
+      for line in fh:
+         if line.split(',')[1].strip() == stage:
+            samples.append(line.split(',')[0].strip())
+   return(samples)
+
+
+def write_config(conf):
+   path = op.join(BASE, "data", RUN_NAME)
+   if not op.exists(path):
+      os.makedirs(path)
+      
+   with open(conf, "w+") as fh:
+       fh.writelines("""Run,AGE,Assay Type,AssemblyName,AvgSpotLen,Bases,BioProject,BioSample,BioSampleModel,Bytes,cell_index,Center Name,Consent,DATASTORE filetype,DATASTORE provider,DATASTORE region,Experiment,Instrument,Library Name,LibraryLayout,LibrarySelection,LibrarySource,Organism,Platform,ReleaseDate,Sample Name,sex,SRA Study,Strain,Tissue,Isolate
+SRR6854053,p25,RNA-Seq,GCF_000001635.20,98,15684727324,PRJNA438862,SAMN08730903,Model organism or animal,5769743210,SI-3A-D8,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,s3,gs","ncbi.public,gs.US,s3.us-east-1",SRX3809397,Illumina HiSeq 2500,10X26_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X26_4,female,SRP135960,CD-1,StriatumVentral,Ad13
+SRR6854054,p26,RNA-Seq,GCF_000001635.20,98,16533822452,PRJNA438862,SAMN08730904,Model organism or animal,5932234426,SI-3A-E8,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","ncbi.public,s3.us-east-1,gs.US",SRX3809396,Illumina HiSeq 2500,10X28_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X28_2,male,SRP135960,CD-1,Ctx3,Ad14
+SRR6854056,p26,RNA-Seq,GCF_000001635.20,98,15571817212,PRJNA438862,SAMN08730906,Model organism or animal,5611700918,SI-3A-G8,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,gs,s3","s3.us-east-1,ncbi.public,gs.US",SRX3809394,Illumina HiSeq 2500,10X28_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X28_4,male,SRP135960,CD-1,OB,Ad14
+SRR6854058,p20,RNA-Seq,GCF_000001635.20,98,17292642822,PRJNA438862,SAMN08730908,Model organism or animal,5683936084,SI-3A-G10,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,s3,gs","s3.us-east-1,ncbi.public,gs.US",SRX3809392,Illumina HiSeq 2500,10X33_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X33_1,pooled male and female,SRP135960,CD-1,Medulla,"Ad15\, Ad16"
+SRR6854060,p20,RNA-Seq,GCF_000001635.20,98,16934767794,PRJNA438862,SAMN08730910,Model organism or animal,5343360768,SI-3A-A11,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,gs,s3","gs.US,s3.us-east-1,ncbi.public",SRX3809390,Illumina HiSeq 2500,10X33_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X33_3,pooled male and female,SRP135960,CD-1,Pons,"Ad15\, Ad16"
+SRR6854062,"p19\, p21",RNA-Seq,GCF_000001635.20,98,19659015894,PRJNA438862,SAMN08730995,Model organism or animal,8014132055,SI-GA-C5,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,s3,gs","s3.us-east-1,ncbi.public,gs.US",SRX3809388,Illumina HiSeq 2500,10X81_1,SINGLE,PolyA,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X81_1,pooled male and female,SRP135960,Wnt1Cre-R26Rtomato-C57BL/6J,ENS,
+SRR6854064,p25-27,RNA-Seq,GCF_000001635.20,98,17825559178,PRJNA438862,SAMN08730993,Model organism or animal,6987179407,SI-3A-D2,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,gs,ncbi","s3.us-east-1,ncbi.public,gs.US",SRX3809386,Illumina HiSeq 2500,10X57_7,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X57_7,pooled male and female,SRP135960,Swiss,Thalamus,"Ad33\, Ad34"
+SRR6854066,p19,RNA-Seq,GCF_000001635.20,98,6483252328,PRJNA438862,SAMN08730999,Model organism or animal,2108837979,SI-3A-A3,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX3809384,Illumina HiSeq 2500,10X86_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X86_1,missing,SRP135960,missing,Hypothalamus,
+SRR6854067,"p21\, p23",RNA-Seq,GCF_000001635.20,98,18273366944,PRJNA438862,SAMN08730998,Model organism or animal,7253872856,SI-GA-G5,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,ncbi,gs","gs.US,ncbi.public,s3.us-east-1",SRX3809383,Illumina HiSeq 2500,10X82_2,SINGLE,PolyA,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X82_2,pooled male and female,SRP135960,Wnt1Cre-R26Rtomato-C57BL/6J,ENS,
+SRR6854068,"p19\, p21",RNA-Seq,GCF_000001635.20,98,23040021872,PRJNA438862,SAMN08730997,Model organism or animal,8836491925,SI-GA-E5,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,gs,s3","ncbi.public,s3.us-east-1,gs.US",SRX3809382,Illumina HiSeq 2500,10X81_3,SINGLE,PolyA,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X81_3,pooled male and female,SRP135960,Wnt1Cre-R26Rtomato-C57BL/6J,ENS,
+SRR6854070,p21,RNA-Seq,GCF_000001635.20,98,6051107020,PRJNA438862,SAMN08731001,Model organism or animal,2413478880,SI-3A-C1,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,ncbi,s3","gs.US,s3.us-east-1,ncbi.public",SRX3809380,Illumina HiSeq 2500,10X87_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X87_1,missing,SRP135960,missing,Amygdala,"Ad37\,Ad38"
+SRR6854072,p29,RNA-Seq,GCF_000001635.20,98,25520101992,PRJNA438862,SAMN08730874,Model organism or animal,9606313592,SI-3A-B1,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,s3,ncbi","gs.US,s3.us-east-1,ncbi.public",SRX3809378,Illumina HiSeq 2500,10X02_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X02_1,missing,SRP135960,CD-1,SScortex,Ad02
+SRR6854074,p25-27,RNA-Seq,GCF_000001635.20,98,17456985392,PRJNA438862,SAMN08730992,Model organism or animal,6554532811,SI-3A-C2,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","gs.US,s3.us-east-1,ncbi.public",SRX3809376,Illumina HiSeq 2500,10X57_6,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X57_6,pooled male and female,SRP135960,Swiss,Thalamus,"Ad33\, Ad34"
+SRR6854077,p25-27,RNA-Seq,GCF_000001635.20,98,17912806226,PRJNA438862,SAMN08730987,Model organism or animal,6146041596,SI-3A-F1,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,ncbi,s3","ncbi.public,s3.us-east-1,gs.US",SRX3809373,Illumina HiSeq 2500,10X57_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X57_1,male,SRP135960,Swiss,Hypothalamus,Ad33
+SRR6854078,p25-27,RNA-Seq,GCF_000001635.20,98,17515822142,PRJNA438862,SAMN08730988,Model organism or animal,6704071215,SI-3A-G1,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX3809372,Illumina HiSeq 2500,10X57_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X57_2,pooled male and female,SRP135960,Swiss,MidbrainDorsal,"Ad33\, Ad34"
+SRR6854080,p25-27,RNA-Seq,GCF_000001635.20,98,17804421166,PRJNA438862,SAMN08730986,Model organism or animal,5490928364,SI-3A-F12,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,s3,gs","ncbi.public,gs.US,s3.us-east-1",SRX3809370,Illumina HiSeq 2500,10X56_6,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X56_6,male,SRP135960,Swiss,Hypothalamus,Ad33
+SRR6854082,p25-27,RNA-Seq,GCF_000001635.20,98,12745951246,PRJNA438862,SAMN08730984,Model organism or animal,3773154229,SI-3A-B12,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX3809368,Illumina HiSeq 2500,10X56_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X56_2,male,SRP135960,Swiss,Amygdala,Ad33
+SRR6854084,p22,RNA-Seq,GCF_000001635.20,98,18569566162,PRJNA438862,SAMN08730890,Model organism or animal,6317743568,SI-3A-C5,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,ncbi,gs","ncbi.public,s3.us-east-1,gs.US",SRX3809366,Illumina HiSeq 2500,10X20_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X20_3,female,SRP135960,CD-1,MidbrainDorsal,Ad10
+SRR6854086,p22,RNA-Seq,GCF_000001635.20,98,16175240746,PRJNA438862,SAMN08730888,Model organism or animal,5172948078,SI-3A-C7,KAROLINSKA INSTITUTE,public,"TenX,sra","s3,gs,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX3809364,Illumina HiSeq 2500,10X20_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X20_1,female,SRP135960,CD-1,Ctx3,Ad10
+SRR6854087,p23,RNA-Seq,GCF_000001635.20,98,14088255874,PRJNA438862,SAMN08730885,Model organism or animal,4476768234,SI-3A-D4,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,ncbi,s3","gs.US,s3.us-east-1,ncbi.public",SRX3809363,Illumina HiSeq 2500,10X07_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X07_1,pooled male and female,SRP135960,5ht3a-EGFP,CA1,"CAint01\, CAint02\, CAint03\, CAint04"
+SRR6854089,p30,RNA-Seq,GCF_000001635.20,98,15764076846,PRJNA438862,SAMN08730883,Model organism or animal,4376317279,SI-3A-B4,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX3809361,Illumina HiSeq 2500,10X06_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X06_2,male,SRP135960,CD-1,Amygdala,Ad06
+SRR6854091,p22,RNA-Seq,GCF_000001635.20,98,17527276676,PRJNA438862,SAMN08730891,Model organism or animal,5775576566,SI-3A-D5,KAROLINSKA INSTITUTE,public,"TenX,sra","s3,ncbi,gs","s3.us-east-1,gs.US,ncbi.public",SRX3809359,Illumina HiSeq 2500,10X20_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X20_4,female,SRP135960,CD-1,MidbrainDorsal,Ad10
+SRR6854093,p22,RNA-Seq,GCF_000001635.20,99,14569960581,PRJNA438862,SAMN08730982,Model organism or animal,7340251492,SI-GA-G2,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,s3,ncbi","gs.US,s3.us-east-1,ncbi.public",SRX3809357,Illumina HiSeq 2500,10X55_7,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X55_7,pooled male and female,SRP135960,CD-1,Pons,"Ad 31\, 32"
+SRR6854094,p22,RNA-Seq,GCF_000001635.20,99,13472920098,PRJNA438862,SAMN08730981,Model organism or animal,6111903808,SI-GA-F2,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","gs.US,s3.us-east-1,ncbi.public",SRX3809356,Illumina HiSeq 2500,10X55_6,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X55_6,pooled male and female,SRP135960,CD-1,Pons,"Ad 31\, 32"
+SRR6854097,p22,RNA-Seq,GCF_000001635.20,99,14092783155,PRJNA438862,SAMN08730978,Model organism or animal,7618817249,SI-GA-C2,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,s3,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX3809353,Illumina HiSeq 2500,10X55_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X55_3,pooled male and female,SRP135960,CD-1,Medulla,"Ad 31\, 32"
+SRR6854100,p29,RNA-Seq,GCF_000001635.20,98,15692499998,PRJNA438862,SAMN08730878,Model organism or animal,6026237866,SI-3A-A1,KAROLINSKA INSTITUTE,public,"TenX,sra","s3,gs,ncbi","s3.us-east-1,ncbi.public,gs.US",SRX3809350,Illumina HiSeq 2500,10X05_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X05_1,female,SRP135960,CD-1,Ctx1,Ad05
+SRR6854102,p28,RNA-Seq,GCF_000001635.20,98,15095037314,PRJNA438862,SAMN08730876,Model organism or animal,4705189508,SI-3A-F3,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,gs,ncbi","gs.US,ncbi.public,s3.us-east-1",SRX3809348,Illumina HiSeq 2500,10X04_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X04_2,female,SRP135960,CD-1,HC,Ad04
+SRR6854104,p21,RNA-Seq,GCF_000001635.20,99,14221380591,PRJNA438862,SAMN08730975,Model organism or animal,7025206766,SI-GA-H1,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,s3,gs","s3.us-east-1,ncbi.public,gs.US",SRX3809346,Illumina HiSeq 2500,10X54_8,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X54_8,pooled male and female,SRP135960,CD-1,Pons,"Ad 29\, 30"
+SRR6854105,p21-23,RNA-Seq,GCF_000001635.20,98,16854714828,PRJNA438862,SAMN08730962,Model organism or animal,6003046103,SI-3A-B11,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,gs,s3","gs.US,ncbi.public,s3.us-east-1",SRX3809345,Illumina HiSeq 2500,10X53_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X53_2,pooled male and female,SRP135960,Swiss,SC,"Ad27\, Ad28"
+SRR6854107,p20,RNA-Seq,GCF_000001635.20,98,16945135116,PRJNA438862,SAMN08730958,Model organism or animal,6388497544,SI-3A-E10,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,s3,gs","ncbi.public,s3.us-east-1,gs.US",SRX3809343,Illumina HiSeq 2500,10X52_5,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X52_5,male,SRP135960,CD-1,MidbrainVentral,Ad26
+SRR6854109,p20,RNA-Seq,GCF_000001635.20,98,7915955782,PRJNA438862,SAMN08730960,Model organism or animal,2527366574,SI-3A-H10,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","gs.US,s3.us-east-1,ncbi.public",SRX3809341,Illumina HiSeq 2500,10X52_8,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X52_8,male,SRP135960,CD-1,MidbrainVentral,Ad26
+SRR6854111,p20,RNA-Seq,GCF_000001635.20,98,14903932316,PRJNA438862,SAMN08730954,Model organism or animal,5712561770,SI-3A-A10,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,ncbi,gs","s3.us-east-1,ncbi.public,gs.US",SRX3809339,Illumina HiSeq 2500,10X52_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X52_1,male,SRP135960,CD-1,MidbrainDorsal,Ad26
+SRR6854115,p29,RNA-Seq,GCF_000001635.20,98,16757932282,PRJNA438862,SAMN08730936,Model organism or animal,6541247392,SI-3A-B8,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,gs,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX3809335,Illumina HiSeq 2500,10X49_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X49_1,female,SRP135960,CD-1,Amygdala,Ad24
+SRR6854117,p20,RNA-Seq,GCF_000001635.20,98,16980910408,PRJNA438862,SAMN08730934,Model organism or animal,4843957237,SI-3A-F7,KAROLINSKA INSTITUTE,public,"TenX,sra","s3,gs,ncbi","s3.us-east-1,ncbi.public,gs.US",SRX3809333,Illumina HiSeq 2500,10X48_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X48_3,pooled male and female,SRP135960,CD-1,Pons,"Pdgfra01\, Pdgfra02"
+SRR6854119,p29,RNA-Seq,GCF_000001635.20,98,15832860792,PRJNA438862,SAMN08730940,Model organism or animal,5359700715,SI-3A-F8,KAROLINSKA INSTITUTE,public,"TenX,sra","s3,gs,ncbi","s3.us-east-1,gs.US,ncbi.public",SRX3809331,Illumina HiSeq 2500,10X49_5,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X49_5,female,SRP135960,CD-1,OB,Ad24
+SRR6854121,p29,RNA-Seq,GCF_000001635.20,98,16221863462,PRJNA438862,SAMN08730938,Model organism or animal,5748757170,SI-3A-D8,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,s3,ncbi","s3.us-east-1,gs.US,ncbi.public",SRX3809329,Illumina HiSeq 2500,10X49_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X49_3,female,SRP135960,CD-1,Amygdala,Ad24
+SRR6854125,p21,RNA-Seq,GCF_000001635.20,99,18051082038,PRJNA438862,SAMN08730971,Model organism or animal,8270581559,SI-GA-D1,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,s3,ncbi","s3.us-east-1,ncbi.public,gs.US",SRX3809325,Illumina HiSeq 2500,10X54_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X54_4,pooled male and female,SRP135960,CD-1,Medulla,"Ad 29\, 30"
+SRR6854127,p21,RNA-Seq,GCF_000001635.20,99,16377919767,PRJNA438862,SAMN08730969,Model organism or animal,8947783747,SI-GA-B1,KAROLINSKA INSTITUTE,public,"TenX,sra","s3,gs,ncbi","s3.us-east-1,ncbi.public,gs.US",SRX3809323,Illumina HiSeq 2500,10X54_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X54_2,pooled male and female,SRP135960,CD-1,Medulla,"Ad 29\, 30"
+SRR6854130,p21,RNA-Seq,GCF_000001635.20,99,15688799973,PRJNA438862,SAMN08730968,Model organism or animal,7188545192,SI-GA-A1,KAROLINSKA INSTITUTE,public,"TenX,sra","s3,ncbi,gs","gs.US,ncbi.public,s3.us-east-1",SRX3809320,Illumina HiSeq 2500,10X54_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X54_1,pooled male and female,SRP135960,CD-1,Medulla,"Ad 29\, 30"
+SRR6854132,p21-23,RNA-Seq,GCF_000001635.20,98,13315788318,PRJNA438862,SAMN08730966,Model organism or animal,4470766581,SI-3A-F11,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,gs,s3","ncbi.public,s3.us-east-1,gs.US",SRX3809318,Illumina HiSeq 2500,10X53_6,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X53_6,pooled male and female,SRP135960,Swiss,SC,"Ad27\, Ad28"
+SRR6854134,p21-23,RNA-Seq,GCF_000001635.20,98,17544474696,PRJNA438862,SAMN08730964,Model organism or animal,6447861291,SI-3A-D11,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,gs,ncbi","s3.us-east-1,ncbi.public,gs.US",SRX3809316,Illumina HiSeq 2500,10X53_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X53_4,pooled male and female,SRP135960,Swiss,SC,"Ad27\, Ad28"
+SRR6854136,p19,RNA-Seq,GCF_000001635.20,98,15986430124,PRJNA438862,SAMN08730952,Model organism or animal,6251515964,SI-3A-D1,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX3809314,Illumina HiSeq 2500,10X51_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X51_4,female,SRP135960,CD-1,Hypothalamus,Ad25
+SRR6854140,p19,RNA-Seq,GCF_000001635.20,98,15477606480,PRJNA438862,SAMN08730950,Model organism or animal,6106903914,SI-3A-B1,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,s3,gs","gs.US,ncbi.public,s3.us-east-1",SRX3809310,Illumina HiSeq 2500,10X51_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X51_2,female,SRP135960,CD-1,CB,Ad25
+SRR6854142,p19,RNA-Seq,GCF_000001635.20,98,19105768066,PRJNA438862,SAMN08730944,Model organism or animal,7370413785,SI-3A-D9,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,gs,ncbi","gs.US,ncbi.public,s3.us-east-1",SRX3809308,Illumina HiSeq 2500,10X50_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X50_4,female,SRP135960,CD-1,Hypothalamus,Ad25
+SRR6854143,p19,RNA-Seq,GCF_000001635.20,98,18631377604,PRJNA438862,SAMN08730945,Model organism or animal,8080051110,SI-3A-E9,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,gs,s3","s3.us-east-1,ncbi.public,gs.US",SRX3809307,Illumina HiSeq 2500,10X50_5,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X50_5,female,SRP135960,CD-1,Thalamus,Ad25
+SRR6854147,p22,RNA-Seq,GCF_000001635.20,99,16282632366,PRJNA438862,SAMN08730980,Model organism or animal,7194001322,SI-GA-E2,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,ncbi,gs","ncbi.public,s3.us-east-1,gs.US",SRX3809303,Illumina HiSeq 2500,10X55_5,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X55_5,pooled male and female,SRP135960,CD-1,Pons,"Ad 31\, 32"
+SRR6854148,p22,RNA-Seq,GCF_000001635.20,99,12175040592,PRJNA438862,SAMN08730979,Model organism or animal,5251678672,SI-GA-D2,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,gs,ncbi","gs.US,ncbi.public,s3.us-east-1",SRX3809302,Illumina HiSeq 2500,10X55_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X55_4,pooled male and female,SRP135960,CD-1,Medulla,"Ad 31\, 32"
+SRR6854149,p21,RNA-Seq,GCF_000001635.20,99,14951534895,PRJNA438862,SAMN08730974,Model organism or animal,7612684960,SI-GA-G1,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,gs,ncbi","gs.US,s3.us-east-1,ncbi.public",SRX3809301,Illumina HiSeq 2500,10X54_7,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X54_7,pooled male and female,SRP135960,CD-1,Pons,"Ad 29\, 30"
+SRR6854150,p27,RNA-Seq,GCF_000001635.20,98,18233091492,PRJNA438862,SAMN08730922,Model organism or animal,4951192593,SI-3A-A12,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,gs,s3","ncbi.public,s3.us-east-1,gs.US",SRX3809300,Illumina HiSeq 2500,10X36_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X36_3,pooled male and female,SRP135960,vGat-tdTomato,Ctx2,"CAint05\, CAint06\, CAint07"
+SRR6854151,p27,RNA-Seq,GCF_000001635.20,98,17312210678,PRJNA438862,SAMN08730921,Model organism or animal,4866863700,SI-3A-H11,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX3809299,Illumina HiSeq 2500,10X36_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X36_2,pooled male and female,SRP135960,vGat-tdTomato,CA1,"CAint05\, CAint06\, CAint07"
+SRR6854152,p21,RNA-Seq,GCF_000001635.20,99,17254703367,PRJNA438862,SAMN08730973,Model organism or animal,7941913483,SI-GA-F1,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,gs,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX3809298,Illumina HiSeq 2500,10X54_6,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X54_6,pooled male and female,SRP135960,CD-1,Pons,"Ad 29\, 30"
+SRR6854153,p21,RNA-Seq,GCF_000001635.20,98,18031803902,PRJNA438862,SAMN08730914,Model organism or animal,6790430033,SI-3A-G4,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,s3,ncbi","gs.US,s3.us-east-1,ncbi.public",SRX3809297,Illumina HiSeq 2500,10X34_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X34_3,female,SRP135960,CD-1,MidbrainVentral,Ad17
+SRR6854154,p21,RNA-Seq,GCF_000001635.20,98,15801029118,PRJNA438862,SAMN08730913,Model organism or animal,5323479650,SI-3A-F4,KAROLINSKA INSTITUTE,public,"TenX,sra","s3,ncbi,gs","s3.us-east-1,ncbi.public,gs.US",SRX3809296,Illumina HiSeq 2500,10X34_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X34_2,female,SRP135960,CD-1,Amygdala,Ad17
+SRR6854155,p26,RNA-Seq,GCF_000001635.20,98,17921335068,PRJNA438862,SAMN08730916,Model organism or animal,5482356700,SI-3A-C11,KAROLINSKA INSTITUTE,public,"TenX,sra","s3,gs,ncbi","s3.us-east-1,gs.US,ncbi.public",SRX3809295,Illumina HiSeq 2500,10X35_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X35_1,female,SRP135960,CD-1,Ctx2,Ad18
+SRR6854156,p21,RNA-Seq,GCF_000001635.20,98,17014817134,PRJNA438862,SAMN08730915,Model organism or animal,6533228385,SI-3A-H4,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,s3,ncbi","s3.us-east-1,ncbi.public,gs.US",SRX3809294,Illumina HiSeq 2500,10X34_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X34_4,female,SRP135960,CD-1,MidbrainVentral,Ad17
+SRR6854157,p26,RNA-Seq,GCF_000001635.20,98,17156662236,PRJNA438862,SAMN08730918,Model organism or animal,5483995737,SI-3A-E11,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,gs,ncbi","s3.us-east-1,ncbi.public,gs.US",SRX3809293,Illumina HiSeq 2500,10X35_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X35_3,female,SRP135960,CD-1,Hypothalamus,Ad18
+SRR6854158,p26,RNA-Seq,GCF_000001635.20,98,16772573090,PRJNA438862,SAMN08730917,Model organism or animal,5691041799,SI-3A-D11,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,gs,s3","gs.US,s3.us-east-1,ncbi.public",SRX3809292,Illumina HiSeq 2500,10X35_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X35_2,female,SRP135960,CD-1,Ctx2,Ad18
+SRR6854159,p27,RNA-Seq,GCF_000001635.20,98,17253270930,PRJNA438862,SAMN08730920,Model organism or animal,5087205098,SI-3A-G11,KAROLINSKA INSTITUTE,public,"TenX,sra","s3,gs,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX3809291,Illumina HiSeq 2500,10X36_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X36_1,pooled male and female,SRP135960,vGat-tdTomato,CA1,"CAint05\, CAint06\, CAint07"
+SRR6854164,p24,RNA-Seq,GCF_000001635.20,98,17175452756,PRJNA438862,SAMN08730899,Model organism or animal,5856479465,SI-3A-F5,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,gs,s3","gs.US,ncbi.public,s3.us-east-1",SRX3809286,Illumina HiSeq 2500,10X24_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X24_4,male,SRP135960,CD-1,Thalamus,Ad12
+SRR6854168,p23,RNA-Seq,GCF_000001635.20,98,17310947458,PRJNA438862,SAMN08730895,Model organism or animal,5709565061,SI-3A-H7,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,gs,ncbi","s3.us-east-1,ncbi.public,gs.US",SRX3809282,Illumina HiSeq 2500,10X22_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X22_4,male,SRP135960,CD-1,HC,Ad11
+SRR6854169,p23,RNA-Seq,GCF_000001635.20,98,17758745620,PRJNA438862,SAMN08730894,Model organism or animal,5565132997,SI-3A-G7,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,ncbi,gs","ncbi.public,gs.US,s3.us-east-1",SRX3809281,Illumina HiSeq 2500,10X22_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X22_3,male,SRP135960,CD-1,HC,Ad11
+SRR6854171,p21,RNA-Seq,GCF_000001635.20,98,9095607654,PRJNA438862,SAMN08731003,Model organism or animal,3153582578,SI-3A-F1,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,gs,s3","ncbi.public,s3.us-east-1,gs.US",SRX3809279,Illumina HiSeq 2500,10X87_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X87_4,missing,SRP135960,missing,Thalamus,"Ad37\,Ad38"
+SRR6854174,p60,RNA-Seq,GCF_000001635.20,98,17171628208,PRJNA438862,SAMN08730925,Model organism or animal,5355261477,SI-3A-D12,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,s3,gs","gs.US,s3.us-east-1,ncbi.public",SRX3809276,Illumina HiSeq 2500,10X38_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X38_3,pooled male and female,SRP135960,vGat-tdTomato,Ctx1.5,"CAint08\, CAint09\, CAint10"
+SRR6854177,p60,RNA-Seq,GCF_000001635.20,98,17344066950,PRJNA438862,SAMN08730924,Model organism or animal,5741826030,SI-3A-C12,KAROLINSKA INSTITUTE,public,"TenX,sra","s3,gs,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX3809273,Illumina HiSeq 2500,10X38_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X38_2,pooled male and female,SRP135960,vGat-tdTomato,CA1,"CAint08\, CAint09\, CAint10"
+SRR6877265,p20,RNA-Seq,GCF_000001635.20,98,18362329090,PRJNA438862,SAMN08771080,Model organism or animal,6891753007,SI-3A-G10,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,gs,s3","ncbi.public,gs.US,s3.us-east-1",SRX3830113,Illumina HiSeq 2500,10X52_7,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X52_7,male,SRP135960,CD-1,ventral midbrain,Ad26
+SRR6854052,p21,RNA-Seq,GCF_000001635.20,98,16727094916,PRJNA438862,SAMN08730912,Model organism or animal,5434431440,SI-3A-E4,KAROLINSKA INSTITUTE,public,"TenX,sra","s3,ncbi,gs","s3.us-east-1,gs.US,ncbi.public",SRX3809398,Illumina HiSeq 2500,10X34_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X34_1,female,SRP135960,CD-1,Amygdala,Ad17
+SRR6854055,p26,RNA-Seq,GCF_000001635.20,98,15903260366,PRJNA438862,SAMN08730905,Model organism or animal,5721774506,SI-3A-F8,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,s3,gs","s3.us-east-1,ncbi.public,gs.US",SRX3809395,Illumina HiSeq 2500,10X28_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X28_3,male,SRP135960,CD-1,Ctx3,Ad14
+SRR6854057,p26,RNA-Seq,GCF_000001635.20,98,15771004368,PRJNA438862,SAMN08730907,Model organism or animal,5927068508,SI-3A-H8,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,s3,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX3809393,Illumina HiSeq 2500,10X28_5,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X28_5,male,SRP135960,CD-1,OB,Ad14
+SRR6854059,p20,RNA-Seq,GCF_000001635.20,98,17409840728,PRJNA438862,SAMN08730909,Model organism or animal,6009682493,SI-3A-H10,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,gs,ncbi","gs.US,ncbi.public,s3.us-east-1",SRX3809391,Illumina HiSeq 2500,10X33_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X33_2,pooled male and female,SRP135960,CD-1,Medulla,"Ad15\, Ad16"
+SRR6854061,"p19\, p21",RNA-Seq,GCF_000001635.20,98,16028465852,PRJNA438862,SAMN08730996,Model organism or animal,6422676564,SI-GA-D5,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,s3,gs","gs.US,ncbi.public,s3.us-east-1",SRX3809389,Illumina HiSeq 2500,10X81_2,SINGLE,PolyA,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X81_2,pooled male and female,SRP135960,Wnt1Cre-R26Rtomato-C57BL/6J,ENS,
+SRR6854063,6w,RNA-Seq,GCF_000001635.20,98,17055728410,PRJNA438862,SAMN08730994,Model organism or animal,6242072178,SI-3A-A8,KAROLINSKA INSTITUTE,public,"TenX,sra","s3,ncbi,gs","ncbi.public,gs.US,s3.us-east-1",SRX3809387,Illumina HiSeq 2500,10X75_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X75_1,missing,SRP135960,CD-1,Sympath,SYMP1
+SRR6854065,p19,RNA-Seq,GCF_000001635.20,98,9030775362,PRJNA438862,SAMN08731000,Model organism or animal,3364742483,SI-3A-A1,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,gs,s3","gs.US,s3.us-east-1,ncbi.public",SRX3809385,Illumina HiSeq 2500,10X86_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X86_3,missing,SRP135960,missing,Hypothalamus,Ad36
+SRR6854069,p21,RNA-Seq,GCF_000001635.20,98,6983863278,PRJNA438862,SAMN08731002,Model organism or animal,2759640646,SI-3A-D1,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,s3,ncbi","gs.US,s3.us-east-1,ncbi.public",SRX3809381,Illumina HiSeq 2500,10X87_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X87_2,missing,SRP135960,missing,Amygdala,"Ad37\,Ad38"
+SRR6854071,p28,RNA-Seq,GCF_000001635.20,98,29327276258,PRJNA438862,SAMN08730873,Model organism or animal,10781540517,SI-3A-A1,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX3809379,Illumina HiSeq 2500,10X01_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X01_1,missing,SRP135960,CD-1,SScortex,Ad01
+SRR6854073,p25-27,RNA-Seq,GCF_000001635.20,98,16758158074,PRJNA438862,SAMN08730991,Model organism or animal,5707058550,SI-3A-B2,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,gs,s3","gs.US,ncbi.public,s3.us-east-1",SRX3809377,Illumina HiSeq 2500,10X57_5,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X57_5,pooled male and female,SRP135960,Swiss,MidbrainVentral,"Ad33\, Ad34"
+SRR6854076,p25-27,RNA-Seq,GCF_000001635.20,98,17790258402,PRJNA438862,SAMN08730990,Model organism or animal,6394425922,SI-3A-A2,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,ncbi,s3","s3.us-east-1,ncbi.public,gs.US",SRX3809374,Illumina HiSeq 2500,10X57_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X57_4,pooled male and female,SRP135960,Swiss,MidbrainVentral,"Ad33\, Ad34"
+SRR6854079,p25-27,RNA-Seq,GCF_000001635.20,98,14935053686,PRJNA438862,SAMN08730985,Model organism or animal,4456483693,SI-3A-C12,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,gs,ncbi","s3.us-east-1,ncbi.public,gs.US",SRX3809371,Illumina HiSeq 2500,10X56_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X56_3,male,SRP135960,Swiss,Amygdala,Ad33
+SRR6854083,p22,RNA-Seq,GCF_000001635.20,98,16831653762,PRJNA438862,SAMN08730889,Model organism or animal,5245799128,SI-3A-D7,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,s3,gs","ncbi.public,s3.us-east-1,gs.US",SRX3809367,Illumina HiSeq 2500,10X20_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X20_2,female,SRP135960,CD-1,Ctx3,Ad10
+SRR6854085,p21,RNA-Seq,GCF_000001635.20,98,17344393878,PRJNA438862,SAMN08730887,Model organism or animal,5926110910,SI-3A-B7,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,s3,gs","ncbi.public,s3.us-east-1,gs.US",SRX3809365,Illumina HiSeq 2500,10X19_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X19_2,male,SRP135960,CD-1,Ctx2,Ad09
+SRR6854088,p22-24,RNA-Seq,GCF_000001635.20,98,17760141630,PRJNA438862,SAMN08730886,Model organism or animal,5663087121,SI-3A-D1,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,s3,gs","s3.us-east-1,ncbi.public,gs.US",SRX3809362,Illumina HiSeq 2500,10X11_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X11_1,male,SRP135960,CD-1,Medulla,"Ad07\, Ad08"
+SRR6854090,p30,RNA-Seq,GCF_000001635.20,98,16666488384,PRJNA438862,SAMN08730884,Model organism or animal,5612425467,SI-3A-C1,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,s3,ncbi","gs.US,s3.us-east-1,ncbi.public",SRX3809360,Illumina HiSeq 2500,10X06_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X06_3,male,SRP135960,CD-1,Hypothalamus,Ad06
+SRR6854092,p23,RNA-Seq,GCF_000001635.20,98,17153346896,PRJNA438862,SAMN08730892,Model organism or animal,5069045755,SI-3A-E7,KAROLINSKA INSTITUTE,public,"TenX,sra","s3,gs,ncbi","ncbi.public,s3.us-east-1,gs.US",SRX3809358,Illumina HiSeq 2500,10X22_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X22_1,male,SRP135960,CD-1,Ctx1,Ad11
+SRR6854095,p29,RNA-Seq,GCF_000001635.20,98,15665074208,PRJNA438862,SAMN08730881,Model organism or animal,4486483045,SI-3A-D3,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,gs,ncbi","s3.us-east-1,gs.US,ncbi.public",SRX3809355,Illumina HiSeq 2500,10X05_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X05_4,female,SRP135960,CD-1,StriatumDorsal,Ad05
+SRR6854096,p30,RNA-Seq,GCF_000001635.20,98,15957994542,PRJNA438862,SAMN08730882,Model organism or animal,4452760467,SI-3A-A4,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","gs.US,s3.us-east-1,ncbi.public",SRX3809354,Illumina HiSeq 2500,10X06_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X06_1,male,SRP135960,CD-1,Amygdala,Ad06
+SRR6854098,p22,RNA-Seq,GCF_000001635.20,99,14869438650,PRJNA438862,SAMN08730977,Model organism or animal,7835644263,SI-GA-B2,KAROLINSKA INSTITUTE,public,"TenX,sra","s3,ncbi,gs","ncbi.public,gs.US,s3.us-east-1",SRX3809352,Illumina HiSeq 2500,10X55_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X55_2,pooled male and female,SRP135960,CD-1,Medulla,"Ad 31\, 32"
+SRR6854099,p28,RNA-Seq,GCF_000001635.20,98,14701795654,PRJNA438862,SAMN08730877,Model organism or animal,4352173597,SI-3A-H3,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,gs,s3","gs.US,s3.us-east-1,ncbi.public",SRX3809351,Illumina HiSeq 2500,10X04_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X04_4,female,SRP135960,CD-1,OB,Ad04
+SRR6854101,p28,RNA-Seq,GCF_000001635.20,98,15207628926,PRJNA438862,SAMN08730875,Model organism or animal,4431008538,SI-3A-E3,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,s3,ncbi","s3.us-east-1,gs.US,ncbi.public",SRX3809349,Illumina HiSeq 2500,10X04_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X04_1,female,SRP135960,CD-1,HC,Ad04
+SRR6854103,p22,RNA-Seq,GCF_000001635.20,99,11906576154,PRJNA438862,SAMN08730976,Model organism or animal,5100173490,SI-GA-A2,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","gs.US,s3.us-east-1,ncbi.public",SRX3809347,Illumina HiSeq 2500,10X55_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X55_1,pooled male and female,SRP135960,CD-1,Medulla,"Ad 31\, 32"
+SRR6854108,p20,RNA-Seq,GCF_000001635.20,98,17085264630,PRJNA438862,SAMN08730957,Model organism or animal,6327290798,SI-3A-D10,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,s3,ncbi","gs.US,ncbi.public,s3.us-east-1",SRX3809342,Illumina HiSeq 2500,10X52_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X52_4,male,SRP135960,CD-1,MidbrainDorsal,Ad26
+SRR6854110,p20,RNA-Seq,GCF_000001635.20,98,18334554812,PRJNA438862,SAMN08730959,Model organism or animal,5873418086,SI-3A-F10,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,s3,gs","s3.us-east-1,gs.US,ncbi.public",SRX3809340,Illumina HiSeq 2500,10X52_6,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X52_6,male,SRP135960,CD-1,MidbrainVentral,Ad26
+SRR6854112,missing,RNA-Seq,GCF_000001635.20,98,12491045798,PRJNA438862,SAMN08730953,Model organism or animal,5223732332,SI-3A-E1,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,ncbi,s3","s3.us-east-1,ncbi.public,gs.US",SRX3809338,Illumina HiSeq 2500,10X51_5,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X51_5,missing,SRP135960,CD-1,mES,mES
+SRR6854113,p20,RNA-Seq,GCF_000001635.20,98,17761657690,PRJNA438862,SAMN08730956,Model organism or animal,6515437084,SI-3A-C10,KAROLINSKA INSTITUTE,public,"TenX,sra","s3,ncbi,gs","gs.US,s3.us-east-1,ncbi.public",SRX3809337,Illumina HiSeq 2500,10X52_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X52_3,male,SRP135960,CD-1,MidbrainDorsal,Ad26
+SRR6854114,p20,RNA-Seq,GCF_000001635.20,98,17166365020,PRJNA438862,SAMN08730955,Model organism or animal,6235866577,SI-3A-B10,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,gs,s3","s3.us-east-1,gs.US,ncbi.public",SRX3809336,Illumina HiSeq 2500,10X52_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X52_2,male,SRP135960,CD-1,MidbrainDorsal,Ad26
+SRR6854116,p20,RNA-Seq,GCF_000001635.20,98,15344563934,PRJNA438862,SAMN08730935,Model organism or animal,4937464774,SI-3A-A8,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX3809334,Illumina HiSeq 2500,10X48_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X48_4,pooled male and female,SRP135960,CD-1,Pons,"Pdgfra01\, Pdgfra02"
+SRR6854118,p20,RNA-Seq,GCF_000001635.20,98,17699539214,PRJNA438862,SAMN08730933,Model organism or animal,5234884490,SI-3A-E7,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,s3,ncbi","gs.US,ncbi.public,s3.us-east-1",SRX3809332,Illumina HiSeq 2500,10X48_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X48_2,pooled male and female,SRP135960,CD-1,Medulla,"Pdgfra01\, Pdgfra02"
+SRR6854120,p29,RNA-Seq,GCF_000001635.20,98,16941386028,PRJNA438862,SAMN08730939,Model organism or animal,5787952632,SI-3A-E8,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,ncbi,s3","s3.us-east-1,ncbi.public,gs.US",SRX3809330,Illumina HiSeq 2500,10X49_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X49_4,female,SRP135960,CD-1,OB,Ad24
+SRR6854122,p29,RNA-Seq,GCF_000001635.20,98,17595147458,PRJNA438862,SAMN08730937,Model organism or animal,5665155845,SI-3A-C8,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,s3,ncbi","ncbi.public,s3.us-east-1,gs.US",SRX3809328,Illumina HiSeq 2500,10X49_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X49_2,female,SRP135960,CD-1,Amygdala,Ad24
+SRR6854123,p19,RNA-Seq,GCF_000001635.20,98,19153428896,PRJNA438862,SAMN08730942,Model organism or animal,7145582336,SI-3A-B9,KAROLINSKA INSTITUTE,public,"bam,sra","s3,ncbi,gs","ncbi.public,s3.us-east-1,gs.US",SRX3809327,Illumina HiSeq 2500,10X50_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X50_2,female,SRP135960,CD-1,Hypothalamus,Ad25
+SRR6854124,p19,RNA-Seq,GCF_000001635.20,98,17650070774,PRJNA438862,SAMN08730941,Model organism or animal,7036900228,SI-3A-A9,KAROLINSKA INSTITUTE,public,"sra,bam","ncbi,gs,s3","s3.us-east-1,gs.US,ncbi.public",SRX3809326,Illumina HiSeq 2500,10X50_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X50_1,female,SRP135960,CD-1,Hypothalamus,Ad25
+SRR6854126,p21,RNA-Seq,GCF_000001635.20,99,14579766432,PRJNA438862,SAMN08730972,Model organism or animal,6692863389,SI-GA-E1,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,gs,s3","gs.US,s3.us-east-1,ncbi.public",SRX3809324,Illumina HiSeq 2500,10X54_5,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X54_5,pooled male and female,SRP135960,CD-1,Pons,"Ad 29\, 30"
+SRR6854128,p21,RNA-Seq,GCF_000001635.20,99,15235273251,PRJNA438862,SAMN08730970,Model organism or animal,8636359771,SI-GA-C1,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,gs,s3","gs.US,s3.us-east-1,ncbi.public",SRX3809322,Illumina HiSeq 2500,10X54_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X54_3,pooled male and female,SRP135960,CD-1,Medulla,"Ad 29\, 30"
+SRR6854129,p21-23,RNA-Seq,GCF_000001635.20,98,12264987826,PRJNA438862,SAMN08730967,Model organism or animal,4031047949,SI-3A-G11,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,ncbi,gs","s3.us-east-1,ncbi.public,gs.US",SRX3809321,Illumina HiSeq 2500,10X53_7,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X53_7,female,SRP135960,Swiss,DRG,Ad27
+SRR6854131,p21-23,RNA-Seq,GCF_000001635.20,98,17409320250,PRJNA438862,SAMN08730965,Model organism or animal,6327132839,SI-3A-E11,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX3809319,Illumina HiSeq 2500,10X53_5,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X53_5,pooled male and female,SRP135960,Swiss,SC,"Ad27\, Ad28"
+SRR6854135,p19,RNA-Seq,GCF_000001635.20,98,16536648282,PRJNA438862,SAMN08730951,Model organism or animal,5902947032,SI-3A-C1,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,gs,s3","s3.us-east-1,ncbi.public,gs.US",SRX3809315,Illumina HiSeq 2500,10X51_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X51_3,female,SRP135960,CD-1,Hypothalamus,Ad25
+SRR6854137,p19,RNA-Seq,GCF_000001635.20,98,18285464358,PRJNA438862,SAMN08730947,Model organism or animal,7923280720,SI-3A-G9,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,s3,ncbi","gs.US,s3.us-east-1,ncbi.public",SRX3809313,Illumina HiSeq 2500,10X50_7,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X50_7,female,SRP135960,CD-1,Thalamus,Ad25
+SRR6854138,p19,RNA-Seq,GCF_000001635.20,98,17573105004,PRJNA438862,SAMN08730948,Model organism or animal,7142852974,SI-3A-H9,KAROLINSKA INSTITUTE,public,"TenX,sra","s3,gs,ncbi","gs.US,ncbi.public,s3.us-east-1",SRX3809312,Illumina HiSeq 2500,10X50_8,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X50_8,female,SRP135960,CD-1,Thalamus,Ad25
+SRR6854139,p19,RNA-Seq,GCF_000001635.20,98,10390070740,PRJNA438862,SAMN08730949,Model organism or animal,4354913469,SI-3A-A1,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,s3,gs","ncbi.public,s3.us-east-1,gs.US",SRX3809311,Illumina HiSeq 2500,10X51_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X51_1,female,SRP135960,CD-1,CB,Ad25
+SRR6854141,p19,RNA-Seq,GCF_000001635.20,98,15675227792,PRJNA438862,SAMN08730943,Model organism or animal,5622364847,SI-3A-C9,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,ncbi,s3","gs.US,s3.us-east-1,ncbi.public",SRX3809309,Illumina HiSeq 2500,10X50_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X50_3,female,SRP135960,CD-1,Hypothalamus,Ad25
+SRR6854144,p19,RNA-Seq,GCF_000001635.20,98,14919403870,PRJNA438862,SAMN08730946,Model organism or animal,5237166072,SI-3A-F9,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,ncbi,s3","ncbi.public,s3.us-east-1,gs.US",SRX3809306,Illumina HiSeq 2500,10X50_6,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X50_6,female,SRP135960,CD-1,Thalamus,Ad25
+SRR6854146,p29,RNA-Seq,GCF_000001635.20,98,17538582446,PRJNA438862,SAMN08730880,Model organism or animal,5595901842,SI-3A-B1,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,s3,ncbi","s3.us-east-1,ncbi.public,gs.US",SRX3809304,Illumina HiSeq 2500,10X05_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X05_3,female,SRP135960,CD-1,StriatumDorsal,Ad05
+SRR6854160,p26,RNA-Seq,GCF_000001635.20,98,17569467636,PRJNA438862,SAMN08730919,Model organism or animal,5443068403,SI-3A-F11,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,gs,s3","gs.US,s3.us-east-1,ncbi.public",SRX3809290,Illumina HiSeq 2500,10X35_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X35_4,female,SRP135960,CD-1,Hypothalamus,Ad18
+SRR6854161,p25,RNA-Seq,GCF_000001635.20,98,15456802452,PRJNA438862,SAMN08730902,Model organism or animal,5876942896,SI-3A-C8,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,s3,ncbi","s3.us-east-1,ncbi.public,gs.US",SRX3809289,Illumina HiSeq 2500,10X26_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X26_3,female,SRP135960,CD-1,StriatumVentral,Ad13
+SRR6854163,p25,RNA-Seq,GCF_000001635.20,98,18373475904,PRJNA438862,SAMN08730900,Model organism or animal,5744332948,SI-3A-G5,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,s3,gs","ncbi.public,s3.us-east-1,gs.US",SRX3809287,Illumina HiSeq 2500,10X26_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X26_1,female,SRP135960,CD-1,CB,Ad13
+SRR6854165,p24,RNA-Seq,GCF_000001635.20,98,17336599644,PRJNA438862,SAMN08730898,Model organism or animal,5879307307,SI-3A-E5,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,s3,ncbi","gs.US,s3.us-east-1,ncbi.public",SRX3809285,Illumina HiSeq 2500,10X24_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X24_3,male,SRP135960,CD-1,Thalamus,Ad12
+SRR6854167,p24,RNA-Seq,GCF_000001635.20,98,16159728228,PRJNA438862,SAMN08730896,Model organism or animal,5645416826,SI-3A-A8,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,s3,ncbi","s3.us-east-1,ncbi.public,gs.US",SRX3809283,Illumina HiSeq 2500,10X24_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X24_1,male,SRP135960,CD-1,StriatumDorsal,Ad12
+SRR6854170,p23,RNA-Seq,GCF_000001635.20,98,17374563080,PRJNA438862,SAMN08730893,Model organism or animal,5627937514,SI-3A-F7,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,s3,gs","gs.US,s3.us-east-1,ncbi.public",SRX3809280,Illumina HiSeq 2500,10X22_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X22_2,male,SRP135960,CD-1,Ctx1,Ad11
+SRR6854172,"p16\, p24",RNA-Seq,GCF_000001635.20,98,17754240266,PRJNA438862,SAMN08730931,Model organism or animal,5719787266,SI-3A-H12,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","ncbi.public,s3.us-east-1,gs.US",SRX3809278,Illumina HiSeq 2500,10X46_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X46_3,pooled male and female,SRP135960,CD-1,StriatumVentral,"Ad22\, Ad23"
+SRR6854173,p20,RNA-Seq,GCF_000001635.20,98,17824940798,PRJNA438862,SAMN08730932,Model organism or animal,4770807897,SI-3A-D7,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,s3,ncbi","ncbi.public,s3.us-east-1,gs.US",SRX3809277,Illumina HiSeq 2500,10X48_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X48_1,pooled male and female,SRP135960,CD-1,Medulla,"Pdgfra01\, Pdgfra02"
+SRR6854175,"p12\, p35",RNA-Seq,GCF_000001635.20,98,17093449884,PRJNA438862,SAMN08730926,Model organism or animal,5764487509,SI-3A-E12,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,gs,s3","s3.us-east-1,ncbi.public,gs.US",SRX3809275,Illumina HiSeq 2500,10X43_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X43_1,pooled male and female,SRP135960,CD-1,DentGyr,"Ad19\, Ad20"
+SRR6854176,p60,RNA-Seq,GCF_000001635.20,98,17203210864,PRJNA438862,SAMN08730923,Model organism or animal,5141577831,SI-3A-B12,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,gs,ncbi","ncbi.public,s3.us-east-1,gs.US",SRX3809274,Illumina HiSeq 2500,10X38_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X38_1,pooled male and female,SRP135960,vGat-tdTomato,CA1,"CAint08\, CAint09\, CAint10"
+SRR6854178,"p16\, p24",RNA-Seq,GCF_000001635.20,98,16997277780,PRJNA438862,SAMN08730929,Model organism or animal,6229996476,SI-3A-H12,KAROLINSKA INSTITUTE,public,"sra,TenX","ncbi,s3,gs","s3.us-east-1,gs.US,ncbi.public",SRX3809272,Illumina HiSeq 2500,10X46_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X46_1,pooled male and female,SRP135960,CD-1,DentGyr,"Ad22\, Ad23"
+SRR6854180,p20,RNA-Seq,GCF_000001635.20,98,17488085202,PRJNA438862,SAMN08730927,Model organism or animal,5838699535,SI-3A-F12,KAROLINSKA INSTITUTE,public,"sra,TenX","s3,ncbi,gs","gs.US,s3.us-east-1,ncbi.public",SRX3809270,Illumina HiSeq 2500,10X43_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X43_2,male,SRP135960,CD-1,DRG,Ad21
+SRR6854145,p29,RNA-Seq,GCF_000001635.20,98,15082600428,PRJNA438862,SAMN08730879,Model organism or animal,5189561133,SI-3A-H2,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,s3,ncbi","ncbi.public,gs.US,s3.us-east-1",SRX3809305,Illumina HiSeq 2500,10X05_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X05_2,female,SRP135960,CD-1,Ctx1,Ad05
+SRR6854051,p20,RNA-Seq,GCF_000001635.20,98,17518043998,PRJNA438862,SAMN08730911,Model organism or animal,5210246754,SI-3A-B11,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,s3,ncbi","gs.US,ncbi.public,s3.us-east-1",SRX3809399,Illumina HiSeq 2500,10X33_4,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X33_4,pooled male and female,SRP135960,CD-1,Pons,"Ad15\, Ad16"
+SRR6854075,p25-27,RNA-Seq,GCF_000001635.20,98,17615081638,PRJNA438862,SAMN08730989,Model organism or animal,6472873668,SI-3A-H1,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,s3,ncbi","ncbi.public,s3.us-east-1,gs.US",SRX3809375,Illumina HiSeq 2500,10X57_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X57_3,pooled male and female,SRP135960,Swiss,MidbrainDorsal,"Ad33\, Ad34"
+SRR6854133,p21-23,RNA-Seq,GCF_000001635.20,98,17838508408,PRJNA438862,SAMN08730963,Model organism or animal,7030743616,SI-3A-C11,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,s3,ncbi","s3.us-east-1,ncbi.public,gs.US",SRX3809317,Illumina HiSeq 2500,10X53_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X53_3,pooled male and female,SRP135960,Swiss,SC,"Ad27\, Ad28"
+SRR6854081,p22,RNA-Seq,GCF_000001635.20,99,14806848771,PRJNA438862,SAMN08730983,Model organism or animal,7233520089,SI-GA-H2,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","ncbi.public,s3.us-east-1,gs.US",SRX3809369,Illumina HiSeq 2500,10X55_8,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X55_8,pooled male and female,SRP135960,CD-1,Pons,"Ad 31\, 32"
+SRR6854106,p21-23,RNA-Seq,GCF_000001635.20,98,17169748176,PRJNA438862,SAMN08730961,Model organism or animal,6353299257,SI-3A-A11,KAROLINSKA INSTITUTE,public,"TenX,sra","ncbi,s3,gs","s3.us-east-1,ncbi.public,gs.US",SRX3809344,Illumina HiSeq 2500,10X53_1,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X53_1,pooled male and female,SRP135960,Swiss,SC,"Ad27\, Ad28"
+SRR6854166,p24,RNA-Seq,GCF_000001635.20,98,16320258990,PRJNA438862,SAMN08730897,Model organism or animal,6010932997,SI-3A-B8,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","ncbi.public,gs.US,s3.us-east-1",SRX3809284,Illumina HiSeq 2500,10X24_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X24_2,male,SRP135960,CD-1,StriatumDorsal,Ad12
+SRR6854162,p25,RNA-Seq,GCF_000001635.20,98,17225914230,PRJNA438862,SAMN08730901,Model organism or animal,5145446561,SI-3A-H5,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX3809288,Illumina HiSeq 2500,10X26_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X26_2,female,SRP135960,CD-1,CB,Ad13
+SRR6854179,"p16\, p24",RNA-Seq,GCF_000001635.20,98,9052657488,PRJNA438862,SAMN08730930,Model organism or animal,3005581418,SI-3A-H11,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX3809271,Illumina HiSeq 2500,10X46_2,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X46_2,pooled male and female,SRP135960,CD-1,StriatumVentral,"Ad22\, Ad23"
+SRR6854181,p20,RNA-Seq,GCF_000001635.20,98,18302062422,PRJNA438862,SAMN08730928,Model organism or animal,6279250986,SI-3A-G12,KAROLINSKA INSTITUTE,public,"TenX,sra","gs,ncbi,s3","gs.US,ncbi.public,s3.us-east-1",SRX3809269,Illumina HiSeq 2500,10X43_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X43_3,male,SRP135960,CD-1,SC,Ad21
+""")
+      
+# include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow.snmk"
+
+# print(get_zheng_samples(CONF))
+
+# def list_cellranger_outputs(basepath, conf, flavour = 'cellranger_standard'):
+#    # celltypes = ['naive_t',
+#    #             'cd14_monocytes',
+#    #             'cd4_t_helper',
+#    #             'b_cells',
+#    #             'regulatory_t',
+#    #             'memory_t',
+#    #             'cd56_nk',
+#    #             'naive_cytotoxic',
+#    #             'cytotoxic_t',
+#    #             'cd34']
+
+#    celltypes = get_zheng_samples(conf)
+#    return([op.join(basepath, celltype, flavour, 'outs', 'filtered_feature_bc_matrix',
+#                      'barcodes.tsv.gz') for celltype in celltypes])
+
+# print(list_cellranger_outputs(basepath = op.join(BASE, 'runs', RUN_NAME),
+#                               conf = CONF,
+#                               flavour = 'cellranger_repeats'))
+
+rule all:
+    input:
+        # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html'),
+        # expand(op.join(BASE, 'data', RUN_NAME, "{srr}", "{srr}.bam"),
+        # srr = get_samples(CONF, 'p19')),
+        expand(op.join(BASE, 'data', RUN_NAME, "10X50_3", "10X50_3.bam.1")),
+        op.join(BASE, "runs", RUN_NAME, "10X50_3",
+                'count_repeats_on_cellranger_standard', 'split.flag'),
+        expand(op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard',
+                            '{multimappers}',
+                            RUN_NAME + "_repeats.counts.gz"),
+               sample = '10X50_3',
+               multimappers = ['unique_reads', 'multimappers']),
+        expand(op.join(BASE, "runs", RUN_NAME, '{sample}',
+                       "count_repeats_on_cellranger_standard_not_overlapping_genes",
+                       "{multimappers}",
+                       RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
+               multimappers = ['multimappers', 'unique_reads'],
+               sample = '10X50_3')
+                      
+        # expand(op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'cellranger_standard', 'outs',
+        #                'web_summary.html'),
+        #        celltype = get_zheng_samples(CONF)),
+        # expand(op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'cellranger_repeats', 'outs',
+        #                'web_summary.html'),
+        #        celltype = get_zheng_samples(CONF)),
+        # # expand(op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'alevin', 'repeats',
+        # #                'alevin', 'quants_mat.gz'),
+        # #        celltype = get_zheng_samples(CONF)),
+        # expand( op.join(BASE, 'runs', RUN_NAME,
+        #                 RUN_NAME + '_pbmc_zheng_truth_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        #         regress_ncount = ['TRUE', 'FALSE'],
+        #         regress_nfeature = ['TRUE', 'FALSE']),
+        # op.join(BASE, "runs", RUN_NAME, "profile_mapping.txt")
+
+# rule knit_ad_hoc_zheng:
+#     input:
+#         genes_cellranger = list_cellranger_outputs(basepath = op.join(BASE, 'runs', RUN_NAME),
+#                               conf = CONF,
+#                               flavour = 'cellranger_standard'),
+#         repeats_cellranger = list_cellranger_outputs(basepath = op.join(BASE, 'runs', RUN_NAME),
+#                               conf = CONF,
+#                               flavour = 'cellranger_repeats'),
+#         config_fn = CONF
+#     params:
+#         rmd = 'summarize_zheng_truth_cellranger.Rmd',
+#         run_name = "zheng_truth",
+#         genes_cellranger_path = op.join(BASE, 'runs', RUN_NAME),
+#         repeats_cellranger_path = op.join(BASE, 'runs', RUN_NAME)
+#     output:
+#         html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_zheng_truth_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+#         rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_zheng_truth_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+#         aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+#         cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+#         markers  = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')  
+#     log:
+#         op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_zheng_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
+#     shell:
+#         """
+#         {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+#           output_file = \"{output.html}\", 
+#           params = list(identifier = \"{params.run_name}\", 
+#            genes_cellranger = \"{params.genes_cellranger_path}\",
+#            repeats_cellranger = \"{params.repeats_cellranger_path}\",
+#            seurat_output = \"{output.rds}\", 
+#            aris_output = \"{output.aris}\", 
+#            cobra_output = \"{output.cobra}\", 
+#            markers_output = \"{output.markers}\", 
+#            regress_genes_nCount = \"{wildcards.regress_ncount}\", \
+#            regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
+#            config_fn = \"{input.config_fn}\"))' &> {log}
+#         """
+
+# # rule combine_gtfs_to_profile_mapping:
+# #     input:
+# #         "" # a bam
+# #     output:
+# #         "" # the summary of featurecounts
+# #     shell:
+# #         """
+# #         echo 1
+# #         """
+
+# rule profile_mappings_rate_all:
+#     input:
+#         genes_cellranger = list_cellranger_outputs(basepath = op.join(BASE, 'runs', RUN_NAME),
+#                               conf = CONF,
+#                               flavour = 'cellranger_standard'),
+#         repeats_cellranger = list_cellranger_outputs(basepath = op.join(BASE, 'runs', RUN_NAME),
+#                               conf = CONF,
+#                               flavour = 'cellranger_repeats'),
+#         config_fn = CONF
+#     params:
+#         path = op.join(BASE, "runs", RUN_NAME),
+#         script = PROFILE_ALL_RSCRIPT,
+#         run_id = RUN_NAME
+#     output:
+#         txt = op.join(BASE, "runs", RUN_NAME, "profile_mapping.txt")
+#     threads: 1
+#     shell:
+#        """
+#        cd {params.path}
+       
+#        {Rscript} {params.script} --path {params.path} --output {output.txt} -i {params.run_id}
+#        """
+        
+# rule run_cellranger_standard:
+#     input:
+#         flag = op.join(BASE, 'data', RUN_NAME, "{celltype}_fastqs.flag"),
+#         transcriptome = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0')
+#     params:
+#         fastqs_path = op.join(BASE, 'data', RUN_NAME, "{celltype}"),
+#         sample_name = RUN_NAME,
+#         local_mem_gb = LOCAL_MEM_GB,
+#         processing_path = op.join(BASE, 'runs', RUN_NAME, "{celltype}"),
+#         chemistry = CHEMISTRY
+#     output:
+#         op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'cellranger_standard', 'outs',
+#                 'web_summary.html'),
+#         op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'cellranger_standard', 'outs',
+#                 'possorted_genome_bam.bam'),
+#         op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'cellranger_standard', 'outs',
+#                 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+#     threads:
+#         NTHREADS
+#     log:
+#         op.join(BASE, 'runs',  RUN_NAME, 'run_cellranger_{celltype}_standard.log')
+#     shell:
+#         """
+#             mkdir -p {params.processing_path}
+#             cd {params.processing_path}
+#             rm -rf cellranger_standard
+
+#             {CELLRANGER} count --id=cellranger_standard \
+#             --fastqs={params.fastqs_path} \
+#             --transcriptome={input.transcriptome} \
+#             --jobmode=local \
+#             --localcores={threads} \
+#             --localmem={params.local_mem_gb} \
+#             --chemistry={params.chemistry}
+#             """
+
+# rule try_alevin_repeats:
+#     input:        
+#         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
+#         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
+#         cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, "{celltype}", '*I1*fastq.gz'))),
+#         r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, "{celltype}", '*RA*fastq.gz')))        
+#     output:
+#         op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
+#     threads:
+#         NTHREADS
+#     params:
+#         fastqs_path = op.join(BASE, 'data', RUN_NAME, "{celltype}", ),
+#         processing_path = op.join(BASE, 'runs', RUN_NAME, "{celltype}",  'alevin', 'repeats'),
+#         salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
+#         converter_path =  op.dirname("{SALMON_V1_V10X_RUN}")
+#     log:
+#         op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium_"{celltype}".log')
+#     shell:
+#         """
+#     mkdir -p {params.processing_path}
+
+#     cd {params.converter_path}
+
+#     # cd {params.processing_path}
+
+#     {SALMON_V1_10X_RUN} {SALMON} alevin \
+#     -lISR \
+#     -b {params.fastqs_path}/ \
+#     --gemcode \
+#     -i {params.salmon_idx} \
+#     -p {threads} \
+#     -o {params.processing_path} \
+#     --tgMap {input.tgmap}
+
+#     touch -c {output}
+#     """
+        
+# rule run_cellranger_repeats:
+#     input:
+#         flag = op.join(BASE, 'data', RUN_NAME, "{celltype}_fastqs.flag"),
+#         transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
+#     params:
+#         fastqs_path = op.join(BASE, 'data', RUN_NAME, "{celltype}"),
+#         sample_name = RUN_NAME,
+#         local_mem_gb = LOCAL_MEM_GB,
+#         processing_path = op.join(BASE, 'runs', RUN_NAME, "{celltype}"),
+#         chemistry = CHEMISTRY
+#     output:
+#         op.join(BASE, 'runs', RUN_NAME, "{celltype}",'cellranger_repeats',
+#                 'outs', 'web_summary.html'),
+#         op.join(BASE, 'runs', RUN_NAME, "{celltype}",'cellranger_repeats', 'outs',
+#                 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+#     threads:
+#         NTHREADS
+#     log:
+#         op.join(BASE, 'runs', RUN_NAME, 'run_cellranger_{celltype}_repeats.log')
+#     shell:
+#         """
+#         mkdir -p {params.processing_path}
+#         cd {params.processing_path}
+#         rm -rf cellranger_repeats
+
+#         {CELLRANGER} count --id=cellranger_repeats \
+#           --fastqs={params.fastqs_path} \
+#           --transcriptome={input.transcriptome} \
+#           --jobmode=local \
+#           --localcores={threads} \
+#           --localmem={params.local_mem_gb} \
+#           --chemistry={params.chemistry} \
+#             """
+
+rule get_test_data_brain:
+    priority:
+        100
+    params:
+        path = op.join(BASE, 'data', RUN_NAME, '10X50_3'),
+        path_data = op.join(BASE, 'data', RUN_NAME)
+    output:
+        bam = op.join(BASE, 'data', RUN_NAME, "10X50_3.bam.1")
+    threads:
+        1
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+        wget  https://sra-pub-src-1.s3.amazonaws.com/SRR6854141/10X50_3.bam.1
+        """
+        
+rule get_data_brain:
+    priority:
+        100
+    params:
+        path = op.join(BASE, 'data', RUN_NAME),
+        path_data = op.join(BASE, 'data', RUN_NAME)
+    output:
+        tar = op.join(BASE, 'data', RUN_NAME, "{srr}", "{srr}.bam")
+    threads:
+        1
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+    
+        {PREFETCH} {wildcards.srr} --output-file {wildcards.srr}.sra &> \
+               {wildcards.srr}_prefetch.log
+
+        {VDBVALIDATE} {wildcards.srr}.sra &> {wildcards.srr}_vdbvalidation.log
+            
+        {FASTQDUMP}  --gzip --split-files  {wildcards.srr}.sra
+  
+        cd {params.path_data}
+        """
+
+rule fake_barcodes:
+    input:
+        bam = op.join(BASE, 'data', RUN_NAME, "10X50_3", "10X50_3.bam.1")
+    output:
+        barc = temp(op.join(BASE, 'data', RUN_NAME, "10X50_3", "barcodes.tsv")),
+        barcodes = op.join(BASE, 'data', RUN_NAME, "10X50_3", "barcodes.tsv.gz")
+    shell: """
+    samtools view {input.bam} | cut -f19 | grep CB | sed 's/CB:Z://g' | sort | uniq > {output.barc}
+    gzip -k {output.barc}
+    """
+
+rule spawn_cellranger_bam_file_by_cell_by_sample:
+    input:
+        bam = op.join(BASE, 'data', RUN_NAME, "10X50_3", "10X50_3.bam.1"),
+        barcodes = op.join(BASE, 'data', RUN_NAME, "10X50_3", "barcodes.tsv.gz")
+    output:
+        rgs = temp(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                           'count_repeats_on_cellranger_standard', 'rgs.txt')),
+        header = temp(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                              'count_repeats_on_cellranger_standard', 'header.txt')),
+        body = temp(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                            'count_repeats_on_cellranger_standard', 'body.txt.gz')),
+        shortened_bam = temp(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                                     'count_repeats_on_cellranger_standard', 'shortened.bam')),
+        flag = op.join(BASE, "runs", RUN_NAME, "{sample}",
+                       'count_repeats_on_cellranger_standard', 'split.flag'),
+        path = directory(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                                 'count_repeats_on_cellranger_standard', 'split'))
+    threads:
+        NTHREADS
+    params:
+        barcodes_script = 'get_cell_barcodes.py',
+        split_script = 'split_by_cell_barcode_in_sorted_bam.py',
+        split_path = op.join(BASE, "runs", RUN_NAME, "{sample}",
+                             'count_repeats_on_cellranger_standard', 'split')
+    log:
+        log1 = op.join(BASE, "runs", RUN_NAME, "{sample}",
+                       'count_repeats_on_cellranger_standard', 'split_add_rg.log'),
+        log2 = op.join(BASE, "runs", RUN_NAME, "{sample}",
+                       'count_repeats_on_cellranger_standard', 'split_pick.log'),
+    shell:
+        """
+        mkdir -p {output.path}
+        
+        # python3 {params.barcodes_script} {input.bam} | {PIGZ} -p {threads} > {output.rgs}
+
+        python3 {params.barcodes_script} {input.bam}  > {output.rgs}
+
+        samtools view -@ {threads} -H {input.bam} > {output.header}
+
+        # ## buffer size in sort due to https://superuser.com/questions/938558/sort-parallel-isnt-parallelizing
+        # ( samtools view -@ {threads} {input.bam} | cut -f 1-15 | \
+        # paste - {output.rgs} | \
+        #   sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
+        ## updated 2 oct to handle SRR8847571
+        ( samtools view -@ {threads} {input.bam} | cut -f 1-15 | \
+        paste - {output.rgs} | \
+          fgrep "RG:Z" | \
+          sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
+
+
+        {PIGZ} --decompress -p {threads} --keep --stdout {output.body} | cat {output.header} - | samtools view -@ {threads} -Sb - > {output.shortened_bam}
+        
+        python3 split_by_cell_barcode_in_sorted_bam.py {output.shortened_bam} -outdir {params.split_path} -barcodes {input.barcodes} &> {log.log2}
+
+        touch {output.flag}
+
+        """
+
+        
+rule profile_featurecounts_run_repeats_by_sample:
+    input:        
+        summary = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard',
+                          "{multimappers}",
+                          RUN_NAME + "_repeats.counts.summary")
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "{sample}", "count_repeats_on_cellranger_standard",
+                       "{multimappers}"),
+        script = FEATURECOUNTS_RSCRIPT,
+        gtf = 'cellranger_repeats'
+    output:
+        png = op.join(BASE, "runs", RUN_NAME, "{sample}", "count_repeats_on_cellranger_standard",
+                      "{multimappers}",
+                      RUN_NAME + "_transcriptome_repeats.counts.summary.png")
+    threads: 1
+    shell:
+       """
+       cd {params.path}
+       
+       {Rscript} {params.script} --summary {input.summary} --output {output.png} \
+           --identifier {params.gtf}
+       """
+
+## potentially broken, multimappers wildcard missing
+rule profile_featurecounts_run_repeats_not_genes_by_sample:
+    input:        
+        summary = op.join(BASE, "runs", RUN_NAME, "{sample}",
+                          'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                          "{multimappers}",
+                          RUN_NAME + "_repeats_not_overlapping_genes.counts.summary")
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "{sample}",                       
+                       "count_repeats_on_cellranger_standard_not_overlapping_genes",
+                       "{multimappers}"),
+        script = FEATURECOUNTS_RSCRIPT,
+        gtf = 'cellranger_repeats_not_genes'
+    output:
+        png = op.join(BASE, "runs", RUN_NAME, "{sample}",
+                      "count_repeats_on_cellranger_standard_not_overlapping_genes",
+                      "{multimappers}",
+                      RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png")
+    threads: 1
+    shell:
+       """
+       cd {params.path}
+       
+       {Rscript} {params.script} --summary {input.summary} --output {output.png} \
+          --identifier {params.gtf}
+       """    
+
+       
+rule run_featurecounts_spawned_bams_by_sample:
+    input:
+        flag = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard', 'split.flag'),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard', 'split')        
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard',
+                               '{multimappers}',
+                               RUN_NAME + "_repeats.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard',
+                            '{multimappers}',
+                            RUN_NAME + "_repeats.counts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard',
+                          '{multimappers}',
+                            RUN_NAME + "_repeats.counts.summary")
+    log :
+        log = op.join(BASE, "runs",  RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard',
+                      '{multimappers}',                      
+                      'feature_counts.log'),
+    threads:
+        NTHREADS
+    # shell: """
+    # cd {params.path}
+
+    # {FEATURECOUNTS} -T {threads} \
+    # -t exon \
+    # -g gene_id \
+    # -a {input.gtf} \
+    # -o  {output.counts} \
+    # {params.path}/*bam  2>&1 > {log}
+
+    # {PIGZ} --keep -p {threads} {output.counts}
+    # """
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            cd {params.path}
+
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            -M \
+            --fraction \
+            {params.path}/*bam  2>&1 > {log}
+
+            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+            """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            cd {params.path}
+
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            {params.path}/*bam  2>&1 > {log}
+
+            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+            """)
