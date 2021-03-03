@@ -14,6 +14,8 @@ output:
     always_allow_html: yes
 params:
   results_path: ""
+  markers_rds: ""
+  seurat_rds: ""
 ---
 
 
@@ -259,7 +261,7 @@ d <- list(genes_cellranger = list(),
 
 Focus in cellranger genes and repeats only cellranger
 
-```{r}
+```{r, message = FALSE}
 
 ## cr cellranger
 ## fc featurecounts
@@ -326,7 +328,7 @@ for (item in names(d$genes_cellranger)) {
 ```
 
 
-```{r}
+```{r, eval = FALSE}
 sapply(d$genes_cellranger, function(x) head(colnames(x)))
 sapply(d$repeats_only_multi, function(x) head(colnames(x)))
 
@@ -335,7 +337,7 @@ sapply(d$repeats_only_multi, function(x) head(colnames(x)))
 Remove runs with low number of cells
 
 ```{r}
-table(sapply(d$genes_cellranger, function(x) ncol(x) >100))
+## table(sapply(d$genes_cellranger, function(x) ncol(x) >100))
 
 idx <- names(d$genes_cellranger)[sapply(d$genes_cellranger, ncol) >= 100]
 
@@ -345,7 +347,9 @@ for (flavour in names(d))
 
 Integrate, add SRR identifiers. Num variable features: 10 pct if genes, 25 pct if repeats
 
-```{r, message = FALSE}
+Skip integration and merge
+
+```{r, message = FALSE, eval = FALSE}
 for (flavour in names(d)) {
     tryCatch({
         for (i in 1:length(d[[flavour]])) {
@@ -372,24 +376,54 @@ for (flavour in names(d)) {
     }, error = function(x) print(x))
     
 }
+
+```
+
+
+```{r}
+for (flavour in names(d)) {
+    d[[flavour]] <- merge(d[[flavour]][[1]], d[[flavour]][2:length(d[[flavour]])])
+}
+
+d
+
+head(d[[1]]@meta.data)
 ```
 
 Does it have the srr? Merge metadata, just in case, by SRR
 
 ```{r}
 for  (flavour in names(d)) {
+    d[[flavour]]@meta.data$cell <- rownames(d[[flavour]]@meta.data)
     d[[flavour]]@meta.data <- merge(d[[flavour]]@meta.data,
                                     annot[c('Run', 'model', 'source_name')], by.x  = 'orig.ident',
                                     by.y = 'Run', all.x = TRUE)
 
-    rownames(d[[flavour]]@meta.data) <- colnames(d[[flavour]])
-    d[[flavour]]@meta.data$cell <- colnames(d[[flavour]])
+    rownames(d[[flavour]]@meta.data) <- d[[flavour]]@meta.data$cell
 }
 
 ```
 
 
 ## Dimred PCA {.tabset}
+
+```{r}
+for (flavour in names(d)) {
+    d[[flavour]] <- NormalizeData(d[[flavour]], normalization.method = "LogNormalize",
+                                  scale.factor = 10000)
+    
+    if (grepl('repeats', flavour)) {
+        d[[flavour]] <- FindVariableFeatures(
+            d[[flavour]], selection.method = "vst",
+            nfeatures = round(nrow(d[[flavour]])/4))
+    } else {
+        d[[flavour]] <- FindVariableFeatures(
+            d[[flavour]], selection.method = "vst",
+            nfeatures = round(nrow(d[[flavour]])/10))
+    }
+}
+
+```
 
 ```{r, message = FALSE, results ='asis'}
 NUM_PCS <- 1:30
@@ -436,7 +470,7 @@ for (item in names(d)) {
 for (item in names(d)) {
 
     d[[item]] <- FindNeighbors(d[[item]], dims = NUM_PCS)
-    for (res in seq(0.2, 2, by = 0.2)) {
+    for (res in seq(0.2, 2, by = 0.6)) {
         d[[item]] <- FindClusters(d[[item]], resolution = res, verbose = FALSE)
 
     }
@@ -452,24 +486,29 @@ for (item in names(d)) {
 
 ## Dimred UMAP and tSNE {.tabset}
 
-```{r fig.width = 8, fig.height = 5, results = 'asis', cache = FALSE, warning = FALSE}
+```{r results = 'asis', cache = FALSE, warning = FALSE}
 for (item in names(d)) {
-    cat("### ", item, "\n\n")
+    cat("### ", item, " {.tabset} \n\n")
     
-    p1 <- DimPlot(d[[item]], reduction = "umap")
-    p2 <- DimPlot(d[[item]], reduction = "tsne")
+    p1 <- DimPlot(d[[item]], reduction = "umap", group.by = 'model')
+    p2 <- DimPlot(d[[item]], reduction = "tsne", group.by = 'model')
 
-    print(p1 + ggtitle(item))
-    print(p2 + ggtitle(item))
+    cat('#### umap \n\n')
+    print(p1 + ggtitle(item) + theme(legend.position="right", aspect.ratio = 1))
+    cat('\n\n')
     
+    cat('#### tsne \n\n')
+
+    print(p2 + ggtitle(item) + theme(legend.position="right", aspect.ratio = 1))
+
+    cat('\n\n')
     rm(p1, p2)
     cat('\n\n')
 
 }
 ```
 
-# Differential expression
-
+# Differential expression {.tabset}
 
 
 ```{r, results = 'asis'}
@@ -480,7 +519,7 @@ for (item in names(d)) {
     Idents(d[[item]]) <- "model"
     d[[item]]@active.assay <- 'RNA'
     
-    cat('## , item\n')
+    cat('##' , item, '\n\n')
 
     markers[[item]] <- FindAllMarkers(object = d[[item]])
 
@@ -488,7 +527,7 @@ for (item in names(d)) {
     markers[[item]] <- markers[[item]][order(markers[[item]]$avg_logFC, decreasing = TRUE),]
     markers[[item]]$flavour <- item
 
-    dim(markers[[item]])
+    print(nrow(markers[[item]]))
     cat('\n\n')
 }
 
@@ -496,11 +535,29 @@ for (item in names(d)) {
 ## markers <- do.call(rbind.data.frame, markers)
 ```
 
+# Export objects
+
+```{r}
+saveRDS(object = markers, file = params$markers_rds)
+saveRDS(object = d, file = params$seurat_rds)
+```
+
+
+# Timestamp
+
+```{r, cache = FALSE}
+date()
+sessionInfo()
+devtools::session_info()
+
+```
+
 
 
 ```{r}
 knitr::knit_exit()
 ```
+
 
 ```{r}
 
@@ -683,6 +740,7 @@ for (srr in unique(markers$cluster)) {
 }
 
 ```
+
 
 
 

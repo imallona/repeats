@@ -5,6 +5,67 @@
 ## Izaskun Mallona
 ## GPLv3
 
+"""
+test run on
+https://sra-pub-src-1.s3.amazonaws.com/SRR6854141/10X50_3.bam.1
+which is
+
+a p19 hypothalamus, ADULT tissue 
+
+SRR6854141,p19,RNA-Seq,GCF_000001635.20,98,15675227792,PRJNA438862,SAMN08730943,Model organism or animal,5622364847,SI-3A-C9,KAROLINSKA INSTITUTE,public,"sra,TenX","gs,ncbi,s3","gs.US,s3.us-east-1,ncbi.public",SRX3809309,Illumina HiSeq 2500,10X50_3,SINGLE,Oligo-dT,TRANSCRIPTOMIC,Mus musculus,ILLUMINA,2018-04-04T00:00:00Z,10X50_3,female,SRP135960,CD-1,Hypothalamus,Ad25
+
+"""
+
+"""
+# not yet included into the flow #1
+# remove bam files smaller than
+cd ~/repeats_sc/runs/brain/10X50_3/count_repeats_on_cellranger_standard/split/
+
+# find files smaller than 4096 bytes.
+
+find . -type f  -size -4096c -exec ls -lh {} \;
+# 4ks are around 36 reads in the bamfile
+
+find . -type f  -size -40960c -exec ls -lh {} \;
+#22k are around 332 reads inj the bamfile. Will skip those
+
+find . -type f  -size -40960c -delete
+# that leaves around 16k cells
+# being even more restrictive
+find . -type f  -size -100000c -delete
+## that leaves around 6k cells, that featurecounts can handle
+
+"""
+
+"""
+# Not yet included into the flow #2
+
+cd ~/repeats_sc/data/brain
+wget https://storage.googleapis.com/linnarsson-lab-loom/l5_all.loom
+
+import loompy
+from numpy import savetxt
+
+filename = "/home/imallona/repeats_sc/data/brain/l5_all.loom"
+
+ds = loompy.connect(filename)
+
+print(ds.ca.keys())
+a = ds.ca["CellID", "ClusterName"]
+savetxt("/home/imallona/repeats_sc/data/brain/metadata.csv", a, delimiter=",", fmt='%s')
+
+b = ds.ca["CellID", "Age"]
+savetxt("/home/imallona/repeats_sc/data/brain/metadata2.csv", b, delimiter=",", fmt='%s')
+
+c = ds.ca["CellID", "Class"]
+savetxt("/home/imallona/repeats_sc/data/brain/metadata3.csv", c, delimiter=",", fmt='%s')
+
+
+ds.close()
+
+
+"""
+
 import os.path as op
 from glob import glob
 
@@ -266,6 +327,7 @@ rule all:
         # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html'),
         # expand(op.join(BASE, 'data', RUN_NAME, "{srr}", "{srr}.bam"),
         # srr = get_samples(CONF, 'p19')),
+        op.join(BASE, 'runs', 'brain_integration.html'),
         expand(op.join(BASE, 'data', RUN_NAME, "10X50_3", "10X50_3.bam.1")),
         op.join(BASE, "runs", RUN_NAME, "10X50_3",
                 'count_repeats_on_cellranger_standard', 'split.flag'),
@@ -274,10 +336,9 @@ rule all:
                             RUN_NAME + "_repeats.counts.gz"),
                sample = '10X50_3',
                multimappers = ['unique_reads', 'multimappers']),
-        expand(op.join(BASE, "runs", RUN_NAME, '{sample}',
-                       "count_repeats_on_cellranger_standard_not_overlapping_genes",
-                       "{multimappers}",
-                       RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
+        expand(op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                       '{multimappers}',
+                       RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
                multimappers = ['multimappers', 'unique_reads'],
                sample = '10X50_3')
                       
@@ -295,6 +356,40 @@ rule all:
         #         regress_ncount = ['TRUE', 'FALSE'],
         #         regress_nfeature = ['TRUE', 'FALSE']),
         # op.join(BASE, "runs", RUN_NAME, "profile_mapping.txt")
+
+
+        
+rule integration_brain:
+    input:
+        multi = op.join(BASE, "runs", RUN_NAME, "10X50_3",
+                        'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                        'multimappers',
+                        RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+        unique = op.join(BASE, "runs", RUN_NAME, "10X50_3",
+                        'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                        'unique_reads',
+                        RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+        annotation = op.join(BASE, "data", RUN_NAME, "metadata3.csv")
+    params:
+        rmd = 'integrate_runs_brain.Rmd',
+        data_path = op.join(BASE, 'runs', RUN_NAME)
+    output:
+        html = op.join(BASE, 'runs', 'brain_integration.html'),
+        rds = op.join(BASE, 'runs', 'brain_integration_seurat.rds'),
+        markers = op.join(BASE, 'runs', 'brain_integration_markers.rds')
+    log:
+        op.join(BASE, 'runs', 'brain_integration.log')
+    shell:
+        """
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+          output_file = \"{output.html}\", 
+          params = list(repeats_only_multi= \"{input.multi}\",
+                        repeats_only_unique= \"{input.unique}\",
+                        annotation = \"{input.annotation}\",
+                        markers_rds = \"{output.markers}\",
+                        seurat_rds = \"{output.rds}\"))' &> {log}
+        """
+        
 
 # rule knit_ad_hoc_zheng:
 #     input:
@@ -678,6 +773,77 @@ rule run_featurecounts_spawned_bams_by_sample:
 
             cd {params.path}
 
+              {FEATURECOUNTS} -T {threads} \
+              -t exon \
+              -g gene_id \
+              -a {input.gtf} \
+              -o  {output.counts} \
+              -M \
+              --fraction \
+            {params.path}/*bam  2>&1 > {log}
+
+            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+            """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            cd {params.path}
+
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            {params.path}/*bam  2>&1 > {log}
+
+            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+            """)
+
+            
+rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams_by_sample:
+    input:
+        flag = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard', 'split.flag'),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL) + '_minus_' + op.basename(GENES_GTF_URL))
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard', 'split')
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                               'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                               '{multimappers}',
+                               RUN_NAME + "_repeats_not_overlapping_genes.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                            '{multimappers}',
+                            RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                          '{multimappers}',
+                           RUN_NAME + "_repeats_not_overlapping_genes.counts.summary")
+    log :
+        log = op.join(BASE, "runs",  RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                      '{multimappers}'
+                      'feature_counts_not_overlapping_genes.log'),
+    threads:
+        NTHREADS
+    # shell: """
+    # cd {params.path}
+
+    # {FEATURECOUNTS} -T {threads} \
+    # -t exon \
+    # -g gene_id \
+    # -a {input.gtf} \
+    # -o  {output.counts} \
+    # {params.path}/*bam  2>&1 > {log}
+
+    # {PIGZ} --keep -p {threads} {output.counts}
+    # """
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            cd {params.path}
+
             {FEATURECOUNTS} -T {threads} \
             -t exon \
             -g gene_id \
@@ -705,3 +871,4 @@ rule run_featurecounts_spawned_bams_by_sample:
 
             {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
             """)
+        

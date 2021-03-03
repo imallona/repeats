@@ -1,0 +1,468 @@
+---
+title: "Across samples report - brain"
+author: "Izaskun Mallona at Robinsonlab"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    code_download: true
+    number_sections: true
+    df_print: kable
+    theme: lumen
+    always_allow_html: yes
+params:
+  repeats_only_multi: ""
+  repeats_only_unique: ""
+  markers_rds: ""
+  seurat_rds: ""
+  annotation: ""
+---
+
+
+Rendered for samples:
+
+```{r}
+## print(params)
+```
+# Config
+
+
+```{r}
+suppressPackageStartupMessages({
+library(Matrix)
+
+library(knitr)
+library(Seurat)
+library(dplyr)
+library(scater)
+library(scran)
+library(data.table)
+## library(SingleCellExperiment)
+## library(scran)
+## library(org.Mm.eg.db)
+## suppressPackageStartupMessages(library(dplyr))
+## suppressPackageStartupMessages(library(DT))
+library(pheatmap)
+## library(Cairo)
+## library(RColorBrewer)
+## library(corrplot)
+library(ggplot2)
+library(reshape2)
+## library(xtable)
+## library(mclust)
+library(viridis)
+library(UpSetR)
+library(ggplot2)
+library(grid)
+library(GEOquery)
+})
+```
+
+```{r}
+BASE <- file.path('/home', 'imallona', 'repeats_sc')
+RUN_NAME = '10X50_3' # prototype
+```
+
+```{r}
+opts_chunk$set(fig.width = 5,
+               fig.height = 5,
+               dev = 'png',
+               cache = FALSE,
+               echo = TRUE,
+               include = TRUE,
+               cache.lazy = FALSE,
+               warning = TRUE,
+               error = TRUE,
+               message = FALSE)
+
+
+
+options(bitmapType='cairo')
+## getOption('bitmapType')
+```
+
+```{r}
+theme_set(theme_classic()) 
+
+## theme_update(panel.background = element_blank(),
+##              ## panel.border = element_blank(),
+##              panel.grid.major = element_blank(),
+##              panel.grid.minor = element_blank(),
+##              axis.line = element_line(colour = "black"))
+
+theme_update(panel.spacing = unit(.05, "lines"),
+             panel.border = element_rect(color = "gray20", fill = NA, size = 0.1), 
+             strip.background = element_rect(color = "gray20", size = 0.1),
+             text = element_text(size = 15),
+             aspect.ratio = 1)
+
+```
+
+
+```{r functions}
+## add alpha
+ac <- function(col, alpha=1){
+  apply(sapply(col, col2rgb)/255, 2, 
+                     function(x) 
+                       rgb(x[1], x[2], x[3], alpha=alpha))  
+}
+
+## load_standard_cellranger_genes <- function(run_name) {
+##     ## barcodes_fn <- params$genes_cellranger ## should end with `barcodes.tsv.gz`
+##     barcodes_fn <- file.path(BASE, 'runs', run_name, 'cellranger_standard', 'outs',
+##                              'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+    
+##     path <- dirname(barcodes_fn)
+
+##     genes <- CreateSeuratObject(counts = Read10X(data.dir = path),
+##                                 project = 'cellranger_standard',
+##                                 min.cells = 0,
+##                                 min.features = 0)
+##     return(genes)
+## }
+
+## load_cellranger_repeats <-  function(run_name) {
+##     barcodes_fn <- file.path(BASE, 'runs', run_name, 'cellranger_repeats', 'outs',
+##                              'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+
+##     path <- dirname(barcodes_fn)
+
+##     repeats <- CreateSeuratObject(counts = Read10X(data.dir = path),
+##                                 project = 'cellranger_repeats',
+##                                 min.cells = 0,
+##                                 min.features = 0)
+##     return(repeats)
+## }
+
+load_featurecounts_repeats <-  function(repeats_fn, id) {
+    ## repeats <- file.path(BASE, "runs", run_name, 'count_repeats_on_cellranger_standard',
+    ##                             paste0(run_name, "_repeats.counts.gz"))
+
+    tmp <- data.table::fread(repeats_fn, sep = '\t', header = TRUE,
+                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+    rownames(tmp) <- tmp$Geneid ## here
+
+    colnames(tmp) <- gsub(".*:([A-Z]+)-1.bam","\\1", colnames(tmp))
+
+    tmp <- as.data.frame(tmp)
+    rownames(tmp) <- tmp$Geneid
+    tmp <- tmp[,-1]
+
+    featurecounts <- CreateSeuratObject(
+        tmp,
+        project = id,
+        assay = "RNA",
+        min.cells = 0,
+        min.features = 0,
+        names.field = 1,
+        names.delim = "_",
+        meta.data = NULL)
+
+    return(featurecounts)
+}
+
+coef_var <- function(x){
+        (sd(x)/mean(x))*100
+}
+
+
+```
+
+
+# Load metadata
+
+<!-- ```{r} -->
+<!-- gse <- getGEO('GSE121861') -->
+<!-- names(gse) -->
+<!-- as.data.frame(gse[[1]]@phenoData) -->
+<!-- str(pData(phenoData(gse[[1]]))) -->
+
+<!-- str(show(pData(phenoData(gse[[1]])))) -->
+<!-- ``` -->
+
+
+# Data load Seurat objects
+
+```{r justfordebugging, eval = FALSE}
+## params <- list(genes_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_cellranger= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/frozen_pbmc_donor_a_repeats.counts.gz")
+
+## SRR10974769
+
+## params <- list(run1 = '/home/imallona/repeats_sc/runs/SRR10974769/SRR10974769_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds',
+##                run2 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds',
+##                run3 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a/summarize_cellranger_run_regress_nCount_FALSE_nFeature_FALSE.rds',
+##                run4 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_cellranger_regress_nCount_FALSE_nFeature_FALSE.rds')
+
+params <- list(results_path = '/home/imallona/repeats_sc/runs/brain/',
+               repeats_only_multi = "/home/imallona/repeats_sc/runs/brain/10X50_3/count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers/brain_repeats_not_overlapping_genes.counts.gz",
+               repeats_only_unique = "/home/imallona/repeats_sc/runs/brain/10X50_3/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/brain_repeats_not_overlapping_genes.counts.gz",
+               regress_genes_nCount = FALSE,
+               regress_genes_nFeature = FALSE,
+               annotation = '/home/imallona/repeats_sc/data/brain/metadata3.csv')
+
+```
+
+
+```{r}
+annot <- read.csv(params$annotation, header = FALSE, stringsAsFactors = FALSE)
+
+str(annot)
+```
+
+```{r}
+d <- list()
+## fns <- list()
+```
+
+Focus in cellranger genes and repeats only cellranger. maybe reading the genes' loom files?
+
+```{r}
+
+
+## d[['genes_cellranger']][[srr]] <- CreateSeuratObject(
+##     counts = Read10X(data.dir = file.path(params$results_path, srr, 'cellranger_standard',
+##                                           'outs', 'filtered_feature_bc_matrix')),
+##                      project = srr,
+##                      min.cells = 0,
+##     min.features = 0)
+
+d[['repeats_only_unique']] <- load_featurecounts_repeats(
+    repeats_fn = file.path(params$repeats_only_unique),
+    RUN_NAME)
+
+d[['repeats_only_multi']] <- load_featurecounts_repeats(
+    repeats_fn = file.path(params$repeats_only_multi),
+    id = RUN_NAME)
+
+
+for (flavour in names(d)) {
+    ## we'll generalize that with more samples later   
+    d[[flavour]] <- RenameCells(
+        d[[flavour]],
+        new.names = sprintf('%s_%s-', RUN_NAME, colnames(d[[flavour]])))
+}
+        
+```
+
+
+# Basic Seurat processing
+
+Subset to cells present at the QC-ed annotation
+
+```{r}
+
+head(colnames(d[['repeats_only_unique']]))
+head(grep('10X50_3', annot$V1, value = TRUE))
+intersect(annot$V1, colnames(d[['repeats_only_unique']]))
+## lengths are not equal(?)
+
+grep('GCGGCTTATCTC', colnames(d[['repeats_only_unique']]), value = TRUE)
+grep('GTGGTGAGATCC', colnames(d[['repeats_only_unique']]), value = TRUE)
+grep('AGTCACTTGTCT', colnames(d[['repeats_only_unique']]), value = TRUE)
+
+## it's like they're taking out the first two? let's go crazy and try it, map them 1 to 1.
+
+tmp <- data.frame(cell = unique(c(colnames(d[['repeats_only_unique']]),
+                                  colnames(d[['repeats_only_multi']]))),
+                  valid_id_short = NA,
+                  celltype = NA)
+
+rownames(tmp) <- tmp$cell
+
+for (cell in grep('10X50_3', annot$V1, value = TRUE)) {
+    cell_id <- substr(cell, (nchar(cell)-12), nchar(cell)-1)
+    tmp[grep(cell_id, tmp$cell, value = TRUE), 'valid_id_short'] <- cell
+    tmp[grep(cell_id, tmp$cell, value = TRUE), 'celltype'] <- annot[annot$V1 == cell, 'V2']   
+}
+
+table(is.na(tmp$celltype))
+tmp <- na.omit(tmp)
+head(tmp)
+
+```
+
+Intersting,t hey removed the two nt in the 5'. Anyway,
+
+```{r}
+for (flavour in names(d)) {
+    selected <- intersect(tmp$cell, colnames(d[[flavour]]))
+    d[[flavour]] <- subset(d[[flavour]], cells = selected)
+}
+d
+```
+
+Add metadata
+
+```{r}
+d#
+```
+
+Does it have the srr? Merge metadata, just in case, by SRR
+
+```{r}
+head(tmp)
+
+for  (flavour in names(d)) {
+    d[[flavour]]@meta.data$cell <- rownames(d[[flavour]]@meta.data)
+    d[[flavour]]@meta.data <- merge(d[[flavour]]@meta.data,
+                                    tmp, by.x  = 'cell',
+                                    by.y = 'cell', all.x = TRUE)
+
+    rownames(d[[flavour]]@meta.data) <- d[[flavour]]@meta.data$cell
+    head(d[[flavour]]@meta.data)
+}
+
+```
+
+
+## Dimred PCA {.tabset}
+
+```{r}
+for (flavour in names(d)) {
+    d[[flavour]] <- NormalizeData(d[[flavour]], normalization.method = "LogNormalize",
+                                  scale.factor = 10000)
+    
+    if (grepl('repeats', flavour)) {
+        d[[flavour]] <- FindVariableFeatures(
+            d[[flavour]], selection.method = "vst",
+            nfeatures = round(nrow(d[[flavour]])/4))
+    } else {
+        d[[flavour]] <- FindVariableFeatures(
+            d[[flavour]], selection.method = "vst",
+            nfeatures = round(nrow(d[[flavour]])/10))
+    }
+}
+
+```
+
+```{r, message = FALSE, results ='asis'}
+NUM_PCS <- 1:30
+for (item in names(d)) {
+    cat("### ", item, "\n\n")
+
+    to_regress <- NULL       
+    
+    ## if (item == 'genes_cellranger') {
+        d[[item]] <- ScaleData(d[[item]], vars.to.regress = to_regress)
+    ## } else {
+    ##     ## in this case, the variables to regress come from the genes!
+    ##     ## e.g. is the genes library size the one to normalize the repets'
+    ##     tmp <- d$genes_cellranger@meta.data[,c("cell", "nCount_RNA", "nFeature_RNA")]
+    ##     ## tmp$cell <- rownames(tmp)
+    ##     ## d[[item]]@meta.data$cell <- rownames(d[[item]]@meta.data)
+    ##     d[[item]]@meta.data <- merge(d[[item]]@meta.data, tmp, by = 'cell',
+    ##                                  suffixes = c('', '_genes'))
+    ##     rownames(d[[item]]@meta.data) <- d[[item]]@meta.data$cell
+
+
+    ##     d[[item]] <- ScaleData(d[[item]],
+    ##                            vars.to.regress = if(is.null(to_regress)) NULL else paste0(to_regress, '_genes'))
+        
+    ##     rm(tmp) 
+    ## }
+    
+    d[[item]] <- RunPCA(d[[item]], features = VariableFeatures(object = d[[item]]))
+
+    Idents(d[[item]]) <- "model"
+    
+    DimPlot(d[[item]], reduction = "pca") + ggtitle(item)
+    
+    print(ElbowPlot(d[[item]]) + ggtitle(item))
+
+
+    cat('\n\n')
+}
+
+
+```
+
+```{r, message = FALSE, results = 'asis'}
+for (item in names(d)) {
+
+    d[[item]] <- FindNeighbors(d[[item]], dims = NUM_PCS)
+    for (res in seq(0.2, 2, by = 0.6)) {
+        d[[item]] <- FindClusters(d[[item]], resolution = res, verbose = FALSE)
+
+    }
+
+    d[[item]] <- RunUMAP(d[[item]], dims = NUM_PCS)
+        
+    d[[item]] <- RunTSNE(d[[item]], dims = NUM_PCS, check_duplicates = FALSE )
+}
+
+
+```
+
+
+## Dimred UMAP and tSNE {.tabset}
+
+```{r results = 'asis', cache = FALSE, warning = FALSE}
+for (item in names(d)) {
+    cat("### ", item, " {.tabset} \n\n")
+    
+    p1 <- DimPlot(d[[item]], reduction = "umap", group.by = 'celltype')
+    p2 <- DimPlot(d[[item]], reduction = "tsne", group.by = 'celltype')
+
+    cat('#### umap \n\n')
+    print(p1 + ggtitle(item) + theme(legend.position="right", aspect.ratio = 1))
+    cat('\n\n')
+    
+    cat('#### tsne \n\n')
+
+    print(p2 + ggtitle(item) + theme(legend.position="right", aspect.ratio = 1))
+
+    cat('\n\n')
+    rm(p1, p2)
+    cat('\n\n')
+
+}
+```
+
+# Differential expression {.tabset}
+
+
+```{r, results = 'asis'}
+
+markers <- list()
+
+for (item in names(d)) {
+    Idents(d[[item]]) <- "celltype"
+    d[[item]]@active.assay <- 'RNA'
+    
+    cat('##' , item, '\n\n')
+
+    markers[[item]] <- FindAllMarkers(object = d[[item]])
+
+    markers[[item]] <- markers[[item]][markers[[item]]$p_val_adj < 0.05,]
+    markers[[item]] <- markers[[item]][order(markers[[item]]$avg_logFC, decreasing = TRUE),]
+    markers[[item]]$flavour <- item
+
+    print(nrow(markers[[item]]))
+    cat('\n\n')
+}
+
+
+## markers <- do.call(rbind.data.frame, markers)
+```
+
+# Export objects
+
+```{r}
+saveRDS(object = markers, file = params$markers_rds)
+saveRDS(object = d, file = params$seurat_rds)
+```
+
+
+# Timestamp
+
+```{r, cache = FALSE}
+date()
+sessionInfo()
+devtools::session_info()
+
+```
+

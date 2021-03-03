@@ -59,7 +59,7 @@ rule profile_all_missing_mapping_rates:
     
 ## srrwhatever is  not a pbmc!
 # @todo this comes from other reports, fix!
-rule integration_pbmcs_10x_plus_smartseq2:
+rule integration_pbmcs:
     input:
         # c1 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
         c1 = '/home/imallona/repeats_sc/runs/pbmc8k/pbmc8k_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
