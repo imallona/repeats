@@ -153,36 +153,32 @@ for (flavour in names(d)) {
 
     ## feature metadata (just the featurename)
     gzmeta <- gzfile(file.path(path, "feature_meta.csv.gz"), "w")
-    write.csv(data.frame(feature = row.names(d[[flavour]]@meta.data)), gzmeta,
+    write.csv(data.frame(feature = row.names(d[[flavour]])), gzmeta,
               row.names = FALSE)
     close(gzmeta)
 
     ## pca
     ## embeddings
     gz <- gzfile(file.path(path, "pca_cell_embeddings.csv.gz"), "w")
-    write.csv(d[[flavour]]@reductions$pca@cell.embeddings, gz, row.names = FALSE)
+    write.csv(d[[flavour]]@reductions$pca@cell.embeddings, gz, row.names = TRUE)
     close(gz)
 
     ## feature.loadings
     gz <- gzfile(file.path(path, "pca_feature.loadings.csv.gz"), "w")
-    write.csv(d[[flavour]]@reductions$pca@feature.loadings, gz, row.names = FALSE)
+    write.csv(d[[flavour]]@reductions$pca@feature.loadings, gz, row.names = TRUE)
     close(gz)
     
     ## tsne
     gz <- gzfile(file.path(path, "tsne_cell_embeddings.csv.gz"), "w")
-    write.csv(d[[flavour]]@reductions$tsne@cell.embeddings, gz, row.names = FALSE)
+    write.csv(d[[flavour]]@reductions$tsne@cell.embeddings, gz, row.names = TRUE)
     close(gz)
     
     ## umap
     gz <- gzfile(file.path(path, "umap_cell_embeddings.csv.gz"), "w")
-    write.csv(d[[flavour]]@reductions$umap@cell.embeddings, gz, row.names = FALSE)
+    write.csv(d[[flavour]]@reductions$umap@cell.embeddings, gz, row.names = TRUE)
     close(gz)
 
 }
 
-## tar(args$output, files = outdir,
-##     compression = c("none"),
-##     tar = Sys.getenv("tar"),
-##     extra_flags = sprintf("-C %s", outdir))
 
 system(sprintf('tar cvf %s -C %s ..', args$output, outdir))

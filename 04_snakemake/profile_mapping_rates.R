@@ -39,7 +39,8 @@ process_featurecounts_logs <- function(fns, pattern = NA) {
         ## colnames(fd) <- basename(colnames(fd))
 
         fd <- data.frame(assigned = tmp['Assigned'],
-                         total = tmp['Unassigned_Unmapped'] +tmp['Unassigned_Read_Type'] +
+                         total = tmp['Assigned'] +tmp['Unassigned_Unmapped'] +
+                             tmp['Unassigned_Read_Type'] +
                              tmp['Unassigned_Singleton'] +tmp['Unassigned_MappingQuality'] +
                              tmp['Unassigned_Chimera'] +tmp['Unassigned_FragmentLength'] +
                              tmp['Unassigned_Duplicate'] +tmp['Unassigned_MultiMapping'] +
@@ -100,34 +101,41 @@ process_logs <- function(fns, software, file_pattern = NA) {
 
 options(bitmapType='cairo')
 
-opt_parser <- OptionParser(option_list=option_list)
+opt_parser <- OptionParser(option_list = option_list)
 opt <- parse_args(opt_parser)
+
+print(dput(opt))
+## stop('')
 
 if (FALSE) {
     opt <- list()
-    opt$path <- '/home/imallona/repeats_sc/runs/pbmc8k'
+    opt$path <- '/home/imallona/repeats_sc/runs/zheng_truth'
     opt$identifier <- 'test'
-    opt$output <- '~/tmp/test.csv'
+    opt$output <- '~/tmp/truth.csv'
 }
 
 ## opt$identifier
 fns <- list()
 fns$featurecounts <- file.path(
-    opt$identifier,
-    list.files(opt$identifier, pattern = "*counts\\.summary$?", recursive = TRUE))
+    opt$path,
+    list.files(opt$path, pattern = "*counts\\.summary$?", recursive = TRUE))
 
 fns$alevin <- file.path(
-    opt$identifier,
-    list.files(opt$identifier, pattern = "^meta_info.json", recursive = TRUE))
+    opt$path,
+    list.files(opt$path, pattern = "^meta_info.json", recursive = TRUE))
 
 fns$cellranger <-  file.path(
-    opt$identifier,
-    list.files(opt$identifier, pattern = "^metrics_summary.csv$", recursive = TRUE))
+    opt$path,
+    list.files(opt$path, pattern = "^metrics_summary.csv$", recursive = TRUE))
 
+if (sum(sapply(fns, length)) == 0)
+    stop('no inputs')
 
 ## fns$alevin
 ## grep('*alevin.*repeats*', fns$alevin, value =TRUE
-     )
+     ## )
+
+## fns
 
 res <- data.frame(pattern = c('cellranger_repeats',
                               'cellranger_standard',
@@ -135,31 +143,44 @@ res <- data.frame(pattern = c('cellranger_repeats',
                               'alevin.*genes*',
                               'bowtie_repeatome/multimappers',
                               'bowtie_repeatome/unique_reads',
-                              'count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers',
+                              'repeats_on_cellranger_standard_not_overlapping_genes/multimappers',
                               'count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads',
                               'count_repeats_on_cellranger_standard/multimappers',
-                              'count_repeats_on_cellranger_standard/unique_reads'))
+                              'count_repeats_on_cellranger_standard/unique_reads',
+
+                              'star_transcriptome/repeats/multimappers',
+                              'star_transcriptome/repeats/unique_reads',
+
+                              'star_transcriptome/repeats_no_overlap/multimappers',
+                              'star_transcriptome/repeats_no_overlap/unique_reads',
+                                                
+                              'star_transcriptome/genes'))
 
     
 res$dataset <- opt$identifier
-res$analyte <- c(rep(c('repeats', 'genes'), 2), rep('repeats', 6)) 
-res$mapper  <- c(rep('cellranger', 2), rep('alevin', 2), rep('bowtie', 2), rep('cellranger', 4))
-res$counter <- c(rep('cellranger', 2), rep('alevin', 2), rep('featurecounts', 6))
-res$overlap <- c('repeats', 'genes', 'decoy', 'genes', 'repeats', 'repeats', 'repeats_only', 'repeats_only', 'repeats', 'repeats' )
-res$multimapping <- c(rep('cellranger', 2), rep('alevin', 2), rep(c('multi', 'unique'),3))
+res$analyte <- c(rep(c('repeats', 'genes'), 2), rep('repeats', 10), 'genes') 
+res$mapper  <- c(rep('cellranger', 2), rep('alevin', 2), rep('bowtie', 2), rep('cellranger', 4),
+                 rep('star', 5))
+res$counter <- c(rep('cellranger', 2), rep('alevin', 2), rep('featurecounts', 11))
+res$overlap <- c('repeats', 'genes', 'decoy', 'genes', 'repeats', 'repeats', 'repeats_only', 'repeats_only', rep('repeats', 4), rep('repeats_only', 2), 'genes')
+res$multimapping <- c(rep('cellranger', 2), rep('alevin', 2), rep(c('multi', 'unique'), 5), 'unique')
 res$mapped <- NA
 res$total <- NA
 
+
+## res
 for (i in 1:nrow(res)) {
     software <- res[i, 'counter']
     
     pattern <- res[i, 'pattern']
-    tryCatch({
-        res[i, c('mapped', 'total')] <- process_logs(fns = fns[[software]], software = software,
-                                                     file_pattern = pattern)
-        }, error = function(x) print(x))
-    
+    if (length(fns[[software]]) > 0) {
+        tryCatch({
+            res[i, c('mapped', 'total')] <- process_logs(fns = fns[[software]], software = software,
+                                                         file_pattern = pattern)
+        }, error = function(x) print(sprintf('%s %s %s %s', i, software, pattern, x)))
+    }
 }
 
+## fns
 
-write.csv(pct, file =  opt$output)
+write.csv(res, file =  opt$output, row.names = FALSE)

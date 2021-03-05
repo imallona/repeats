@@ -39,14 +39,14 @@ import os.path as op
 from glob import glob
 
 RUN_NAME  = 'castration'
-CHEMISTRY = 'SC3Pv1'
+CHEMISTRY = 'SC3Pv2'
 DEMUX = True
 
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
 NTHREADS = 30
 LOCAL_MEM_GB = 100
-GENOME = 'GRCh38'
+GENOME = 'mm10'
 CONF = op.join(BASE, 'data', RUN_NAME, 'mouse_prostate_regeneration.conf')
 
 
@@ -149,14 +149,26 @@ SRR11538015,DHTpellet,RNA-Seq,89,FVB/NJ,134568,PRJNA625051,SAMN14591798,163487,G
 rule all:
     input:
         expand(op.join(BASE, 'data', RUN_NAME, "{srr}", "{srr}.sra"),
-               srr = get_samples(CONF))
+               srr = get_samples(CONF)),
+        expand(op.join(BASE, 'data', RUN_NAME, "{srr}", "{srr}_S1_L001_R1_001.fastq.gz"),
+               srr = get_samples(CONF)),
+        expand(op.join(BASE, 'runs', RUN_NAME, "{srr}", 'cellranger_standard', 'outs', 'web_summary.html'),
+               srr = get_samples(CONF)),
+        expand(op.join(BASE, 'runs', RUN_NAME, "{srr}", 'cellranger_repeats', 'outs', 'web_summary.html'),
+               srr = get_samples(CONF)),
+        expand(op.join(BASE, "runs", RUN_NAME, "{srr}", 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                       '{multimappers}',
+                       RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+               srr = get_samples(CONF),
+               multimappers = ['unique_reads', 'multimappers'])
+        
       
         
 rule get_data_castration:
     priority:
         100
     params:
-        path = op.join(BASE, 'data', RUN_NAME),
+        path = op.join(BASE, 'data', RUN_NAME, "{srr}"),
         path_data = op.join(BASE, 'data', RUN_NAME)
     output:
         sra = op.join(BASE, 'data', RUN_NAME, "{srr}", "{srr}.sra")
@@ -173,6 +185,218 @@ rule get_data_castration:
         {VDBVALIDATE} {wildcards.srr}.sra &> {wildcards.srr}_vdbvalidation.log
             
         {FASTQDUMP}  --gzip --split-files  {wildcards.srr}.sra
-  
-        cd {params.path_data}
+
+        ln -s {wildcards.srr}_1.fastq.gz {wildcards.srr}_S1_L001_R1_001.fastq.gz
+        ln -s {wildcards.srr}_2.fastq.gz {wildcards.srr}_S1_L001_R2_001.fastq.gz
+        ln -s {wildcards.srr}_3.fastq.gz {wildcards.srr}_S1_L001_I1_001.fastq.gz
+
+        """
+
+rule link_data:
+    input:
+        sra = op.join(BASE, 'data', RUN_NAME, "{srr}", "{srr}.sra")
+    params:
+        path = op.join(BASE, 'data', RUN_NAME, "{srr}"),
+        path_data = op.join(BASE, 'data', RUN_NAME)
+    output:
+        r1 = op.join(BASE, 'data', RUN_NAME, "{srr}", "{srr}_S1_L001_R1_001.fastq.gz"),
+        r2 = op.join(BASE, 'data', RUN_NAME, "{srr}", "{srr}_S1_L001_R2_001.fastq.gz"),
+    threads:
+        1
+    shell:
+        """
+        cd {params.path}
+
+        ln -s {wildcards.srr}_1.fastq.gz {wildcards.srr}_S1_L001_I1_001.fastq.gz
+        ln -s {wildcards.srr}_2.fastq.gz {wildcards.srr}_S1_L001_R1_001.fastq.gz
+        ln -s {wildcards.srr}_3.fastq.gz {wildcards.srr}_S1_L001_R2_001.fastq.gz
+
+        """
+
+rule run_cellranger_repeats_by_sample:
+    input:
+        sample = op.join(BASE, 'data', RUN_NAME, "{sample}", "{sample}_S1_L001_R2_001.fastq.gz"),
+        transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME,
+                                'repeats_' + GENOME)
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME, "{sample}"),
+        local_mem_gb = LOCAL_MEM_GB,
+        processing_path = op.join(BASE, 'runs', RUN_NAME, "{sample}")
+    output:
+        op.join(BASE, 'runs', RUN_NAME,  "{sample}", 'cellranger_repeats',
+                'outs', 'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, "{sample}",  'cellranger_repeats',
+                'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+    threads:
+        NTHREADS
+    log:
+        op.join(BASE, 'runs', RUN_NAME, "{sample}", 'cellranger_repeats', 'run.log')
+    shell:
+        """
+        mkdir -p {params.processing_path}
+        cd {params.processing_path}
+        rm -rf cellranger_repeats
+        
+        {CELLRANGER} count --id=cellranger_repeats \
+          --fastqs={params.fastqs_path} \
+          --transcriptome={input.transcriptome} \
+          --sample={wildcards.sample} \
+          --jobmode=local \
+          --localcores={threads} \
+          --chemistry={CHEMISTRY} \
+          --localmem={params.local_mem_gb}
+        """
+ 
+rule run_cellranger_standard:
+    input:
+        sample = op.join(BASE, 'data', RUN_NAME, "{sample}", "{sample}_S1_L001_R2_001.fastq.gz"),
+        transcriptome = op.dirname(op.join(BASE, 'indices', 'cellranger',
+                                           CELLRANGER_DB_ID, 'reference.json'))
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME, "{sample}"),
+        local_mem_gb = LOCAL_MEM_GB,
+        processing_path = op.join(BASE, 'runs', RUN_NAME, "{sample}")
+    output:
+        op.join(BASE, 'runs', RUN_NAME,  "{sample}", 'cellranger_standard',
+                'outs', 'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, "{sample}",  'cellranger_standard',
+                'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+    threads:
+        NTHREADS
+    log:
+        op.join(BASE, 'runs', RUN_NAME, "{sample}", 'cellranger_standard', 'run.log')
+    shell:
+        """
+        mkdir -p {params.processing_path}
+        cd {params.processing_path}
+        rm -rf cellranger_standard
+        
+        {CELLRANGER} count --id=cellranger_standard \
+          --fastqs={params.fastqs_path} \
+          --transcriptome={input.transcriptome} \
+          --sample={wildcards.sample} \
+          --jobmode=local \
+          --localcores={threads} \
+          --chemistry={CHEMISTRY} \
+          --localmem={params.local_mem_gb}
+        """
+
+
+rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams_by_sample:
+    input:
+        flag = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard', 'split.flag'),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL) + '_minus_' + op.basename(GENES_GTF_URL))
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard', 'split')
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                               'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                               '{multimappers}',
+                               RUN_NAME + "_repeats_not_overlapping_genes.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                            '{multimappers}',
+                            RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                          '{multimappers}',
+                           RUN_NAME + "_repeats_not_overlapping_genes.counts.summary")
+    log :
+        log = op.join(BASE, "runs",  RUN_NAME, "{sample}", 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                      '{multimappers}'
+                      'feature_counts_not_overlapping_genes.log'),
+    threads:
+        NTHREADS
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            cd {params.path}
+
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            -M \
+            --fraction \
+            {params.path}/*bam  2>&1 > {log}
+
+            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+            """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            cd {params.path}
+
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            {params.path}/*bam  2>&1 > {log}
+
+            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+            """)
+
+
+rule spawn_cellranger_bam_file_by_cell_by_sample:
+    input:
+        bam = op.join(BASE, 'runs', RUN_NAME, "{sample}", 'cellranger_standard',
+                      'outs', 'possorted_genome_bam.bam'),
+        barcodes = op.join(BASE, 'runs', RUN_NAME, "{sample}",'cellranger_standard',
+                           'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+    output:
+        rgs = temp(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                           'count_repeats_on_cellranger_standard', 'rgs.txt')),
+        header = temp(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                              'count_repeats_on_cellranger_standard', 'header.txt')),
+        body = temp(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                            'count_repeats_on_cellranger_standard', 'body.txt.gz')),
+        shortened_bam = temp(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                                     'count_repeats_on_cellranger_standard', 'shortened.bam')),
+        flag = op.join(BASE, "runs", RUN_NAME, "{sample}",
+                       'count_repeats_on_cellranger_standard', 'split.flag'),
+        path = directory(op.join(BASE, "runs", RUN_NAME, "{sample}",
+                                 'count_repeats_on_cellranger_standard', 'split'))
+    threads:
+        NTHREADS
+    params:
+        barcodes_script = 'get_cell_barcodes.py',
+        split_script = 'split_by_cell_barcode_in_sorted_bam.py',
+        split_path = op.join(BASE, "runs", RUN_NAME, "{sample}",
+                             'count_repeats_on_cellranger_standard', 'split')
+    log:
+        log1 = op.join(BASE, "runs", RUN_NAME, "{sample}",
+                       'count_repeats_on_cellranger_standard', 'split_add_rg.log'),
+        log2 = op.join(BASE, "runs", RUN_NAME, "{sample}",
+                       'count_repeats_on_cellranger_standard', 'split_pick.log'),
+    shell:
+        """
+        mkdir -p {output.path}
+        
+        # python3 {params.barcodes_script} {input.bam} | {PIGZ} -p {threads} > {output.rgs}
+
+        python3 {params.barcodes_script} {input.bam}  > {output.rgs}
+
+        samtools view -@ {threads} -H {input.bam} > {output.header}
+
+        # ## buffer size in sort due to https://superuser.com/questions/938558/sort-parallel-isnt-parallelizing
+        # ( samtools view -@ {threads} {input.bam} | cut -f 1-15 | \
+        # paste - {output.rgs} | \
+        #   sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
+        ## updated 2 oct to handle SRR8847571
+        ( samtools view -@ {threads} {input.bam} | cut -f 1-15 | \
+        paste - {output.rgs} | \
+          fgrep "RG:Z" | \
+          sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
+
+
+        {PIGZ} --decompress -p {threads} --keep --stdout {output.body} | cat {output.header} - | samtools view -@ {threads} -Sb - > {output.shortened_bam}
+        
+        python3 split_by_cell_barcode_in_sorted_bam.py {output.shortened_bam} -outdir {params.split_path} -barcodes {input.barcodes} &> {log.log2}
+
+        touch {output.flag}
+
         """
