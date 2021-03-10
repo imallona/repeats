@@ -160,10 +160,43 @@ rule all:
                        '{multimappers}',
                        RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
                srr = get_samples(CONF),
-               multimappers = ['unique_reads', 'multimappers'])
-        
+               multimappers = ['unique_reads', 'multimappers']),
+        op.join(BASE, 'runs', 'castration_integration.html')
       
-        
+rule knit_report_castration:
+    input:
+        # multi = expand(op.join(BASE, "runs", RUN_NAME, "{srr}",
+        #                 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+        #                 'multimappers',
+        #                        RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+        #                srr = get_samples(CONF)),
+        # unique = expand(op.join(BASE, "runs", RUN_NAME, "{srr}",
+        #                  'count_repeats_on_cellranger_standard_not_overlapping_genes',
+        #                  'unique_reads',
+        #                         RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+        #                 get_samples(CONF)),
+        annotation = op.join(BASE, "data", RUN_NAME, "mmProstate10x_scPortal_metadata.txt")
+    params:
+        rmd = 'integrate_runs_castration.Rmd',
+        results_path = op.join(BASE, 'runs', RUN_NAME),
+        config = CONF
+    output:
+        html = op.join(BASE, 'runs', 'castration_integration.html'),
+        rds = op.join(BASE, 'runs', 'castration_integration_seurat.rds'),
+        markers = op.join(BASE, 'runs', 'castration_integration_markers.rds')
+    log:
+        op.join(BASE, 'runs', 'castration_integration.log')
+    shell:
+         """
+        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+          output_file = \"{output.html}\", 
+          params = list(results_path = \"{params.results_path}\",
+                        annotation = \"{input.annotation}\",
+                        config = \"{params.config}\",
+                        markers_rds = \"{output.markers}\",
+                        seurat_rds = \"{output.rds}\"))' &> {log}
+        """
+         
 rule get_data_castration:
     priority:
         100
