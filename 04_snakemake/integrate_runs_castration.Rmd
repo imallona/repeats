@@ -24,8 +24,9 @@ params:
 Rendered for samples:
 
 ```{r}
-## print(params)
+print(params)
 ```
+
 # Config
 
 
@@ -209,7 +210,7 @@ d <- list(genes_cellranger = list(),
 
 Focus in cellranger genes and repeats only cellranger
 
-```{r, message = FALSE}
+```{r, message = FALSE, warning = FALSE}
 ## cr cellranger
 ## fc featurecounts
 for (srr in config$Run) {
@@ -254,9 +255,9 @@ for (flavour in names(d)) {
 
 ```
 
-Let's see how to match cellnames to their cell  metadata
+Harmonizing cell names
 
-```{r}
+```{r, eval = FALSE}
 head(grep(tag, annot$NAME, value = TRUE))
 head(colnames(d[[2]][[1]]))
 
@@ -278,7 +279,7 @@ foo <- equiv[lapply(equiv, length) == 3]
 
 equiv <- do.call(rbind.data.frame, foo)
 colnames(equiv) <- c('srr', 'barcode', 'id')
-head(equiv)
+## head(equiv)
 
 for (flavour in names(d)) {
     for (srr in names(d[[flavour]])) {
@@ -384,12 +385,12 @@ for (flavour in names(d)) {
 
 d
 
-head(d[[1]]@meta.data)
+## head(d[[1]]@meta.data)
 ```
 
 
 
-## Dimred PCA {.tabset}
+## Dimred PCA {.tabset .tabset-fade .tabset-pills}
 
 ```{r}
 for (flavour in names(d)) {
@@ -468,9 +469,9 @@ for (item in names(d)) {
 ```
 
 
-## Dimred UMAP and tSNE {.tabset}
+## Dimred UMAP and tSNE {.tabset .tabset-fade .tabset-pills}
 
-```{r results = 'asis', cache = FALSE, warning = FALSE}
+```{r results = 'asis', cache = FALSE, warning = FALSE, fig.width = 8, fig.height = 8}
 for (item in names(d)) {
     cat("### ", item, " {.tabset} \n\n")
     

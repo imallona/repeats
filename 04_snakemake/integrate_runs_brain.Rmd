@@ -298,7 +298,7 @@ d
 Add metadata
 
 ```{r}
-d#
+d
 ```
 
 Does it have the srr? Merge metadata, just in case, by SRR
@@ -448,6 +448,35 @@ for (item in names(d)) {
 
 ## markers <- do.call(rbind.data.frame, markers)
 ```
+
+
+<!-- ## Top marker in dimred {.tabset} -->
+
+<!-- ```{r results = 'asis', cache = FALSE, warning = FALSE} -->
+<!-- for (item in names(d)) { -->
+<!--     cat("### ", item, " {.tabset} \n\n") -->
+
+<!--     marker <- as.data.frame(markers[[item]] %>% group_by(cluster) %>% top_n(n = 1, wt = avg_logFC) %>% filter(cluster == 'Neurons'))$gene -->
+    
+<!--     p1 <- FeaturePlot(d[[item]], features = marker, reduction = "umap") -->
+    
+<!--     p2 <- DimPlot(d[[item]], reduction = "tsne", group.by = 'celltype') -->
+
+<!--     cat('#### umap \n\n') -->
+<!--     print(p1 + ggtitle(item) + theme(legend.position="right", aspect.ratio = 1)) -->
+<!--     cat('\n\n') -->
+    
+<!--     cat('#### tsne \n\n') -->
+
+<!--     print(p2 + ggtitle(item) + theme(legend.position="right", aspect.ratio = 1)) -->
+
+<!--     cat('\n\n') -->
+<!--     rm(p1, p2) -->
+<!--     cat('\n\n') -->
+
+<!-- } -->
+<!-- ``` -->
+
 
 # Export objects
 
