@@ -55,7 +55,7 @@ SALMON = '~/soft/salmon/salmon-1.1.0_linux_x86_64/bin/salmon'
 CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
 BIOAWK = '~/soft/bioawk/bioawk'
 BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
-Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
+Rscript = '/usr/local/R/R-4.0.5/bin/Rscript'
 FASTQ_DUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
 VDB_VALIDATE = '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate'
 BEDOPS='~/soft/bedops/bedops-2.4.39/bin/bedops'
@@ -115,7 +115,8 @@ rule all:
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
-        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html')
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats_per_locus', 'alevin', 'quants_mat.gz')
         # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
         #                regress_nfeature = ['TRUE', 'FALSE']),
         #  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
@@ -269,3 +270,60 @@ rule map_salmon_genes_chromium:
 
 # index at the locus level?
 
+# rather, modify the txp2gene to quantify individual items?
+
+rule locify_txp2gene_repeats:
+    input:
+        txp2gene_repeats = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon',
+                                   'txp2gene.tsv')
+    output:
+        txp2gene_repeat_locus = op.join(BASE, 'indices', 'salmon', GENOME,
+                                        'repeats_salmon_per_locus',
+                                        'txp2gene.tsv')
+    params:
+        path = op.join(BASE, 'salmon', GENOME, 'repeats_salmon_per_locus')
+    shell:
+        """
+        mkdir -p {params.path}
+        awk '{{print $1,$1}}' {input.txp2gene_repeats} > {output.txp2gene_repeat_locus} 
+        """
+
+                
+rule map_salmon_repeats_chromium_per_locus:
+    input:        
+        tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon_per_locus',
+                                        'txp2gene.tsv'),
+        idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon',
+                              'duplicate_clusters.tsv'),
+        cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R1*fastq.gz'))),
+        r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R2*fastq.gz')))        
+    output:
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats_per_locus', 'alevin', 'quants_mat.gz')
+    threads:
+        NTHREADS
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME),
+        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats_per_locus'),
+        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
+        cb = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R1*fastq.gz')))),
+        r2 = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R2*fastq.gz')))) 
+    log:
+        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium.log')
+    shell:
+        """
+    mkdir -p {params.processing_path}
+    cd {params.processing_path}
+
+    ({SALMON} alevin \
+    -l ISR \
+    -1 {params.cb} \
+    -2 {params.r2} \
+    --chromiumV3  \
+    --dumpBfh \
+    -i {params.salmon_idx} \
+    --forceCells 1000 \
+    -p {threads} -o {params.processing_path} \
+    --tgMap {input.tgmap} ) 2> {log}
+
+    touch -c {output}
+        """
