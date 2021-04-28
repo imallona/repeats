@@ -3,41 +3,56 @@
 # library(gtools)
 library(DNABarcodes)
 
-LENGTH <- 92
-NTHREADS <- 20
-QUAL_SYMBOL <- 'F'
-# get rmsk coordinates
-GTF <- '~/repeats_sc/annotation/mm10_rmsk_TE.gtf.gz'
-
-GENOME_FASTA <- '~/repeats_sc/annotation/Mus_musculus.GRCm38.dna.primary_assembly.fa'
-
-BEDTOOLS <- '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
+options <- commandArgs(trailingOnly = TRUE)
+options
 
 
-I1_ORIGIN <- '~/repeats_sc/data/5k_pbmc_v3/5k_pbmc_v3_fastqs/5k_pbmc_v3_S1_L002_I1_001.fastq.gz'
-R1_ORIGIN <- '~/repeats_sc/data/5k_pbmc_v3/5k_pbmc_v3_fastqs/5k_pbmc_v3_S1_L002_R1_001.fastq.gz'
-R2_SIM_ORIGIN <- '~/repeats_sc/data/sim/5k_pbmc_v3_sim_S1_L002_R2_001.fastq'
+
+## LENGTH <- 92
+## NTHREADS <- 20
+## QUAL_SYMBOL <- 'F'
+## # get rmsk coordinates
+## GTF <- '~/repeats_sc/annotation/mm10_rmsk_TE.gtf.gz'
+
+## GENOME_FASTA <- '~/repeats_sc/annotation/Mus_musculus.GRCm38.dna.primary_assembly.fa'
+
+## BEDTOOLS <- '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
 
 
-I1_SIM <- '~/repeats_sc/data/sim/5k_pbmc_v3_sim_S1_L002_I1_001.fastq'
-R1_SIM <- '~/repeats_sc/data/sim/5k_pbmc_v3_sim_S1_L002_R1_001.fastq'
+## I1_ORIGIN <- '~/repeats_sc/data/5k_pbmc_v3/5k_pbmc_v3_fastqs/5k_pbmc_v3_S1_L002_I1_001.fastq.gz'
+## R1_ORIGIN <- '~/repeats_sc/data/5k_pbmc_v3/5k_pbmc_v3_fastqs/5k_pbmc_v3_S1_L002_R1_001.fastq.gz'
+## R2_SIM_ORIGIN <- '~/repeats_sc/data/sim/5k_pbmc_v3_sim_S1_L002_R2_001.fastq'
 
-CB <- 16
-UMI <- 12
 
-NUM_CELLS <- 1000
+## I1_SIM <- '~/repeats_sc/data/sim/5k_pbmc_v3_sim_S1_L002_I1_001.fastq'
+## R1_SIM <- '~/repeats_sc/data/sim/5k_pbmc_v3_sim_S1_L002_R1_001.fastq'
+
+R1_ORIGIN <- options[1]
+R2_SIM_ORIGIN <- options[2]
+I1_SIM <- options[3]
+R1_SIM <- options[4]
+NTHREADS <- as.numeric(options[5])
+CB <- as.numeric(options[6])
+UMI <- as.numeric(options[7])
+NUM_CELLS <- as.numeric(options[8])
+
+
+## CB <- 16
+## UMI <- 12
+
+## NUM_CELLS <- 1000
 
 ## simulate R2 file, one repeat per line, 92 nt-long lines
 
-cmd <- sprintf('simulate_cdna %s %s %s %s %s %s %s',
-               LENGTH,
-               QUAL_SYMBOL,
-               GTF,
-               GENOME_FASTA,
-               NTHREADS,
-               BEDTOOLS, R2_SIM_ORIGIN)
+## cmd <- sprintf('simulate_cdna %s %s %s %s %s %s %s',
+##                LENGTH,
+##                QUAL_SYMBOL,
+##                GTF,
+##                GENOME_FASTA,
+##                NTHREADS,
+##                BEDTOOLS, R2_SIM_ORIGIN)
 
-print(cmd) # run this!
+## print(cmd) # run this!
 
 ## to read the real R1s, so we can get some realistic CBs
 true1r <- file(R1_ORIGIN, "r")

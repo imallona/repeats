@@ -1,0 +1,1 @@
+../02_simulate_ground_truth_fastqs.sh

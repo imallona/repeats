@@ -1,0 +1,271 @@
+#!/usr/bin/env snakemake -s
+## 
+## Started 28 Apr 2021
+##
+## Izaskun Mallona
+## GPLv3
+
+##
+## important note: simulate the reads with 03_simulate_chromium_v3.sh first!
+##
+
+import os.path as op
+from glob import glob
+
+RUN_NAME  = 'sim_5k_pbmc_v3'
+RUN_TECH = 'chromium'
+
+
+## Folder structure start --------------------------------------------------------------------- ##
+
+#@FIXME to be moved to config, not hardcoded!
+BASE = op.join('/home', 'imallona', 'repeats_sc')
+NTHREADS = 50
+LOCAL_MEM_GB = 100
+GENOME= 'GRCh38'
+
+## @FIXME to be moved to config
+GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
+# GENES_GTF_URL =  'ftp://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz'
+GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
+REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
+# REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/mm10_rmsk_TE.gtf.gz'
+DFAM_EMBL_URL = 'https://www.dfam.org/releases/current/families/Dfam.embl.gz'
+# TRANSCRIPTOME_URL= 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh38.cdna.all.fa.gz'
+TRANSCRIPTOME_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.pc_transcripts.fa.gz'
+
+CELLRANGER_DB_URL = 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-GRCh38-3.0.0.tar.gz'
+CELLRANGER_DB_ID = 'refdata-cellranger-GRCh38-3.0.0'
+
+## @FIXME to be moved to config
+
+GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/gtf_parser.R'
+FEATURECOUNTS_RSCRIPT= '~/src/repeats_sc/04_snakemake/plot_featurecounts_profile.R'
+GTF_MAKING_SCRIPT = '~/src/repeats_sc/04_snakemake/gtf_maker.R'
+
+BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
+BOWTIE = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'
+
+##pigz 2.3.1
+PIGZ = '/usr/bin/pigz'
+BIOPYTHON_CONVERT='biopython.convert'
+STAR = '~/soft/star/STAR-2.7.3a/source/STAR'
+FEATURECOUNTS = '~/soft/subread/subread-2.0.0-source/bin/featureCounts'
+SALMON = '~/soft/salmon/salmon-1.1.0_linux_x86_64/bin/salmon'
+CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
+BIOAWK = '~/soft/bioawk/bioawk'
+BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
+Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
+FASTQ_DUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
+VDB_VALIDATE = '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate'
+BEDOPS='~/soft/bedops/bedops-2.4.39/bin/bedops'
+
+GSE144357_srr = ['SRR10974769', 'SRR10974768']
+
+## config file start ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# configfile: "config.yaml"
+# validate(config, "schemas/config.schema.yaml")
+
+# samples = pd.read_csv(config["samples"], sep = '\t').set_index("id", drop=False)
+
+CHEMISTRY = 'SC3Pv3'
+DEMUX = False
+
+# samples_R2, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_1.fastq.gz"))
+# samples_R1, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_2.fastq.gz"))
+# samples_I3, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_3.fastq.gz"))
+
+## this is needed to be hardcoded/config file
+
+try:
+   if not op.exists(op.dirname(op.join(BASE, 'annotation'))):
+      os.makedirs(op.join(BASE, 'annotation'))
+except OSError as err:
+   print(err)
+      
+for item in ['bowtie', 'star', 'salmon']:
+   try:
+      if not op.exists(op.dirname(op.join(BASE, 'indices', item))):
+         os.makedirs(op.join(BASE, 'indices', item))
+   except OSError as err:
+      print(err)
+      
+## Folder structure end ----------------------------------------------------------------------- ##
+
+include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow.snmk"
+
+    
+rule all:
+    input:
+        # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
+        #                regress_nfeature = ['TRUE', 'FALSE']),
+        # op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+        #         RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+        expand(op.join(BASE, "runs", RUN_NAME,
+                        "count_repeats_on_cellranger_standard",
+                        "{multimappers}",
+                        RUN_NAME + "_transcriptome_repeats.counts.summary.png"),
+                multimappers = ['multimappers', 'unique_reads']),
+        expand(op.join(BASE, "runs", RUN_NAME,
+                        "count_repeats_on_cellranger_standard_not_overlapping_genes",
+                        "{multimappers}",
+                        RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
+                 multimappers = ['multimappers', 'unique_reads']),
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html')
+        # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
+        #                regress_nfeature = ['TRUE', 'FALSE']),
+        #  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
+        #  expand(op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome',
+        #                 '{multimappers}',
+        #                 "all_cells_repeats.counts.gz"),
+        #         multimappers = ['multimappers', 'unique_reads'])
+    
+rule run_cellranger_repeats:
+    input:
+        transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME),
+        sample_name = RUN_NAME,
+        local_mem_gb = LOCAL_MEM_GB,
+        processing_path = op.join(BASE, 'runs', RUN_NAME)
+    output:
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+    threads:
+        NTHREADS
+    log:
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats.log')
+    shell:
+        """
+        mkdir -p {params.processing_path}
+        cd {params.processing_path}
+        rm -rf cellranger_repeats
+        
+        {CELLRANGER} count --id=cellranger_repeats \
+          --fastqs={params.fastqs_path} \
+          --transcriptome={input.transcriptome} \
+          --jobmode=local \
+          --localcores={threads} \
+          --chemistry=SC3Pv3 \
+          --sample={params.sample_name} \
+          --localmem={params.local_mem_gb} &> {log}
+        """
+        
+rule run_cellranger_standard:
+    input:
+        transcriptome = op.join(BASE, 'indices', 'cellranger',
+                                'refdata-cellranger-GRCh38-3.0.0')
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME),
+        sample_name = RUN_NAME,
+        local_mem_gb = LOCAL_MEM_GB,
+        processing_path = op.join(BASE, 'runs', RUN_NAME)
+    output:
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'possorted_genome_bam.bam')
+    threads:
+        NTHREADS
+    log:
+        op.join(BASE, 'runs',  RUN_NAME, 'cellranger_standard.log')
+    shell:
+        """
+        mkdir -p {params.processing_path}
+        cd {params.processing_path}
+        rm -rf cellranger_standard
+
+        {CELLRANGER} count --id=cellranger_standard \
+          --fastqs={params.fastqs_path} \
+          --transcriptome={input.transcriptome} \
+          --jobmode=local \
+          --chemistry=SC3Pv3 \
+          --localcores={threads} \
+          --sample={params.sample_name} \
+          --localmem={params.local_mem_gb} &> {log}
+        """
+
+
+        
+rule map_salmon_repeats_chromium:
+    input:        
+        tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
+        idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
+        cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R1*fastq.gz'))),
+        r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R2*fastq.gz')))        
+    output:
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
+    threads:
+        NTHREADS
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME),
+        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats'),
+        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
+        cb = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R1*fastq.gz')))),
+        r2 = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R2*fastq.gz')))) 
+    log:
+        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium.log')
+    shell:
+        """
+    mkdir -p {params.processing_path}
+    cd {params.processing_path}
+
+    ({SALMON} alevin \
+    -l ISR \
+    -1 {params.cb} \
+    -2 {params.r2} \
+    --chromiumV3  \
+    --dumpBfh \
+    -i {params.salmon_idx} \
+    --forceCells 1000 \
+    -p {threads} -o {params.processing_path} \
+    --tgMap {input.tgmap} ) 2> {log}
+
+    touch -c {output}
+        """
+    
+
+        
+## beware the cb path for pbmc5k, they shouldn't be there at `RUN_NAME + '_fastqs/` subfoder
+rule map_salmon_genes_chromium:
+    input:        
+        tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'txp2gene.tsv'),
+        idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'duplicate_clusters.tsv'),
+        cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R1*fastq.gz'))),
+        r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R2*fastq.gz')))        
+    output:
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz')
+    threads:
+        NTHREADS
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME),
+        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes'),
+        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon'),
+        cb = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R1*fastq.gz')))),
+        r2 = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R2*fastq.gz')))) 
+    log:
+        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_genes_chromium.log')
+    shell:
+        """
+    mkdir -p {params.processing_path}
+    cd {params.processing_path}
+
+    ({SALMON} alevin \
+    -l ISR \
+    -1 {params.cb} \
+    -2 {params.r2} \
+    --chromiumV3  \
+    # --dumpBfh \
+    --forceCells 1000 \
+    -i {params.salmon_idx} \
+    -p {threads} -o {params.processing_path} \
+    --tgMap {input.tgmap} ) 2> {log}
+
+    touch -c {output}
+        """
+
+# index at the locus level?
+

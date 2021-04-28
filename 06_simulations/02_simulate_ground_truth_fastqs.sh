@@ -72,7 +72,7 @@ L=length($2)
 fa=$2
 name=$1
 
-printf name"\n"; 
+printf "@"name"\n"; 
 printf fa"\n";
 printf "+\n"
 for(c=0;c<L;c++) printf qual; printf "\n"
