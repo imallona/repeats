@@ -5,9 +5,8 @@
 ## Izaskun Mallona
 ## GPLv3
 
-##
-## important note: simulate the reads with 03_simulate_chromium_v3.sh first!
-##
+## important note: simulations are implemented in 03_simulate_chromium_v3.sh
+
 
 import os.path as op
 from glob import glob
@@ -103,14 +102,13 @@ rule all:
         # op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard_not_overlapping_genes',
         #         RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
         expand(op.join(BASE, "runs", RUN_NAME,
-                        "count_repeats_on_cellranger_standard",
-                        "{multimappers}",
-                        RUN_NAME + "_transcriptome_repeats.counts.summary.png"),
+                       'count_repeats_loci_on_cellranger_standard_not_overlapping_genes',
+                            '{multimappers}',
+                            RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
                 multimappers = ['multimappers', 'unique_reads']),
-        expand(op.join(BASE, "runs", RUN_NAME,
-                        "count_repeats_on_cellranger_standard_not_overlapping_genes",
-                        "{multimappers}",
-                        RUN_NAME + "_transcriptome_repeats_not_genes.counts.summary.png"),
+        expand(op.join(BASE, "runs", RUN_NAME, 'count_repeats_loci_on_cellranger_standard',
+                            '{multimappers}',
+                            RUN_NAME + "_repeats.counts.gz"),        
                  multimappers = ['multimappers', 'unique_reads']),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
@@ -124,9 +122,21 @@ rule all:
         #                 '{multimappers}',
         #                 "all_cells_repeats.counts.gz"),
         #         multimappers = ['multimappers', 'unique_reads'])
-    
+
+
+rule run_simulation:
+    output:
+        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz")
+    threads:
+        NTHREADS
+    shell:
+        """
+        bash 03_simulate_chromium_v3.sh
+        """
+        
 rule run_cellranger_repeats:
     input:
+        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),
         transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
@@ -158,6 +168,7 @@ rule run_cellranger_repeats:
         
 rule run_cellranger_standard:
     input:
+        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),
         transcriptome = op.join(BASE, 'indices', 'cellranger',
                                 'refdata-cellranger-GRCh38-3.0.0')
     params:
@@ -192,7 +203,8 @@ rule run_cellranger_standard:
 
         
 rule map_salmon_repeats_chromium:
-    input:        
+    input:
+        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
         cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R1*fastq.gz'))),
@@ -232,7 +244,8 @@ rule map_salmon_repeats_chromium:
         
 ## beware the cb path for pbmc5k, they shouldn't be there at `RUN_NAME + '_fastqs/` subfoder
 rule map_salmon_genes_chromium:
-    input:        
+    input:
+        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'genes_salmon', 'duplicate_clusters.tsv'),
         cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R1*fastq.gz'))),
@@ -259,7 +272,6 @@ rule map_salmon_genes_chromium:
     -1 {params.cb} \
     -2 {params.r2} \
     --chromiumV3  \
-    # --dumpBfh \
     --forceCells 1000 \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
@@ -287,10 +299,10 @@ rule locify_txp2gene_repeats:
         mkdir -p {params.path}
         awk '{{print $1,$1}}' {input.txp2gene_repeats} > {output.txp2gene_repeat_locus} 
         """
-
-                
+   
 rule map_salmon_repeats_chromium_per_locus:
-    input:        
+    input:
+        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),
         tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon_per_locus',
                                         'txp2gene.tsv'),
         idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon',
@@ -327,3 +339,122 @@ rule map_salmon_repeats_chromium_per_locus:
 
     touch -c {output}
         """
+
+        
+rule run_featurecounts_spawned_bams_per_locus:
+    input:
+        flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split.flag'),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split')        
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_loci_on_cellranger_standard',
+                               '{multimappers}',
+                               RUN_NAME + "_repeats.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, 'count_repeats_loci_on_cellranger_standard',
+                            '{multimappers}',
+                            RUN_NAME + "_repeats.counts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, 'count_repeats_loci_on_cellranger_standard',
+                          '{multimappers}',
+                            RUN_NAME + "_repeats.counts.summary")
+    log :
+        log = op.join(BASE, "runs",  RUN_NAME, 'count_repeats_loci_on_cellranger_standard',
+                      '{multimappers}',                      
+                      'feature_counts.log'),
+    threads:
+        NTHREADS
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            cd {params.path}
+
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g transcript_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            -M \
+            --fraction \
+            {params.path}/*bam  2>&1 > {log}
+
+            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+            """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            cd {params.path}
+
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g transcript_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            {params.path}/*bam  2>&1 > {log}
+
+            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+            """)
+
+rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams_per_locus:
+    input:
+        flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split.flag'),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL) + '_minus_' + op.basename(GENES_GTF_URL))
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split')
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME,
+                               'count_repeats_loci_on_cellranger_standard_not_overlapping_genes',
+                               '{multimappers}',
+                               RUN_NAME + "_repeats_not_overlapping_genes.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, 'count_repeats_loci_on_cellranger_standard_not_overlapping_genes',
+                            '{multimappers}',
+                            RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, 'count_repeats_loci_on_cellranger_standard_not_overlapping_genes',
+                          '{multimappers}',
+                           RUN_NAME + "_repeats_not_overlapping_genes.counts.summary")
+    log :
+        log = op.join(BASE, "runs",  RUN_NAME, 'count_repeats_loci_on_cellranger_standard_not_overlapping_genes',
+                      '{multimappers}'
+                      'feature_counts_not_overlapping_genes.log'),
+    threads:
+        NTHREADS
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            cd {params.path}
+
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g transcript_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            -M \
+            --fraction \
+            {params.path}/*bam  2>&1 > {log}
+
+            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+            """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            cd {params.path}
+
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g transcript_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            {params.path}/*bam  2>&1 > {log}
+
+            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+            """)
+
+# index cellranger so it counts transcript ids? for that, hacking the GTF and having the
+## gene_ids replaced by transcript ids content would be needed.

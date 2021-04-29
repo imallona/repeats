@@ -20,6 +20,7 @@ R2_SIM_ORIGIN="$HOME/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R2_00
 
 I1_SIM="$HOME/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_I1_001.fastq"
 R1_SIM="$HOME/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R1_001.fastq"
+TRUTH_COUNT_TABLE="$HOME/repeats_sc/data/sim_5k_pbmc_v3/truth.tsv"
 
 CB=16
 UMI=12
@@ -41,6 +42,8 @@ simulate_cdna $LENGTH $QUAL_SYMBOL $GTF $GENOME_FASTA $NTHREADS $BEDTOOLS $R2_SI
                                  $NTHREADS \
                                  $CB \
                                  $UMI \
-                                 $NUM_CELLS 
+                                 $NUM_CELLS \
+                                 $TRUTH_COUNT_TABLE
 
 pigz -p $NTHREADS $HOME/repeats_sc/data/sim_5k_pbmc_v3/*fastq
+pigz -p $NTHREADS $HOME/repeats_sc/data/sim_5k_pbmc_v3/truth.tsv

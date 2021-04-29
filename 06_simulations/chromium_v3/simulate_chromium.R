@@ -35,7 +35,7 @@ NTHREADS <- as.numeric(options[5])
 CB <- as.numeric(options[6])
 UMI <- as.numeric(options[7])
 NUM_CELLS <- as.numeric(options[8])
-
+TRUTH_COUNT_TABLE <- options[9]
 
 ## CB <- 16
 ## UMI <- 12
@@ -82,9 +82,12 @@ sim2r <- file(R2_SIM_ORIGIN, "r")
 ## to write the simulated ones (I1)
 sim1iw <- file(I1_SIM, "w")
 sim1rw <- file(R1_SIM, "w")
+truthw <- file(TRUTH_COUNT_TABLE, "w")
 
 template_i1 <- '%s\nCATTAGCG\n+\nFFFFFFFF'
 template_r1 <- '%s\n%s%s\n+\nFFFFFFFFFFFFFFFFFFFFFFFFFFFF'
+
+writeLines(sprintf('%s\t%s\t%s\t%s', 'cell', 'umi', 'locus', 'count'), con = truthw)
 
 curr_cell <- 1
 curr_umi <- 1
@@ -104,6 +107,10 @@ while (TRUE) {
                        cbs[curr_cell],
                        umis[curr_umi]), con = sim1rw)
 
+    #@ we only simulate 1 read per cell, that's the last column
+    writeLines(sprintf('%s\t%s\t%s\t%s', cbs[curr_cell], umis[curr_umi],
+                       gsub('@', '', id), 1), con = truthw)
+
     ## get an UMI from the list
     curr_umi <- curr_umi +1
     
@@ -118,3 +125,4 @@ while (TRUE) {
 close(sim1iw)
 close(sim1rw)
 close(sim2r)
+close(truthw)

@@ -1,0 +1,316 @@
+---
+title: "Simulations chromium"
+author: "Izaskun Mallona at Robinsonlab"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    code_download: true
+    number_sections: true
+    df_print: kable
+    theme: lumen
+    always_allow_html: yes
+params:
+    genes_alevin: ""
+    repeats_alevin_locus: ""
+    cellranger_repeats_bam:
+    truth: ""
+---
+
+Memory intensive, caution (40 GB)
+
+```{r, include = FALSE, eval = TRUE}
+suppressPackageStartupMessages({
+    library(Matrix)
+    library(knitr)
+    library(pheatmap)
+    library(ggplot2)
+    library(tximeta)
+    library(SummarizedExperiment)
+    library(forcats)    
+    library(dplyr)
+
+})
+
+## if (!requireNamespace("BiocManager", quietly = TRUE))
+##     install.packages("BiocManager")
+
+## install.packages(c('waldo',
+##                    'rematch2',
+##                    'testthat',
+##                    'ggplot2'), dependencies = TRUE)
+                 
+## BiocManager::install(c("knitr","tximeta",
+##                        "pheatmap",
+##                        lib = "/home/imallona/R/bioc-312"), dependencies = TRUE)
+
+```
+
+```{r, include = FALSE, eval = TRUE}
+BASE <- file.path('/home', 'imallona', 'repeats_sc')
+```
+
+```{r, include = FALSE, eval = TRUE}
+opts_chunk$set(fig.width = 5,
+               fig.height = 5,
+               dev = 'png',
+               cache = TRUE,
+               echo = TRUE,
+               include = TRUE,
+               cache.lazy = FALSE,
+               warning = TRUE,
+               error = TRUE,
+               message = FALSE)
+
+
+options(bitmapType='cairo')
+## getOption('bitmapType')
+```
+
+
+```{r justfordebugging, include = FALSE, eval = FALSE}
+params <- list(repeats_alevin_locus = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/alevin/repeats_per_locus/alevin/quants_mat.gz",
+               truth = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/truth.tsv.gz",
+               repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard/unique_reads/sim_5k_pbmc_v3_repeats.counts.gz",
+               repeats_only_unique = '~/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard_not_overlapping_genes/unique_reads/sim_5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz',
+               repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard/multimappers/sim_5k_pbmc_v3_repeats.counts.gz",
+               repeats_only_multi = '~/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard_not_overlapping_genes/multimappers/sim_5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz')
+
+```
+
+```{r}
+d <- list()
+truth <- read.table(params$truth, header = TRUE)
+truth <- cbind(truth, t(sapply(strsplit(truth$locus, ';'), function(x) return(x))))
+colnames(truth)[5:9] <- c('name', 'id', 'family', 'class', 'locus')
+```
+
+
+```{r}
+d$repeats_alevin <- tximeta::tximeta(
+     coldata = data.frame(
+         names = "genes",
+         files = params$repeats_alevin_locus,
+         stringsAsFactors = FALSE
+     ), type = "alevin")
+
+d$repeats_alevin <- assays(d$repeats_alevin)$counts
+```
+
+
+```{r}
+read_featurecounts <- function(fn){
+    ## without multimappers
+    tmp <- data.table::fread(params$repeats_featurecounts_unique,
+                             sep = '\t', header = TRUE,
+                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
+    rownames(tmp) <- tmp$Geneid ## here
+
+    colnames(tmp) <- gsub(".*:([A-Z]+)-1.bam","\\1", colnames(tmp))
+    ## tmp <- tmp[,7:ncol(tmp)]
+
+    tmp <- as.data.frame(tmp)
+    rownames(tmp) <- tmp$Geneid
+    tmp <- tmp[,-1]
+
+    return(tmp)
+}
+```
+
+```{r}
+for (item in c('repeats_featurecounts_unique',
+               'repeats_only_unique',
+               'repeats_featurecounts_multi',
+               'repeats_only_multi')) {
+    d[[item]] <- read_featurecounts(params[[item]])
+}
+```
+
+Proportion of correctly mapped, incorrectly mapped, unaligned
+
+```{r}
+props <- list()
+```
+
+For alevin
+
+```{r}
+
+res <- list()
+for (cell in unique(truth$cell)) {
+
+    if (cell %in% colnames(d$repeats_alevin)) {
+        true <- truth[truth$cell == cell, 'id']
+        
+        observed <- d$repeats_alevin[,cell][d$repeats_alevin[,cell] > 0]
+
+        ## among these, some are observed 'fractionally'
+        correct <- observed[observed == 1]
+
+        ## under- or overestimation
+        multi <- observed[observed != 1]
+
+        missing <- setdiff(true, names(observed))
+        wrong <- setdiff(names(observed), true)
+
+        res[[cell]] <- setNames(c(cell,
+                                  length(true), length(correct), length(multi),
+                                  length(missing),
+                                  length(wrong)),
+                                c('true', 'correct', 'multi', 'missing', 'wrong'))
+    }
+    else {
+        res[[cell]] <- setNames( c(cell, length(true), 0, 0, length(true), 0),
+                                c('cell', 'true', 'correct', 'multi', 'missing', 'wrong'))
+    }
+}
+
+res <- do.call(rbind.data.frame, res)
+colnames(res) <-  c('cell', 'true', 'correct', 'multi', 'missing', 'wrong')
+props[['repeats_alevin']] <- res
+props[['repeats_alevin']]$flavour <- 'repeats_alevin'
+```
+
+For feature counts
+
+```{r}
+for (fc in c('repeats_featurecounts_unique',
+               'repeats_only_unique',
+               'repeats_featurecounts_multi',
+               'repeats_only_multi')) {
+    res <- list()
+    for (cell in unique(truth$cell)) {
+
+        if (cell %in% colnames(d[[fc]])) {
+            true <- truth[truth$cell == cell, 'id']
+
+            observed <- rownames(d[[fc]])[d[[fc]][,cell] > 0]
+
+            ## among these, some are observed 'fractionally'
+            correct <- observed[d[[fc]][observed,cell] == 1]
+
+            ## under- or overestimation
+            multi <- observed[d[[fc]][observed,cell] != 1]
+
+            missing <- setdiff(true, observed)
+            wrong <- setdiff(observed, true)
+
+            res[[cell]] <- setNames(c(cell,
+                                      length(true), length(correct), length(multi),
+                                      length(missing),
+                                      length(wrong)),
+                                    c('cell', 'true', 'correct', 'multi', 'missing', 'wrong'))
+        }
+        else {
+            res[[cell]] <- setNames( c(cell, length(true), 0, 0, length(true), 0),
+                                    c('cell', 'true', 'correct', 'multi', 'missing', 'wrong'))
+        }
+    }
+
+    res <- do.call(rbind.data.frame, res)
+    colnames(res) <-  c('cell', 'true', 'correct', 'multi', 'missing', 'wrong')
+    props[[fc]] <- res
+    props[[fc]]$flavour <- fc
+}
+```
+
+
+```{r}
+fd <- do.call(rbind.data.frame, props)
+tail(fd)
+```
+
+```{r}
+## stolen from https://stackoverflow.com/questions/53241804/error-bars-incorrectly-positioned-in-a-stacked-bar-graph-r
+
+
+fd <- melt(fd,  id.vars = c('cell', 'flavour'))
+fd$value <- as.numeric(fd$value)
+fd <- fd[fd$variable != 'true',]
+fd$variable <- factor(fd$variable, levels = rev(c('correct', 'multi', 'missing', 'wrong')))
+
+group_by(fd, flavour, variable) %>%
+    summarize(mean = mean(value),
+              sd = sd(value),
+              lower = mean(value) - sd(value),
+              upper = mean(value) + sd(value)) %>%
+    arrange(flavour) %>%
+    group_by(flavour) %>%
+
+    ungroup() %>%
+    ggplot(aes(x = flavour, y = mean, fill = variable),
+           xLabels = NA) +
+    geom_bar(stat="identity") +
+    geom_errorbar(aes(ymin = lower, ymax = upper),
+                                         width = .2, col = "red") +
+    theme_bw() + scale_x_discrete(limits = unique(fd$flavour)) +
+    xlab("") +
+    ylab ("") +
+    scale_fill_grey()
+```
+
+```{r}
+fd2 <- as.data.frame(group_by(fd, flavour, variable) %>%
+              summarize(mean = mean(value),
+                        sd = sd(value),
+                        lower = mean(value) - sd(value),
+                        upper = mean(value) + sd(value)) %>%
+              arrange(flavour) %>%
+              group_by(flavour))
+
+fd2$variable <- factor(fd2$variable, levels = c('correct', 'multi', 'wrong', 'missing'))
+
+# fd2 <- fd2[order(fd2$flavour, fd2$variable),]
+
+ggplot(fd2, aes(x = flavour, y = mean, fill = variable),
+           xLabels = NA) +
+    geom_bar(stat="identity") +
+    geom_errorbar(aes(ymin = lower, ymax = upper),
+                                         width = .2, col = "red") +
+    theme_bw() + scale_x_discrete(limits = unique(fd$flavour)) +
+    xlab("") +
+    ylab ("") +
+    scale_fill_grey()
+
+```
+
+```{r}
+ggplot(fd2, aes(x=flavour, weight=mean, ymin=lower, ymax=upper, fill=variable)) +
+    geom_bar      (position=position_dodge(), aes(y=mean), stat="identity") +
+    geom_errorbar (position=position_dodge(width=0.9), colour="black", width = 0.2) +
+    theme_bw() +
+    scale_x_discrete(limits = unique(fd$flavour)) +
+    scale_fill_grey()
+```
+
+```{r}
+ggplot(fd2, aes(x=variable, weight=mean, ymin=lower, ymax=upper, fill=flavour)) +
+    geom_bar      (position=position_dodge(), aes(y=mean), stat="identity") +
+    geom_errorbar (position=position_dodge(width=0.9), colour="black", width = 0.2) +
+    theme_bw() +
+    scale_x_discrete(limits = unique(fd$variable)) +
+    scale_fill_grey()
+```
+
+Maybe the same with percentages of the simulated reads?
+
+
+
+From incorrectly mapped, get those that at least mach the repName, repFamily, or repClass
+
+# Timestamp
+
+```{r sessionInfo, cache = FALSE}
+date()
+sessionInfo()
+devtools::session_info()
+
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+
