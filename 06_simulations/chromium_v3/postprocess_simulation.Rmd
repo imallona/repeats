@@ -13,10 +13,13 @@ output:
     theme: lumen
     always_allow_html: yes
 params:
-    genes_alevin: ""
+    repeats_featurecounts_unique: ""
+    repeats_only_unique: ""
+    repeats_featurecounts_multi: ""
+    repeats_only_multi: ""
     repeats_alevin_locus: ""
-    cellranger_repeats_bam:
     truth: ""
+    nthreads: ""
 ---
 
 Memory intensive, caution (40 GB)
@@ -31,6 +34,8 @@ suppressPackageStartupMessages({
     library(SummarizedExperiment)
     library(forcats)    
     library(dplyr)
+    library(reshape2)
+    library(future.apply)
 
 })
 
@@ -50,6 +55,7 @@ suppressPackageStartupMessages({
 
 ```{r, include = FALSE, eval = TRUE}
 BASE <- file.path('/home', 'imallona', 'repeats_sc')
+NTHREADS <- params$nthreads
 ```
 
 ```{r, include = FALSE, eval = TRUE}
@@ -103,7 +109,7 @@ d$repeats_alevin <- assays(d$repeats_alevin)$counts
 ```{r}
 read_featurecounts <- function(fn){
     ## without multimappers
-    tmp <- data.table::fread(params$repeats_featurecounts_unique,
+    tmp <- data.table::fread(fn,
                              sep = '\t', header = TRUE,
                              drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
     rownames(tmp) <- tmp$Geneid ## here
@@ -173,26 +179,99 @@ props[['repeats_alevin']] <- res
 props[['repeats_alevin']]$flavour <- 'repeats_alevin'
 ```
 
-For feature counts
+<!-- For feature counts -->
+
+<!-- ```{r} -->
+<!-- for (fc in c('repeats_featurecounts_unique', -->
+<!--                'repeats_only_unique', -->
+<!--                'repeats_featurecounts_multi', -->
+<!--                'repeats_only_multi')) { -->
+<!--     res <- list() -->
+<!--     for (cell in unique(truth$cell)) { -->
+
+<!--         if (cell %in% colnames(d[[fc]])) { -->
+<!--             true <- truth[truth$cell == cell, 'id'] -->
+
+<!--             observed <- rownames(d[[fc]])[d[[fc]][,cell] > 0] -->
+
+<!--             ## among these, some are observed 'fractionally' -->
+<!--             correct <- observed[d[[fc]][observed,cell] == 1] -->
+
+<!--             ## under- or overestimation -->
+<!--             multi <- observed[d[[fc]][observed,cell] != 1] -->
+
+<!--             missing <- setdiff(true, observed) -->
+<!--             wrong <- setdiff(observed, true) -->
+
+<!--             res[[cell]] <- setNames(c(cell, -->
+<!--                                       length(true), length(correct), length(multi), -->
+<!--                                       length(missing), -->
+<!--                                       length(wrong)), -->
+<!--                                     c('cell', 'true', 'correct', 'multi', 'missing', 'wrong')) -->
+<!--         } -->
+<!--         else { -->
+<!--             res[[cell]] <- setNames( c(cell, length(true), 0, 0, length(true), 0), -->
+<!--                                     c('cell', 'true', 'correct', 'multi', 'missing', 'wrong')) -->
+<!--         } -->
+<!--     } -->
+
+<!--     res <- do.call(rbind.data.frame, res) -->
+<!--     colnames(res) <-  c('cell', 'true', 'correct', 'multi', 'missing', 'wrong') -->
+<!--     props[[fc]] <- res -->
+<!--     props[[fc]]$flavour <- fc -->
+<!-- } -->
+<!-- ``` -->
+
+
+<!-- make this faster -->
+
+<!-- ```{r} -->
+
+<!-- y <- list() -->
+<!-- for (ii in seq_along(X)) { -->
+<!--   y[[ii]] <- local({ -->
+<!--     x <- X[[ii]] -->
+<!--     tmp <- sqrt(x) -->
+<!--     tmp            ## same as return(tmp) -->
+<!--   }) -->
+<!-- } -->
+
+<!-- library(future.apply) -->
+<!-- plan(multiprocess) ## => parallelize on your local computer -->
+
+<!-- X <- 1:5 -->
+
+<!-- y <- future_lapply(X, function(x) { -->
+<!--   tmp <- sqrt(x) -->
+<!--   tmp -->
+<!-- }) -->
+
+<!-- ``` -->
+
 
 ```{r}
-for (fc in c('repeats_featurecounts_unique',
-               'repeats_only_unique',
-               'repeats_featurecounts_multi',
-               'repeats_only_multi')) {
+## 100 GB
+options(future.globals.maxSize = 100 * 1024^3)
+
+plan(multiprocess, workers = NTHREADS) 
+
+fc  <- c('repeats_featurecounts_unique', 'repeats_only_unique', 'repeats_featurecounts_multi',
+         'repeats_only_multi')
+
+props2 <- future_lapply(fc, function(x) {
     res <- list()
     for (cell in unique(truth$cell)) {
 
-        if (cell %in% colnames(d[[fc]])) {
+        if (cell %in% colnames(d[[x]])) {
             true <- truth[truth$cell == cell, 'id']
 
-            observed <- rownames(d[[fc]])[d[[fc]][,cell] > 0]
+            observed <- rownames(d[[x]])[d[[x]][,cell] > 0]
 
             ## among these, some are observed 'fractionally'
-            correct <- observed[d[[fc]][observed,cell] == 1]
+            correct <- observed[d[[x]][observed,cell] == 1]
 
             ## under- or overestimation
-            multi <- observed[d[[fc]][observed,cell] != 1]
+            multi <- observed[d[[x]][observed,cell] != 1]
 
             missing <- setdiff(true, observed)
             wrong <- setdiff(observed, true)
@@ -211,44 +290,58 @@ for (fc in c('repeats_featurecounts_unique',
 
     res <- do.call(rbind.data.frame, res)
     colnames(res) <-  c('cell', 'true', 'correct', 'multi', 'missing', 'wrong')
-    props[[fc]] <- res
-    props[[fc]]$flavour <- fc
-}
+    res$flavour <- x
+    return(res)
+})
+
+
+```
+
+
+
+```{r}
+saveRDS(file = 'props.rds', object = c(props, props2))
+
 ```
 
 
 ```{r}
-fd <- do.call(rbind.data.frame, props)
+fd <- do.call(rbind.data.frame, c(props, props2))
 tail(fd)
 ```
+
 
 ```{r}
 ## stolen from https://stackoverflow.com/questions/53241804/error-bars-incorrectly-positioned-in-a-stacked-bar-graph-r
 
-
 fd <- melt(fd,  id.vars = c('cell', 'flavour'))
 fd$value <- as.numeric(fd$value)
 fd <- fd[fd$variable != 'true',]
-fd$variable <- factor(fd$variable, levels = rev(c('correct', 'multi', 'missing', 'wrong')))
+## discarded multimapping
+fd$variable <- as.character(fd$variable)
+fd$variable[fd$variable == 'multi'] <- 'multimapping'
 
-group_by(fd, flavour, variable) %>%
-    summarize(mean = mean(value),
-              sd = sd(value),
-              lower = mean(value) - sd(value),
-              upper = mean(value) + sd(value)) %>%
-    arrange(flavour) %>%
-    group_by(flavour) %>%
+fd$variable <- factor(fd$variable, levels = rev(c('correct', 'multimapping', 'missing', 'wrong')))
 
-    ungroup() %>%
-    ggplot(aes(x = flavour, y = mean, fill = variable),
-           xLabels = NA) +
-    geom_bar(stat="identity") +
-    geom_errorbar(aes(ymin = lower, ymax = upper),
-                                         width = .2, col = "red") +
-    theme_bw() + scale_x_discrete(limits = unique(fd$flavour)) +
-    xlab("") +
-    ylab ("") +
-    scale_fill_grey()
+## group_by(fd, flavour, variable) %>%
+##     summarize(mean = mean(value),
+##               sd = sd(value),
+##               lower = mean(value) - sd(value),
+##               upper = mean(value) + sd(value)) %>%
+##     arrange(flavour) %>%
+##     group_by(flavour) %>%
+
+##     ungroup() %>%
+##     ggplot(aes(x = flavour, y = mean, fill = variable),
+##            xLabels = NA) +
+##     geom_bar(stat="identity") +
+##     geom_errorbar(aes(ymin = lower, ymax = upper),
+##                                          width = .2, col = "red") +
+##     theme_bw() + scale_x_discrete(limits = unique(fd$flavour)) +
+##     xlab("") +
+##     ylab ("") +
+##     scale_fill_grey() +
+##     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 ```
 
 ```{r}
@@ -258,21 +351,22 @@ fd2 <- as.data.frame(group_by(fd, flavour, variable) %>%
                         lower = mean(value) - sd(value),
                         upper = mean(value) + sd(value)) %>%
               arrange(flavour) %>%
-              group_by(flavour))
+              group_by(flavour)) 
 
-fd2$variable <- factor(fd2$variable, levels = c('correct', 'multi', 'wrong', 'missing'))
+fd2$variable <- factor(fd2$variable, levels = c('correct', 'multimapping', 'wrong', 'missing'))
 
 # fd2 <- fd2[order(fd2$flavour, fd2$variable),]
 
-ggplot(fd2, aes(x = flavour, y = mean, fill = variable),
-           xLabels = NA) +
-    geom_bar(stat="identity") +
-    geom_errorbar(aes(ymin = lower, ymax = upper),
-                                         width = .2, col = "red") +
-    theme_bw() + scale_x_discrete(limits = unique(fd$flavour)) +
-    xlab("") +
-    ylab ("") +
-    scale_fill_grey()
+## ggplot(fd2, aes(x = flavour, y = mean, fill = variable),
+##            xLabels = NA) +
+##     geom_bar(stat="identity") +
+##     geom_errorbar(aes(ymin = lower, ymax = upper),
+##                                          width = .2, col = "red") +
+##     theme_bw() + scale_x_discrete(limits = unique(fd$flavour)) +
+##     xlab("") +
+##     ylab ("") +
+##     scale_fill_grey() +
+##     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
 ```
 
@@ -282,7 +376,10 @@ ggplot(fd2, aes(x=flavour, weight=mean, ymin=lower, ymax=upper, fill=variable)) 
     geom_errorbar (position=position_dodge(width=0.9), colour="black", width = 0.2) +
     theme_bw() +
     scale_x_discrete(limits = unique(fd$flavour)) +
-    scale_fill_grey()
+    scale_fill_grey(name = 'mapping\ncategory') +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    xlab('strategy') +
+    ylab('alignments per cell (counts)')
 ```
 
 ```{r}
@@ -291,14 +388,109 @@ ggplot(fd2, aes(x=variable, weight=mean, ymin=lower, ymax=upper, fill=flavour)) 
     geom_errorbar (position=position_dodge(width=0.9), colour="black", width = 0.2) +
     theme_bw() +
     scale_x_discrete(limits = unique(fd$variable)) +
-    scale_fill_grey()
+    scale_fill_grey(name = 'mapping\ncategory') +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    xlab('strategy') +
+    ylab('alignments per cell (counts)')
+
 ```
 
 Maybe the same with percentages of the simulated reads?
 
 
+```{r}
+fd <- do.call(rbind.data.frame, c(props, props2))
+
+for (item in c('correct', 'multi', 'missing', 'wrong'))
+    fd[,item] <- as.numeric(fd[,item])
+
+pt <- prop.table(as.matrix(fd[,c('correct', 'multi', 'missing', 'wrong')]),1 )
+
+fd <- data.frame(cell = fd$cell,
+                 flavour = fd$flavour,
+                 pt)
+
+fd <- melt(fd,  id.vars = c('cell', 'flavour'))
+fd$value <- as.numeric(fd$value)
+
+## discarded multimapping
+fd$variable <- as.character(fd$variable)
+fd$variable[fd$variable == 'multi'] <- 'multimapping'
+
+fd$variable <- factor(fd$variable, levels = rev(c('correct', 'multimapping', 'missing', 'wrong')))
+
+
+
+fd2 <- as.data.frame(group_by(fd, flavour, variable) %>%
+              summarize(mean = mean(value),
+                        sd = sd(value),
+                        lower = mean(value) - sd(value),
+                        upper = mean(value) + sd(value)) %>%
+              arrange(flavour) %>%
+              group_by(flavour)) 
+
+fd2$variable <- factor(fd2$variable, levels = c('correct', 'multimapping', 'wrong', 'missing'))
+
+```
+
+
+```{r}
+ggplot(fd2, aes(x=flavour, weight=mean, ymin=lower, ymax=upper, fill=variable)) +
+    geom_bar      (position=position_dodge(), aes(y=mean), stat="identity") +
+    geom_errorbar (position=position_dodge(width=0.9), colour="black", width = 0.2) +
+    theme_bw() +
+    scale_x_discrete(limits = unique(fd$flavour)) +
+    scale_fill_grey(name = 'mapping\ncategory') +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    xlab('strategy') +
+    ylab('alignments per cell (proportion)')
+```
+
+
+```{r}
+ggplot(fd2, aes(x=variable, weight=mean, ymin=lower, ymax=upper, fill=flavour)) +
+    geom_bar      (position=position_dodge(), aes(y=mean), stat="identity") +
+    geom_errorbar (position=position_dodge(width=0.9), colour="black", width = 0.2) +
+    theme_bw() +
+    scale_x_discrete(limits = unique(fd$variable)) +
+    scale_fill_grey(name = 'mapping\ncategory') +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    xlab('strategy') +
+    ylab('alignments per cell (proportion)')
+
+```
+
 
 From incorrectly mapped, get those that at least mach the repName, repFamily, or repClass
+
+
+# Cells corr
+
+
+Some pairwise correlations for randomly picked cells
+
+
+```{r}
+set.seed(64554)
+sampled <- sample(x = truth$cell, size = 10, replace = FALSE)
+
+
+for (cell in sampled) {
+    tmp <- list()
+    tmp$truth <- truth[truth$cell == cell, 'id']
+    for (item in grep('repeats', names(d), value = TRUE)) {
+        tmp[[item]] <- rownames(d[[item]])[d[[item]][,cell] > 0]
+
+    }
+
+    ## build a matrix with binary distances?
+    
+}
+
+```
+
+
+# are the wrong mappings things from the same family?
 
 # Timestamp
 
