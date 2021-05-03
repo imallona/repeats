@@ -18,6 +18,8 @@ params:
     repeats_featurecounts_multi: ""
     repeats_only_multi: ""
     repeats_alevin_locus: ""
+    bowtie_repeats_unique: ""
+    bowtie_repeats_multi: ""
     truth: ""
     nthreads: ""
 ---
@@ -82,8 +84,9 @@ params <- list(repeats_alevin_locus = "/home/imallona/repeats_sc/runs/sim_5k_pbm
                repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard/unique_reads/sim_5k_pbmc_v3_repeats.counts.gz",
                repeats_only_unique = '~/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard_not_overlapping_genes/unique_reads/sim_5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz',
                repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard/multimappers/sim_5k_pbmc_v3_repeats.counts.gz",
-               repeats_only_multi = '~/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard_not_overlapping_genes/multimappers/sim_5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz')
-
+               repeats_only_multi = '~/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard_not_overlapping_genes/multimappers/sim_5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz',
+               repeats_bowtie_multi = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/bowtie_repeatome/multimappers/by_locus_repeats.counts.gz",
+               repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/bowtie_repeatome/unique_reads/by_locus_repeats.counts.gz")
 ```
 
 ```{r}
@@ -129,7 +132,9 @@ read_featurecounts <- function(fn){
 for (item in c('repeats_featurecounts_unique',
                'repeats_only_unique',
                'repeats_featurecounts_multi',
-               'repeats_only_multi')) {
+               'repeats_only_multi',
+               'repeats_bowtie_multi',
+               'repeats_bowtie_unique')) {
     d[[item]] <- read_featurecounts(params[[item]])
 }
 ```

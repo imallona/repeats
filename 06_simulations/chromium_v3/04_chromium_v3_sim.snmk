@@ -115,6 +115,9 @@ rule all:
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs', 'web_summary.html'),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats_per_locus', 'alevin', 'quants_mat.gz'),
+        expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                            "by_locus_repeats.counts.gz"),
+               multimappers = ['multimappers', 'unique_reads']),
         op.join(BASE, 'runs', RUN_NAME, 'sim_postproc.html')
         # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
         #                regress_nfeature = ['TRUE', 'FALSE']),
@@ -504,3 +507,70 @@ rule knit_report:
                      repeats_alevin_locus = \"{input.repeats_alevin_locus}\",
                      nthreads = {params.threads}))' &> {log}
         """
+
+## run bowtie
+   
+## test run bowtie start
+## to avoid explicitly handling the cell barcodes, we take the cellranger output as correct
+##   (e.g. splitting the cells by CB from the cellranger standard output)
+
+
+# multimappers with ifelse?
+rule featurecounts_bowtie_repeats_repeatome_by_locus:
+    input:
+        # bam = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam"),
+        flag_map_bowtie =  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
+        fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                               "by_locus_repeats.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
+                            "by_locus_repeats.counts.gz")
+    params:
+        bam_path = op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome'),
+        processing_path = op.join(BASE, "runs", RUN_NAME, "{multimappers}", 'bowtie_repeatome')
+    log :
+        op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}", "by_locus_featurecounts.log"),
+    threads:
+        NTHREADS
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            mkdir -p {params.processing_path}
+
+            cd {params.processing_path}
+            
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g transcript_id \
+            -a {input.fake_repeatome_gtf} \
+            -o  {output.counts} \
+            -M --fraction \
+            {params.bam_path}/*bam  &> {log}
+
+            {PIGZ} --keep  -p {threads} {output.counts}
+         """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            mkdir -p {params.processing_path}
+
+            cd {params.processing_path}
+            
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g transcript_id \
+            -a {input.fake_repeatome_gtf} \
+            -o  {output.counts} \
+            {params.bam_path}/*bam  &> {log}
+
+            {PIGZ} --keep  -p {threads} {output.counts}
+
+            """)
+
+rule generate_shao_index:
+    

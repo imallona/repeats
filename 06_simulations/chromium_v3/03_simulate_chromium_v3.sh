@@ -47,3 +47,10 @@ simulate_cdna $LENGTH $QUAL_SYMBOL $GTF $GENOME_FASTA $NTHREADS $BEDTOOLS $R2_SI
 
 pigz -p $NTHREADS $HOME/repeats_sc/data/sim_5k_pbmc_v3/*fastq
 pigz -p $NTHREADS $HOME/repeats_sc/data/sim_5k_pbmc_v3/truth.tsv
+
+
+# add 5 mutations to each fastq record - test
+/usr/local/R/R-4.0.5/bin/Rscript add_mutations_to_fastq.R \
+                                 $R2_SIMORIGIN \
+                                 5 \
+                                 test_5.fastq
