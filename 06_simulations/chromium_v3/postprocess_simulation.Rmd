@@ -18,8 +18,9 @@ params:
     repeats_featurecounts_multi: ""
     repeats_only_multi: ""
     repeats_alevin_locus: ""
-    bowtie_repeats_unique: ""
-    bowtie_repeats_multi: ""
+    repeats_bowtie_unique: ""
+    repeats_bowtie_multi: ""
+    scte: ""
     truth: ""
     nthreads: ""
 ---
@@ -38,6 +39,7 @@ suppressPackageStartupMessages({
     library(dplyr)
     library(reshape2)
     library(future.apply)
+    library(data.table)
 
 })
 
@@ -75,6 +77,9 @@ opts_chunk$set(fig.width = 5,
 
 options(bitmapType='cairo')
 ## getOption('bitmapType')
+
+## data.table
+setDTthreads(threads = params$nthreads)
 ```
 
 
@@ -86,7 +91,9 @@ params <- list(repeats_alevin_locus = "/home/imallona/repeats_sc/runs/sim_5k_pbm
                repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard/multimappers/sim_5k_pbmc_v3_repeats.counts.gz",
                repeats_only_multi = '~/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard_not_overlapping_genes/multimappers/sim_5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz',
                repeats_bowtie_multi = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/bowtie_repeatome/multimappers/by_locus_repeats.counts.gz",
-               repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/bowtie_repeatome/unique_reads/by_locus_repeats.counts.gz")
+               repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/bowtie_repeatome/unique_reads/by_locus_repeats.counts.gz",
+               scte = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/scTE/scTE.out.csv.gz",
+               threads =20)
 ```
 
 ```{r}
@@ -117,7 +124,7 @@ read_featurecounts <- function(fn){
                              drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
     rownames(tmp) <- tmp$Geneid ## here
 
-    colnames(tmp) <- gsub(".*:([A-Z]+)-1.bam","\\1", colnames(tmp))
+    colnames(tmp) <- gsub(".*:([A-Z]+)-1.*.bam","\\1", colnames(tmp))
     ## tmp <- tmp[,7:ncol(tmp)]
 
     tmp <- as.data.frame(tmp)
@@ -129,14 +136,42 @@ read_featurecounts <- function(fn){
 ```
 
 ```{r}
-for (item in c('repeats_featurecounts_unique',
-               'repeats_only_unique',
-               'repeats_featurecounts_multi',
-               'repeats_only_multi',
-               'repeats_bowtie_multi',
-               'repeats_bowtie_unique')) {
+featurecounts_runs <- c('repeats_featurecounts_unique',
+                        'repeats_only_unique',
+                        'repeats_featurecounts_multi',
+                        'repeats_only_multi',
+                        'repeats_bowtie_multi',
+                        'repeats_bowtie_unique')
+```
+
+
+```{r}
+for (item in featurecounts_runs) {
     d[[item]] <- read_featurecounts(params[[item]])
 }
+```
+
+
+Read scTE
+
+```{r}
+
+tmp <- data.table::fread(params$scte,
+                         sep = ',',
+                         header = TRUE)
+
+repnames <- setdiff(colnames(tmp), 'barcodes')
+
+tmp <- data.table::transpose(tmp)
+
+colnames(tmp) <- as.character(as.data.frame(tmp)[1,])
+tmp <- as.data.frame(tmp[-1,])
+rownames(tmp) <- repnames
+tmp[1:3,1:3]
+
+d$scte <- tmp
+rm(tmp)
+
 ```
 
 Proportion of correctly mapped, incorrectly mapped, unaligned
@@ -255,13 +290,12 @@ props[['repeats_alevin']]$flavour <- 'repeats_alevin'
 
 
 ```{r}
-## 100 GB
-options(future.globals.maxSize = 100 * 1024^3)
+## 130 GB
+options(future.globals.maxSize = 130 * 1024^3)
 
 plan(multiprocess, workers = NTHREADS) 
 
-fc  <- c('repeats_featurecounts_unique', 'repeats_only_unique', 'repeats_featurecounts_multi',
-         'repeats_only_multi')
+fc  <- c(featurecounts_runs, 'sct')
 
 props2 <- future_lapply(fc, function(x) {
     res <- list()
@@ -302,6 +336,10 @@ props2 <- future_lapply(fc, function(x) {
 
 ```
 
+```{r}
+sapply(d, function(x) head(colnames(x)))
+sapply(props2, function(x) head(colnames(x)))
+```
 
 
 ```{r}

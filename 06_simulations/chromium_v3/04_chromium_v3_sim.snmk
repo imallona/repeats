@@ -19,9 +19,10 @@ RUN_TECH = 'chromium'
 
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
-NTHREADS = 50
+NTHREADS = 28
 LOCAL_MEM_GB = 100
 GENOME= 'GRCh38'
+GENOME_SHORT = 'hg38'
 
 ## @FIXME to be moved to config
 GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
@@ -118,7 +119,8 @@ rule all:
         expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
                             "by_locus_repeats.counts.gz"),
                multimappers = ['multimappers', 'unique_reads']),
-        op.join(BASE, 'runs', RUN_NAME, 'sim_postproc.html')
+        op.join(BASE, 'runs', RUN_NAME, 'sim_postproc.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv.gz')
         # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
         #                regress_nfeature = ['TRUE', 'FALSE']),
         #  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
@@ -486,6 +488,12 @@ rule knit_report:
            RUN_NAME + "_repeats.counts.gz"), 
         repeats_alevin_locus = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats_per_locus',
                                        'alevin', 'quants_mat.gz'),
+        repeats_bowtie_unique = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome",
+                                        "unique_reads",
+                                        "by_locus_repeats.counts.gz"),
+        repeats_bowtie_multi = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome",
+                                        "multimappers",
+                                        "by_locus_repeats.counts.gz"),
         truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz")
             
     params:
@@ -505,6 +513,8 @@ rule knit_report:
                      repeats_only_multi = \"{input.repeats_only_multi}\", 
                      repeats_only_unique = \"{input.repeats_only_unique}\",
                      repeats_alevin_locus = \"{input.repeats_alevin_locus}\",
+                     repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\",
+                     repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
                      nthreads = {params.threads}))' &> {log}
         """
 
@@ -572,5 +582,75 @@ rule featurecounts_bowtie_repeats_repeatome_by_locus:
 
             """)
 
-rule generate_shao_index:
+rule generate_scte_index:
+    output:
+        idx = op.join(BASE,  'annotations', 'scTE', GENOME_SHORT, GENOME_SHORT + ".exclusive.idx")
+    log:
+        op.join(BASE,  'annotations', 'scTE', GENOME_SHORT, GENOME_SHORT + ".exclusive.log")
+    params:
+        path = op.join(BASE, 'annotations', 'scTE', GENOME_SHORT),
+        genome = GENOME_SHORT
+    threads:
+        NTHREADS
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+        scTE_build -g {params.genome} &> {log} 
+        """
+
+rule run_scte_on_cellranger:
+    input:
+        bam = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs',
+                      'possorted_genome_bam.bam'),
+        idx = op.join(BASE,  'annotations', 'scTE', GENOME_SHORT, GENOME_SHORT + ".exclusive.idx")
+    output:
+        tmp = temp(op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv')),
+        counts = op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv.gz')
+    params:
+        path = op.join(BASE, 'runs', RUN_NAME, 'scTE'),
+        out_fn = 'scTE.out'
+
+    log:
+        op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.log')        
+    threads:
+        NTHREADS
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+
+        scTE -i {input.bam} -o {params.out_fn} \
+          -x {input.idx} \
+          --hdf5 False \
+          -CB CR \
+          -UMI UR \
+          --expect-cells 1000 \
+          -p {threads} &> {log} 
+        
+        pigz -p {threads} --keep {output.tmp}
+        """
+
+rule create_shao_zumi_config:
     
+    
+rule run_shao_sample_zumi:
+    input:
+        ""
+    output:
+        ""
+    shell:
+        """
+        zUMIs-master-TE.sh -y zUMIs_sample.yaml -d path_to_modified_zUMIs_package
+        """
+
+rule run_shao_quantify:
+    input:
+        ""
+    output:
+        ""
+    shell:
+        """
+        scRNA_UMI_counting.R -f Sample_1_featurecount.sam.txt -r mm10_pc_exon_te_tx.saf -n Sample_1 -s 50 -m 1 -p 10
+        """
+        
