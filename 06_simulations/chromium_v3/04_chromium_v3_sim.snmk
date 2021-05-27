@@ -120,7 +120,8 @@ rule all:
                             "by_locus_repeats.counts.gz"),
                multimappers = ['multimappers', 'unique_reads']),
         op.join(BASE, 'runs', RUN_NAME, 'sim_postproc.html'),
-        op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv.gz')
+        op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv.gz'),
+        op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag')
         # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
         #                regress_nfeature = ['TRUE', 'FALSE']),
         #  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
@@ -494,6 +495,7 @@ rule knit_report:
         repeats_bowtie_multi = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome",
                                         "multimappers",
                                         "by_locus_repeats.counts.gz"),
+        scte = op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv.gz'),
         truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz")
             
     params:
@@ -515,6 +517,7 @@ rule knit_report:
                      repeats_alevin_locus = \"{input.repeats_alevin_locus}\",
                      repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\",
                      repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
+                     scte = \"{input.scte}\",
                      nthreads = {params.threads}))' &> {log}
         """
 
@@ -528,7 +531,7 @@ rule knit_report:
 # multimappers with ifelse?
 rule featurecounts_bowtie_repeats_repeatome_by_locus:
     input:
-        # bam = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam"),
+        flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split.flag'),
         flag_map_bowtie =  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
         fake_repeatome_gtf = op.join(BASE, 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0]) + '.gtf.gz'

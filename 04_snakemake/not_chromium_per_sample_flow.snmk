@@ -492,7 +492,7 @@ rule map_bowtie_repeatome_se:
 
         ( {BOWTIE} -v 2 \
         --threads {threads} \
-        -k 2 --best --strata \
+        -m 1 --best --strata \
         --sam \
         --chunkmbs 128 {params.repeatome} \
         -q  <( {PIGZ} --keep --processes {threads} --to-stdout --decompress {input.fastq2} ) |  samtools view -@ {threads} -bS - > {output} ) 2> {log}

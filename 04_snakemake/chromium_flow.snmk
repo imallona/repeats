@@ -520,10 +520,48 @@ rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
             """)
         
     
-## test run bowtie start
-## to avoid explicitly handling the cell barcodes, we take the cellranger output as correct
-##   (e.g. splitting the cells by CB from the cellranger standard output)
-rule map_bowtie_by_cell:
+# ## test run bowtie start
+# ## to avoid explicitly handling the cell barcodes, we take the cellranger output as correct
+# ##   (e.g. splitting the cells by CB from the cellranger standard output)
+# rule map_bowtie_by_cell_deprecated_27_may_2021:
+#     input:
+#         flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split.flag')
+#     output:
+#         flag_map_bowtie =  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag')
+#     params:
+#         split_bam_path = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split'),
+#         split_fastq_path = op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome'),
+#         repeatome = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0])
+#     threads:
+#         NTHREADS
+#     shell:
+#         """
+#         mkdir -p {params.split_fastq_path}
+#         cd {params.split_fastq_path}
+
+#         for fn in $(find {params.split_bam_path} -name "*bam")
+#         do
+#            echo "$fn"
+           
+#            {BEDTOOLS} bamtofastq -i "$fn" -fq "$(basename $fn .bam).fastq"
+        
+#            ( {BOWTIE} -q \
+#             -v 2 \
+#             --threads {threads} \
+#             -a -k 10 --best --strata \
+#             --sam \
+#             --chunkmbs 128 {params.repeatome} "$(basename $fn .bam).fastq" | \
+#               samtools view -@ {threads} -bS - > "$(basename $fn .bam)_bowtie.bam" ) 2> \
+#               "$(basename $fn .bam)_bowtie.log"
+
+#             ## removing the fastq
+#             rm "$fn"
+#         done
+
+#         touch {output.flag_map_bowtie}
+#         """
+
+rule map_bowtie_by_cell_unique:
     input:
         flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split.flag')
     output:
@@ -548,7 +586,8 @@ rule map_bowtie_by_cell:
            ( {BOWTIE} -q \
             -v 2 \
             --threads {threads} \
-            -a -k 10 --best --strata \
+            --best --strata \
+            -m 1 \
             --sam \
             --chunkmbs 128 {params.repeatome} "$(basename $fn .bam).fastq" | \
               samtools view -@ {threads} -bS - > "$(basename $fn .bam)_bowtie.bam" ) 2> \
@@ -560,7 +599,7 @@ rule map_bowtie_by_cell:
 
         touch {output.flag_map_bowtie}
         """
-
+        
 # multimappers with ifelse?
 rule featurecounts_bowtie_repeats_repeatome:
     input:

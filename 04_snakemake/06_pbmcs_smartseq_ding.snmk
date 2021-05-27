@@ -124,7 +124,7 @@ rule all:
                      RUN_NAME + "_repeats.counts.summary.png"),
                multimappers = ['multimappers', 'unique_reads']),
         expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome",
-                       "{multimappers}", RUN_NAME + "_bowtie_repeats.counts.summary.png"),
+                       "{multimappers}", RUN_NAME + "_bowtie_repeats.counts.summary"),
                multimappers = ['multimappers', 'unique_reads'])
         
 
@@ -428,6 +428,35 @@ rule bowtie_index_repeatome:
         """
 
         
+# rule map_bowtie_repeatome_pe_deprecated_27_may_2021:
+#     params:
+#         repeatome = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0]),
+#         sample = RUN_NAME,
+#         path = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome")
+#     input:
+#         fastq1 = op.join(BASE, "data", RUN_NAME, "{fastq}_1.fastq.gz"),
+#         fastq2 = op.join(BASE, "data", RUN_NAME, "{fastq}_2.fastq.gz"),
+#         repeatome_tag_file = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt')
+#     output:
+#         op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}.bam")
+#     log:
+#         op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{fastq}_bowtie_repeatome.log")
+#     threads :
+#         NTHREADS
+#     shell:
+#         """
+#         mkdir -p {params.path}
+
+#         ( {BOWTIE} -q \
+#         -1 <( {PIGZ} --keep --processes {threads} --to-stdout --decompress {input.fastq1} ) \
+#         -2 <( {PIGZ} --keep --processes {threads} --to-stdout --decompress {input.fastq2} ) \
+#         -v 2 \
+#         --threads {threads} \
+#         -k 2 --best --strata \
+#         --sam \
+#         --chunkmbs 128 {params.repeatome} |  samtools view -@ {threads} -bS - > {output} ) 2> {log}
+#         """
+        
 rule map_bowtie_repeatome_pe:
     params:
         repeatome = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0]),
@@ -452,11 +481,12 @@ rule map_bowtie_repeatome_pe:
         -2 <( {PIGZ} --keep --processes {threads} --to-stdout --decompress {input.fastq2} ) \
         -v 2 \
         --threads {threads} \
-        -k 2 --best --strata \
+        --best --strata \
+        -m 1 \
         --sam \
         --chunkmbs 128 {params.repeatome} |  samtools view -@ {threads} -bS - > {output} ) 2> {log}
         """
-
+        
 # @todo NOTE THE MULTIMAPPING ALLOWED!
 rule featurecounts_repeats_repeatome_pe:
     input:
@@ -483,6 +513,7 @@ rule featurecounts_repeats_repeatome_pe:
     threads:
         NTHREADS
     run:
+        ## this won't happen, there're not multis
         if wildcards.multimappers == 'multimappers':
            shell("""
            echo multimappers allowed

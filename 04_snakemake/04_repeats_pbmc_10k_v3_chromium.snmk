@@ -37,9 +37,11 @@ DFAM_EMBL_URL = 'https://www.dfam.org/releases/current/families/Dfam.embl.gz'
 TRANSCRIPTOME_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.pc_transcripts.fa.gz'
 
 CELLRANGER_HG38_URL = 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-GRCh38-3.0.0.tar.gz'
+CELLRANGER_DB_URL = CELLRANGER_HG38_URL
+CELLRANGER_DB_ID = "refdata-cellranger-GRCh38-3.0.0"
 
 ## @FIXME to be moved to config
-
+GTF_MAKING_SCRIPT = '~/src/repeats_sc/04_snakemake/gtf_maker.R'
 GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/gtf_parser.R'
 FEATURECOUNTS_RSCRIPT= '~/src/repeats_sc/04_snakemake/plot_featurecounts_profile.R'
 
