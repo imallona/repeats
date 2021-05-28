@@ -1,0 +1,89 @@
+$schema: "http://json-schema.org/draft-06/schema#"
+description: repeats in single-cells
+properties:
+  base:
+    type: string
+    description: base path for computation
+  run_name:
+    type: string
+  run_tech:
+    type:string
+  chemistry:
+    type: string
+  demux:
+    type: boolean
+    default: False
+  genome:
+    type: string
+  genome_short:
+    type: string
+  genome_url:
+    type: string
+  genes_gtf_url:
+    type: string
+  rep_gtf_url:
+    type: string
+  transcriptome_url:
+    type: string
+  cellranger_db_id:
+    type: string
+  cellranger_db_url:
+    type: string
+  dependencies:
+    properties:
+      gtf_parsing:
+         type: string
+      gtf_making:
+         type: string
+      featurecounts_parsing:
+         type: string  
+  software:
+    properties:
+      Rscript:
+        type: string
+      bowtie_build:
+        type: string
+      bowtie:
+        type: string
+      pigz:
+        type: string
+      star:
+        type: string
+      featurecounts:
+        type: string
+      cellranger:
+        type: string
+      fastq-dump:
+        type: string
+      vdb_validate:
+        type: string
+      prefetch:
+        type: string
+      fastqdump:
+        type: string
+      bedtools:
+        type: string
+      salmon:
+        type: string
+      gtf2bed:
+        type: string
+  params:
+    properties:
+      nthreads: 
+        type: integer
+      local_mem_gb:
+        type: integer
+
+required:
+  - name
+  - run_tech
+  - genome
+  - genome_short
+  - genome_url
+  - genes_gtf_url
+  - transcriptome_url
+  - cellranger_db_id
+  - cellranger_db_url
+  - dependencies
+  - software
+  - params

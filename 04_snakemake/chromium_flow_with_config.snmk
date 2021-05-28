@@ -1,0 +1,886 @@
+#!/usr/bin/env snakemake -s
+## 
+## Rules to process chromium flavours; using config files
+##
+## Izaskun Mallona
+## GPLv3
+
+import os.path as op
+from glob import glob
+
+
+## salmon start
+
+
+# https://salmon.readthedocs.io/en/latest/alevin.html
+# ./bin/salmon index -t transcripts.fa -i transcripts_index --decoys decoys.txt -k 31
+## shall I use a decoy? https://github.com/COMBINE-lab/SalmonTools/README.md
+# apparently not
+# **NOTE:** Salmon version [v1.0](https://github.com/COMBINE-lab/salmon/releases/tag/v1.0.0) can directly index the genome and transcriptome and doesn't mandates to run the `generateDecoyTranscriptome` script, however it's still backward compatible. Please checkout [this](https://combine-lab.github.io/alevin-tutorial/2019/selective-alignment/) tutorial on how to run salmon with full genome + transcriptome without the annotation.
+rule index_genes_salmon_no_decoy:
+    input:
+        transcripts = op.join(config['base'], 'annotation', op.basename(config['transcriptome_url']))
+    params:
+        k = 31,
+        path = op.join(config['base'], 'indices', 'salmon', config['genome'], 'genes_salmon'),
+        salmon = config['software']['salmon']
+    log:
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'genes_salmon', 'genes_salmon_index.log')
+    threads:
+        config['params']['nthreads']
+    output:
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'genes_salmon', 'duplicate_clusters.tsv'),
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'genes_salmon', 'complete_ref_lens.bin')
+    shell:        
+        """
+        mkdir -p {params.path}
+        
+        ({params.salmon} index --gencode -p {threads} index \
+           -t {input.transcripts} -i {params.path} -k {params.k})  2> {log}
+
+        touch -c {params.path}
+
+        """
+        
+rule get_transcriptome_fasta:
+    priority:
+        100
+    output:
+        tmp = temp(op.join(config['base'], 'annotation', op.basename(config['transcriptome_url']) + '_temp.fa.gz')),
+        tx = temp(op.join(config['base'], 'annotation', op.basename(config['transcriptome_url'])))
+    params:
+        url = config['transcriptome_url'],
+        pigz = config['software']['pigz']
+    threads:
+        config['params']['nthreads']
+    shell:
+        """
+        curl -s -L -C - {params.url} -o {output.tmp}
+
+        ## to go from
+        # >ENST00000456328.2|ENSG00000223972.5|OTTHUMG0000000096 (etc)
+        # to
+        # >ENST00000456328.2
+        {params.pigz} -p {threads} --decompress --keep -c {output.tmp}  |  cut -d '|' -f1 | \
+        {params.pigz} -p {threads} -c  > {output.tx}
+        """
+
+
+rule get_decoy:
+    input:
+        transcriptome = op.join(config['base'], 'annotation', op.basename(config['transcriptome_url']))
+    output:        
+        decoys = op.join(config['base'], 'annotation', op.splitext(op.basename(config['transcriptome_url']))[0] + '_transcriptome_decoys.txt')
+    params:
+        pigz = config['software']['pigz']
+    threads:
+       config['params']['nthreads']
+    shell:
+        """
+        {params.pigz} --decompress --keep --processes {threads} --to-stdout {input.transcriptome} |  grep ">" | \
+        cut -d ">" -f 2 | cut -d "|" -f 1 > {output.decoys}
+        """
+
+rule index_repeats_salmon_repeats_with_decoy_transcriptome:
+    input:
+        repeats = op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0] + '.fa.gz'),
+        # genome =  op.join(config['base'], 'annotation', op.basename(config['genome_url'])),
+        transcriptome = op.join(config['base'], 'annotation', op.basename(config['transcriptome_url'])),
+        decoys =  op.join(config['base'], 'annotation', op.splitext(op.basename(config['transcriptome_url']))[0] + '_transcriptome_decoys.txt')
+    output:
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon', 'duplicate_clusters.tsv'),
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon', 'complete_ref_lens.bin')
+    params:
+        path = op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon'),
+        k = 31,
+        salmon = config['software']['salmon']
+    threads:
+        config['params']['nthreads']
+    log:
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon_index.log')
+    shell:
+        """
+        mkdir -p {params.path}
+        
+        ({params.salmon} index -p {threads} \
+          index -t <( zcat {input.repeats} {input.transcriptome}) -i {params.path} -k {params.k} \
+          -d {input.decoys}) 2> {log}
+        """
+
+# rule map_salmon_repeats_chromium:
+#     input:
+
+
+# from https://gist.github.com/k3yavi/c501705ed2d29b12b0d10cf78b3ed001
+## and https://github.com/COMBINE-lab/salmon/issues/336 to get the `attribute` instead of
+##   the group
+rule get_txp2gene_gene:
+    input:
+        genes_gtf = op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url']))
+    output:
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'genes_salmon',
+                'txp2gene.tsv')
+    params:
+        pigz = config['software']['pigz']
+    shell:
+         """
+         {params.pigz} --decompress -p {threads} -c {input.genes_gtf} | \
+           grep transcript | awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+         """
+
+## untested @todo check
+rule get_txp2gene_repeat:
+    input:
+        repeats_gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']))
+    output:
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon', 'txp2gene.tsv')
+    params:
+        path = op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon'),
+        pigz = config['software']['pigz']
+    shell:
+        """
+        mkdir -p {params.path}
+        
+        {params.pigz} --decompress -p {threads} -c {input.repeats_gtf} | grep transcript | \
+        awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+        """
+
+                
+## samon end
+
+
+rule profile_featurecounts_run_repeats:
+    input:        
+        summary = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard',
+                          "{multimappers}",
+                          config['run_name'] + "_repeats.counts.summary")
+    params:
+        path = op.join(config['base'], "runs", config['run_name'],
+                       "count_repeats_on_cellranger_standard",
+                       "{multimappers}"),
+        script = config['dependencies']['featurecounts_parsing'],
+        gtf = 'cellranger_repeats',
+        Rscript = config['software']['Rscript']
+    output:
+        png = op.join(config['base'], "runs", config['run_name'], "count_repeats_on_cellranger_standard",
+                      "{multimappers}",
+                      config['run_name'] + "_transcriptome_repeats.counts.summary.png")
+    threads: 1
+    shell:
+       """
+       cd {params.path}
+       
+       {params.Rscript} {params.script} --summary {input.summary} --output {output.png} \
+           --identifier {params.gtf}
+       """
+
+## potentially broken, multimappers wildcard missing
+rule profile_featurecounts_run_repeats_not_genes:
+    input:        
+        summary = op.join(config['base'], "runs", config['run_name'],
+                          'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                          "{multimappers}",
+                          config['run_name'] + "_repeats_not_overlapping_genes.counts.summary")
+    params:
+        path = op.join(config['base'], "runs", config['run_name'],                       
+                       "count_repeats_on_cellranger_standard_not_overlapping_genes",
+                       "{multimappers}"),
+        script = config['dependencies']['featurecounts_parsing'],
+        gtf = 'cellranger_repeats_not_genes',
+        Rscript = config['software']['Rscript']
+    output:
+        png = op.join(config['base'], "runs", config['run_name'],
+                      "count_repeats_on_cellranger_standard_not_overlapping_genes",
+                      "{multimappers}",
+                      config['run_name'] + "_transcriptome_repeats_not_genes.counts.summary.png")
+    threads: 1
+    shell:
+       """
+       cd {params.path}
+       
+       {params.Rscript} {params.script} --summary {input.summary} --output {output.png} \
+          --identifier {params.gtf}
+       """    
+
+rule knit_report_chromium_agnostic:
+    input:
+        genes = op.join(config['base'], 'runs', config['run_name'], 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+        repeats = op.join(config['base'], 'runs', config['run_name'], 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+        featurecounts_multi = op.join(config['base'], "runs", config['run_name'],
+                                      'count_repeats_on_cellranger_standard',
+                                      'multimappers',
+                                      config['run_name'] + "_repeats.counts.gz"),
+        featurecounts_unique = op.join(config['base'], "runs", config['run_name'],
+                                      'count_repeats_on_cellranger_standard',
+                                      'unique_reads',
+                                      config['run_name'] + "_repeats.counts.gz"),
+        repeats_only_featurecounts_control_multi = op.join(
+            config['base'], "runs", config['run_name'],
+            'count_repeats_on_cellranger_standard_not_overlapping_genes',
+            'multimappers',
+            config['run_name'] + "_repeats_not_overlapping_genes.counts.gz"),
+        repeats_only_featurecounts_control_unique = op.join(
+            config['base'], "runs", config['run_name'],
+            'count_repeats_on_cellranger_standard_not_overlapping_genes',
+            'unique_reads',
+            config['run_name'] + "_repeats_not_overlapping_genes.counts.gz"),
+        repeats_bowtie_multi = op.join(
+            config['base'], "runs", config['run_name'],
+            'bowtie_repeatome',
+            'multimappers',
+            'all_cells_repeats.counts.gz'),
+        repeats_bowtie_unique = op.join(
+            config['base'], "runs", config['run_name'],
+            'bowtie_repeatome',
+            'unique_reads',
+            'all_cells_repeats.counts.gz'),
+        genes_alevin = op.join(config['base'], 'runs', config['run_name'], 'alevin', 'genes', 'alevin',
+                               'quants_mat.gz'),
+        repeats_alevin = op.join(config['base'], 'runs', config['run_name'], 'alevin', 'repeats', 'alevin',
+                                 'quants_mat.gz')
+        
+            
+    params:
+        rmd = 'summarize_chromium_run_markers_agnostic.Rmd',
+        run_name = config['run_name'],
+        Rscript = config['software']['Rscript']
+    output:
+        html = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        rds = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        aris = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
+    log:
+        op.join(config['base'], 'runs', config['run_name'], config['run_name'] + 'summarize_chromium_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
+    shell:
+        """
+        {params.Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+          output_file = \"{output.html}\", 
+          params = list(identifier = \"{params.run_name}\", 
+                     genes_cellranger = \"{input.genes}\", 
+                     repeats_cellranger = \"{input.repeats}\", 
+                     repeats_featurecounts_multi = \"{input.featurecounts_multi}\", 
+                     repeats_featurecounts_unique = \"{input.featurecounts_unique}\",
+                     repeats_only_featurecounts_control_multi = \"{input.repeats_only_featurecounts_control_multi}\", 
+                     repeats_only_featurecounts_control_unique = \"{input.repeats_only_featurecounts_control_unique}\",
+                     seurat_output = \"{output.rds}\", 
+                     aris_output = \"{output.aris}\", 
+                     regress_genes_nCount = \"{wildcards.regress_ncount}\", 
+                     regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
+                     repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
+                     repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\", 
+                     genes_alevin = \"{input.genes_alevin}\",
+                     repeats_alevin = \"{input.repeats_alevin}\"))' &> {log}
+        """
+    
+rule knit_report_chromium:
+    input:
+        genes = op.join(config['base'], 'runs', config['run_name'], 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+        repeats = op.join(config['base'], 'runs', config['run_name'], 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+        featurecounts_multi = op.join(config['base'], "runs", config['run_name'],
+                                      'count_repeats_on_cellranger_standard',
+                                      'multimappers',
+                                      config['run_name'] + "_repeats.counts.gz"),
+        featurecounts_unique = op.join(config['base'], "runs", config['run_name'],
+                                      'count_repeats_on_cellranger_standard',
+                                      'unique_reads',
+                                      config['run_name'] + "_repeats.counts.gz"),
+        repeats_only_featurecounts_control_multi = op.join(
+            config['base'], "runs", config['run_name'],
+            'count_repeats_on_cellranger_standard_not_overlapping_genes',
+            'multimappers',
+            config['run_name'] + "_repeats_not_overlapping_genes.counts.gz"),
+        repeats_only_featurecounts_control_unique = op.join(
+            config['base'], "runs", config['run_name'],
+            'count_repeats_on_cellranger_standard_not_overlapping_genes',
+            'unique_reads',
+            config['run_name'] + "_repeats_not_overlapping_genes.counts.gz"),
+        repeats_bowtie_multi = op.join(
+            config['base'], "runs", config['run_name'],
+            'bowtie_repeatome',
+            'multimappers',
+            'all_cells_repeats.counts.gz'),
+        repeats_bowtie_unique = op.join(
+            config['base'], "runs", config['run_name'],
+            'bowtie_repeatome',
+            'unique_reads',
+            'all_cells_repeats.counts.gz'),
+        genes_alevin = op.join(config['base'], 'runs', config['run_name'], 'alevin', 'genes', 'alevin',
+                               'quants_mat.gz'),
+        repeats_alevin = op.join(config['base'], 'runs', config['run_name'], 'alevin', 'repeats', 'alevin',
+                                 'quants_mat.gz')
+        
+            
+    params:
+        rmd = 'summarize_chromium_run_pbmcs.Rmd',
+        run_name = config['run_name'],
+        Rscript = config['software']['Rscript']
+    output:
+        html = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_pbmc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        rds = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_pmbc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        aris = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        cobra = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        markers = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
+    log:
+        op.join(config['base'], 'runs', config['run_name'], config['run_name'] + 'summarize_chromium_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
+    shell:
+        """
+        {paramsRscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+          output_file = \"{output.html}\", 
+          params = list(identifier = \"{params.run_name}\", 
+                     genes_cellranger = \"{input.genes}\", 
+                     repeats_cellranger = \"{input.repeats}\", 
+                     markers_output = \"{output.markers}\", 
+                     repeats_featurecounts_multi = \"{input.featurecounts_multi}\", 
+                     repeats_featurecounts_unique = \"{input.featurecounts_unique}\",
+                     repeats_only_featurecounts_control_multi = \"{input.repeats_only_featurecounts_control_multi}\", 
+                     repeats_only_featurecounts_control_unique = \"{input.repeats_only_featurecounts_control_unique}\",
+                     seurat_output = \"{output.rds}\", 
+                     aris_output = \"{output.aris}\", 
+                     regress_genes_nCount = \"{wildcards.regress_ncount}\", 
+                     regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
+                     repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
+                     repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\", 
+                     genes_alevin = \"{input.genes_alevin}\",
+                     repeats_alevin = \"{input.repeats_alevin}\",
+                     cobra_output = \"{output.cobra}\"))' &> {log}
+        """
+
+rule run_featurecounts_spawned_bams:
+    input:
+        flag = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split.flag'),
+        gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']))
+    params:
+        path = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split'),
+        featurecounts = config['software']['featurecounts'],
+        pigz = config['software']['pigz']
+    output:
+        counts  = temp(op.join(config['base'], "runs", config['run_name'],
+                               'count_repeats_on_cellranger_standard',
+                               '{multimappers}',
+                               config['run_name'] + "_repeats.counts")),
+        gz_counts = op.join(config['base'], "runs", config['run_name'],
+                            'count_repeats_on_cellranger_standard',
+                            '{multimappers}',
+                            config['run_name'] + "_repeats.counts.gz"),
+        summary = op.join(config['base'], "runs", config['run_name'],
+                          'count_repeats_on_cellranger_standard',
+                          '{multimappers}',
+                            config['run_name'] + "_repeats.counts.summary")
+    log :
+        log = op.join(config['base'], "runs",  config['run_name'],
+                      'count_repeats_on_cellranger_standard',
+                      '{multimappers}',                      
+                      'feature_counts.log'),
+    threads:
+        config['params']['nthreads']
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            cd {params.path}
+
+            {params.featurecounts} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            -M \
+            --fraction \
+            {params.path}/*bam  2>&1 > {log}
+
+            {params.pigz} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+            """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            cd {params.path}
+
+            {params.featurecounts} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            {params.path}/*bam  2>&1 > {log}
+
+            {params.pigz} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+            """)
+
+rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
+    input:
+        flag = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split.flag'),
+        gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']) + '_minus_' + op.basename(config['genes_gtf_url']))
+    params:
+        path = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split'),
+        featurecounts = config['software']['featurecounts'],
+        pigz = config['software']['pigz']
+    output:
+        counts  = temp(op.join(config['base'], "runs", config['run_name'],
+                               'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                               '{multimappers}',
+                               config['run_name'] + "_repeats_not_overlapping_genes.counts")),
+        gz_counts = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                            '{multimappers}',
+                            config['run_name'] + "_repeats_not_overlapping_genes.counts.gz"),
+        summary = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                          '{multimappers}',
+                           config['run_name'] + "_repeats_not_overlapping_genes.counts.summary")
+    log :
+        log = op.join(config['base'], "runs",  config['run_name'], 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                      '{multimappers}'
+                      'feature_counts_not_overlapping_genes.log'),
+    threads:
+        config['params']['nthreads']
+    # shell: """
+    # cd {params.path}
+
+    # {FEATURECOUNTS} -T {threads} \
+    # -t exon \
+    # -g gene_id \
+    # -a {input.gtf} \
+    # -o  {output.counts} \
+    # {params.path}/*bam  2>&1 > {log}
+
+    # {PIGZ} --keep -p {threads} {output.counts}
+    # """
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            cd {params.path}
+
+            {params.featurecounts} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            -M \
+            --fraction \
+            {params.path}/*bam  2>&1 > {log}
+
+            {params.pigz} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+            """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            cd {params.path}
+
+            {params.featurecounts} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            {params.path}/*bam  2>&1 > {log}
+
+            {params.pigz} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+            """)
+        
+    
+# ## test run bowtie start
+# ## to avoid explicitly handling the cell barcodes, we take the cellranger output as correct
+# ##   (e.g. splitting the cells by CB from the cellranger standard output)
+# rule map_bowtie_by_cell_deprecated_27_may_2021:
+#     input:
+#         flag = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split.flag')
+#     output:
+#         flag_map_bowtie =  op.join(config['base'], "runs", config['run_name'], 'bowtie_repeatome', 'split_bowtie.flag')
+#     params:
+#         split_bam_path = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split'),
+#         split_fastq_path = op.join(config['base'], "runs", config['run_name'], 'bowtie_repeatome'),
+#         repeatome = op.join(config['base'], 'indices', 'bowtie', config['genome'], 'repeatome', op.splitext(op.basename(config['rep_gtf_url']))[0])
+#     threads:
+#         config['params']['nthreads']
+#     shell:
+#         """
+#         mkdir -p {params.split_fastq_path}
+#         cd {params.split_fastq_path}
+
+#         for fn in $(find {params.split_bam_path} -name "*bam")
+#         do
+#            echo "$fn"
+           
+#            {config['software']['bedtools']} bamtofastq -i "$fn" -fq "$(basename $fn .bam).fastq"
+        
+#            ( {BOWTIE} -q \
+#             -v 2 \
+#             --threads {threads} \
+#             -a -k 10 --best --strata \
+#             --sam \
+#             --chunkmbs 128 {params.repeatome} "$(basename $fn .bam).fastq" | \
+#               samtools view -@ {threads} -bS - > "$(basename $fn .bam)_bowtie.bam" ) 2> \
+#               "$(basename $fn .bam)_bowtie.log"
+
+#             ## removing the fastq
+#             rm "$fn"
+#         done
+
+#         touch {output.flag_map_bowtie}
+#         """
+
+rule map_bowtie_by_cell_unique:
+    input:
+        flag = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split.flag')
+    output:
+        flag_map_bowtie =  op.join(config['base'], "runs", config['run_name'], 'bowtie_repeatome', 'split_bowtie.flag')
+    params:
+        split_bam_path = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split'),
+        split_fastq_path = op.join(config['base'], "runs", config['run_name'], 'bowtie_repeatome'),
+        repeatome = op.join(config['base'], 'indices', 'bowtie', config['genome'], 'repeatome', op.splitext(op.basename(config['rep_gtf_url']))[0]),
+        bedtools = config['software']['bedtools'],
+        bowtie = config['software']['bowtie']
+    threads:
+        config['params']['nthreads']
+    shell:
+        """
+        mkdir -p {params.split_fastq_path}
+        cd {params.split_fastq_path}
+
+        for fn in $(find {params.split_bam_path} -name "*bam")
+        do
+           echo "$fn"
+           
+           {params.bedtools} bamtofastq -i "$fn" -fq "$(basename $fn .bam).fastq"
+        
+           ( {params.bowtie} -q \
+            -v 2 \
+            --threads {threads} \
+            --best --strata \
+            -m 1 \
+            --sam \
+            --chunkmbs 128 {params.repeatome} "$(basename $fn .bam).fastq" | \
+              samtools view -@ {threads} -bS - > "$(basename $fn .bam)_bowtie.bam" ) 2> \
+              "$(basename $fn .bam)_bowtie.log"
+
+            ## removing the fastq
+            rm "$fn"
+        done
+
+        touch {output.flag_map_bowtie}
+        """
+        
+# multimappers with ifelse?
+rule featurecounts_bowtie_repeats_repeatome:
+    input:
+        # bam = op.join(config['base'], "runs", config['run_name'], "bowtie_repeatome", "{fastq}.bam"),
+        flag_map_bowtie =  op.join(config['base'], "runs", config['run_name'], 'bowtie_repeatome', 'split_bowtie.flag'),
+        gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url'])),
+        fake_repeatome_gtf = op.join(config['base'], 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0]) + '.gtf.gz'
+    output:
+        counts  = temp(op.join(config['base'], "runs", config['run_name'], "bowtie_repeatome", "{multimappers}",
+                               "all_cells_repeats.counts")),
+        gz_counts = op.join(config['base'], "runs", config['run_name'], "bowtie_repeatome", "{multimappers}",
+                            "all_cells_repeats.counts.gz")
+    params:
+        bam_path = op.join(config['base'], "runs", config['run_name'], 'bowtie_repeatome'),
+        processing_path = op.join(config['base'], "runs", config['run_name'], "{multimappers}",
+                                  'bowtie_repeatome'),
+        featurecounts = config['software']['featurecounts'],
+        pigz = config['software']['pigz']
+    log :
+        op.join(config['base'], "runs", config['run_name'], "bowtie_repeatome", "{multimappers}", "all_cell_featurecounts.log")
+    threads:
+        config['params']['nthreads']
+    # shell:
+    #    """
+    #    ## note multimappers are counted
+
+    #    mkdir -p {params.processing_path}
+
+    #    cd {params.processing_path}
+       
+    #    {FEATURECOUNTS} -T {threads} \
+    #    -t exon \
+    #    -g gene_id \
+    #    -a {input.fake_repeatome_gtf} \
+    #    -o  {output.counts} \
+    #    -M \
+    #    {params.bam_path}/*bam  &> {log}
+
+    #    {PIGZ} --keep  -p {threads} {output.counts}
+    #    """
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            mkdir -p {params.processing_path}
+
+            cd {params.processing_path}
+            
+            {params.featurecounts} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.fake_repeatome_gtf} \
+            -o  {output.counts} \
+            -M --fraction \
+            {params.bam_path}/*bam  &> {log}
+
+            {params.pigz} --keep  -p {threads} {output.counts}
+         """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            mkdir -p {params.processing_path}
+
+            cd {params.processing_path}
+            
+            {params.featurecounts} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.fake_repeatome_gtf} \
+            -o  {output.counts} \
+            {params.bam_path}/*bam  &> {log}
+
+            {params.pigz} --keep  -p {threads} {output.counts}
+
+            """)
+    
+
+## test run bowtie end
+
+rule spawn_cellranger_bam_file_by_cell:
+    input:
+        bam = op.join(config['base'], 'runs', config['run_name'], 'cellranger_standard', 'outs', 'possorted_genome_bam.bam'),
+        barcodes = op.join(config['base'], 'runs', config['run_name'], 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+    output:
+        rgs = temp(op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'rgs.txt')),
+        header = temp(op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'header.txt')),
+        body = temp(op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'body.txt.gz')),
+        shortened_bam = temp(op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'shortened.bam')),
+        flag = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split.flag'),
+        path = directory(op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split'))
+    threads:
+        config['params']['nthreads']
+    params:
+        barcodes_script = 'get_cell_barcodes.py',
+        split_script = 'split_by_cell_barcode_in_sorted_bam.py',
+        split_path = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split')
+    log:
+        log1 = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split_add_rg.log'),
+        log2 = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split_pick.log'),
+    shell:
+        """
+        mkdir -p {output.path}
+        
+        # python3 {params.barcodes_script} {input.bam} | {PIGZ} -p {threads} > {output.rgs}
+
+        python3 {params.barcodes_script} {input.bam}  > {output.rgs}
+
+        samtools view -@ {threads} -H {input.bam} > {output.header}
+
+        # ## buffer size in sort due to https://superuser.com/questions/938558/sort-parallel-isnt-parallelizing
+        # ( samtools view -@ {threads} {input.bam} | cut -f 1-15 | \
+        # paste - {output.rgs} | \
+        #   sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
+        ## updated 2 oct to handle SRR8847571
+        ( samtools view -@ {threads} {input.bam} | cut -f 1-15 | \
+        paste - {output.rgs} | \
+          fgrep "RG:Z" | \
+          sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
+
+
+        {PIGZ} --decompress -p {threads} --keep --stdout {output.body} | cat {output.header} - | samtools view -@ {threads} -Sb - > {output.shortened_bam}
+        
+        python3 split_by_cell_barcode_in_sorted_bam.py {output.shortened_bam} -outdir {params.split_path} -barcodes {input.barcodes} &> {log.log2}
+
+        touch {output.flag}
+
+        """
+
+
+## Indexing start ----------------------------------------------------------------------------- ##        
+
+rule index_cellranger_repeats:
+    input:
+       compressed_fa = op.join(config['base'], 'annotation', op.basename(config['genome_url'])),
+       compressed_gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']))
+    params:
+       local_mem_gb = config['params']['local_mem_gb'],
+       path =  op.join(config['base'], 'indices', 'cellranger', 'repeats_' + config['genome']),
+       genome = 'repeats_' + config['genome'],
+       cellranger = config['software']['cellranger'],
+       pigz = config['software']['pigz']
+    threads:
+        config['params']['nthreads']
+    output:
+        uncompressed_gtf = temp(op.join(config['base'], 'annotation', op.splitext(op.basename(config['rep_gtf_url']))[0])),
+        flag = op.join(config['base'], 'indices', 'cellranger', 'repeats_' + config['genome'], 'Log.out'),
+        uncompressed_fa = temp(op.join(config['base'], 'annotation', op.splitext(op.basename(config['genome_url']))[0])),
+        idx = op.join(config['base'], 'indices', 'cellranger', 'repeats_' + config['genome'],'repeats_' + config['genome'])
+    shell:
+       """ 
+       mkdir -p {params.path}
+       cd {params.path}
+ 
+       {params.pigz} --decompress  -p {threads} --keep -c {input.compressed_fa} > \
+        {output.uncompressed_fa}
+
+       {params.pigz} --decompress  -p {threads} --keep -c {input.compressed_gtf} > \
+         {output.uncompressed_gtf}
+       
+       {params.cellranger} mkref --genome {params.genome} \
+       --fasta {output.uncompressed_fa} \
+       --genes {output.uncompressed_gtf} \
+       --nthreads {threads} \
+       --memgb {params.local_mem_gb} 
+
+       touch {output.flag}
+       """
+
+## use this! @todo
+rule get_repeats_not_overlapping_genes_gtf:
+    input:
+        repeats_gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url'])),
+        genes_gtf =  op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url']))
+    output:
+        gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']) + '_minus_' + op.basename(config['genes_gtf_url'])),
+        repeats_gtf_decomp = temp(op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url'])) + '.tmp.gtf'),
+        genes_gtf_decomp =  temp(op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url'])) + '.tmp.gtf'),
+        genesbed = temp(op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url'])) + '.tmp.bed')
+    params:
+        threads = config['params']['nthreads'],
+        gtf2bed = config['software']['gtf2bed'] 
+    shell:
+        """
+
+        {params.pigz} --decompress --keep --stdout  {input.repeats_gtf} | \
+               sed 's/chr//g' > {output.repeats_gtf_decomp}
+        {params.pigz} --decompress --keep  --stdout  {input.genes_gtf} | \
+               sed 's/chr//g' > {output.genes_gtf_decomp}
+    
+        # # # let's transform genes in bed and then use bedtools
+        # export PATH={params.gtf2bed}/..:$PATH
+
+        awk '{{ if ($0 ~ "transcript_id") print $0; else print $0" transcript_id "";"; }}' \
+           {output.genes_gtf_decomp} | {params.gtf2bed} - > {output.genesbed}
+
+        {params.bedtools} intersect -a {output.repeats_gtf_decomp} \
+          -b {output.genesbed} \
+          -v | {params.pigz} --stdout > {output.gtf}
+        """
+        
+rule extract_repeatome_from_gtf:
+    priority: 100
+    input:
+        genome = op.join(config['base'], 'annotation', op.basename(config['genome_url'])),
+        gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']))
+    output:
+        genome_uncompressed = temp(op.join(config['base'], 'annotation', op.splitext(op.basename(config['genome_url']))[0])) + '.temp_extract',
+        fai = temp(op.join(config['base'], 'annotation', op.splitext(op.basename(config['genome_url']))[0])) + '.temp_extract.fai',
+        fasta = temp(op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0]) + '.fa'),
+        gtftemp = op.join(config['base'], 'annotation', 'temp_' + op.basename(config['rep_gtf_url'])),
+        fastagz = op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0]) + '.fa.gz'
+    params :
+        gtf_parsing = config['dependencies']['gtf_parsing'],
+        Rscript = config['software']['Rscript'],
+        bedtools = config['software']['bedtools'],
+        pigz = config['software']['pigz']
+    threads:
+        config['params']['nthreads']
+    shell:
+        """
+        {PIGZ} --keep --decompress -p {threads} -c  {input.genome} > {output.genome_uncompressed}
+
+        ## faking the GTF to describe the instance and not the 'exon'
+
+        {params.Rscript} {params.gtf_parsing} -g {input.gtf} | {params.pigz} -c -p {threads} > \
+          {output.gtftemp}        
+
+        {params.bedtools} getfasta -name -s -fi {output.genome_uncompressed} \
+          -bed {output.gtftemp} -fo {output.fasta}
+
+        ## remove the coordinates appended by bedtools!
+        sed 's/:/ /g' {output.fasta} | cut -f1 -d" " | \
+          {params.pigz}  -p {threads} -c > {output.fastagz}
+        
+        """
+
+## hg38 hardcoded
+rule get_genome_fasta:
+    priority:
+        100
+    output:
+        op.join(config['base'], 'annotation', op.basename(config['genome_url']))
+    params:
+        url = config['genome_url']
+    shell:
+        """
+        curl -s -L -C - {params.url} -o {output}
+        """
+      
+rule get_repeats_gtf:
+    priority:
+        100
+    params:
+        url = config['rep_gtf_url'],
+        genome_path = op.join(config['base'], 'annotation')
+    output:
+        op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']))
+    shell:
+        """        
+        curl -s -L -C - {params.url} -o {output}
+        """
+        
+rule get_genes_gtf:
+    priority:
+        100
+    params:
+        url = config['genes_gtf_url']
+    output:
+        gtf = op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url']))
+    shell:
+        """    
+        curl -s -L -C - {params.url} -o {output.gtf}
+        """
+
+rule get_cellranger_data:
+    priority:
+        100
+    params:
+        url = config['cellranger_db_url'],
+        path = op.join(config['base'], 'indices', 'cellranger')
+    output:
+        cellranger_gz = op.join(config['base'], 'indices', 'cellranger', op.basename(config['cellranger_db_url'])),
+        uncomp = op.join(config['base'], 'indices', 'cellranger', config['cellranger_db_id'], 'reference.json')
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+
+        curl -s -L -C - {params.url} -o {output.cellranger_gz}
+        
+        tar xzvf {output.cellranger_gz}
+        """
+
+
+       
+rule fake_gtf_repeatome_in_repeats_coordinates:
+    input:
+        fa = op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0] + '.fa.gz')
+    output:
+        fai = temp(op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0] + '.fa.fai')),
+        fauncomp = temp(op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0] + '.fa')),
+        fake_repeatome_gtf = op.join(config['base'], 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0]) + '.gtf.gz'
+    params:
+        gtf_making = config['dependencies']['gtf_making'],
+        path = op.join(config['base'], 'annotation'),
+        Rscript = config['software']['Rscript'],
+        pigz = config['software']['pigz']
+    threads:
+        config['params']['nthreads']
+    shell:
+        """
+        cd {params.path}
+        {params.pigz} -k --decompress -p {threads} {input.fa}
+
+        samtools faidx {output.fauncomp}
+        
+        {params.Rscript} {params.rscript} -f {output.fai} | \
+           {params.pigz} -c -p {threads} > {output.fake_repeatome_gtf}
+        
+        """

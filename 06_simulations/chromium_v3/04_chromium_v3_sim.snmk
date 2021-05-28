@@ -19,7 +19,7 @@ RUN_TECH = 'chromium'
 
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
-NTHREADS = 28
+NTHREADS = 5
 LOCAL_MEM_GB = 100
 GENOME= 'GRCh38'
 GENOME_SHORT = 'hg38'
