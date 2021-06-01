@@ -415,7 +415,7 @@ annot$attributes = c(annot$filters, "external_gene_name", "chromosome_name",
                      "gene_biotype", "start_position", "end_position")
 annot$biomart = "ENSEMBL_MART_ENSEMBL" 
 annot$dataset = "hsapiens_gene_ensembl"
-annot$host = "ensembl.org"
+annot$host = "asia.ensembl.org"
 
 ## biomartCacheClear()
 
@@ -618,7 +618,7 @@ process_featurecounts_grouped_by_cb_umi <- function(fn, id = "",
                              "gene_biotype", "start_position", "end_position")
         annot$biomart = "ENSEMBL_MART_ENSEMBL" 
         annot$dataset = "hsapiens_gene_ensembl"
-        annot$host = "ensembl.org"
+        annot$host = "asia.ensembl.org"
 
         ## biomartCacheClear()
 
@@ -2323,7 +2323,7 @@ cobra$id <- params$identifier
 For each cell type, get the max F1 stratifying by flavour *regardless of the resolution*.
 
 ```{r}
-tryCatch({
+## tryCatch({
     ## cobra <- cobra[order(cobra$F1, cobra$cell, decreasing = TRUE),]
     ## maxf1 <- cobra[0,]
     maxF1 <- list()
@@ -2343,7 +2343,7 @@ tryCatch({
     
     maxF1$cell <- factor(as.character(maxF1$cell),
                          levels = unique(as.character(maxF1$cell[order(maxF1$max_F1)])))
-}, error = function(x) print(x))
+## }, error = function(x) print(x))
 ```
 
 ```{r}

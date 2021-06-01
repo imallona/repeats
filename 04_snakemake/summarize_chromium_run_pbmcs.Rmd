@@ -112,6 +112,7 @@ ac <- function(col, alpha=1){
 ##         (sd(x)/mean(x))*100
 ## }
 
+
 ```
 
 # Data load
@@ -633,6 +634,7 @@ feature.drop <- isOutlier(d$genes_cellranger$nFeature_RNA, nmads = 3, type = "bo
 mito.drop <- isOutlier(d$genes_cellranger$percent.mt, nmads = 3, type = "higher")
 
 selected_cells <- colnames(d$genes_cellranger)[!(libsize.drop | feature.drop | mito.drop)]
+
 
 ```
 
@@ -2139,8 +2141,9 @@ for (flavour in names(d)) {
 
         length(as.factor(d[[flavour]]@meta.data[known, res]))
         length(as.factor(d[[flavour]]@meta.data[known, 'scina']))
-        hung[[flavour]][[res]] <- hungarian_weber_with_labels(d[[flavour]]@meta.data[known, res],
-                                                         d[[flavour]]@meta.data[known, 'scina'])
+        hung[[flavour]][[res]] <- hungarian_weber_with_labels(
+            as.factor(d[[flavour]]@meta.data[known, res]),
+            as.factor(d[[flavour]]@meta.data[known, 'scina']))
 
     }    
 }
@@ -2171,6 +2174,8 @@ cobra$id <- params$identifier
 For each cell type, get the max F1 stratifying by flavour *regardless of the resolution*.
 
 ```{r}
+cobra$flavour <- as.factor(cobra$flavour)
+cobra$cell <- as.factor(cobra$cell)
 tryCatch({
     ## cobra <- cobra[order(cobra$F1, cobra$cell, decreasing = TRUE),]
     ## maxf1 <- cobra[0,]
@@ -2232,7 +2237,7 @@ ggplot(data = cobra, aes(x = re, y =  F1, group=resolution, col =cell)) +
 
 ```
 
-```{r, fig.width = 5, fig.height = 5}
+```{r maxf1, fig.width = 5, fig.height = 5}
 
 tryCatch({
     ## sorting in a more sensible way
@@ -2421,7 +2426,7 @@ plot(hc_cor)
 
 List of seurat objects
 
-```{r}
+```{r save_outputs, cache = FALSE}
 saveRDS(object = d, file = params$seurat_output)
 saveRDS(object = aris_stored, file = params$aris_output)
 saveRDS(object = cobra, file = params$cobra_output)

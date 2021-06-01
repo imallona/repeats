@@ -1,5 +1,6 @@
 $schema: "http://json-schema.org/draft-06/schema#"
 description: repeats in single-cells
+type: object
 properties:
   base:
     type: string
@@ -30,6 +31,7 @@ properties:
   cellranger_db_url:
     type: string
   dependencies:
+    type: object
     properties:
       gtf_parsing:
          type: string
@@ -38,6 +40,7 @@ properties:
       featurecounts_parsing:
          type: string  
   software:
+    type: object
     properties:
       Rscript:
         type: string
@@ -68,6 +71,7 @@ properties:
       gtf2bed:
         type: string
   params:
+    type: object
     properties:
       nthreads: 
         type: integer

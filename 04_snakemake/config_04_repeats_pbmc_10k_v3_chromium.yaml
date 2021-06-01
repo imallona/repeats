@@ -1,7 +1,7 @@
-run_name: 'SRR10974769'
+run_name: 'pbmc_10k_v3'
 base: '/home/imallona/repeats_sc'
 run_tech: 'chromium'
-chemistry: 'SC3Pv2'
+chemistry: 'SC3Pv3'
 demux: False
 genome: 'GRCh38'
 genome_short: 'GRCh38'
