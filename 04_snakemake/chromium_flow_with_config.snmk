@@ -310,7 +310,7 @@ rule knit_report_chromium:
         
             
     params:
-        rmd = 'summarize_chromium_run_pbmcs.Rmd',
+        rmd = op.join('scripts', 'summarize_chromium_run_pbmcs.Rmd'),
         run_name = config['run_name'],
         Rscript = config['software']['Rscript']
     output:
@@ -323,7 +323,7 @@ rule knit_report_chromium:
         op.join(config['base'], 'runs', config['run_name'], config['run_name'] + 'summarize_chromium_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
     shell:
         """
-        {paramsRscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+        {params.Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
           output_file = \"{output.html}\", 
           params = list(identifier = \"{params.run_name}\", 
                      genes_cellranger = \"{input.genes}\", 

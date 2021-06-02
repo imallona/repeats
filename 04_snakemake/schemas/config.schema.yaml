@@ -1,6 +1,6 @@
 $schema: "http://json-schema.org/draft-06/schema#"
-description: repeats in single-cells
 type: object
+description: repeats in single-cells
 properties:
   base:
     type: string

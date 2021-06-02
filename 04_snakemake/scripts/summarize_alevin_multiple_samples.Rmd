@@ -2327,6 +2327,8 @@ For each cell type, get the max F1 stratifying by flavour *regardless of the res
     ## cobra <- cobra[order(cobra$F1, cobra$cell, decreasing = TRUE),]
     ## maxf1 <- cobra[0,]
     maxF1 <- list()
+cobra$flavour <- as.factor(cobra$flavour)
+cobra$cell <- as.factor(cobra$cell)
 
     for (flavour in levels(cobra$flavour)) {
         for (cell in levels(cobra$cell)) {

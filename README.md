@@ -1,6 +1,10 @@
 # Summary
 
-We quantified conventional features (GENCODE) as well as repetitive elements (RepeatMasker) from multiple single-cell RNA-seq datasets using several analytical approaches, and starting from raw data, and looked for association with known cell metadata (e.g. cell types).
+v0.1 of https://bitbucket.org/imallona/repeats_sc/src/v0.1/
+
+# Summary
+
+We aimed to quantify conventional features (GENCODE) as well as repetitive elements (RepeatMasker) from multiple single-cell RNA-seq datasets using several analytical approaches, and starting from raw data, and looked for association with known cell metadata (e.g. cell types).
 
 # Data
 

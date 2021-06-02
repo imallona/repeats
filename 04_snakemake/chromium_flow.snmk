@@ -261,7 +261,7 @@ rule knit_report_chromium_agnostic:
         
             
     params:
-        rmd = 'summarize_chromium_run_markers_agnostic.Rmd',
+        rmd = op.join('scripts', 'summarize_chromium_run_markers_agnostic.Rmd'),
         run_name = RUN_NAME
     output:
         html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),

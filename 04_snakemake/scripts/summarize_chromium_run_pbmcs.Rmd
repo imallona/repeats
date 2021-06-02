@@ -129,38 +129,38 @@ ac <- function(col, alpha=1){
 ##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/SRR10974769/count_repeats_on_cellranger_standard/SRR10974769_repeats.counts.gz",
 ##                identifier = 'test')
 
-## params <- list(identifier = "5k_pbmc_v3",
-##                genes_cellranger = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
-##                repeats_cellranger = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-##                repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard/multimappers/5k_pbmc_v3_repeats.counts.gz",
-##                repeats_only_featurecounts_control_multi = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers/5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz",
-##                repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard/unique_reads/5k_pbmc_v3_repeats.counts.gz",
-##                repeats_only_featurecounts_control_unique = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz",
-##                seurat_output = "/home/imallona/tmp/test.rds",
-##                regress_genes_nCount = FALSE,
-##                regress_genes_nFeatures = FALSE,
-##                repeats_bowtie_unique = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/bowtie_repeatome/unique_reads/all_cells_repeats.counts.gz',
-##                repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/bowtie_repeatome/multimappers/all_cells_repeats.counts.gz',
-##                genes_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/genes/alevin/quants_mat.gz',
-##                repeats_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/repeats/alevin/quants_mat.gz')
-
-
-
-
-params <- list(identifier = "frozen_pbmc_donor_a",
-               genes_cellranger = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
-               repeats_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-               repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/multimappers/frozen_pbmc_donor_a_repeats.counts.gz",
-               repeats_only_featurecounts_control_multi = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers/frozen_pbmc_donor_a_repeats_not_overlapping_genes.counts.gz",
-               repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/unique_reads/frozen_pbmc_donor_a_repeats.counts.gz",
-               repeats_only_featurecounts_control_unique = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/frozen_pbmc_donor_a_repeats_not_overlapping_genes.counts.gz",
+params <- list(identifier = "5k_pbmc_v3",
+               genes_cellranger = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
+               repeats_cellranger = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+               repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard/multimappers/5k_pbmc_v3_repeats.counts.gz",
+               repeats_only_featurecounts_control_multi = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers/5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz",
+               repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard/unique_reads/5k_pbmc_v3_repeats.counts.gz",
+               repeats_only_featurecounts_control_unique = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz",
                seurat_output = "/home/imallona/tmp/test.rds",
                regress_genes_nCount = FALSE,
                regress_genes_nFeatures = FALSE,
-               repeats_bowtie_unique = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/bowtie_repeatome/unique_reads/all_cells_repeats.counts.gz',
-               repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/bowtie_repeatome/multimappers/all_cells_repeats.counts.gz',
-               genes_alevin = 'None',
-               repeats_alevin = 'None')
+               repeats_bowtie_unique = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/bowtie_repeatome/unique_reads/all_cells_repeats.counts.gz',
+               repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/bowtie_repeatome/multimappers/all_cells_repeats.counts.gz',
+               genes_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/genes/alevin/quants_mat.gz',
+               repeats_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/repeats/alevin/quants_mat.gz')
+
+
+
+
+## params <- list(identifier = "frozen_pbmc_donor_a",
+##                genes_cellranger = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
+##                repeats_cellranger = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/multimappers/frozen_pbmc_donor_a_repeats.counts.gz",
+##                repeats_only_featurecounts_control_multi = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers/frozen_pbmc_donor_a_repeats_not_overlapping_genes.counts.gz",
+##                repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard/unique_reads/frozen_pbmc_donor_a_repeats.counts.gz",
+##                repeats_only_featurecounts_control_unique = "/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/frozen_pbmc_donor_a_repeats_not_overlapping_genes.counts.gz",
+##                seurat_output = "/home/imallona/tmp/test.rds",
+##                regress_genes_nCount = FALSE,
+##                regress_genes_nFeatures = FALSE,
+##                repeats_bowtie_unique = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/bowtie_repeatome/unique_reads/all_cells_repeats.counts.gz',
+##                repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/bowtie_repeatome/multimappers/all_cells_repeats.counts.gz',
+##                genes_alevin = 'None',
+##                repeats_alevin = 'None')
 
 
 ```
@@ -2354,9 +2354,9 @@ tryCatch({
 
 
 repeats_shared <- Reduce(intersect, sapply(d[grep('repeats|both', names(d))], rownames))
-## cells_shared <- Reduce(intersect, sapply(d[grep('repeats|both', names(d))], colnames))
+cells_shared <- Reduce(intersect, sapply(d[grep('repeats|both', names(d))], colnames))
 ## rather, use old variable from the qc step
-cells_shared <- selected_cells
+##cells_shared <- selected_cells
 
 stopifnot(length(repeats_shared) > 0)
 

@@ -1,0 +1,35 @@
+run_name: 'ding_celseq2'
+base: '/home/imallona/repeats_sc'
+run_tech: 'celseq2'
+chemistry: 'celseq2'
+demux: False
+genome: 'GRCh38'
+genome_short: 'GRCh38'
+genome_url: 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
+genes_gtf_url: 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
+rep_gtf_url: 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
+
+transcriptome_url: 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.pc_transcripts.fa.gz'
+cellranger_db_id: 'refdata-cellranger-GRCh38-3.0.0'
+cellranger_db_url: 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-GRCh38-3.0.0.tar.gz'
+dependencies:
+  gtf_parsing: './scripts/gtf_parser.R'
+  gtf_making: './scripts/gtf_maker.R'
+  featurecounts_parsing: './scripts/plot_featurecounts_profile.R'
+software:
+  Rscript: '/usr/local/R/R-4.1.0/bin/Rscript'
+  bowtie_build: '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
+  bowtie: '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'
+  pigz: '/usr/bin/pigz'
+  star: '~/soft/star/STAR-2.7.3a/source/STAR'
+  featurecounts: '~/soft/subread/subread-2.0.0-source/bin/featureCounts'
+  cellranger: '~/soft/cellranger/cellranger-3.1.0/cellranger'
+  fastqdump: '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump'
+  vdb_validate: '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate'
+  prefetch: '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/prefetch'
+  bedtools: '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
+  salmon: '~/soft/salmon/salmon-1.1.0_linux_x86_64/bin/salmon'
+  gtf2bed: '~/soft/bedops/bin/gtf2bed'
+params:
+  nthreads: 40
+  local_mem_gb: 100

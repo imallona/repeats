@@ -41,3 +41,8 @@ git clone https://github.com/JiekaiLab/scTE
 cd scTE
 
 python setup.py install
+
+# add snakemake, too
+
+which pip
+pip install snakemake

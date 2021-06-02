@@ -355,8 +355,10 @@ rule knit_report_dropseq_ad_hoc_ding:
         repeats_only_unique = op.join(BASE, "runs", RUN_NAME, 'star_transcriptome', 'repeats_no_overlap', 'unique_reads'),
         config_fn = CONF
     params:
-        rmd = 'summarize_alevin_multiple_samples.Rmd',
+        rmd = op.join('scripts', 'summarize_alevin_multiple_samples.Rmd'),
         run_name = "Drop-seq"
+    threads:
+        1
     output:
         html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_dropseq_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
         rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pmbc_dropseq_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
