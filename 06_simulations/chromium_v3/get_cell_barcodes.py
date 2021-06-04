@@ -1,1 +1,0 @@
-../../04_snakemake/get_cell_barcodes.py

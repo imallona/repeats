@@ -94,7 +94,6 @@ for item in ['bowtie', 'star', 'salmon']:
 ## Folder structure end ----------------------------------------------------------------------- ##
 
 include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow.snmk"
-
     
 rule all:
     input:

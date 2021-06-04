@@ -12,6 +12,9 @@ output:
     df_print: kable
     theme: lumen
     always_allow_html: yes
+---
+
+```
 params:
     repeats_featurecounts_unique: ""
     repeats_only_unique: ""
@@ -23,7 +26,7 @@ params:
     scte: ""
     truth: ""
     nthreads: ""
----
+```
 
 Memory intensive, caution (see future memory options)
 
@@ -58,14 +61,13 @@ suppressPackageStartupMessages({
 
 ```{r, include = FALSE, eval = TRUE}
 BASE <- file.path('/home', 'imallona', 'repeats_sc')
-NTHREADS <- params$nthreads
 ```
 
 ```{r, include = FALSE, eval = TRUE}
 opts_chunk$set(fig.width = 5,
                fig.height = 5,
                dev = 'png',
-               cache = FALSE,
+               cache = TRUE,
                echo = TRUE,
                include = TRUE,
                cache.lazy = FALSE,
@@ -78,11 +80,11 @@ options(bitmapType='cairo')
 ## getOption('bitmapType')
 
 ## data.table
-setDTthreads(threads = params$nthreads)
+
 ```
 
 
-```{r justfordebugging, include = FALSE, eval = FALSE}
+```{r justfordebugging, include = FALSE, eval = TRUE}
 params <- list(repeats_alevin_locus = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/alevin/repeats_per_locus/alevin/quants_mat.gz",
                truth = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/truth.tsv.gz",
                repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard/unique_reads/sim_5k_pbmc_v3_repeats.counts.gz",
@@ -92,7 +94,12 @@ params <- list(repeats_alevin_locus = "/home/imallona/repeats_sc/runs/sim_5k_pbm
                repeats_bowtie_multi = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/bowtie_repeatome/multimappers/by_locus_repeats.counts.gz",
                repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/bowtie_repeatome/unique_reads/by_locus_repeats.counts.gz",
                scte = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/scTE/scTE.out.csv.gz",
-               nthreads =20)
+               nthreads = 40)
+```
+
+```{r}
+NTHREADS <- params$nthreads
+setDTthreads(threads = params$nthreads)
 ```
 
 ```{r}
@@ -153,7 +160,7 @@ for (item in featurecounts_runs) {
 
 Read scTE
 
-```{r}
+```{r scte}
 
 tmp <- data.table::fread(params$scte,
                          sep = ',',
@@ -178,11 +185,13 @@ rm(tmp)
 ```
 
 
-```{r}
+```{r, eval = FALSE}
 saveRDS(file = 'd.rds', object = d)
 ```
 
 # Locus level 
+
+Beware downsized!
 
 ```{r, eval = FALSE}
 ## just for downsampling to 100 cells, 1e6 repeats
@@ -479,7 +488,7 @@ fd <- data.frame(cell = fd$cell,
                  flavour = fd$flavour,
                  pt)
 
-fd <- melt(fd,  id.vars = c('cell', 'flavour'))
+fd <- reshape2::melt(fd,  id.vars = c('cell', 'flavour'))
 fd$value <- as.numeric(fd$value)
 
 ## discarded multimapping
@@ -535,6 +544,7 @@ From incorrectly mapped, get those that at least mach the repName, repFamily, or
 # Not averages, but rather total amounts
 
 ```{r}
+fd <- do.call(rbind.data.frame, c(props, props2))
 
 grouped <- aggregate(list(correct = as.numeric(fd$correct),
                           truth = as.numeric(fd$true),
@@ -543,7 +553,7 @@ grouped <- aggregate(list(correct = as.numeric(fd$correct),
                           missing = as.numeric(fd$missing)),
                      by = list(fd$flavour), sum)
 
-grouped <- melt(grouped, id.vars = 'Group.1') 
+grouped <- reshape2::melt(grouped, id.vars = 'Group.1') 
 grouped$variable <- factor(grouped$variable, levels = c('truth', 'correct',
                                                         'multi', 'missing', 'wrong'))
 

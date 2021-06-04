@@ -161,6 +161,21 @@ params <- list(identifier = "frozen_pbmc_donor_a",
                genes_alevin = 'None',
                repeats_alevin = 'None')
 
+## SRR8847571
+params <- list(identifier = "SRR8847571",
+               genes_cellranger = '/home/imallona/repeats_sc/runs/SRR8847571/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
+               repeats_cellranger = "/home/imallona/repeats_sc/runs/SRR8847571/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+               repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/SRR8847571/count_repeats_on_cellranger_standard/multimappers/SRR8847571_repeats.counts.gz",
+               repeats_only_featurecounts_control_multi = "/home/imallona/repeats_sc/runs/SRR8847571/count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers/SRR8847571_repeats_not_overlapping_genes.counts.gz",
+               repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/SRR8847571/count_repeats_on_cellranger_standard/unique_reads/SRR8847571_repeats.counts.gz",
+               repeats_only_featurecounts_control_unique = "/home/imallona/repeats_sc/runs/SRR8847571/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/SRR8847571_repeats_not_overlapping_genes.counts.gz",
+               seurat_output = "/home/imallona/tmp/test.rds",
+               regress_genes_nCount = FALSE,
+               regress_genes_nFeatures = FALSE,
+               repeats_bowtie_unique = '/home/imallona/repeats_sc/runs/SRR8847571/bowtie_repeatome/unique_reads/all_cells_repeats.counts.gz',
+               repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/SRR8847571/bowtie_repeatome/multimappers/all_cells_repeats.counts.gz',
+               genes_alevin = '/home/imallona/repeats_sc/runs/SRR8847571/alevin/genes/alevin/quants_mat.gz',
+               repeats_alevin = '/home/imallona/repeats_sc/runs/SRR8847571/alevin/repeats/alevin/quants_mat.gz')
 
 ```
 
@@ -445,7 +460,7 @@ if (params$genes_alevin != "None") {
                          "gene_biotype", "start_position", "end_position")
     annot$biomart = "ENSEMBL_MART_ENSEMBL" 
     annot$dataset = "hsapiens_gene_ensembl"
-    annot$host = "ensembl.org"
+    annot$host = "asia.ensembl.org"
     annot$bmart <- biomaRt::useMart(biomart = annot$biomart, dataset = annot$dataset, 
                                     host = annot$host)
 
