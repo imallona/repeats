@@ -34,7 +34,9 @@ while (TRUE) {
 
     tmp <- strsplit(line, split = '\t')[[1]]
 
-    tmp[3] <- sub('.*transcript_id\ "(.*)\"; family_id.*', "\\1", tmp[[9]])
+    ## tmp[3] <- sub('.*transcript_id\ "(.*)\"; family_id.*', "\\1", tmp[[9]])
+    tmp[3] <- sub('.*transcript_id\ "(.*)\"; gene_id.*', "\\1", tmp[[9]])
+    tmp[3] <- gsub('[:-]', '_', tmp[3])
     tmp[9] <- gsub('\"', '"', tmp[9])
     
     cat(sprintf('%s\n', paste(tmp, collapse = '\t')))

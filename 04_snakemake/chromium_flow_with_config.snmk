@@ -813,18 +813,18 @@ rule get_genome_fasta:
         curl -s -L -C - {params.url} -o {output}
         """
       
-rule get_repeats_gtf:
-    priority:
-        100
-    params:
-        url = config['rep_gtf_url'],
-        genome_path = op.join(config['base'], 'annotation')
-    output:
-        op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']))
-    shell:
-        """        
-        curl -s -L -C - {params.url} -o {output}
-        """
+# rule get_repeats_gtf:
+#     priority:
+#         100
+#     params:
+#         url = config['rep_gtf_url'],
+#         genome_path = op.join(config['base'], 'annotation')
+#     output:
+#         op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']))
+#     shell:
+#         """        
+#         curl -s -L -C - {params.url} -o {output}
+#         """
         
 rule get_genes_gtf:
     priority:

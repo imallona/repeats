@@ -3,7 +3,7 @@
 
 
 LENGTH=91 # beware, this will generate 92 nt long fastqs
-NTHREADS=20
+NTHREADS=30
 QUAL_SYMBOL="F"
 # get rmsk coordinates
 GTF="$HOME/repeats_sc/annotation/GRCh38_rmsk_TE.gtf.gz"
@@ -33,6 +33,8 @@ source 02_simulate_ground_truth_fastqs.sh
 touch "$R2_SIM_ORIGIN"
 simulate_cdna $LENGTH $QUAL_SYMBOL $GTF $GENOME_FASTA $NTHREADS $BEDTOOLS $R2_SIM_ORIGIN
 
+gunzip $HOME/repeats_sc/data/sim_5k_pbmc_v3/*fastq.gz
+
 # postprocessing
 /usr/local/R/R-4.0.5/bin/Rscript simulate_chromium.R \
                                  $R1_ORIGIN \
@@ -49,8 +51,9 @@ pigz -p $NTHREADS $HOME/repeats_sc/data/sim_5k_pbmc_v3/*fastq
 pigz -p $NTHREADS $HOME/repeats_sc/data/sim_5k_pbmc_v3/truth.tsv
 
 
-# add 5 mutations to each fastq record - test
-/usr/local/R/R-4.0.5/bin/Rscript add_mutations_to_fastq.R \
-                                 $R2_SIMORIGIN \
-                                 5 \
-                                 test_5.fastq
+# # add 5 mutations to each fastq record - test
+## caution untested!
+# /usr/local/R/R-4.0.5/bin/Rscript add_mutations_to_fastq.R \
+#                                  $R2_SIMORIGIN \
+#                                  5 \
+#                                  test_5.fastq

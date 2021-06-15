@@ -692,8 +692,8 @@ rule spawn_cellranger_bam_file_by_cell:
     threads:
         NTHREADS
     params:
-        barcodes_script = 'get_cell_barcodes.py',
-        split_script = 'split_by_cell_barcode_in_sorted_bam.py',
+        barcodes_script = op.join('scripts', 'get_cell_barcodes.py'),
+        split_script = op.join('scripts','split_by_cell_barcode_in_sorted_bam.py'),
         split_path = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split')
     log:
         log1 = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split_add_rg.log'),
@@ -721,7 +721,7 @@ rule spawn_cellranger_bam_file_by_cell:
 
         {PIGZ} --decompress -p {threads} --keep --stdout {output.body} | cat {output.header} - | samtools view -@ {threads} -Sb - > {output.shortened_bam}
         
-        python3 split_by_cell_barcode_in_sorted_bam.py {output.shortened_bam} -outdir {params.split_path} -barcodes {input.barcodes} &> {log.log2}
+        python3 {params.split_script} {output.shortened_bam} -outdir {params.split_path} -barcodes {input.barcodes} &> {log.log2}
 
         touch {output.flag}
 
@@ -954,18 +954,18 @@ rule get_genome_fasta:
         curl -s -L -C - {params.url} -o {output}
         """
       
-rule get_repeats_gtf:
-    priority:
-        100
-    params:
-        url = REP_GTF_URL,
-        genome_path = op.join(BASE, 'annotation')
-    output:
-        op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
-    shell:
-        """        
-        curl -s -L -C - {params.url} -o {output}
-        """
+# rule get_repeats_gtf:
+#     priority:
+#         100
+#     params:
+#         url = REP_GTF_URL,
+#         genome_path = op.join(BASE, 'annotation')
+#     output:
+#         op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+#     shell:
+#         """        
+#         curl -s -L -C - {params.url} -o {output}
+#         """
         
 rule get_genes_gtf:
     priority:

@@ -1,1 +1,1 @@
-../00_prototype/split_bam_by_cell.py
+/home/imallona/src/repeats_sc/00_prototype/split_bam_by_cell.py
