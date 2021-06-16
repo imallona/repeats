@@ -49,8 +49,8 @@ include: "chromium_flow_with_config.snmk"
     
 rule all:
     input:
-        expand(op.join(config["base"], 'runs', config["run_name"], config["run_name"] + '_pbmc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
-                       regress_nfeature = ['TRUE', 'FALSE']),
+        # expand(op.join(config["base"], 'runs', config["run_name"], config["run_name"] + '_pbmc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
+                       # regress_nfeature = ['TRUE', 'FALSE']),
         # op.join(config["base"], "runs", config["run_name"], "count_repeats_on_cellranger_standard",  config["run_name"] + "_transcriptome_repeats.counts.summary.png"),
         # op.join(config["base"], "runs", config["run_name"], "count_repeats_on_cellranger_standard_not_overlapping_genes",  config["run_name"] + "_transcriptome_repeats_not_genes.counts.summary.png"),
         expand(op.join(config["base"], "runs", config["run_name"],
@@ -63,11 +63,11 @@ rule all:
                         "{multimappers}",
                         config["run_name"] + "_transcriptome_repeats_not_genes.counts.summary.png"),
                  multimappers = ['multimappers', 'unique_reads']),
-        op.join(config["base"], 'runs', config["run_name"], 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
-        op.join(config["base"], 'runs', config["run_name"], 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
-        expand(op.join(config["base"], 'runs', config["run_name"], config["run_name"] + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-               regress_ncount = ['TRUE', 'FALSE'],
-               regress_nfeature = ['TRUE', 'FALSE']),
+        # op.join(config["base"], 'runs', config["run_name"], 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
+        # op.join(config["base"], 'runs', config["run_name"], 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
+        # expand(op.join(config["base"], 'runs', config["run_name"], config["run_name"] + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+               # regress_ncount = ['TRUE', 'FALSE'],
+               # regress_nfeature = ['TRUE', 'FALSE']),
         expand(op.join(config["base"], "runs", config["run_name"], 'bowtie_repeatome',
                        '{multimappers}',
                        "all_cells_repeats.counts.gz"),
@@ -107,7 +107,8 @@ rule run_cellranger_repeats:
         sample_name = config["run_name"],
         local_mem_gb = config["params"]["local_mem_gb"],
         processing_path = op.join(config["base"], 'runs', config["run_name"]),
-        chemistry = config["chemistry"]
+        chemistry = config["chemistry"],
+        cellranger = config['software']['cellranger']
     output:
         reports = op.join(config["base"], 'runs', config["run_name"], 'cellranger_repeats', 'outs', 'web_summary.html'),
         barcodes = op.join(config["base"], 'runs', config["run_name"], 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
@@ -121,7 +122,7 @@ rule run_cellranger_repeats:
         cd {params.processing_path}
         rm -rf cellranger_repeats
 
-        {CELLRANGER} count --id=cellranger_repeats \
+        {params.cellranger} count --id=cellranger_repeats \
           --fastqs={params.fastqs_path} \
           --transcriptome={input.transcriptome} \
           --jobmode=local \
@@ -140,7 +141,8 @@ rule run_cellranger_standard:
         sample_name = config["run_name"],
         local_mem_gb = config["params"]["local_mem_gb"],
         processing_path = op.join(config["base"], 'runs', config["run_name"]),
-        chemistry = config["chemistry"]
+        chemistry = config["chemistry"],
+        cellranger = config['software']['cellranger']
     output:
         html = op.join(config["base"], 'runs', config["run_name"], 'cellranger_standard', 'outs', 'web_summary.html'),
         bam = op.join(config["base"], 'runs', config["run_name"], 'cellranger_standard', 'outs', 'possorted_genome_bam.bam'),
@@ -155,7 +157,7 @@ rule run_cellranger_standard:
         cd {params.processing_path}
         rm -rf cellranger_standard
 
-        {CELLRANGER} count --id=cellranger_standard \
+        {params.cellranger} count --id=cellranger_standard \
           --fastqs={params.fastqs_path} \
           --transcriptome={input.transcriptome} \
           --jobmode=local \
@@ -183,7 +185,8 @@ rule map_salmon_repeats_chromium:
         processing_path = op.join(config["base"], 'runs', config["run_name"], 'alevin', 'repeats'),
         salmon_idx = op.join(config["base"], 'indices', 'salmon', config["genome"], 'repeats_salmon'),
         cb = ' '.join(sorted(glob(op.join(config["base"], 'data', config["run_name"], config["run_name"] + '*R1*fastq.gz')))),
-        r2 = ' '.join(sorted(glob(op.join(config["base"], 'data', config["run_name"], config["run_name"] + '*R2*fastq.gz')))) 
+        r2 = ' '.join(sorted(glob(op.join(config["base"], 'data', config["run_name"], config["run_name"] + '*R2*fastq.gz')))),
+        salmon = config["software"]["salmon"]
     log:
         op.join(config["base"], 'runs', config["run_name"], 'run_salmon_repeats_chromium.log')
     shell:
@@ -191,7 +194,7 @@ rule map_salmon_repeats_chromium:
     mkdir -p {params.processing_path}
     cd {params.processing_path}
 
-    ({SALMON} alevin \
+    ({params.salmon} alevin \
     -l ISR \
     -1 {params.cb} \
     -2 {params.r2} \
@@ -219,7 +222,8 @@ rule map_salmon_genes_chromium:
         processing_path = op.join(config["base"], 'runs', config["run_name"], 'alevin', 'genes'),
         salmon_idx = op.join(config["base"], 'indices', 'salmon', config["genome"], 'genes_salmon'),
         cb = ' '.join(sorted(glob(op.join(config["base"], 'data', config["run_name"], config["run_name"] + '*R1*fastq.gz')))),
-        r2 = ' '.join(sorted(glob(op.join(config["base"], 'data', config["run_name"], config["run_name"] + '*R2*fastq.gz')))) 
+        r2 = ' '.join(sorted(glob(op.join(config["base"], 'data', config["run_name"], config["run_name"] + '*R2*fastq.gz')))),
+        salmon = config["software"]["salmon"]
     log:
         op.join(config["base"], 'runs', config["run_name"], 'run_salmon_genes_chromium.log')
     shell:
@@ -227,7 +231,7 @@ rule map_salmon_genes_chromium:
     mkdir -p {params.processing_path}
     cd {params.processing_path}
 
-    ({SALMON} alevin \
+    ({params.salmon} alevin \
     -l ISR \
     -1 {params.cb} \
     -2 {params.r2} \

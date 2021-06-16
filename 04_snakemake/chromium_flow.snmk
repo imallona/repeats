@@ -91,7 +91,7 @@ rule index_repeats_salmon_repeats_with_decoy_transcriptome:
         path = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
         k = 31
     threads:
-        NTHREADS
+        5
     log:
         op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon_index.log')
     shell:
@@ -118,10 +118,26 @@ rule get_txp2gene_gene:
     shell:
          """
          {PIGZ} --decompress -p {threads} -c {input.genes_gtf} | \
-           grep transcript | awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+           grep transcript | awk '{{print $10,$12}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
          """
 
-## untested @todo check
+# rule get_txp2gene_repeat:
+#     input:
+#         repeats_gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+#     output:
+#         op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv')
+#     params:
+#         path = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon')
+#     shell:
+#         """
+#         mkdir -p {params.path}
+        
+#         {PIGZ} --decompress -p {threads} -c {input.repeats_gtf} | grep transcript | \
+#         awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+#         """
+
+        
+## modified 16 june 2021
 rule get_txp2gene_repeat:
     input:
         repeats_gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
@@ -134,7 +150,7 @@ rule get_txp2gene_repeat:
         mkdir -p {params.path}
         
         {PIGZ} --decompress -p {threads} -c {input.repeats_gtf} | grep transcript | \
-        awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+        awk '{{print $10,$12}}' | sed -e 's|"||g' -e 's|;||g' | sed "s/'//g" | uniq > {output}
         """
 
                 

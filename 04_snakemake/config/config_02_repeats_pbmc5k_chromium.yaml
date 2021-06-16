@@ -4,10 +4,10 @@ run_tech: 'chromium'
 chemistry: 'SC3Pv3'
 demux: False
 genome: 'GRCh38'
-genome_short: 'GRCh38'
+genome_short: 'hg38'
 genome_url: 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
 genes_gtf_url: 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
-rep_gtf_url: 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
+rep_gtf_url: 'hg38_rmsk.gtf.gz'
 
 transcriptome_url: 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.pc_transcripts.fa.gz'
 cellranger_db_id: 'refdata-cellranger-GRCh38-3.0.0'

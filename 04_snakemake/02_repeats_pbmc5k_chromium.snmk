@@ -112,10 +112,10 @@ rule all:
         # op.join(config["base"], 'runs', config["run_name"], 'cellranger_standard', 'outs',  'web_summary.html'),
         # op.join(config["base"], 'runs', config["run_name"], 'cellranger_repeats', 'outs', 'web_summary.html'),
         # op.join(config["base"], "runs", config["run_name"], 'count_repeats_on_cellranger_standard', config["run_name"] + "_repeats.counts.gz"),
-        expand(op.join(config["base"], 'runs', config["run_name"], config["run_name"] + '_pbmc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
-                       regress_nfeature = ['TRUE', 'FALSE']),
-        op.join(config["base"], "runs", config["run_name"], 'count_repeats_on_cellranger_standard_not_overlapping_genes',
-                config["run_name"] + "_repeats_not_overlapping_genes.counts.gz"),
+        # expand(op.join(config["base"], 'runs', config["run_name"], config["run_name"] + '_pbmc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
+                       # regress_nfeature = ['TRUE', 'FALSE']),
+        # op.join(config["base"], "runs", config["run_name"], 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                # config["run_name"] + "_repeats_not_overlapping_genes.counts.gz"),
         expand(op.join(config["base"], "runs", config["run_name"],
                         "count_repeats_on_cellranger_standard",
                         "{multimappers}",
@@ -126,8 +126,8 @@ rule all:
                         "{multimappers}",
                         config["run_name"] + "_transcriptome_repeats_not_genes.counts.summary.png"),
                  multimappers = ['multimappers', 'unique_reads']),
-        op.join(config["base"], 'runs', config["run_name"], 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
-        op.join(config["base"], 'runs', config["run_name"], 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
+        # op.join(config["base"], 'runs', config["run_name"], 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
+        # op.join(config["base"], 'runs', config["run_name"], 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
         # expand(op.join(config["base"], 'runs', config["run_name"], config["run_name"] + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
         #                regress_nfeature = ['TRUE', 'FALSE']),
          op.join(config["base"], "runs", config["run_name"], 'bowtie_repeatome', 'split_bowtie.flag'),
@@ -274,7 +274,7 @@ rule map_salmon_repeats_chromium:
     mkdir -p {params.processing_path}
     cd {params.processing_path}
 
-    ({paramssalmon} alevin \
+    ({params.salmon} alevin \
     -l ISR \
     -1 {params.cb} \
     -2 {params.r2} \

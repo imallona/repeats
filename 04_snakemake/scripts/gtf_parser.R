@@ -22,6 +22,7 @@ option_list = list(
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
+opt <- list(gtf = '~/repeats_sc/annotation/hg38_rmsk.gtf.gz')
 ## print(sprintf('processing GTF %s', opt$gtf))
 
 con <- gzfile(opt$gtf, "r")
@@ -36,7 +37,7 @@ while (TRUE) {
 
     ## tmp[3] <- sub('.*transcript_id\ "(.*)\"; family_id.*', "\\1", tmp[[9]])
     tmp[3] <- sub('.*transcript_id\ "(.*)\"; gene_id.*', "\\1", tmp[[9]])
-    tmp[3] <- gsub('[:-]', '_', tmp[3])
+    ## tmp[3] <- gsub('[:-]', '_', tmp[3])
     tmp[9] <- gsub('\"', '"', tmp[9])
     
     cat(sprintf('%s\n', paste(tmp, collapse = '\t')))

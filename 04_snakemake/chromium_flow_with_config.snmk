@@ -124,11 +124,30 @@ rule get_txp2gene_gene:
         pigz = config['software']['pigz']
     shell:
          """
+         # {params.pigz} --decompress -p {threads} -c {input.genes_gtf} | \
+           # grep transcript | awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+
          {params.pigz} --decompress -p {threads} -c {input.genes_gtf} | \
-           grep transcript | awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+           grep transcript | awk '{{print $10,$12}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
          """
 
 ## untested @todo check
+# rule get_txp2gene_repeat:
+#     input:
+#         repeats_gtf = 
+#     output:
+#         op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon', 'txp2gene.tsv')
+#     params:
+#         path = op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon'),
+#         pigz = config['software']['pigz']
+#     shell:
+#         """
+#         mkdir -p {params.path}
+        
+#         {params.pigz} --decompress -p {threads} -c {input.repeats_gtf} | grep transcript | \
+#         awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+#         """
+## modified 16 june 2021
 rule get_txp2gene_repeat:
     input:
         repeats_gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']))
@@ -142,7 +161,7 @@ rule get_txp2gene_repeat:
         mkdir -p {params.path}
         
         {params.pigz} --decompress -p {threads} -c {input.repeats_gtf} | grep transcript | \
-        awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+        awk '{{print $10,$12}}' | sed -e 's|"||g' -e 's|;||g' | sed "s/'//g" | uniq > {output}
         """
 
                 
@@ -657,8 +676,9 @@ rule spawn_cellranger_bam_file_by_cell:
     threads:
         config['params']['nthreads']
     params:
-        barcodes_script = 'get_cell_barcodes.py',
-        split_script = 'split_by_cell_barcode_in_sorted_bam.py',
+        pigz = config['software']['pigz'],
+        barcodes_script = config['dependencies']['get_barcodes'],
+        split_script = config['dependencies']['split_by_barcode'],
         split_path = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split')
     log:
         log1 = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split_add_rg.log'),
@@ -667,7 +687,7 @@ rule spawn_cellranger_bam_file_by_cell:
         """
         mkdir -p {output.path}
         
-        # python3 {params.barcodes_script} {input.bam} | {PIGZ} -p {threads} > {output.rgs}
+        # python3 {params.barcodes_script} {input.bam} | {params.pigz} -p {threads} > {output.rgs}
 
         python3 {params.barcodes_script} {input.bam}  > {output.rgs}
 
@@ -676,15 +696,15 @@ rule spawn_cellranger_bam_file_by_cell:
         # ## buffer size in sort due to https://superuser.com/questions/938558/sort-parallel-isnt-parallelizing
         # ( samtools view -@ {threads} {input.bam} | cut -f 1-15 | \
         # paste - {output.rgs} | \
-        #   sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
+        #   sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {params.pigz} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
         ## updated 2 oct to handle SRR8847571
         ( samtools view -@ {threads} {input.bam} | cut -f 1-15 | \
         paste - {output.rgs} | \
           fgrep "RG:Z" | \
-          sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
+          sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {params.pigz} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
 
 
-        {PIGZ} --decompress -p {threads} --keep --stdout {output.body} | cat {output.header} - | samtools view -@ {threads} -Sb - > {output.shortened_bam}
+        {params.pigz} --decompress -p {threads} --keep --stdout {output.body} | cat {output.header} - | samtools view -@ {threads} -Sb - > {output.shortened_bam}
         
         python3 split_by_cell_barcode_in_sorted_bam.py {output.shortened_bam} -outdir {params.split_path} -barcodes {input.barcodes} &> {log.log2}
 
@@ -880,7 +900,7 @@ rule fake_gtf_repeatome_in_repeats_coordinates:
 
         samtools faidx {output.fauncomp}
         
-        {params.Rscript} {params.rscript} -f {output.fai} | \
+        {params.Rscript} {params.gtf_making} -f {output.fai} | \
            {params.pigz} -c -p {threads} > {output.fake_repeatome_gtf}
         
         """

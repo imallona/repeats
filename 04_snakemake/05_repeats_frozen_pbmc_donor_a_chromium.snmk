@@ -10,7 +10,7 @@ from glob import glob
 from snakemake.utils import validate
 
 
-configfile: "config_05_repeats_frozen_pbmc_donor_a_chromium.yaml"
+configfile: op.join("config", "config_05_repeats_frozen_pbmc_donor_a_chromium.yaml")
 print(config)
 # validate(data = config, schema = op.join("schemas", "config.schema.yaml"))
 
@@ -37,23 +37,23 @@ rule all:
         # op.join(config['base'], 'runs', config["run_name"], 'summarize_cellranger_run_report.html'),
         # op.join(config['base'], 'runs', config["run_name"], 'summarize_cellranger_run_report_genes_regressed_out.html'),
         # op.join(config['base'], 'runs', 'pbmc_integration_test.html'),
-        expand(op.join(config['base'], 'runs', config["run_name"], config["run_name"] + '_pbmc_chromium_no_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
-                       regress_nfeature = ['TRUE', 'FALSE']),
-        #  expand(op.join(config['base'], "runs", config["run_name"],
-        #                 "count_repeats_on_cellranger_standard",
-        #                 "{multimappers}",
-        #                 config["run_name"] + "_transcriptome_repeats.counts.summary.png"),
-        #         multimappers = ['multimappers', 'unique_reads']),
-        #  expand(op.join(config['base'], "runs", config["run_name"],
-        #                 "count_repeats_on_cellranger_standard_not_overlapping_genes",
-        #                 "{multimappers}",
-        #                 config["run_name"] + "_transcriptome_repeats_not_genes.counts.summary.png"),
-        #          multimappers = ['multimappers', 'unique_reads']),
+        # expand(op.join(config['base'], 'runs', config["run_name"], config["run_name"] + '_pbmc_chromium_no_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
+                       # regress_nfeature = ['TRUE', 'FALSE']),
+         expand(op.join(config['base'], "runs", config["run_name"],
+                        "count_repeats_on_cellranger_standard",
+                        "{multimappers}",
+                        config["run_name"] + "_transcriptome_repeats.counts.summary.png"),
+                multimappers = ['multimappers', 'unique_reads']),
+         expand(op.join(config['base'], "runs", config["run_name"],
+                        "count_repeats_on_cellranger_standard_not_overlapping_genes",
+                        "{multimappers}",
+                        config["run_name"] + "_transcriptome_repeats_not_genes.counts.summary.png"),
+                 multimappers = ['multimappers', 'unique_reads']),
          op.join(config['base'], "runs", config["run_name"], 'bowtie_repeatome', 'split_bowtie.flag'),
-         # expand(op.join(config['base'], "runs", config["run_name"], 'bowtie_repeatome',
-         #                '{multimappers}',
-         #                "all_cells_repeats.counts.gz"),
-         #        multimappers = ['multimappers', 'unique_reads'])
+         expand(op.join(config['base'], "runs", config["run_name"], 'bowtie_repeatome',
+                        '{multimappers}',
+                        "all_cells_repeats.counts.gz"),
+                multimappers = ['multimappers', 'unique_reads']),
          # op.join(config['base'], 'runs', config["run_name"], 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
          # op.join(config['base'], 'runs', config["run_name"], 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
          # expand(op.join(config['base'], 'runs', config["run_name"], config["run_name"] + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),

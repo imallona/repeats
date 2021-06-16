@@ -44,7 +44,7 @@ while (TRUE) {
     score <- line[4]
     strand <- line[5]
     frame <- "0"
-    transcript_id <- sprintf('%s_%s:%s-%s(%s)', line[6], seqname, start, end, strand)
+    transcript_id <- sprintf('%s_%s_%s_%s_%s', line[6], seqname, start, end, strand)
     
     name_id <- sprintf("gene_id '%s'; ", line[6])
     family_id <- sprintf('family_id "%s"; ', line[8])
