@@ -8,7 +8,6 @@ genome_short: 'hg38'
 genome_url: 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
 genes_gtf_url: 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
 rep_gtf_url: 'hg38_rmsk.gtf.gz'
-
 transcriptome_url: 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.pc_transcripts.fa.gz'
 cellranger_db_id: 'refdata-cellranger-GRCh38-3.0.0'
 cellranger_db_url: 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-GRCh38-3.0.0.tar.gz'
@@ -16,6 +15,8 @@ dependencies:
   gtf_parsing: '~/src/repeats_sc/04_snakemake/gtf_parser.R'
   gtf_making: '~/src/repeats_sc/04_snakemake/gtf_maker.R'
   featurecounts_parsing: '~/src/repeats_sc/04_snakemake/plot_featurecounts_profile.R'
+  get_barcodes: "~/src/repeats_sc/04_snakemake/scripts/get_cell_barcodes.py"
+  split_by_barcode: "~/src/repeats_sc/04_snakemake/scripts/split_by_cell_barcode_in_sorted_bam.py"
 software:
   Rscript: '/usr/local/R/R-4.0.5/bin/Rscript'
   bowtie_build: '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'

@@ -118,7 +118,7 @@ rule get_txp2gene_gene:
     shell:
          """
          {PIGZ} --decompress -p {threads} -c {input.genes_gtf} | \
-           grep transcript | awk '{{print $10,$12}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+           grep transcript | awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
          """
 
 # rule get_txp2gene_repeat:
@@ -579,7 +579,8 @@ rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
 
 rule map_bowtie_by_cell_unique:
     input:
-        flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split.flag')
+        flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split.flag'),
+        index = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt')
     output:
         flag_map_bowtie =  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag')
     params:
@@ -847,7 +848,8 @@ rule spawn_cellranger_bam_file_by_cell:
 rule index_cellranger_repeats:
     input:
        compressed_fa = op.join(BASE, 'annotation', op.basename(GENOME_URL)),
-       compressed_gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+       # compressed_gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+       compressed_gtf = '/home/imallona/repeats_sc/annotation/test.gtf.gz'
     params:
        local_mem_gb = LOCAL_MEM_GB,
        path =  op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME),
@@ -1075,3 +1077,27 @@ rule fake_gtf_repeatome_in_repeats_coordinates:
         {Rscript} {params.rscript} -f {output.fai} | {PIGZ} -c -p {threads} > {output.fake_repeatome_gtf}
         
         """
+
+        
+rule bowtie_index_repeatome_bowtie:
+    input:
+        fa = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.gz')
+    threads: NTHREADS
+    params:
+        label = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome',  op.splitext(op.basename(REP_GTF_URL))[0]),
+        path =  op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome')
+    log:
+        op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', 'bowtie_repeatome.log')
+    output:
+        fa_uncomp = temp(op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa')),
+        o1 = op.join(BASE, 'indices', 'bowtie', GENOME, 'repeatome', op.splitext(op.basename(REP_GTF_URL))[0] + '.1.ebwt')
+    shell:
+        """
+        mkdir -p {params.path}
+        
+        {PIGZ} -k --decompress -p {threads} {input.fa}
+        
+        ({BOWTIE_BUILD} {output.fa_uncomp} {params.label} --threads {threads}) 2> {log}
+        """
+
+        

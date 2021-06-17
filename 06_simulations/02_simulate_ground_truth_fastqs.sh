@@ -38,10 +38,11 @@ simulate_cdna () {
 
     zcat $GTF |   awk -v RL="$LENGTH" '{OFS=FS="\t"}{
 $0=$0;
-L=$6
+# L=$6
 chrom=$1
 start=$4
 end=$5
+L=$5-$4;
 strand=$7
 name=$9
 srand(NR);

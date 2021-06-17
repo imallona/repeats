@@ -137,22 +137,66 @@ rule all:
 
 
 rule run_simulation:
+    input:
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
+        genome_fasta = op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])
     output:
-        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz")
+        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),
+        i1_sim = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_I1_001.fastq",
+        r1_sim = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R1_001.fastq",
+        r2_sim_origin = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R2_001.fastq"
     params:
-        path = op.join(BASE, 'data', RUN_NAME)
+        path = op.join(BASE, 'data', RUN_NAME),
+        length = 91,
+        bedtools = BEDTOOLS,
+        i1_origin = '/home/imallona/repeats_sc/data/5k_pbmc_v3/5k_pbmc_v3_fastqs/5k_pbmc_v3_S1_L002_I1_001.fastq.gz',
+        r1_origin="/home/imallona/repeats_sc/data/5k_pbmc_v3/5k_pbmc_v3_fastqs/5k_pbmc_v3_S1_L002_R1_001.fastq.gz",
+        truth_count_table ="/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/truth.tsv",
+        cb=16,
+        umi=12,
+        num_cells=1000,
+        dependency = "02_simulate_ground_truth_fastqs.sh"
+    log:
+        op.join(BASE, 'data', RUN_NAME, "simulation.log")
     threads:
-        NTHREADS # it's hardcoded...
+        NTHREADS 
     shell:
         """
-        gunzip {params.path}/*
-        bash 03_simulate_chromium_v3.sh
+        mkdir -p {params.path}
+        # cd {params.path}
+
+        # source {params.dependency}
+
+        # ## function from the script above
+        # touch {output.r2_sim_origin}
+        # simulate_cdna $LENGTH $QUAL_SYMBOL $GTF $GENOME_FASTA $NTHREADS $BEDTOOLS_BIN $R2_SIM_ORIGIN
+
+        # gunzip {params.path}/*
+
+        # source 02_simulate_ground_truth_fastqs.sh
+
+        bash 03_simulate_chromium_v3.sh --length {params.length} \
+        --nthreads {threads} \
+        --qual_symbol "F" \
+        --gtf {input.gtf} \
+        --genome_fasta {input.genome_fasta} \
+        --bedtools_bin {params.bedtools} \
+        --i1_origin {params.i1_origin} \
+        --r1_origin {params.r1_origin} \
+        --r2_sim_origin {output.r2_sim_origin} \
+        --i1_sim {output.i1_sim} \
+        --r1_sim {output.r1_sim} \
+        --truth_count_table {params.truth_count_table} \
+        --cb {params.cb} \
+        --umi {params.umi} \
+        --num_cells {params.num_cells} &> {log}
+
         """        
         
 rule run_cellranger_repeats:
     input:
         truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),
-        transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
+        transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME, 'repeats_' + GENOME)
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
         sample_name = RUN_NAME,
@@ -663,7 +707,34 @@ rule featurecounts_bowtie_repeats_repeatome_by_locus:
 
             """)
 
-rule build_gtf:
+# rule build_gtf:
+#     priority:
+#         100
+#     output:
+#         gtf = op.join(BASE, 'annotation', REP_GTF_URL),
+#         tmp = temp(op.join(op.join(BASE, "runs", RUN_NAME, 'tmp.dump.gz')))
+#     params:
+#         genome = GENOME_SHORT,
+#         Rscript = Rscript,
+#         processing_path = op.join(BASE, "runs", RUN_NAME)
+#     threads:
+#         NTHREADS_WITHIN
+#     shell:
+#         """
+#         # bash gtf_build.sh
+#         mysql --user=genome --host=genome-mysql.cse.ucsc.edu -D {params.genome} -A \
+#            -B -sN -e  "select genoName, genoStart, genoEnd, swScore, strand, 
+#                repName,repClass,repFamily
+#            from rmsk
+#            order by genoName,genoStart, genoEnd" | sed 's/^chr//g' | \
+#                   grep -P  '^[0-9]{{1,2}}\t|^[XY]\t' | \
+#                   pigz -p {threads} > {output.tmp}
+
+#         {params.Rscript} parse_dump_gtf.R --rmsk {output.tmp} \
+#                 --source {params.genome} | pigz -p {threads} > {output.gtf}
+#         """
+
+rule build_gtf_cellranger_compliant:
     priority:
         100
     output:
@@ -689,6 +760,7 @@ rule build_gtf:
         {params.Rscript} parse_dump_gtf.R --rmsk {output.tmp} \
                 --source {params.genome} | pigz -p {threads} > {output.gtf}
         """
+    
 # rule generate_scte_index:
 #     output:
 #         idx = op.join(BASE,  'annotations', 'scTE', GENOME_SHORT, GENOME_SHORT + ".exclusive.idx")

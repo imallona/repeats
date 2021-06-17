@@ -128,7 +128,7 @@ rule get_txp2gene_gene:
            # grep transcript | awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
 
          {params.pigz} --decompress -p {threads} -c {input.genes_gtf} | \
-           grep transcript | awk '{{print $10,$12}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+           grep transcript | awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
          """
 
 ## untested @todo check
@@ -542,7 +542,8 @@ rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
 
 rule map_bowtie_by_cell_unique:
     input:
-        flag = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split.flag')
+        flag = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split.flag'),
+        index = op.join(config['base'], 'indices', 'bowtie', config['genome'], 'repeatome', op.splitext(op.basename(config['rep_gtf_url']))[0] + '.1.ebwt')
     output:
         flag_map_bowtie =  op.join(config['base'], "runs", config['run_name'], 'bowtie_repeatome', 'split_bowtie.flag')
     params:
@@ -904,3 +905,33 @@ rule fake_gtf_repeatome_in_repeats_coordinates:
            {params.pigz} -c -p {threads} > {output.fake_repeatome_gtf}
         
         """
+
+rule bowtie_index_repeatome_bowtie:
+    input:
+        fa = op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0] + '.fa.gz')
+    threads:
+        config['params']['nthreads']
+    params:
+        label = op.join(config['base'], 'indices', 'bowtie', config['genome'], 'repeatome',
+                        op.splitext(op.basename(config['rep_gtf_url']))[0]),
+        path =  op.join(config['base'], 'indices', 'bowtie', config['genome'], 'repeatome'),
+        pigz = config['software']['pigz'],
+        bowtie_build = config['software']['bowtie_build']
+    log:
+        op.join(config['base'], 'indices', 'bowtie', config['genome'], 'repeatome',
+                'bowtie_repeatome.log')
+    output:
+        fa_uncomp = temp(op.join(config['base'], 'annotation',
+                                 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0] + '.fa')),
+        o1 = op.join(config['base'], 'indices', 'bowtie', config['genome'],
+                     'repeatome', op.splitext(op.basename(config['rep_gtf_url']))[0] + '.1.ebwt')
+    shell:
+        """
+        mkdir -p {params.path}
+        
+        {params.pigz} -k --decompress -p {threads} {input.fa}
+        
+        ({params.bowtie_build} {output.fa_uncomp} {params.label} --threads {threads}) 2> {log}
+        """
+
+        

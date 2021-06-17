@@ -16,6 +16,8 @@ dependencies:
   gtf_parsing: './scripts/gtf_parser.R'
   gtf_making: './scripts/gtf_maker.R'
   featurecounts_parsing: './scripts/plot_featurecounts_profile.R'
+  get_barcodes: "~/src/repeats_sc/04_snakemake/scripts/get_cell_barcodes.py"  
+  split_by_barcode: "~/src/repeats_sc/04_snakemake/scripts/split_by_cell_barcode_in_sorted_bam.py"
 software:
   Rscript: '/usr/local/R/R-4.1.0/bin/Rscript'
   bowtie_build: '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'

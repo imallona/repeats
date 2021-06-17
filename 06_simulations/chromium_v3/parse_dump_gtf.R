@@ -46,13 +46,13 @@ while (TRUE) {
     frame <- "0"
     transcript_id <- sprintf('%s_%s_%s_%s_%s', line[6], seqname, start, end, strand)
     
-    name_id <- sprintf("gene_id '%s'; ", line[6])
+    name_id <- sprintf('gene_id "%s"; ', line[6])
     family_id <- sprintf('family_id "%s"; ', line[8])
     
     class_id <- sprintf('class_id "%s"; ', line[7])
 
-    attribute <- paste(c(sprintf('transcript_id "%s"; ', transcript_id),
-                         name_id, family_id, class_id), collapse = '')
+    attribute <- paste(c(name_id, sprintf('transcript_id "%s"; ', transcript_id),
+                         family_id, class_id), collapse = '')
 
     cat(sprintf('%s\n', paste(c(seqname, source, feature,
                 start, end,
