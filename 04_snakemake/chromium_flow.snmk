@@ -91,7 +91,7 @@ rule index_repeats_salmon_repeats_with_decoy_transcriptome:
         path = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
         k = 31
     threads:
-        5
+        1
     log:
         op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon_index.log')
     shell:
@@ -150,7 +150,7 @@ rule get_txp2gene_repeat:
         mkdir -p {params.path}
         
         {PIGZ} --decompress -p {threads} -c {input.repeats_gtf} | grep transcript | \
-        awk '{{print $10,$12}}' | sed -e 's|"||g' -e 's|;||g' | sed "s/'//g" | uniq > {output}
+        awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | sed "s/'//g" | uniq > {output}
         """
 
                 

@@ -95,7 +95,7 @@ rule index_repeats_salmon_repeats_with_decoy_transcriptome:
         k = 31,
         salmon = config['software']['salmon']
     threads:
-        config['params']['nthreads']
+        1
     log:
         op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon_index.log')
     shell:
@@ -161,7 +161,7 @@ rule get_txp2gene_repeat:
         mkdir -p {params.path}
         
         {params.pigz} --decompress -p {threads} -c {input.repeats_gtf} | grep transcript | \
-        awk '{{print $10,$12}}' | sed -e 's|"||g' -e 's|;||g' | sed "s/'//g" | uniq > {output}
+        awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | sed "s/'//g" | uniq > {output}
         """
 
                 
