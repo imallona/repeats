@@ -57,13 +57,13 @@ else
 
     sed -i 's/gene_id//g ; s/transcript_id//g; s/class_id// ; s/family_id// ; s/"//g ; s/ //g' sampled_"$LENGTH"_intervals.bed
 
-    pigz --decompress -p $NTHREADS "$GENOME_FASTA".gz
+    pigz -f --decompress -p $NTHREADS "$GENOME_FASTA".gz
 
     $BEDTOOLS getfasta  -fi $GENOME_FASTA \
               -bed sampled_"$LENGTH"_intervals.bed \
               -tab -name > sampled_"$LENGTH"_intervals.fa
 
-    pigz -p $NTHREADS "$GENOME_FASTA"
+    pigz -f -p $NTHREADS "$GENOME_FASTA"
 
     # fastq-ify
 

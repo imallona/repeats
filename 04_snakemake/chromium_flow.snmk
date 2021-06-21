@@ -848,8 +848,8 @@ rule spawn_cellranger_bam_file_by_cell:
 rule index_cellranger_repeats:
     input:
        compressed_fa = op.join(BASE, 'annotation', op.basename(GENOME_URL)),
-       # compressed_gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
-       compressed_gtf = '/home/imallona/repeats_sc/annotation/test.gtf.gz'
+       compressed_gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+       # compressed_gtf = '/home/imallona/repeats_sc/annotation/test.gtf.gz'
     params:
        local_mem_gb = LOCAL_MEM_GB,
        path =  op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME),
@@ -859,10 +859,15 @@ rule index_cellranger_repeats:
     output:
         uncompressed_gtf = temp(op.join(BASE, 'annotation', op.splitext(op.basename(REP_GTF_URL))[0])),
         flag = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME, 'Log.out'),
-        uncompressed_fa = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])),
-        idx = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME,'repeats_' + GENOME)
+        uncompressed_fa = temp(op.join(BASE, 'annotation',
+                                       op.splitext(op.basename(GENOME_URL))[0])),
+        json = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME,
+                       'repeats_' + GENOME, 'reference.json')
+    log:
+        op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME, 'indexing.log')
     shell:
        """ 
+       rm -rf {params.path}
        mkdir -p {params.path}
        cd {params.path}
  
@@ -876,7 +881,7 @@ rule index_cellranger_repeats:
        --fasta {output.uncompressed_fa} \
        --genes {output.uncompressed_gtf} \
        --nthreads {threads} \
-       --memgb {params.local_mem_gb} 
+       --memgb {params.local_mem_gb} &> {log}
 
        touch {output.flag}
        """

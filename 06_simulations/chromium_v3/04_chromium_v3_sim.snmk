@@ -142,9 +142,9 @@ rule run_simulation:
         genome_fasta = op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])
     output:
         truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),
-        i1_sim = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_I1_001.fastq",
-        r1_sim = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R1_001.fastq",
-        r2_sim_origin = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R2_001.fastq"
+        i1_sim = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_I1_001.fastq.gz",
+        r1_sim = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R1_001.fastq.gz",
+        r2_sim_origin = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R2_001.fastq.gz"
     params:
         path = op.join(BASE, 'data', RUN_NAME),
         length = 91,
@@ -190,6 +190,8 @@ rule run_simulation:
         --cb {params.cb} \
         --umi {params.umi} \
         --num_cells {params.num_cells} &> {log}
+
+        gzip {params.path}/*
 
         """        
         
