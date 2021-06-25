@@ -112,10 +112,10 @@ rule all:
                             '{multimappers}',
                             RUN_NAME + "_repeats.counts.gz"),        
                  multimappers = ['multimappers', 'unique_reads']),
-        expand(op.join(BASE, "runs", RUN_NAME, 'test_count_repeats_loci_on_cellranger_standard',
-                            '{multimappers}',
-                            RUN_NAME + "_repeats.counts.gz"),        
-                 multimappers = ['multimappers', 'unique_reads']),
+        # expand(op.join(BASE, "runs", RUN_NAME, 'test_count_repeats_loci_on_cellranger_standard',
+        #                     '{multimappers}',
+        #                     RUN_NAME + "_repeats.counts.gz"),        
+        #          multimappers = ['multimappers', 'unique_reads']),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
@@ -139,9 +139,10 @@ rule all:
 rule run_simulation:
     input:
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
-        genome_fasta = op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])
+        genome_fasta = op.join(BASE, 'annotation', op.basename(GENOME_URL))
     output:
-        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),
+        genome_fasta_uncomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])),
+        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),       
         i1_sim = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_I1_001.fastq.gz",
         r1_sim = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R1_001.fastq.gz",
         r2_sim_origin = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R2_001.fastq.gz"
@@ -155,7 +156,10 @@ rule run_simulation:
         cb=16,
         umi=12,
         num_cells=1000,
-        dependency = "02_simulate_ground_truth_fastqs.sh"
+        dependency = "02_simulate_ground_truth_fastqs.sh",
+        ti1_sim = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_I1_001.fastq",
+        tr1_sim = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R1_001.fastq",
+        tr2_sim_origin = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R2_001.fastq", 
     log:
         op.join(BASE, 'data', RUN_NAME, "simulation.log")
     threads:
@@ -175,31 +179,35 @@ rule run_simulation:
 
         # source 02_simulate_ground_truth_fastqs.sh
 
+        # pigz --decompress -p {threads} --keep {input.genome_fasta}
+
         bash 03_simulate_chromium_v3.sh --length {params.length} \
         --nthreads {threads} \
         --qual_symbol "F" \
         --gtf {input.gtf} \
-        --genome_fasta {input.genome_fasta} \
+        --genome_fasta {output.genome_fasta_uncomp} \
         --bedtools_bin {params.bedtools} \
         --i1_origin {params.i1_origin} \
         --r1_origin {params.r1_origin} \
-        --r2_sim_origin {output.r2_sim_origin} \
-        --i1_sim {output.i1_sim} \
-        --r1_sim {output.r1_sim} \
+        --r2_sim_origin {params.tr2_sim_origin} \
+        --i1_sim {params.ti1_sim} \
+        --r1_sim {params.tr1_sim} \
         --truth_count_table {params.truth_count_table} \
         --cb {params.cb} \
         --umi {params.umi} \
         --num_cells {params.num_cells} &> {log}
 
-        gzip {params.path}/*
+        # pigz -p {threads} --keep {params.path}/*
 
         """        
         
 rule run_cellranger_repeats:
     input:
         truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),
-        transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME, 'repeats_' + GENOME)
+        flag = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME,
+                       'repeats_' + GENOME, 'reference.json')
     params:
+        transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME, 'repeats_' + GENOME),
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
         sample_name = RUN_NAME,
         local_mem_gb = LOCAL_MEM_GB,
@@ -219,7 +227,7 @@ rule run_cellranger_repeats:
         
         {CELLRANGER} count --id=cellranger_repeats \
           --fastqs={params.fastqs_path} \
-          --transcriptome={input.transcriptome} \
+          --transcriptome={params.transcriptome} \
           --jobmode=local \
           --localcores={threads} \
           --chemistry=SC3Pv3 \
@@ -545,7 +553,7 @@ rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams_per_locus:
                            RUN_NAME + "_repeats_not_overlapping_genes.counts.summary")
     log :
         log = op.join(BASE, "runs",  RUN_NAME, 'count_repeats_loci_on_cellranger_standard_not_overlapping_genes',
-                      '{multimappers}'
+                      '{multimappers}',
                       'feature_counts_not_overlapping_genes.log'),
     threads:
         NTHREADS_WITHIN

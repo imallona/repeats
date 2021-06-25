@@ -336,22 +336,13 @@ rule featurecounts_genes:
        --Rpath {params.path}/{params.subpath} \
        {input.bam}  &> {log}
  
-       # ## any CB:UMI pair that was seen is removed from the output (awk array)
-       # grep 'Assigned' {output.genes_detailed} | \
-       # awk -F'[_.]' '!x[$3$4];{{x[$3$4]++}}' | cut -f2,3,6 | \
-       # {PIGZ} --keep  -p {threads} --stdout > {output.genes_gz_detailed}
-
-       # grep 'Assigned' {output.genes_detailed} |  \
-       #   awk -F'[_.\t]' '{{OFS="\t"; print $3,$4, $8}}' | \
-       #    {PIGZ} --keep  -p {threads} --stdout > {output.genes_gz_detailed}
-
       grep 'Assigned' {output.genes_detailed} | \
         awk 'BEGIN {{ "\\t"}}
         {{
             split ($1, a, "[_.]") 
             !x[a[3], a[4]]++;
             print a[3],a[4],$4
-         }}' |  {PIGZ} --keep  -p {threads} --stdout > {output.genes_gz_detailed}
+         }}' |  {params.pigz} --keep  -p {threads} --stdout > {output.genes_gz_detailed}
 
        {params.pigz} --keep -p {threads} {output.genes_counts}
        

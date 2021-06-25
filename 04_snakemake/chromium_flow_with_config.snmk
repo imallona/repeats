@@ -690,6 +690,7 @@ rule spawn_cellranger_bam_file_by_cell:
         
         # python3 {params.barcodes_script} {input.bam} | {params.pigz} -p {threads} > {output.rgs}
 
+        rm -f {input.bam}.bai
         python3 {params.barcodes_script} {input.bam}  > {output.rgs}
 
         samtools view -@ {threads} -H {input.bam} > {output.header}
@@ -707,7 +708,7 @@ rule spawn_cellranger_bam_file_by_cell:
 
         {params.pigz} --decompress -p {threads} --keep --stdout {output.body} | cat {output.header} - | samtools view -@ {threads} -Sb - > {output.shortened_bam}
         
-        python3 split_by_cell_barcode_in_sorted_bam.py {output.shortened_bam} -outdir {params.split_path} -barcodes {input.barcodes} &> {log.log2}
+        python3 {params.split_script} {output.shortened_bam} -outdir {params.split_path} -barcodes {input.barcodes} &> {log.log2}
 
         touch {output.flag}
 
@@ -725,7 +726,8 @@ rule index_cellranger_repeats:
        path =  op.join(config['base'], 'indices', 'cellranger', 'repeats_' + config['genome']),
        genome = 'repeats_' + config['genome'],
        cellranger = config['software']['cellranger'],
-       pigz = config['software']['pigz']
+       pigz = config['software']['pigz'],
+       uncompressed_fa = op.join(config['base'], 'annotation', op.splitext(op.basename(config['genome_url']))[0]) 
     log:
         op.join(config['base'], 'indices', 'cellranger', 'repeats_' + config['genome'],
                 'indexing.log')
@@ -744,17 +746,18 @@ rule index_cellranger_repeats:
        cd {params.path}
  
        {params.pigz} --decompress  -p {threads} --keep -c {input.compressed_fa} > \
-        {output.uncompressed_fa}
+        {params.uncompressed_fa}
 
        {params.pigz} --decompress  -p {threads} --keep -c {input.compressed_gtf} > \
          {output.uncompressed_gtf}
        
        {params.cellranger} mkref --genome {params.genome} \
-       --fasta {output.uncompressed_fa} \
+       --fasta {params.uncompressed_fa} \
        --genes {output.uncompressed_gtf} \
        --nthreads {threads} \
        --memgb {params.local_mem_gb} &> {log}
 
+       rm {params.uncompressed_fa}
        touch {output.flag}
        """
 
@@ -770,7 +773,9 @@ rule get_repeats_not_overlapping_genes_gtf:
         genesbed = temp(op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url'])) + '.tmp.bed')
     params:
         threads = config['params']['nthreads'],
-        gtf2bed = config['software']['gtf2bed'] 
+        gtf2bed = config['software']['gtf2bed'],
+        pigz = config['software']['pigz'],
+        bedtools = config['software']['bedtools'],  
     shell:
         """
 

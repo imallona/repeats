@@ -723,6 +723,7 @@ rule spawn_cellranger_bam_file_by_cell:
 
         python3 {params.barcodes_script} {input.bam}  > {output.rgs}
 
+        rm -f {input.bam}.bai
         samtools view -@ {threads} -H {input.bam} > {output.header}
 
         # ## buffer size in sort due to https://superuser.com/questions/938558/sort-parallel-isnt-parallelizing
@@ -853,14 +854,16 @@ rule index_cellranger_repeats:
     params:
        local_mem_gb = LOCAL_MEM_GB,
        path =  op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME),
-       genome = 'repeats_' + GENOME
+       genome = 'repeats_' + GENOME,
+       uncompressed_fa = op.join(BASE, 'annotation',
+                                 op.splitext(op.basename(GENOME_URL))[0])
     threads:
         NTHREADS
     output:
         uncompressed_gtf = temp(op.join(BASE, 'annotation', op.splitext(op.basename(REP_GTF_URL))[0])),
         flag = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME, 'Log.out'),
-        uncompressed_fa = temp(op.join(BASE, 'annotation',
-                                       op.splitext(op.basename(GENOME_URL))[0])),
+        # uncompressed_fa = temp(op.join(BASE, 'annotation',
+        #                                op.splitext(op.basename(GENOME_URL))[0])),
         json = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME,
                        'repeats_' + GENOME, 'reference.json')
     log:
@@ -872,16 +875,18 @@ rule index_cellranger_repeats:
        cd {params.path}
  
        {PIGZ} --decompress  -p {threads} --keep -c {input.compressed_fa} > \
-        {output.uncompressed_fa}
+        {params.uncompressed_fa}
 
        {PIGZ} --decompress  -p {threads} --keep -c {input.compressed_gtf} > \
          {output.uncompressed_gtf}
        
        {CELLRANGER} mkref --genome {params.genome} \
-       --fasta {output.uncompressed_fa} \
+       --fasta {params.uncompressed_fa} \
        --genes {output.uncompressed_gtf} \
        --nthreads {threads} \
        --memgb {params.local_mem_gb} &> {log}
+
+       rm {params.uncompressed_fa}
 
        touch {output.flag}
        """

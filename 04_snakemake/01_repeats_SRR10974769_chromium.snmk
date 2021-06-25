@@ -9,7 +9,7 @@ import os.path as op
 from glob import glob
 from snakemake.utils import validate
 
-configfile: "config_01_repeats_SRR10974769_chromium.yaml"
+configfile: op.join("config", "config_01_repeats_SRR10974769_chromium.yaml")
 # validate(config, op.join("schemas", "config.schema.yaml"))
 
 # samples = pd.read_csv(config["samples"], sep = '\t').set_index("id", drop=False)
@@ -69,6 +69,10 @@ rule all:
                multimappers = ['multimappers', 'unique_reads']),
         op.join(config['base'], 'runs', config['run_name'], 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
         op.join(config['base'], 'runs', config['run_name'], 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
+        op.join(config['base'], 'runs', config['run_name'], 'cellranger_standard', 'outs',
+                'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+        op.join(config['base'], 'runs', config['run_name'], 'cellranger_repeats', 'outs',
+                'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
         # expand(op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
         #        regress_ncount = ['TRUE', 'FALSE'],
         #        regress_nfeature = ['TRUE', 'FALSE']),
@@ -194,15 +198,19 @@ rule map_salmon_genes_chromium:
 rule run_cellranger_repeats:
     input:
         fastqs_path = op.join(config['base'], 'data', config['run_name']),
-        transcriptome = op.join(config['base'], 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
+        flag = op.join(config['base'], 'indices', 'cellranger', 'repeats_' + config['genome'],
+                       'repeats_' + config['genome'], 'reference.json')
     params:
+        transcriptome = op.join(config['base'], 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38'),
         sample_name = config['run_name'],
         local_mem_gb = config['params']['local_mem_gb'],
         processing_path = op.join(config['base'], 'runs', config['run_name']),
         chemistry = config['chemistry'],
         cellranger = config['software']['cellranger']
     output:
-        op.join(config['base'], 'runs', config['run_name'], 'cellranger_repeats', 'outs', 'web_summary.html')
+        op.join(config['base'], 'runs', config['run_name'], 'cellranger_repeats', 'outs', 'web_summary.html'),
+        op.join(config['base'], 'runs', config['run_name'], 'cellranger_repeats', 'outs',
+                'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
     threads:
         config['params']['nthreads']
     log:
@@ -215,7 +223,7 @@ rule run_cellranger_repeats:
 
         {params.cellranger} count --id=cellranger_repeats \
           --fastqs={input.fastqs_path} \
-          --transcriptome={input.transcriptome} \
+          --transcriptome={params.transcriptome} \
           --jobmode=local \
           --localcores={threads} \
           --sample={params.sample_name} \
@@ -231,14 +239,13 @@ rule run_cellranger_standard:
         sample_name = config['run_name'],
         local_mem_gb = config['params']['local_mem_gb'],
         processing_path = op.join(config['base'], 'runs', config['run_name']),
-        chemistry = config['chemistry']
+        chemistry = config['chemistry'],
+        cellranger = config['software']['cellranger']  
     output:
         op.join(config['base'], 'runs', config['run_name'], 'cellranger_standard', 'outs', 'web_summary.html'),
         op.join(config['base'], 'runs', config['run_name'], 'cellranger_standard', 'outs', 'possorted_genome_bam.bam'),
         op.join(config['base'], 'runs', config['run_name'], 'cellranger_standard', 'outs',
-                'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
-        cellranger = config['software']['cellranger']
-        
+                'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
     threads:
         config['params']['nthreads']
     log:

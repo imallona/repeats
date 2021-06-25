@@ -146,7 +146,7 @@ rule knit_report_smartseq:
         repeats_bowtie_multi = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome',
                                         'multimappers', RUN_NAME + '_bowtie_repeats.counts.gz')
     params:
-        rmd = 'summarize_smartseq2_run_pbmcs.Rmd',
+        rmd = op.join('scripts', 'summarize_smartseq2_run_pbmcs.Rmd'),
         run_name = RUN_NAME
     output:
         html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_smartseq2_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),

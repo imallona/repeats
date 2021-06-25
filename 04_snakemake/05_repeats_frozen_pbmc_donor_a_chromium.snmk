@@ -190,7 +190,7 @@ rule run_cellranger_standard:
     log:
         op.join(config['base'], 'runs',  config["run_name"], 'run_cellranger_standard.log')
     run:
-        if DEMUX:
+        if config['demux']:
             shell("""
             mkdir -p {params.processing_path}
             cd {params.processing_path}
@@ -223,8 +223,11 @@ rule run_cellranger_standard:
 
 rule run_cellranger_repeats:
     input:
-        transcriptome = op.join(config['base'], 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
+        transcriptome_flag = op.join(config['base'], 'indices', 'cellranger',
+                                     'repeats_' + config['genome'],
+                                     'repeats_' + config['genome'], 'reference.json')
     params:
+        transcriptome = op.join(config['base'], 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38'),
         fastqs_path = op.join(config['base'], 'data', config["run_name"]),
         sample_name = config["run_name"],
         local_mem_gb = config["params"]["local_mem_gb"],
@@ -239,7 +242,7 @@ rule run_cellranger_repeats:
     log:
         op.join(config['base'], 'runs', config["run_name"], 'run_cellranger_repeats.log')
     run:
-        if DEMUX:
+        if config['demux']:
             shell("""
         mkdir -p {params.processing_path}
         cd {params.processing_path}
@@ -247,7 +250,7 @@ rule run_cellranger_repeats:
 
         {params.cellranger} count --id=cellranger_repeats \
           --fastqs={params.fastqs_path} \
-          --transcriptome={input.transcriptome} \
+          --transcriptome={params.transcriptome} \
           --jobmode=local \
           --localcores={threads} \
           --localmem={params.local_mem_gb} \
@@ -261,7 +264,7 @@ rule run_cellranger_repeats:
 
         {params.cellranger} count --id=cellranger_repeats \
           --fastqs={params.fastqs_path} \
-          --transcriptome={input.transcriptome} \
+          --transcriptome={params.transcriptome} \
           --jobmode=local \
           --localcores={threads} \
           --sample={params.sample_name} \

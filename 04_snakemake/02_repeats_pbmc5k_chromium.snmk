@@ -108,9 +108,9 @@ include: "chromium_flow_with_config.snmk"
 rule all:
     input:
         # op.join(config["base"], 'indices', 'cellranger', 'repeats_hg38', 'Log.out'),
-        # op.join(config["base"], 'runs', config["run_name"], 'cellranger_repeats', 'run.log'),
-        # op.join(config["base"], 'runs', config["run_name"], 'cellranger_standard', 'outs',  'web_summary.html'),
-        # op.join(config["base"], 'runs', config["run_name"], 'cellranger_repeats', 'outs', 'web_summary.html'),
+        op.join(config["base"], 'runs', config["run_name"], 'cellranger_repeats', 'run.log'),
+        op.join(config["base"], 'runs', config["run_name"], 'cellranger_standard', 'outs',  'web_summary.html'),
+        op.join(config["base"], 'runs', config["run_name"], 'cellranger_repeats', 'outs', 'web_summary.html'),
         # op.join(config["base"], "runs", config["run_name"], 'count_repeats_on_cellranger_standard', config["run_name"] + "_repeats.counts.gz"),
         # expand(op.join(config["base"], 'runs', config["run_name"], config["run_name"] + '_pbmc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
         #                regress_nfeature = ['TRUE', 'FALSE']),
@@ -182,14 +182,16 @@ rule run_cellranger_repeats:
     input:
         flag = op.join(config["base"], 'data', config["run_name"], '5k_pbmc_v3_fastqs',
                                 '5k_pbmc_v3_S1_L001_I1_001.fastq.gz'),
-        transcriptome = op.join(config["base"], 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
+        flag_idx = op.join(config['base'], 'indices', 'cellranger', 'repeats_' + config['genome'],
+                       'repeats_' + config['genome'], 'reference.json')
     params:
         fastqs_path = op.join(config["base"], 'data', config["run_name"]),
         sample_name = config["run_name"],
         local_mem_gb = config["params"]["local_mem_gb"],
         processing_path = op.join(config["base"], 'runs', config["run_name"]),
         chemistry = config['chemistry'],
-        cellranger = config['software']['cellranger']
+        cellranger = config['software']['cellranger'],
+        transcriptome = op.join(config["base"], 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
     output:
         op.join(config["base"], 'runs', config["run_name"], 'cellranger_repeats', 'outs', 'web_summary.html'),
         op.join(config["base"], 'runs', config["run_name"], 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
@@ -205,7 +207,7 @@ rule run_cellranger_repeats:
         
         {params.cellranger} count --id=cellranger_repeats \
           --fastqs={params.fastqs_path} \
-          --transcriptome={input.transcriptome} \
+          --transcriptome={params.transcriptome} \
           --jobmode=local \
           --localcores={threads} \
           --sample={params.sample_name} \
