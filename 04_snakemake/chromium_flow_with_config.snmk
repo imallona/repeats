@@ -815,7 +815,7 @@ rule extract_repeatome_from_gtf:
         config['params']['nthreads']
     shell:
         """
-        {PIGZ} --keep --decompress -p {threads} -c  {input.genome} > {output.genome_uncompressed}
+        {params.pigz} --keep --decompress -p {threads} -c  {input.genome} > {output.genome_uncompressed}
 
         ## faking the GTF to describe the instance and not the 'exon'
 
@@ -945,3 +945,31 @@ rule bowtie_index_repeatome_bowtie:
         """
 
         
+
+rule build_gtf_cellranger_compliant:
+    priority:
+        100
+    output:
+        gtf = op.join(config['base'], 'annotation', config['rep_gtf_url']),
+        tmp = temp(op.join(op.join(config['base'], "runs", config['run_name'], 'tmp.dump.gz')))
+    params:
+        genome = config['genome_short'],
+        Rscript = config['software']['Rscript'],
+        processing_path = op.join(config['base'], "runs", config['run_name'])
+    threads:
+        config['params']['nthreads']
+    shell:
+        """
+        # bash gtf_build.sh
+        mysql --user=genome --host=genome-mysql.cse.ucsc.edu -D {params.genome} -A \
+           -B -sN -e  "select genoName, genoStart, genoEnd, swScore, strand, 
+               repName,repClass,repFamily
+           from rmsk
+           order by genoName,genoStart, genoEnd" | sed 's/^chr//g' | \
+                  grep -P  '^[0-9]{{1,2}}\t|^[XY]\t' | \
+                  pigz -p {threads} > {output.tmp}
+
+        {params.Rscript} parse_dump_gtf.R --rmsk {output.tmp} \
+                --source {params.genome} | pigz -p {threads} > {output.gtf}
+        """
+    

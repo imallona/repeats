@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # target=04_repeats_pbmc_10k_v3_chromium.snmk
-target=08_ding_celseq2.snmk
+target=13_kumar_mouse_tumors.snmk
 cp "$target"{,.backup}
 
 sed -i 's/BASE/config["base"]/g' "$target"

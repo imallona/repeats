@@ -111,7 +111,7 @@ rule run_cellranger_repeats:
         processing_path = op.join(config["base"], 'runs', config["run_name"]),
         chemistry = config["chemistry"],
         cellranger = config['software']['cellranger'],
-        transcriptome = op.join(config["base"], 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
+        transcriptome = op.join(config["base"], 'indices', 'cellranger', 'repeats_' + config['genome'], 'repeats_' + config['genome'])
     output:
         reports = op.join(config["base"], 'runs', config["run_name"], 'cellranger_repeats', 'outs', 'web_summary.html'),
         barcodes = op.join(config["base"], 'runs', config["run_name"], 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')

@@ -686,6 +686,8 @@ rule featurecounts_bowtie_repeats_repeatome_by_locus:
 
             cd {params.processing_path}
             
+            find . -empty -delete
+            
             {FEATURECOUNTS} -T {threads} \
             -t exon \
             -g transcript_id \
@@ -704,6 +706,8 @@ rule featurecounts_bowtie_repeats_repeatome_by_locus:
             mkdir -p {params.processing_path}
 
             cd {params.processing_path}
+            
+            find . -empty -delete
             
             {FEATURECOUNTS} -T {threads} \
             -t exon \

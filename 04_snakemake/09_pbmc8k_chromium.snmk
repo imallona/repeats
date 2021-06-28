@@ -84,7 +84,7 @@ rule all:
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'run.log'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs',  'web_summary.html'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
-        op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz"),
+        # op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', RUN_NAME + "_repeats.counts.gz"),
         expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
                regress_ncount = ['TRUE', 'FALSE'],
                regress_nfeature = ['TRUE', 'FALSE']),
@@ -132,12 +132,15 @@ rule get_pbmc_8k:
 rule run_cellranger_repeats:
     input:
         flag = op.join(BASE, 'data', RUN_NAME, 'pbmc8k_S1_L007_I1_001.fastq.gz'),
-        transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
+        transcriptome_flag = op.join(BASE, 'indices', 'cellranger',
+                                     'repeats_' + GENOME,
+                                     'repeats_' + GENOME, 'reference.json')
     params:
         fastqs_path = op.join(BASE, 'data', RUN_NAME),
         sample_name = RUN_NAME,
         local_mem_gb = LOCAL_MEM_GB,
-        processing_path = op.join(BASE, 'runs', RUN_NAME)
+        processing_path = op.join(BASE, 'runs', RUN_NAME),
+        transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_' + GENOME, 'repeats_' + GENOME)
     output:
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
@@ -153,7 +156,7 @@ rule run_cellranger_repeats:
         
         {CELLRANGER} count --id=cellranger_repeats \
           --fastqs={params.fastqs_path} \
-          --transcriptome={input.transcriptome} \
+          --transcriptome={params.transcriptome} \
           --jobmode=local \
           --localcores={threads} \
           --sample={params.sample_name} \
