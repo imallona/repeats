@@ -955,7 +955,11 @@ rule build_gtf_cellranger_compliant:
     params:
         genome = config['genome_short'],
         Rscript = config['software']['Rscript'],
-        processing_path = op.join(config['base'], "runs", config['run_name'])
+        processing_path = op.join(config['base'], "runs", config['run_name']),
+        parser = op.join('scripts', 'parse_dump_gtf.R')
+    log:
+        log1 = op.join(config['base'], 'annotation', config['rep_gtf_url'] + '_gtf_build.log'),
+        log2 = op.join(config['base'], 'annotation', config['rep_gtf_url'] + '_gtf_build_rscript.log')
     threads:
         config['params']['nthreads']
     shell:
@@ -966,10 +970,10 @@ rule build_gtf_cellranger_compliant:
                repName,repClass,repFamily
            from rmsk
            order by genoName,genoStart, genoEnd" | sed 's/^chr//g' | \
-                  grep -P  '^[0-9]{{1,2}}\t|^[XY]\t' | \
-                  pigz -p {threads} > {output.tmp}
-
-        {params.Rscript} parse_dump_gtf.R --rmsk {output.tmp} \
-                --source {params.genome} | pigz -p {threads} > {output.gtf}
+                  grep  -P '^[0-9]{{1,2}}\\t|^[XY]\\t' | \
+                  pigz -p {threads} > {output.tmp} &> {log.log1}
+        
+        {params.Rscript} {params.parser} --rmsk {output.tmp} \
+                --source {params.genome} | pigz -p {threads} > {output.gtf} &>> {log.log2}
         """
     

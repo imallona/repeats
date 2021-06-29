@@ -4,6 +4,7 @@
 #
 # 3 May 2021
 
+Rscript=/usr/local/R/R-4.1.0/bin/Rscript
 
 # install stringtie2
 

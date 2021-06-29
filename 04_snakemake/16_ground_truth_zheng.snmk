@@ -7,73 +7,26 @@
 
 import os.path as op
 from glob import glob
+from snakemake.utils import validate
 
-RUN_NAME  = 'zheng_truth'
-CHEMISTRY = 'SC3Pv1'
-DEMUX = True
 
-#@FIXME to be moved to config, not hardcoded!
-BASE = op.join('/home', 'imallona', 'repeats_sc')
-NTHREADS = 30
-LOCAL_MEM_GB = 100
-GENOME = 'GRCh38'
-CONF = op.join(BASE, 'data', RUN_NAME, 'zheng.conf')
+configfile: op.join("config", "config_16_ground_truth_zheng.yaml")
 
-## @FIXME to be moved to config
-GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
-# GENES_GTF_URL =  'ftp://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz'
-GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
-REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
-# REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/mm10_rmsk_TE.gtf.gz'
-DFAM_EMBL_URL = 'https://www.dfam.org/releases/current/families/Dfam.embl.gz'
-# TRANSCRIPTOME_URL= 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh38.cdna.all.fa.gz'
-TRANSCRIPTOME_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.pc_transcripts.fa.gz'
-
-CELLRANGER_HG38_URL = 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-GRCh38-3.0.0.tar.gz'
-
-## @FIXME to be moved to config
-
-GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/gtf_parser.R'
-FEATURECOUNTS_RSCRIPT= '~/src/repeats_sc/04_snakemake/plot_featurecounts_profile.R'
+CONF = op.join(config['base'], 'data', config['run_name'], 'zheng.conf')
 PROFILE_ALL_RSCRIPT = '~/src/repeats_sc/04_snakemake/profile_mapping_rates.R'
-
-BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
-BOWTIE = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'
-
-##pigz 2.3.1
-PIGZ = '/usr/bin/pigz'
-BIOPYTHON_CONVERT='biopython.convert'
-STAR = '~/soft/star/STAR-2.7.3a/source/STAR'
-FEATURECOUNTS = '~/soft/subread/subread-2.0.0-source/bin/featureCounts'
-# SALMON = '~/soft/salmon/salmon-1.1.0_linux_x86_64/bin/salmon'
-SALMON='/home/imallona/soft/salmon/salmon-1.2.1/bin/salmon'
-SALMON_V1_10X_RUN='/home/imallona/soft/salmon/salmon-1.2.1_src/scripts/v1_10x/run.sh'
-SALMON_V1_10X_WRAPPER='/home/imallona/soft/salmon/salmon-1.2.1_src/scripts/v1_10x/wrapper'
-CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
-BIOAWK = '~/soft/bioawk/bioawk'
-BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
-Rscript = '/usr/local/R/R-4.0.5/bin/Rscript'
-FASTQDUMP= '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump' # fastq-dump : 2.10.4
-
-# print(op.join(BASE, 'data', RUN_NAME))
-
-# samples_R2, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_1.fastq.gz"))
-# samples_R1, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_2.fastq.gz"))
-# samples_I3, = glob_wildcards(op.join(BASE, "data", RUN_NAME, "{sample}_3.fastq.gz"))
-
-# ## 
-# this is needed to be hardcoded/config file
+            
+include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow_with_config.snmk"
 
 try:
-   if not op.exists(op.dirname(op.join(BASE, 'annotation'))):
-      os.makedirs(op.join(BASE, 'annotation'))
+   if not op.exists(op.dirname(op.join(config["base"], 'annotation'))):
+      os.makedirs(op.join(config["base"], 'annotation'))
 except OSError as err:
    print(err)
       
 for item in ['bowtie', 'star', 'salmon']:
    try:
-      if not op.exists(op.dirname(op.join(BASE, 'indices', item))):
-         os.makedirs(op.join(BASE, 'indices', item))
+      if not op.exists(op.dirname(op.join(config["base"], 'indices', item))):
+         os.makedirs(op.join(config["base"], 'indices', item))
    except OSError as err:
       print(err)
       
@@ -104,7 +57,7 @@ def get_zheng_samples(conf):
 
 
 def write_config(conf):
-   path = op.join(BASE, "data", RUN_NAME)
+   path = op.join(config["base"], "data", config["run_name"])
    if not op.exists(path):
       os.makedirs(path)
       
@@ -141,55 +94,56 @@ def list_cellranger_outputs(basepath, conf, flavour = 'cellranger_standard'):
    return([op.join(basepath, celltype, flavour, 'outs', 'filtered_feature_bc_matrix',
                      'barcodes.tsv.gz') for celltype in celltypes])
 
-print(list_cellranger_outputs(basepath = op.join(BASE, 'runs', RUN_NAME),
+print(list_cellranger_outputs(basepath = op.join(config["base"], 'runs', config["run_name"]),
                               conf = CONF,
                               flavour = 'cellranger_repeats'))
 
 rule all:
     input:
-        # op.join(BASE, 'runs', RUN_NAME, 'summarize_cellranger_run_report.html'),
-        expand(op.join(BASE, 'data', RUN_NAME, "{celltype}_fastqs.tar"),
+        # op.join(config["base"], 'runs', config["run_name"], 'summarize_cellranger_run_report.html'),
+        expand(op.join(config["base"], 'data', config["run_name"], "{celltype}_fastqs.tar"),
                celltype = get_zheng_samples(CONF)),
-        expand(op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'cellranger_standard', 'outs',
+        expand(op.join(config["base"], 'runs', config["run_name"], "{celltype}", 'cellranger_standard', 'outs',
                        'web_summary.html'),
                celltype = get_zheng_samples(CONF)),
-        expand(op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'cellranger_repeats', 'outs',
+        expand(op.join(config["base"], 'runs', config["run_name"], "{celltype}", 'cellranger_repeats', 'outs',
                        'web_summary.html'),
                celltype = get_zheng_samples(CONF)),
-        # expand(op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'alevin', 'repeats',
+        # expand(op.join(config["base"], 'runs', config["run_name"], "{celltype}", 'alevin', 'repeats',
         #                'alevin', 'quants_mat.gz'),
         #        celltype = get_zheng_samples(CONF)),
-        expand( op.join(BASE, 'runs', RUN_NAME,
-                        RUN_NAME + '_pbmc_zheng_truth_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        expand( op.join(config["base"], 'runs', config["run_name"],
+                        config["run_name"] + '_pbmc_zheng_truth_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
                 regress_ncount = ['TRUE', 'FALSE'],
                 regress_nfeature = ['TRUE', 'FALSE']),
-        op.join(BASE, "runs", RUN_NAME, "profile_mapping.txt")
+        op.join(config["base"], "runs", config["run_name"], "profile_mapping.txt")
 
 rule knit_ad_hoc_zheng:
     input:
-        genes_cellranger = list_cellranger_outputs(basepath = op.join(BASE, 'runs', RUN_NAME),
+        genes_cellranger = list_cellranger_outputs(basepath = op.join(config["base"], 'runs', config["run_name"]),
                               conf = CONF,
                               flavour = 'cellranger_standard'),
-        repeats_cellranger = list_cellranger_outputs(basepath = op.join(BASE, 'runs', RUN_NAME),
+        repeats_cellranger = list_cellranger_outputs(basepath = op.join(config["base"], 'runs', config["run_name"]),
                               conf = CONF,
                               flavour = 'cellranger_repeats'),
         config_fn = CONF
     params:
         rmd = 'summarize_zheng_truth_cellranger.Rmd',
         run_name = "zheng_truth",
-        genes_cellranger_path = op.join(BASE, 'runs', RUN_NAME),
-        repeats_cellranger_path = op.join(BASE, 'runs', RUN_NAME)
+        genes_cellranger_path = op.join(config["base"], 'runs', config["run_name"]),
+        repeats_cellranger_path = op.join(config["base"], 'runs', config["run_name"]),
+        Rscript = config['software']['Rscript']
     output:
-        html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_zheng_truth_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-        rds = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_zheng_truth_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-        aris = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-        cobra = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-        markers  = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')  
+        html = op.join(config["base"], 'runs', config["run_name"], config["run_name"] + '_pbmc_zheng_truth_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        rds = op.join(config["base"], 'runs', config["run_name"], config["run_name"] + '_pbmc_zheng_truth_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        aris = op.join(config["base"], 'runs', config["run_name"], config["run_name"] + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        cobra = op.join(config["base"], 'runs', config["run_name"], config["run_name"] + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        markers  = op.join(config["base"], 'runs', config["run_name"], config["run_name"] + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
     log:
-        op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_zheng_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
+        op.join(config["base"], 'runs', config["run_name"], config["run_name"] + '_pbmc_zheng_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
     shell:
         """
-        {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+        {params.Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
           output_file = \"{output.html}\", 
           params = list(identifier = \"{params.run_name}\", 
            genes_cellranger = \"{params.genes_cellranger_path}\",
@@ -215,55 +169,57 @@ rule knit_ad_hoc_zheng:
 
 rule profile_mappings_rate_all:
     input:
-        genes_cellranger = list_cellranger_outputs(basepath = op.join(BASE, 'runs', RUN_NAME),
+        genes_cellranger = list_cellranger_outputs(basepath = op.join(config["base"], 'runs', config["run_name"]),
                               conf = CONF,
                               flavour = 'cellranger_standard'),
-        repeats_cellranger = list_cellranger_outputs(basepath = op.join(BASE, 'runs', RUN_NAME),
+        repeats_cellranger = list_cellranger_outputs(basepath = op.join(config["base"], 'runs', config["run_name"]),
                               conf = CONF,
                               flavour = 'cellranger_repeats'),
         config_fn = CONF
     params:
-        path = op.join(BASE, "runs", RUN_NAME),
+        path = op.join(config["base"], "runs", config["run_name"]),
         script = PROFILE_ALL_RSCRIPT,
-        run_id = RUN_NAME
+        run_id = config["run_name"],
+        Rscript = config['software']['Rscript']
     output:
-        txt = op.join(BASE, "runs", RUN_NAME, "profile_mapping.txt")
+        txt = op.join(config["base"], "runs", config["run_name"], "profile_mapping.txt")
     threads: 1
     shell:
        """
        cd {params.path}
        
-       {Rscript} {params.script} --path {params.path} --output {output.txt} -i {params.run_id}
+       {params.Rscript} {params.script} --path {params.path} --output {output.txt} -i {params.run_id}
        """
         
 rule run_cellranger_standard:
     input:
-        flag = op.join(BASE, 'data', RUN_NAME, "{celltype}_fastqs.flag"),
-        transcriptome = op.join(BASE, 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0')
+        flag = op.join(config["base"], 'data', config["run_name"], "{celltype}_fastqs.flag"),
+        transcriptome = op.join(config["base"], 'indices', 'cellranger', 'refdata-cellranger-GRCh38-3.0.0')
     params:
-        fastqs_path = op.join(BASE, 'data', RUN_NAME, "{celltype}"),
-        sample_name = RUN_NAME,
-        local_mem_gb = LOCAL_MEM_GB,
-        processing_path = op.join(BASE, 'runs', RUN_NAME, "{celltype}"),
-        chemistry = CHEMISTRY
+        cellranger = config["software"]["cellranger"],
+        fastqs_path = op.join(config["base"], 'data', config["run_name"], "{celltype}"),
+        sample_name = config["run_name"],
+        local_mem_gb = config["params"]["local_mem_gb"],
+        processing_path = op.join(config["base"], 'runs', config["run_name"], "{celltype}"),
+        chemistry = config["chemistry"]
     output:
-        op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'cellranger_standard', 'outs',
+        op.join(config["base"], 'runs', config["run_name"], "{celltype}", 'cellranger_standard', 'outs',
                 'web_summary.html'),
-        op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'cellranger_standard', 'outs',
+        op.join(config["base"], 'runs', config["run_name"], "{celltype}", 'cellranger_standard', 'outs',
                 'possorted_genome_bam.bam'),
-        op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'cellranger_standard', 'outs',
+        op.join(config["base"], 'runs', config["run_name"], "{celltype}", 'cellranger_standard', 'outs',
                 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
     threads:
-        NTHREADS
+        config["params"]["nthreads"]
     log:
-        op.join(BASE, 'runs',  RUN_NAME, 'run_cellranger_{celltype}_standard.log')
+        op.join(config["base"], 'runs',  config["run_name"], 'run_cellranger_{celltype}_standard.log')
     shell:
         """
             mkdir -p {params.processing_path}
             cd {params.processing_path}
             rm -rf cellranger_standard
 
-            {CELLRANGER} count --id=cellranger_standard \
+            {params.cellranger} count --id=cellranger_standard \
             --fastqs={params.fastqs_path} \
             --transcriptome={input.transcriptome} \
             --jobmode=local \
@@ -274,21 +230,21 @@ rule run_cellranger_standard:
 
 rule try_alevin_repeats:
     input:        
-        tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'txp2gene.tsv'),
-        idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon', 'duplicate_clusters.tsv'),
-        cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, "{celltype}", '*I1*fastq.gz'))),
-        r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, "{celltype}", '*RA*fastq.gz')))        
+        tgmap = op.join(config["base"], 'indices', 'salmon', config["genome"], 'repeats_salmon', 'txp2gene.tsv'),
+        idx_tracker = op.join(config["base"], 'indices', 'salmon', config["genome"], 'repeats_salmon', 'duplicate_clusters.tsv'),
+        cb = sorted(glob(op.join(config["base"], 'data', config["run_name"], "{celltype}", '*I1*fastq.gz'))),
+        r2 = sorted(glob(op.join(config["base"], 'data', config["run_name"], "{celltype}", '*RA*fastq.gz')))        
     output:
-        op.join(BASE, 'runs', RUN_NAME, "{celltype}", 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
+        op.join(config["base"], 'runs', config["run_name"], "{celltype}", 'alevin', 'repeats', 'alevin', 'quants_mat.gz')
     threads:
-        NTHREADS
+        config["params"]["nthreads"]
     params:
-        fastqs_path = op.join(BASE, 'data', RUN_NAME, "{celltype}", ),
-        processing_path = op.join(BASE, 'runs', RUN_NAME, "{celltype}",  'alevin', 'repeats'),
-        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon'),
+        fastqs_path = op.join(config["base"], 'data', config["run_name"], "{celltype}", ),
+        processing_path = op.join(config["base"], 'runs', config["run_name"], "{celltype}",  'alevin', 'repeats'),
+        salmon_idx = op.join(config["base"], 'indices', 'salmon', config["genome"], 'repeats_salmon'),
         converter_path =  op.dirname("{SALMON_V1_V10X_RUN}")
     log:
-        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium_"{celltype}".log')
+        op.join(config["base"], 'runs', config["run_name"], 'run_salmon_repeats_chromium_"{celltype}".log')
     shell:
         """
     mkdir -p {params.processing_path}
@@ -308,35 +264,43 @@ rule try_alevin_repeats:
 
     touch -c {output}
     """
-        
+
+
 rule run_cellranger_repeats:
     input:
-        flag = op.join(BASE, 'data', RUN_NAME, "{celltype}_fastqs.flag"),
-        transcriptome = op.join(BASE, 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38')
+        flag = op.join(config["base"], 'data', config["run_name"], "{celltype}_fastqs.flag"),
+        transcriptome_flag = op.join(config["base"], 'indices', 'cellranger',
+                                     'repeats_' + config['genome'],
+                                     'repeats_' + config['genome'],
+                                     'reference.json')
     params:
-        fastqs_path = op.join(BASE, 'data', RUN_NAME, "{celltype}"),
-        sample_name = RUN_NAME,
-        local_mem_gb = LOCAL_MEM_GB,
-        processing_path = op.join(BASE, 'runs', RUN_NAME, "{celltype}"),
-        chemistry = CHEMISTRY
+        fastqs_path = op.join(config["base"], 'data', config["run_name"], "{celltype}"),
+        sample_name = config["run_name"],
+        local_mem_gb = config["params"]["local_mem_gb"],
+        processing_path = op.join(config["base"], 'runs', config["run_name"], "{celltype}"),
+        chemistry = config["chemistry"],
+        transcriptome = op.join(config["base"], 'indices', 'cellranger',
+                                'repeats_' + config['genome'],
+                                'repeats_' + config['genome']),
+        cellranger = config["software"]["cellranger"]
     output:
-        op.join(BASE, 'runs', RUN_NAME, "{celltype}",'cellranger_repeats',
+        op.join(config["base"], 'runs', config["run_name"], "{celltype}",'cellranger_repeats',
                 'outs', 'web_summary.html'),
-        op.join(BASE, 'runs', RUN_NAME, "{celltype}",'cellranger_repeats', 'outs',
+        op.join(config["base"], 'runs', config["run_name"], "{celltype}",'cellranger_repeats', 'outs',
                 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
     threads:
-        NTHREADS
+        config["params"]["nthreads"]
     log:
-        op.join(BASE, 'runs', RUN_NAME, 'run_cellranger_{celltype}_repeats.log')
+        op.join(config["base"], 'runs', config["run_name"], 'run_cellranger_{celltype}_repeats.log')
     shell:
         """
         mkdir -p {params.processing_path}
         cd {params.processing_path}
         rm -rf cellranger_repeats
 
-        {CELLRANGER} count --id=cellranger_repeats \
+        {params.cellranger} count --id=cellranger_repeats \
           --fastqs={params.fastqs_path} \
-          --transcriptome={input.transcriptome} \
+          --transcriptome={params.transcriptome} \
           --jobmode=local \
           --localcores={threads} \
           --localmem={params.local_mem_gb} \
@@ -345,13 +309,13 @@ rule run_cellranger_repeats:
 
 rule uncompress_data_zheng:
     input:
-        tar = op.join(BASE, 'data', RUN_NAME, "{celltype}_fastqs.tar")
+        tar = op.join(config["base"], 'data', config["run_name"], "{celltype}_fastqs.tar")
     params:
-        path = op.join(BASE, 'data', RUN_NAME, "{celltype}"),
-        path_data = op.join(BASE, 'data', RUN_NAME),
+        path = op.join(config["base"], 'data', config["run_name"], "{celltype}"),
+        path_data = op.join(config["base"], 'data', config["run_name"]),
         base_url = 'https://cg.10xgenomics.com/samples/cell-exp/1.1.0'
     output:
-        flag = op.join(BASE, 'data', RUN_NAME, "{celltype}_fastqs.flag")
+        flag = op.join(config["base"], 'data', config["run_name"], "{celltype}_fastqs.flag")
     threads:
         1
     shell:
@@ -371,11 +335,11 @@ rule get_data_zheng:
     priority:
         100
     params:
-        path = op.join(BASE, 'data', RUN_NAME),
-        path_data = op.join(BASE, 'data', RUN_NAME),
+        path = op.join(config["base"], 'data', config["run_name"]),
+        path_data = op.join(config["base"], 'data', config["run_name"]),
         base_url = 'https://cg.10xgenomics.com/samples/cell-exp/1.1.0'
     output:
-        tar = op.join(BASE, 'data', RUN_NAME, "{celltype}_fastqs.tar")
+        tar = op.join(config["base"], 'data', config["run_name"], "{celltype}_fastqs.tar")
     threads:
         1
     shell:

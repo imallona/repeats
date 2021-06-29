@@ -44,6 +44,8 @@ rule all:
                         "{multimappers}",
                         config["run_name"] + "_transcriptome_repeats.counts.summary.png"),
                 multimappers = ['multimappers', 'unique_reads']),
+         op.join(config['base'], "runs", config["run_name"], 'count_repeats_on_cellranger_standard',
+                 'split.flag'),
          expand(op.join(config['base'], "runs", config["run_name"],
                         "count_repeats_on_cellranger_standard_not_overlapping_genes",
                         "{multimappers}",

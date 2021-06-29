@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # target=04_repeats_pbmc_10k_v3_chromium.snmk
-target=13_kumar_mouse_tumors.snmk
+target=16_ground_truth_zheng.snmk
 cp "$target"{,.backup}
 
 sed -i 's/BASE/config["base"]/g' "$target"
@@ -16,4 +16,6 @@ sed -i 's/RUN_NAME/config["run_name"]/g' "$target"
 sed -i 's/FEATURECOUNTS_RSCRIPT/config["dependencies"]["featurecounts_parsing"]/g' "$target"
 sed -i 's/REP_GTF_URL/config["rep_gtf_url"]/g' "$target"
 sed -i 's/GENES_GTF_URL/config["genes_gtf_url"]/g' "$target"
+sed -i 's/CELLRANGER/config["software"]["cellranger"]/g' "$target"
+
 # sed -i 's/BEDOPS/config["software"]["bedops"]/g' "$target"

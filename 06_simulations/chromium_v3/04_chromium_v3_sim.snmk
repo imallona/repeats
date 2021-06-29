@@ -125,7 +125,7 @@ rule all:
                             "by_locus_repeats.counts.gz"),
                multimappers = ['multimappers', 'unique_reads']),
         # op.join(BASE, 'runs', RUN_NAME, 'sim_postproc.html'),
-        # op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv.gz'),
+        op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv.gz'),
         op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag')
         # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
         #                regress_nfeature = ['TRUE', 'FALSE']),
@@ -686,7 +686,7 @@ rule featurecounts_bowtie_repeats_repeatome_by_locus:
 
             cd {params.processing_path}
             
-            find . -empty -delete
+            # find .. -empty -delete
             
             {FEATURECOUNTS} -T {threads} \
             -t exon \
@@ -707,7 +707,7 @@ rule featurecounts_bowtie_repeats_repeatome_by_locus:
 
             cd {params.processing_path}
             
-            find . -empty -delete
+            # find .. -empty -delete
             
             {FEATURECOUNTS} -T {threads} \
             -t exon \
@@ -775,56 +775,56 @@ rule build_gtf_cellranger_compliant:
                 --source {params.genome} | pigz -p {threads} > {output.gtf}
         """
     
-# rule generate_scte_index:
-#     output:
-#         idx = op.join(BASE,  'annotations', 'scTE', GENOME_SHORT, GENOME_SHORT + ".exclusive.idx")
-#     log:
-#         op.join(BASE,  'annotations', 'scTE', GENOME_SHORT, GENOME_SHORT + ".exclusive.log")
-#     params:
-#         path = op.join(BASE, 'annotations', 'scTE', GENOME_SHORT),
-#         genome = GENOME_SHORT
-#     threads:
-#         NTHREADS
-#     shell:
-#         """
-#         mkdir -p {params.path}
-#         cd {params.path}
-#         scTE_build -g {params.genome} &> {log} 
-#         """
+rule generate_scte_index:
+    output:
+        idx = op.join(BASE,  'annotation', 'scTE', GENOME_SHORT, GENOME_SHORT + ".exclusive.idx")
+    log:
+        op.join(BASE,  'annotation', 'scTE', GENOME_SHORT, GENOME_SHORT + ".exclusive.log")
+    params:
+        path = op.join(BASE, 'annotation', 'scTE', GENOME_SHORT),
+        genome = GENOME_SHORT
+    threads:
+        NTHREADS
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+        scTE_build -g {params.genome} &> {log} 
+        """
 
-# rule run_scte_on_cellranger:
-#     input:
-#         bam = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs',
-#                       'possorted_genome_bam.bam'),
-#         idx = op.join(BASE,  'annotations', 'scTE', GENOME_SHORT, GENOME_SHORT + ".exclusive.idx")
-#     output:
-#         tmp = temp(op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv')),
-#         counts = op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv.gz')
-#     params:
-#         path = op.join(BASE, 'runs', RUN_NAME, 'scTE'),
-#         out_fn = 'scTE.out'
+rule run_scte_on_cellranger:
+    input:
+        bam = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs',
+                      'possorted_genome_bam.bam'),
+        idx = op.join(BASE,  'annotation', 'scTE', GENOME_SHORT, GENOME_SHORT + ".exclusive.idx")
+    output:
+        tmp = temp(op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv')),
+        counts = op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv.gz')
+    params:
+        path = op.join(BASE, 'runs', RUN_NAME, 'scTE'),
+        out_fn = 'scTE.out'
 
-#     log:
-#         op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.log')        
-#     threads:
-#         NTHREADS
-#     shell:
-#         """
-#         mkdir -p {params.path}
-#         cd {params.path}
+    log:
+        op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.log')        
+    threads:
+        NTHREADS
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
 
-#         scTE -i {input.bam} -o {params.out_fn} \
-#           -x {input.idx} \
-#           --hdf5 False \
-#           -CB CR \
-#           -UMI UR \
-#           --expect-cells 1000 \
-#           -p {threads} &> {log} 
+        scTE -i {input.bam} -o {params.out_fn} \
+          -x {input.idx} \
+          --hdf5 False \
+          -CB CR \
+          -UMI UR \
+          --expect-cells 1000 \
+          -p {threads} &> {log} 
         
-#         pigz -p {threads} --keep {output.tmp}
-#         """
+        pigz -p {threads} --keep {output.tmp}
+        """
 
-
+## these are coded under third_party, shao_installs.sh
 # rule run_shao_sample_zumi:
 #     input:
 #         ""
