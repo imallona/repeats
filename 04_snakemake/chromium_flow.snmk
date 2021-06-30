@@ -8,6 +8,10 @@
 import os.path as op
 from glob import glob
 
+print("""
+This is deprecated and out of sync with chromium_flow_with_config.snmk, 
+   which must be used instead
+""")
 
 ## salmon start
 

@@ -734,6 +734,7 @@ Removing Shao's te identifiers with multiple assignments. Skipped, or the total 
 
 ```{r, eval = TRUE}
 overlap <- overlap[!duplicated(overlap$feature),]
+dim(overlap)
 ```
 
 Getting the aggregated counts for Shao's

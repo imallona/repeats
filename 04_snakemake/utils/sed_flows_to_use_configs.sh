@@ -16,6 +16,6 @@ sed -i 's/RUN_NAME/config["run_name"]/g' "$target"
 sed -i 's/FEATURECOUNTS_RSCRIPT/config["dependencies"]["featurecounts_parsing"]/g' "$target"
 sed -i 's/REP_GTF_URL/config["rep_gtf_url"]/g' "$target"
 sed -i 's/GENES_GTF_URL/config["genes_gtf_url"]/g' "$target"
-sed -i 's/CELLRANGER/config["software"]["cellranger"]/g' "$target"
+
 
 # sed -i 's/BEDOPS/config["software"]["bedops"]/g' "$target"

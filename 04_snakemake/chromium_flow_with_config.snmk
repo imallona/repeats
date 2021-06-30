@@ -762,38 +762,92 @@ rule index_cellranger_repeats:
        """
 
 ## use this! @todo
-rule get_repeats_not_overlapping_genes_gtf:
-    input:
-        repeats_gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url'])),
-        genes_gtf =  op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url']))
-    output:
-        gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']) + '_minus_' + op.basename(config['genes_gtf_url'])),
-        repeats_gtf_decomp = temp(op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url'])) + '.tmp.gtf'),
-        genes_gtf_decomp =  temp(op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url'])) + '.tmp.gtf'),
-        genesbed = temp(op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url'])) + '.tmp.bed')
-    params:
-        threads = config['params']['nthreads'],
-        gtf2bed = config['software']['gtf2bed'],
-        pigz = config['software']['pigz'],
-        bedtools = config['software']['bedtools'],  
-    shell:
-        """
+# rule get_repeats_not_overlapping_genes_gtf:
+#     input:
+#         repeats_gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url'])),
+#         genes_gtf =  op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url']))
+#     output:
+#         gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']) + '_minus_' + op.basename(config['genes_gtf_url'])),
+#         repeats_gtf_decomp = temp(op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url'])) + '.tmp.gtf'),
+#         genes_gtf_decomp =  temp(op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url'])) + '.tmp.gtf'),
+#         genesbed = temp(op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url'])) + '.tmp.bed')
+#     params:
+#         threads = config['params']['nthreads'],
+#         gtf2bed = config['software']['gtf2bed'],
+#         pigz = config['software']['pigz'],
+#         bedtools = config['software']['bedtools'],  
+#     shell:
+#         """
 
-        {params.pigz} --decompress --keep --stdout  {input.repeats_gtf} | \
-               sed 's/chr//g' > {output.repeats_gtf_decomp}
-        {params.pigz} --decompress --keep  --stdout  {input.genes_gtf} | \
-               sed 's/chr//g' > {output.genes_gtf_decomp}
+#         {params.pigz} --decompress --keep --stdout  {input.repeats_gtf} | \
+#                sed 's/chr//g' > {output.repeats_gtf_decomp}
+#         {params.pigz} --decompress --keep  --stdout  {input.genes_gtf} | \
+#                sed 's/chr//g' > {output.genes_gtf_decomp}
     
-        # # # let's transform genes in bed and then use bedtools
-        # export PATH={params.gtf2bed}/..:$PATH
+#         # # # let's transform genes in bed and then use bedtools
+#         # export PATH={params.gtf2bed}/..:$PATH
 
-        awk '{{ if ($0 ~ "transcript_id") print $0; else print $0" transcript_id "";"; }}' \
-           {output.genes_gtf_decomp} | {params.gtf2bed} - > {output.genesbed}
+#         awk '{{ if ($0 ~ "transcript_id") print $0; else print $0" transcript_id "";"; }}' \
+#            {output.genes_gtf_decomp} | {params.gtf2bed} - > {output.genesbed}
 
-        {params.bedtools} intersect -a {output.repeats_gtf_decomp} \
-          -b {output.genesbed} \
-          -v | {params.pigz} --stdout > {output.gtf}
-        """
+#         {params.bedtools} intersect -a {output.repeats_gtf_decomp} \
+#           -b {output.genesbed} \
+#           -v | {params.pigz} --stdout > {output.gtf}
+#         """
+rule get_repeats_not_overlapping_genes_gtf_chr_string_aware:
+    input:
+         repeats_gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url'])),
+         genes_gtf =  op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url']))
+    output:
+         gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']) + '_minus_' + op.basename(config['genes_gtf_url'])),
+         repeats_gtf_decomp = temp(op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url'])) + '.tmp.gtf'),
+         genes_gtf_decomp =  temp(op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url'])) + '.tmp.gtf'),
+         genesbed = temp(op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url'])) + '.tmp.bed')
+    params:
+         threads = config['params']['nthreads'],
+         gtf2bed = config['software']['gtf2bed'],
+         pigz = config['software']['pigz'],
+         bedtools = config['software']['bedtools'],
+         remove_chr_string = config['params']['remove_chr_string_from_gtf']
+    run:
+        shell('export PATH="{params.gtf2bed}/..":"$PATH"')
+        if params.remove_chr_string:
+            shell("""
+            
+            {params.pigz} --decompress --keep --stdout  {input.repeats_gtf} | \
+            sed 's/chr//g' > {output.repeats_gtf_decomp}
+            
+            {params.pigz} --decompress --keep  --stdout  {input.genes_gtf} | \
+            sed 's/chr//g' > {output.genes_gtf_decomp}
+            
+            # # # let's transform genes in bed and then use bedtools
+            # export PATH={params.gtf2bed}/..:$PATH
+
+            awk '{{ if ($0 ~ "transcript_id") print $0; else print $0" transcript_id "";"; }}' \
+            {output.genes_gtf_decomp} | {params.gtf2bed} - > {output.genesbed}
+
+            {params.bedtools} intersect -a {output.repeats_gtf_decomp} \
+            -b {output.genesbed} \
+            -v | {params.pigz} --stdout > {output.gtf}
+            """)
+        else:
+            shell("""
+            {params.pigz} --decompress --keep --stdout  {input.repeats_gtf} \
+                 > {output.repeats_gtf_decomp}
+            {params.pigz} --decompress --keep  --stdout  {input.genes_gtf} \
+                 > {output.genes_gtf_decomp}
+    
+            # # # let's transform genes in bed and then use bedtools
+            # export PATH={params.gtf2bed}/..:$PATH
+
+            awk '{{ if ($0 ~ "transcript_id") print $0; else print $0" transcript_id "";"; }}' \
+            {output.genes_gtf_decomp} | {params.gtf2bed} - > {output.genesbed}
+
+            {params.bedtools} intersect -a {output.repeats_gtf_decomp} \
+            -b {output.genesbed} \
+            -v | {params.pigz} --stdout > {output.gtf}
+            """)
+
         
 rule extract_repeatome_from_gtf:
     priority: 100
@@ -946,7 +1000,38 @@ rule bowtie_index_repeatome_bowtie:
 
         
 
-rule build_gtf_cellranger_compliant:
+# rule build_gtf_cellranger_compliant:
+#     priority:
+#         100
+#     output:
+#         gtf = op.join(config['base'], 'annotation', config['rep_gtf_url']),
+#         tmp = temp(op.join(op.join(config['base'], "runs", config['run_name'], 'tmp.dump.gz')))
+#     params:
+#         genome = config['genome_short'],
+#         Rscript = config['software']['Rscript'],
+#         processing_path = op.join(config['base'], "runs", config['run_name']),
+#         parser = op.join('scripts', 'parse_dump_gtf.R')
+#     log:
+#         log1 = op.join(config['base'], 'annotation', config['rep_gtf_url'] + '_gtf_build.log'),
+#         log2 = op.join(config['base'], 'annotation', config['rep_gtf_url'] + '_gtf_build_rscript.log')
+#     threads:
+#         config['params']['nthreads']
+#     shell:
+#         """
+#         # bash gtf_build.sh
+#         mysql --user=genome --host=genome-mysql.cse.ucsc.edu -D {params.genome} -A \
+#            -B -sN -e  "select genoName, genoStart, genoEnd, swScore, strand, 
+#                repName,repClass,repFamily
+#            from rmsk
+#            order by genoName,genoStart, genoEnd" | sed 's/^chr//g' | \
+#                   grep  -P '^[0-9]{{1,2}}\\t|^[XY]\\t' | \
+#                   pigz -p {threads} > {output.tmp} &> {log.log1}
+        
+#         {params.Rscript} {params.parser} --rmsk {output.tmp} \
+#                 --source {params.genome} | pigz -p {threads} > {output.gtf} &>> {log.log2}
+#         """
+    
+rule build_gtf_cellranger_compliant_chr_string_aware:
     priority:
         100
     output:
@@ -956,14 +1041,16 @@ rule build_gtf_cellranger_compliant:
         genome = config['genome_short'],
         Rscript = config['software']['Rscript'],
         processing_path = op.join(config['base'], "runs", config['run_name']),
-        parser = op.join('scripts', 'parse_dump_gtf.R')
+        parser = op.join('scripts', 'parse_dump_gtf.R'),
+        remove_chr_string = config['params']['remove_chr_string_from_gtf']
     log:
         log1 = op.join(config['base'], 'annotation', config['rep_gtf_url'] + '_gtf_build.log'),
         log2 = op.join(config['base'], 'annotation', config['rep_gtf_url'] + '_gtf_build_rscript.log')
     threads:
         config['params']['nthreads']
-    shell:
-        """
+    run:
+        if params.remove_chr_string:
+            shell("""
         # bash gtf_build.sh
         mysql --user=genome --host=genome-mysql.cse.ucsc.edu -D {params.genome} -A \
            -B -sN -e  "select genoName, genoStart, genoEnd, swScore, strand, 
@@ -974,6 +1061,20 @@ rule build_gtf_cellranger_compliant:
                   pigz -p {threads} > {output.tmp} &> {log.log1}
         
         {params.Rscript} {params.parser} --rmsk {output.tmp} \
-                --source {params.genome} | pigz -p {threads} > {output.gtf} &>> {log.log2}
-        """
-    
+                --source {params.genome} | pigz -p {threads} > {output.gtf} &> {log.log2}
+            """)
+        else:
+            shell("""
+        # bash gtf_build.sh
+        mysql --user=genome --host=genome-mysql.cse.ucsc.edu -D {params.genome} -A \
+           -B -sN -e  "select genoName, genoStart, genoEnd, swScore, strand, 
+               repName,repClass,repFamily
+           from rmsk
+           order by genoName,genoStart, genoEnd" |  \
+                  grep -P '^chr[0-9]{{1,2}}\\t|^chr[XY]\\t' | \
+                  pigz -p {threads} > {output.tmp} &> {log.log1}
+        
+        {params.Rscript} {params.parser} --rmsk {output.tmp} \
+                --source {params.genome} | pigz -p {threads} > {output.gtf} &> {log.log2}
+          """)
+

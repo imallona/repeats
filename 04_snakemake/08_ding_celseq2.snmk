@@ -307,7 +307,7 @@ rule run_alevin_repeats_celseq2:
     --umiLength 6 \
     --barcodeLength 6 \
     --dumpFeatures \
-    --expectCells {params.num_cells} \
+    --forceCells {params.num_cells} \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
     --tgMap {input.tgmap} ) 2> {log}
@@ -352,7 +352,7 @@ rule run_alevin_genes_celseq2:
     --end 3 \
     --umiLength 6 \
     --barcodeLength 6 \
-    --expectCells {params.num_cells} \
+    --forceCells {params.num_cells} \
     --dumpFeatures \
     -i {params.salmon_idx} \
     -p {threads} -o {params.processing_path} \
