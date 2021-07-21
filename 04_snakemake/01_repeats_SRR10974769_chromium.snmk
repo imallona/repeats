@@ -80,7 +80,7 @@ rule all:
         expand(op.join(config['base'], "runs", config['run_name'], 'bowtie_repeatome',
                        '{multimappers}',
                        "all_cells_repeats.counts.gz"),
-               multimappers = ['multimappers', 'unique_reads'])
+               multimappers = ['unique_reads'])
         
 
 rule get_colon_cancer_dnmt_dko_GSE144357_10x:

@@ -243,11 +243,11 @@ rule knit_report_chromium_agnostic:
             'count_repeats_on_cellranger_standard_not_overlapping_genes',
             'unique_reads',
             config['run_name'] + "_repeats_not_overlapping_genes.counts.gz"),
-        repeats_bowtie_multi = op.join(
-            config['base'], "runs", config['run_name'],
-            'bowtie_repeatome',
-            'multimappers',
-            'all_cells_repeats.counts.gz'),
+        # repeats_bowtie_multi = op.join(
+        #     config['base'], "runs", config['run_name'],
+        #     'bowtie_repeatome',
+        #     'multimappers',
+        #     'all_cells_repeats.counts.gz'),
         repeats_bowtie_unique = op.join(
             config['base'], "runs", config['run_name'],
             'bowtie_repeatome',
@@ -260,7 +260,7 @@ rule knit_report_chromium_agnostic:
         
             
     params:
-        rmd = 'summarize_chromium_run_markers_agnostic.Rmd',
+        rmd = op.join('scripts', 'summarize_chromium_run_markers_agnostic.Rmd'),
         run_name = config['run_name'],
         Rscript = config['software']['Rscript']
     output:
@@ -284,7 +284,6 @@ rule knit_report_chromium_agnostic:
                      aris_output = \"{output.aris}\", 
                      regress_genes_nCount = \"{wildcards.regress_ncount}\", 
                      regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
-                     repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
                      repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\", 
                      genes_alevin = \"{input.genes_alevin}\",
                      repeats_alevin = \"{input.repeats_alevin}\"))' &> {log}
@@ -312,11 +311,11 @@ rule knit_report_chromium:
             'count_repeats_on_cellranger_standard_not_overlapping_genes',
             'unique_reads',
             config['run_name'] + "_repeats_not_overlapping_genes.counts.gz"),
-        repeats_bowtie_multi = op.join(
-            config['base'], "runs", config['run_name'],
-            'bowtie_repeatome',
-            'multimappers',
-            'all_cells_repeats.counts.gz'),
+        # repeats_bowtie_multi = op.join(
+        #     config['base'], "runs", config['run_name'],
+        #     'bowtie_repeatome',
+        #     'multimappers',
+        #     'all_cells_repeats.counts.gz'),
         repeats_bowtie_unique = op.join(
             config['base'], "runs", config['run_name'],
             'bowtie_repeatome',
@@ -356,7 +355,6 @@ rule knit_report_chromium:
                      aris_output = \"{output.aris}\", 
                      regress_genes_nCount = \"{wildcards.regress_ncount}\", 
                      regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
-                     repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
                      repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\", 
                      genes_alevin = \"{input.genes_alevin}\",
                      repeats_alevin = \"{input.repeats_alevin}\",
@@ -576,7 +574,7 @@ rule map_bowtie_by_cell_unique:
               "$(basename $fn .bam)_bowtie.log"
 
             ## removing the fastq
-            rm "$fn"
+            rm "$(basename $fn .bam).fastq"
         done
 
         touch {output.flag_map_bowtie}
@@ -1030,7 +1028,32 @@ rule bowtie_index_repeatome_bowtie:
 #         {params.Rscript} {params.parser} --rmsk {output.tmp} \
 #                 --source {params.genome} | pigz -p {threads} > {output.gtf} &>> {log.log2}
 #         """
-    
+
+rule TESTING_index_repeats_salmon_no_decoy:
+    input:
+        repeats = op.join(config['base'], 'annotation',
+                          'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url'))[0] + '.fa.gz')),
+    params:
+        k = 31,
+        path = op.join(config['base'], 'indices', 'salmon',
+                       config['genome'], 'repeats_salmon_no_decoy'),
+        salmon = config['software']['salmon']
+    log:
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon_no_decoy', 'repeats_salmon_no_decoy_index.log')
+    threads:
+        NTHREADS
+    output:
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon_no_decoy', 'duplicate_clusters.tsv'),
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon_no_decoy', 'complete_ref_lens.bin')
+    shell:        
+        """
+        mkdir -p {params.path}
+        
+        ({params.salmon} index -p {threads} index \
+           -t {input.repeats} -i {params.path} -k {params.k})  2> {log}
+
+        """
+        
 rule build_gtf_cellranger_compliant_chr_string_aware:
     priority:
         100

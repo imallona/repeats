@@ -52,7 +52,7 @@ REP_GTF_URL = 'hg38_rmsk.gtf.gz'
 
 GTF_MAKING_SCRIPT = '~/src/repeats_sc/04_snakemake/gtf_maker.R'
 GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/gtf_parser.R'
-FEATURECOUNTS_RSCRIPT= '~/src/repeats_sc/04_snakemake/plot_featurecounts_profile.R'
+FEATURECOUNTS_RSCRIPT= '~/src/repeats_sc/04_snakemake/scripts/plot_featurecounts_profile.R'
 
 BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
 BOWTIE = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'
@@ -172,7 +172,7 @@ rule all:
         expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
                        "{srr}.bam.featureCounts.gz"),
                srr = get_samples(CONF),
-               multimappers = ['unique_reads', 'multimappers']),
+               multimappers = ['unique_reads']),
         # expand( op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_seqwell_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
         #         regress_ncount = ['TRUE', 'FALSE'],
         #         regress_nfeature = ['TRUE', 'FALSE']),

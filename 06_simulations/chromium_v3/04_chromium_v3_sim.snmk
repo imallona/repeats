@@ -18,7 +18,8 @@ RUN_TECH = 'chromium'
 ## Folder structure start --------------------------------------------------------------------- ##
 
 #@FIXME to be moved to config, not hardcoded!
-BASE = op.join('/home', 'imallona', 'repeats_sc')
+# BASE = op.join('/home', 'imallona', 'repeats_sc')
+BASE = op.join('/scratch', 'imallona', 'repeats_sc')
 NTHREADS = 50
 NTHREADS_WITHIN=5
 LOCAL_MEM_GB = 100
@@ -126,7 +127,9 @@ rule all:
                multimappers = ['multimappers', 'unique_reads']),
         op.join(BASE, 'runs', RUN_NAME, 'sim_postproc.html'),
         op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv.gz'),
-        op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag')
+        op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats_no_decoy_per_locus', 'alevin',
+                'quants_mat.gz')
         # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
         #                regress_nfeature = ['TRUE', 'FALSE']),
         #  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
@@ -143,23 +146,23 @@ rule run_simulation:
     output:
         genome_fasta_uncomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])),
         truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),       
-        i1_sim = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_I1_001.fastq.gz",
-        r1_sim = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R1_001.fastq.gz",
-        r2_sim_origin = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R2_001.fastq.gz"
+        i1_sim =  op.join(BASE, 'data', RUN_NAME, 'sim_5k_pbmc_v3_S1_L002_I1_001.fastq.gz'),
+        r1_sim =  op.join(BASE, 'data', RUN_NAME, 'sim_5k_pbmc_v3_S1_L002_R1_001.fastq.gz'),
+        r2_sim_origin =  op.join(BASE, 'data', RUN_NAME, "sim_5k_pbmc_v3_S1_L002_R2_001.fastq.gz")
     params:
         path = op.join(BASE, 'data', RUN_NAME),
         length = 91,
         bedtools = BEDTOOLS,
-        i1_origin = '/home/imallona/repeats_sc/data/5k_pbmc_v3/5k_pbmc_v3_fastqs/5k_pbmc_v3_S1_L002_I1_001.fastq.gz',
-        r1_origin="/home/imallona/repeats_sc/data/5k_pbmc_v3/5k_pbmc_v3_fastqs/5k_pbmc_v3_S1_L002_R1_001.fastq.gz",
-        truth_count_table ="/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/truth.tsv",
+        i1_origin = op.join(BASE, 'data', RUN_NAME, "5k_pbmc_v3_S1_L002_I1_001.fastq.gz"),
+        r1_origin = op.join(BASE, 'data', RUN_NAME, "5k_pbmc_v3_S1_L002_R1_001.fastq.gz"),
+        truth_count_table = op.join(BASE, 'data', RUN_NAME, "truth.tsv"),
         cb=16,
         umi=12,
         num_cells=1000,
         dependency = "02_simulate_ground_truth_fastqs.sh",
-        ti1_sim = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_I1_001.fastq",
-        tr1_sim = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R1_001.fastq",
-        tr2_sim_origin = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R2_001.fastq", 
+        ti1_sim =  op.join(BASE, 'data', RUN_NAME, "sim_5k_pbmc_v3_S1_L002_I1_001.fastq"),
+        tr1_sim =  op.join(BASE, 'data', RUN_NAME, "sim_5k_pbmc_v3_S1_L002_R1_001.fastq"),
+        tr2_sim_origin =  op.join(BASE, 'data', RUN_NAME, "sim_5k_pbmc_v3_S1_L002_R2_001.fastq"), 
     log:
         op.join(BASE, 'data', RUN_NAME, "simulation.log")
     threads:
@@ -310,6 +313,45 @@ rule map_salmon_repeats_chromium:
         """
     
 
+rule TESTING_map_salmon_repeats_chromium_no_decoy_per_locus:
+    input:
+        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),
+        tgmap = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon_per_locus', 'txp2gene.tsv'),
+        idx_tracker = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon_no_decoy', 'duplicate_clusters.tsv'),
+        cb = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R1*fastq.gz'))),
+        r2 = sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R2*fastq.gz')))        
+    output:
+        op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats_no_decoy_per_locus', 'alevin',
+                'quants_mat.gz')
+    threads:
+        NTHREADS_WITHIN
+    params:
+        fastqs_path = op.join(BASE, 'data', RUN_NAME),
+        processing_path = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats_no_decoy_per_locus'),
+        salmon_idx = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon_no_decoy'),
+        cb = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R1*fastq.gz')))),
+        r2 = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R2*fastq.gz')))) 
+    log:
+        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium.log')
+    shell:
+        """
+    mkdir -p {params.processing_path}
+    cd {params.processing_path}
+
+    ({SALMON} alevin \
+    -l ISR \
+    -1 {params.cb} \
+    -2 {params.r2} \
+    --chromiumV3  \
+    --dumpBfh \
+    -i {params.salmon_idx} \
+    --forceCells 1000 \
+    -p {threads} -o {params.processing_path} \
+    --tgMap {input.tgmap} ) 2> {log}
+
+    touch -c {output}
+        """
+    
         
 ## beware the cb path for pbmc5k, they shouldn't be there at `RUN_NAME + '_fastqs/` subfoder
 rule map_salmon_genes_chromium:

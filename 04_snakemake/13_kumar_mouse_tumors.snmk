@@ -84,12 +84,12 @@ rule all:
         op.join(config["base"], 'runs', config["run_name"], 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
         op.join(config["base"], 'runs', config["run_name"], 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
         op.join(config["base"], 'runs', 'kumar_integration.html'),
-        # expand(op.join(config["base"], "runs", config["run_name"], "{sample}",
-        #                'bowtie_repeatome', "{sample}"
-        #                '{multimappers}',
-        #                "all_cells_repeats.counts.gz"),
-        #        sample = get_samples(),
-        #        multimappers = ['multimappers', 'unique_reads']),
+        expand(op.join(config["base"], "runs", config["run_name"], "{sample}",
+                       'bowtie_repeatome', "{sample}"
+                       '{multimappers}',
+                       "all_cells_repeats.counts.gz"),
+               sample = get_samples(),
+               multimappers = ['unique_reads']),
         expand(op.join(config["base"], "runs", config["run_name"], '{sample}', 
                        "count_repeats_on_cellranger_standard",
                        "{multimappers}",

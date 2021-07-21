@@ -35,3 +35,4 @@ software:
 params:
   nthreads: 40
   local_mem_gb: 100
+  remove_chr_string_from_gtf: True

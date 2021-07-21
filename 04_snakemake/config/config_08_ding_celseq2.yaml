@@ -14,21 +14,22 @@ cellranger_db_url: 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-G
 dependencies:
   gtf_parsing: './scripts/gtf_parser.R'
   gtf_making: './scripts/gtf_maker.R'
-  featurecounts_parsing: './scripts/plot_featurecounts_profile.R'
+  featurecounts_parsing: '/home/imallona/src/repeats_sc/04_snakemake/scripts/plot_featurecounts_profile.R'
 software:
   Rscript: '/usr/local/R/R-4.1.0/bin/Rscript'
   bowtie_build: '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
   bowtie: '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'
   pigz: '/usr/bin/pigz'
-  star: '~/soft/star/STAR-2.7.3a/source/STAR'
-  featurecounts: '~/soft/subread/subread-2.0.0-source/bin/featureCounts'
-  cellranger: '~/soft/cellranger/cellranger-3.1.0/cellranger'
-  fastqdump: '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump'
-  vdb_validate: '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate'
-  prefetch: '~/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/prefetch'
-  bedtools: '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
-  salmon: '~/soft/salmon/salmon-1.1.0_linux_x86_64/bin/salmon'
-  gtf2bed: '~/soft/bedops/bin/gtf2bed'
+  star: '/home/imallona/soft/star/STAR-2.7.3a/source/STAR'
+  featurecounts: '/home/imallona/soft/subread/subread-2.0.0-source/bin/featureCounts'
+  cellranger: '/home/imallona/soft/cellranger/cellranger-3.1.0/cellranger'
+  fastqdump: '/home/imallona/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/fastq-dump'
+  vdb_validate: '/home/imallona/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/vdb-validate'
+  prefetch: '/home/imallona/soft/sra-toools/sratoolkit.2.10.4-ubuntu64/bin/prefetch'
+  bedtools: '/home/imallona/soft/bedtools/bedtools-2.29.2/bin/bedtools'
+  salmon: '/home/imallona/soft/salmon/salmon-1.5.1/bin/salmon'
+  gtf2bed: '/home/imallona/soft/bedops/bin/gtf2bed'
 params:
   nthreads: 40
   local_mem_gb: 100
+  remove_chr_string_from_gtf: True

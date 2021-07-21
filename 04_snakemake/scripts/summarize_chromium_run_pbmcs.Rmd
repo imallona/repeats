@@ -19,7 +19,6 @@ params:
   repeats_featurecounts_unique: ""
   repeats_only_featurecounts_control_multi: ""
   repeats_only_featurecounts_control_unique: ""
-  repeats_bowtie_multi: ""
   repeats_bowtie_unique: ""
   genes_alevin: ""
   repeats_alevin: ""
@@ -140,7 +139,7 @@ params <- list(identifier = "5k_pbmc_v3",
                regress_genes_nCount = FALSE,
                regress_genes_nFeatures = FALSE,
                repeats_bowtie_unique = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/bowtie_repeatome/unique_reads/all_cells_repeats.counts.gz',
-               repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/bowtie_repeatome/multimappers/all_cells_repeats.counts.gz',
+               ## repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/bowtie_repeatome/multimappers/all_cells_repeats.counts.gz',
                genes_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/genes/alevin/quants_mat.gz',
                repeats_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/repeats/alevin/quants_mat.gz')
 
@@ -392,34 +391,34 @@ if (params$repeats_bowtie_unique != "None") {
 }  
 ```
 
-```{r}
-if (params$repeats_bowtie_multi != "None") {
+<!-- ```{r} -->
+<!-- if (params$repeats_bowtie_multi != "None") { -->
     
-    tmp <- data.table::fread(params$repeats_bowtie_multi, sep = '\t', header = TRUE,
-                             drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
-    rownames(tmp) <- tmp$Geneid ## here
+<!--     tmp <- data.table::fread(params$repeats_bowtie_multi, sep = '\t', header = TRUE, -->
+<!--                              drop = c('Chr', 'Start', 'End', 'Strand', 'Length')) -->
+<!--     rownames(tmp) <- tmp$Geneid ## here -->
 
-    colnames(tmp) <- gsub(".*:([A-Z]+-1)_bowtie.bam","\\1", colnames(tmp))
-    ## tmp <- tmp[,7:ncol(tmp)]
+<!--     colnames(tmp) <- gsub(".*:([A-Z]+-1)_bowtie.bam","\\1", colnames(tmp)) -->
+<!--     ## tmp <- tmp[,7:ncol(tmp)] -->
 
-    tmp <- as.data.frame(tmp)
-    rownames(tmp) <- tmp$Geneid
-    tmp <- tmp[,-1]
+<!--     tmp <- as.data.frame(tmp) -->
+<!--     rownames(tmp) <- tmp$Geneid -->
+<!--     tmp <- tmp[,-1] -->
 
 
-    d$repeats_bowtie_multi <- CreateSeuratObject(
-        tmp,
-        project =  sprintf('%s_%s', params$identifier, 'repeats\nbowtie\nmulti'),
-        assay = "RNA",
-        min.cells = 0,
-        min.features = 0,
-        names.field = 1,
-        names.delim = "_",
-        meta.data = NULL)
+<!--     d$repeats_bowtie_multi <- CreateSeuratObject( -->
+<!--         tmp, -->
+<!--         project =  sprintf('%s_%s', params$identifier, 'repeats\nbowtie\nmulti'), -->
+<!--         assay = "RNA", -->
+<!--         min.cells = 0, -->
+<!--         min.features = 0, -->
+<!--         names.field = 1, -->
+<!--         names.delim = "_", -->
+<!--         meta.data = NULL) -->
 
-    rm(tmp)
-}
-```
+<!--     rm(tmp) -->
+<!-- } -->
+<!-- ``` -->
 
 Alevin
 

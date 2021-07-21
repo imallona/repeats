@@ -108,7 +108,7 @@ rule all:
         expand(op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome',
                        '{multimappers}',
                        "all_cells_repeats.counts.gz"),
-               multimappers = ['multimappers', 'unique_reads'])
+               multimappers = ['unique_reads'])
                
 
 

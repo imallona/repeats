@@ -46,6 +46,28 @@ rule index_genes_salmon_no_decoy:
 
         """
         
+rule TESTING_index_repeats_salmon_no_decoy:
+    input:
+        repeats = op.join(BASE, 'annotation', 'repeatome_from_' + op.splitext(op.basename(REP_GTF_URL))[0] + '.fa.gz'),
+    params:
+        k = 31,
+        path = op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon_no_decoy')
+    log:
+        op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon_no_decoy', 'repeats_salmon_no_decoy_index.log')
+    threads:
+        NTHREADS
+    output:
+        op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon_no_decoy', 'duplicate_clusters.tsv'),
+        op.join(BASE, 'indices', 'salmon', GENOME, 'repeats_salmon_no_decoy', 'complete_ref_lens.bin')
+    shell:        
+        """
+        mkdir -p {params.path}
+        
+        ({SALMON} index -p {threads} index \
+           -t {input.repeats} -i {params.path} -k {params.k})  2> {log}
+
+        """
+        
 rule get_transcriptome_fasta:
     priority:
         100
@@ -264,11 +286,11 @@ rule knit_report_chromium_agnostic:
             'count_repeats_on_cellranger_standard_not_overlapping_genes',
             'unique_reads',
             RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
-        repeats_bowtie_multi = op.join(
-            BASE, "runs", RUN_NAME,
-            'bowtie_repeatome',
-            'multimappers',
-            'all_cells_repeats.counts.gz'),
+        # repeats_bowtie_multi = op.join(
+        #     BASE, "runs", RUN_NAME,
+        #     'bowtie_repeatome',
+        #     'multimappers',
+        #     'all_cells_repeats.counts.gz'),
         repeats_bowtie_unique = op.join(
             BASE, "runs", RUN_NAME,
             'bowtie_repeatome',
@@ -303,7 +325,6 @@ rule knit_report_chromium_agnostic:
                      aris_output = \"{output.aris}\", 
                      regress_genes_nCount = \"{wildcards.regress_ncount}\", 
                      regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
-                     repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
                      repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\", 
                      genes_alevin = \"{input.genes_alevin}\",
                      repeats_alevin = \"{input.repeats_alevin}\"))' &> {log}
@@ -331,11 +352,11 @@ rule knit_report_chromium:
             'count_repeats_on_cellranger_standard_not_overlapping_genes',
             'unique_reads',
             RUN_NAME + "_repeats_not_overlapping_genes.counts.gz"),
-        repeats_bowtie_multi = op.join(
-            BASE, "runs", RUN_NAME,
-            'bowtie_repeatome',
-            'multimappers',
-            'all_cells_repeats.counts.gz'),
+        # repeats_bowtie_multi = op.join(
+        #     BASE, "runs", RUN_NAME,
+        #     'bowtie_repeatome',
+        #     'multimappers',
+        #     'all_cells_repeats.counts.gz'),
         repeats_bowtie_unique = op.join(
             BASE, "runs", RUN_NAME,
             'bowtie_repeatome',
@@ -348,7 +369,7 @@ rule knit_report_chromium:
         
             
     params:
-        rmd = 'summarize_chromium_run_pbmcs.Rmd',
+        rmd = op.join('scripts', 'summarize_chromium_run_pbmcs.Rmd'),
         run_name = RUN_NAME
     output:
         html = op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
@@ -373,7 +394,6 @@ rule knit_report_chromium:
                      aris_output = \"{output.aris}\", 
                      regress_genes_nCount = \"{wildcards.regress_ncount}\", 
                      regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
-                     repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
                      repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\", 
                      genes_alevin = \"{input.genes_alevin}\",
                      repeats_alevin = \"{input.repeats_alevin}\",
@@ -615,7 +635,7 @@ rule map_bowtie_by_cell_unique:
               "$(basename $fn .bam)_bowtie.log"
 
             ## removing the fastq
-            rm "$fn"
+            rm "$(basename $fn .bam).fastq"
         done
 
         touch {output.flag_map_bowtie}
@@ -985,7 +1005,24 @@ rule get_genome_fasta:
         """
         curl -s -L -C - {params.url} -o {output}
         """
-      
+        
+## hg38 hardcoded
+rule get_cellranger_genes:
+    priority:
+        100
+    output:
+        tmp = temp(op.join(BASE, 'indices', 'cellranger', op.basename(CELLRANGER_DB_URL))),
+        cg = op.join(BASE, 'indices', 'cellranger', CELLRANGER_DB_ID)
+    params:
+        url = CELLRANGER_DB_URL,
+        path = op.dirname(op.join(BASE, 'indices', 'cellranger', CELLRANGER_DB_ID))
+    shell:
+        """
+        cd {params.path}
+        curl -s -L -C - {params.url} -o {output.tmp}
+        tar xzvf {output.tmp}
+        """
+        
 # rule get_repeats_gtf:
 #     priority:
 #         100
