@@ -929,7 +929,8 @@ rule get_cellranger_data:
         path = op.join(config['base'], 'indices', 'cellranger')
     output:
         cellranger_gz = op.join(config['base'], 'indices', 'cellranger', op.basename(config['cellranger_db_url'])),
-        uncomp = op.join(config['base'], 'indices', 'cellranger', config['cellranger_db_id'], 'reference.json')
+        # uncomp = op.join(config['base'], 'indices', 'cellranger', config['cellranger_db_id'], 'reference.json'),
+        folder = directory(op.join(config['base'], 'indices', 'cellranger', config['cellranger_db_id']))      
     shell:
         """
         mkdir -p {params.path}
@@ -939,8 +940,6 @@ rule get_cellranger_data:
         
         tar xzvf {output.cellranger_gz}
         """
-
-
        
 rule fake_gtf_repeatome_in_repeats_coordinates:
     input:
@@ -1032,7 +1031,7 @@ rule bowtie_index_repeatome_bowtie:
 rule TESTING_index_repeats_salmon_no_decoy:
     input:
         repeats = op.join(config['base'], 'annotation',
-                          'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url'))[0] + '.fa.gz')),
+                          'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0] + '.fa.gz'),
     params:
         k = 31,
         path = op.join(config['base'], 'indices', 'salmon',
@@ -1041,7 +1040,7 @@ rule TESTING_index_repeats_salmon_no_decoy:
     log:
         op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon_no_decoy', 'repeats_salmon_no_decoy_index.log')
     threads:
-        NTHREADS
+        config['params']['nthreads']
     output:
         op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon_no_decoy', 'duplicate_clusters.tsv'),
         op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon_no_decoy', 'complete_ref_lens.bin')
@@ -1059,10 +1058,12 @@ rule build_gtf_cellranger_compliant_chr_string_aware:
         100
     output:
         gtf = op.join(config['base'], 'annotation', config['rep_gtf_url']),
-        tmp = temp(op.join(op.join(config['base'], "runs", config['run_name'], 'tmp.dump.gz')))
+        tmp = temp(op.join(op.join(config['base'], "runs", config['run_name'], 'tmp.dump.gz'))),
+        tmp_uncomp = temp(op.join(op.join(config['base'], "runs", config['run_name'], 'tmp.dump')))
     params:
         genome = config['genome_short'],
         Rscript = config['software']['Rscript'],
+        pigz = config['software']['pigz'],
         processing_path = op.join(config['base'], "runs", config['run_name']),
         parser = op.join('scripts', 'parse_dump_gtf.R'),
         remove_chr_string = config['params']['remove_chr_string_from_gtf']
@@ -1071,33 +1072,74 @@ rule build_gtf_cellranger_compliant_chr_string_aware:
         log2 = op.join(config['base'], 'annotation', config['rep_gtf_url'] + '_gtf_build_rscript.log')
     threads:
         config['params']['nthreads']
-    run:
-        if params.remove_chr_string:
-            shell("""
-        # bash gtf_build.sh
-        mysql --user=genome --host=genome-mysql.cse.ucsc.edu -D {params.genome} -A \
-           -B -sN -e  "select genoName, genoStart, genoEnd, swScore, strand, 
-               repName,repClass,repFamily
-           from rmsk
-           order by genoName,genoStart, genoEnd" | sed 's/^chr//g' | \
-                  grep  -P '^[0-9]{{1,2}}\\t|^[XY]\\t' | \
-                  pigz -p {threads} > {output.tmp} &> {log.log1}
+    # run:
+    #     if params.remove_chr_string:
+    #         shell("""
+    #     # bash gtf_build.sh
+    #     echo 'removing chr strings'
         
-        {params.Rscript} {params.parser} --rmsk {output.tmp} \
-                --source {params.genome} | pigz -p {threads} > {output.gtf} &> {log.log2}
-            """)
-        else:
-            shell("""
-        # bash gtf_build.sh
-        mysql --user=genome --host=genome-mysql.cse.ucsc.edu -D {params.genome} -A \
-           -B -sN -e  "select genoName, genoStart, genoEnd, swScore, strand, 
-               repName,repClass,repFamily
-           from rmsk
-           order by genoName,genoStart, genoEnd" |  \
-                  grep -P '^chr[0-9]{{1,2}}\\t|^chr[XY]\\t' | \
-                  pigz -p {threads} > {output.tmp} &> {log.log1}
+    #     mysql --user=genome --host=genome-mysql.cse.ucsc.edu -D {params.genome} -A \
+    #        -B -sN -e  "select genoName, genoStart, genoEnd, swScore, strand, 
+    #            repName,repClass,repFamily
+    #        from rmsk
+    #        order by genoName,genoStart, genoEnd" | sed 's/^chr//g' | \
+    #               grep  -P '^[0-9]{{1,2}}\\t|^[XY]\\t' | \
+    #               {params.pigz} -p {threads} > {output.tmp} &> {log.log1}
         
-        {params.Rscript} {params.parser} --rmsk {output.tmp} \
-                --source {params.genome} | pigz -p {threads} > {output.gtf} &> {log.log2}
-          """)
+    #     {params.Rscript} {params.parser} --rmsk {output.tmp} \
+    #             --source {params.genome} | pigz -p {threads} > {output.gtf} &> {log.log2}
+    #         """)
+    #     else:
+    #         shell("""
+    #     # bash gtf_build.sh
+    #     echo 'not removing chr strings'
+        
+    #     mysql --user=genome --host=genome-mysql.cse.ucsc.edu -D {params.genome} -A \
+    #        -B -sN -e  "select genoName, genoStart, genoEnd, swScore, strand, 
+    #            repName,repClass,repFamily
+    #        from rmsk
+    #        order by genoName,genoStart, genoEnd" |  \
+    #               grep -P '^chr[0-9]{{1,2}}\\t|^chr[XY]\\t' | \
+    #               {params.pigz} -p {threads} > {output.tmp} &> {log.log1}
+        
+    #     {params.Rscript} {params.parser} --rmsk {output.tmp} \
+    #             --source {params.genome} | pigz -p {threads} > {output.gtf} &> {log.log2}
+    #       """)
+    shell:
+        """
+        if [ '{params.remove_chr_string}' = 'True' ]
+        then
+
+        # bash gtf_build.sh
+          echo 'removing chr strings'
+        
+          mysql --user=genome --host=genome-mysql.cse.ucsc.edu -D {params.genome} -A \
+             -B -sN -e  'select genoName, genoStart, genoEnd, swScore, strand, 
+                 repName,repClass,repFamily
+             from rmsk
+             order by genoName,genoStart, genoEnd' | sed 's/^chr//g' | \
+                    grep  -P '^[0-9]{{1,2}}\\t|^[XY]\\t' > {output.tmp_uncomp} 
+
+          {params.pigz} -p {threads} {output.tmp_uncomp} --keep &> {log.log1}
+        
+          {params.Rscript} {params.parser} --rmsk {output.tmp} \
+                  --source {params.genome} | pigz -p {threads} -c > {output.gtf}
+        else
+            
+          # bash gtf_build.sh
+          echo 'not removing chr strings'
+        
+          mysql --user=genome --host=genome-mysql.cse.ucsc.edu -D {params.genome} -A \
+             -B -sN -e  'select genoName, genoStart, genoEnd, swScore, strand, 
+                 repName,repClass,repFamily
+             from rmsk
+             order by genoName,genoStart, genoEnd' |  \
+                    grep -P '^chr[0-9]{{1,2}}\\t|^chr[XY]\\t' > {output.tmp} 
+
+          {params.pigz} -p {threads} {output.tmp_uncomp} --keep &> {log.log1}
+        
+          {params.Rscript} {params.parser} --rmsk {output.tmp} \
+                  --source {params.genome} | pigz -p {threads} -c > {output.gtf}
+        fi
+        """
 

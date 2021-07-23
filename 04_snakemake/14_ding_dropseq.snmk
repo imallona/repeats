@@ -48,9 +48,9 @@ GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_s
 GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
 REP_GTF_URL = 'hg38_rmsk.gtf.gz'
 
-GTF_MAKING_SCRIPT = '~/src/repeats_sc/04_snakemake/gtf_maker.R'
-GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/gtf_parser.R'
-FEATURECOUNTS_RSCRIPT= '~/src/repeats_sc/04_snakemake/plot_featurecounts_profile.R'
+GTF_MAKING_SCRIPT = '~/src/repeats_sc/04_snakemake/scripts/gtf_maker.R'
+GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/scripts/gtf_parser.R'
+FEATURECOUNTS_RSCRIPT= '~/src/repeats_sc/04_snakemake/scripts/plot_featurecounts_profile.R'
 
 BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
 BOWTIE = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'

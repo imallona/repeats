@@ -119,6 +119,8 @@ rule integration_kumar:
           sample = get_samples()),
         op.join(config["base"], 'runs', config["run_name"], 'alevin', 'genes', 'alevin', 'quants_mat.gz'),
         op.join(config["base"], 'runs', config["run_name"], 'alevin', 'repeats', 'alevin', 'quants_mat.gz'),
+        op.join(config["base"], 'runs', config["run_name"], 'alevin', 'repeats_no_decoy', 'alevin', 'quants_mat.gz'),
+
         expand(op.join(config["base"], "runs", config["run_name"], '{sample}', 
                        "count_repeats_on_cellranger_standard",
                        "{multimappers}",
@@ -294,7 +296,50 @@ rule map_salmon_repeats_chromium:
 
     touch -c {output}
         """
-    
+
+rule map_salmon_repeats_chromium_no_decoy:
+    input:        
+        tgmap = op.join(config["base"], 'indices', 'salmon', config["genome"], 'repeats_salmon', 'txp2gene.tsv'),
+        idx_tracker = op.join(config["base"], 'indices', 'salmon', config["genome"],
+                              'repeats_salmon_no_decoy', 'duplicate_clusters.tsv'),
+        flag = op.join(config["base"], 'data', config["run_name"], SRRS[-1] + '_S1_L001_R2_001.fastq.gz')
+
+    output:
+        op.join(config["base"], 'runs', config["run_name"], 'alevin', 'repeats_no_decoy',
+                'alevin', 'quants_mat.gz')
+    threads:
+        config["params"]["nthreads"]
+    params:
+        fastqs_path = op.join(config["base"], 'data', config["run_name"]),
+        processing_path = op.join(config["base"], 'runs', config["run_name"], 'alevin',
+                                  'repeats_no_decoy'),
+        salmon_idx = op.join(config["base"], 'indices', 'salmon', config["genome"],
+                             'repeats_salmon_no_decoy'),
+        # cb = op.join(config["base"], 'data', config["run_name"], config["run_name"] + '_S1_L001_R1_001.fastq.gz'),
+        # r = op.join(config["base"], 'data', config["run_name"], config["run_name"] + '_S1_L001_R2_001.fastq.gz'),
+        r2 = get_cbs(op.join(config["base"], 'data', config["run_name"])),
+        r1 = get_reads(op.join(config["base"], 'data', config["run_name"])),
+        salmon = config['software']['salmon']
+    log:
+        op.join(config["base"], 'runs', config["run_name"],
+                'run_salmon_repeats_no_decoy_chromium.log')
+    shell:
+        """
+    mkdir -p {params.processing_path}
+    cd {params.processing_path}
+
+    ({params.salmon} alevin \
+    -l ISR \
+    -1 {params.r1} \
+    -2 {params.r2} \
+    --chromium  \
+    -i {params.salmon_idx} \
+    -p {threads} -o {params.processing_path} \
+    --tgMap {input.tgmap} ) 2> {log}
+
+    touch -c {output}
+        """
+
 
 rule map_salmon_genes_chromium:
     input:        
@@ -454,8 +499,8 @@ rule run_cellranger_standard:
         processing_path = op.join(config["base"], 'runs', config["run_name"], "{sample}"),
         chemistry = config["chemistry"],
         cellranger = config['software']['cellranger'],
-        transcriptome = op.join(config["base"], 'indices', 'cellranger',
-                                           config['cellranger_db_id'])
+        transcriptome = directory(op.join(config["base"], 'indices', 'cellranger',
+                                          config['cellranger_db_id']))
     output:
         op.join(config["base"], 'runs', config["run_name"],  "{sample}", 'cellranger_standard',
                 'outs', 'web_summary.html'),
@@ -708,8 +753,8 @@ rule spawn_cellranger_bam_file_by_cell_by_sample:
         config["params"]["nthreads"]
     params:
         pigz = config['software']['pigz'],
-        barcodes_script = 'get_cell_barcodes.py',
-        split_script = 'split_by_cell_barcode_in_sorted_bam.py',
+        barcodes_script = op.join('scripts', 'get_cell_barcodes.py'),
+        split_script = op.join('scripts', 'split_by_cell_barcode_in_sorted_bam.py'),
         split_path = op.join(config["base"], "runs", config["run_name"], "{sample}",
                              'count_repeats_on_cellranger_standard', 'split')
     log:

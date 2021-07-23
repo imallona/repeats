@@ -21,11 +21,13 @@ params:
     repeats_featurecounts_multi: ""
     repeats_only_multi: ""
     repeats_alevin_locus: ""
+    repeats_alevin_no_decoy_locus: ""
     repeats_bowtie_unique: ""
     repeats_bowtie_multi: ""
     scte: ""
     shao_counts: ""
     shao_saf: ""
+    shao_sam: ""
     truth: ""
     reps_gtf: ""
     nthreads: ""
@@ -90,6 +92,7 @@ options(bitmapType='cairo')
 
 ```{r justfordebugging, include = FALSE, eval = TRUE}
 params <- list(repeats_alevin_locus = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/alevin/repeats_per_locus/alevin/quants_mat.gz",
+               repeats_alevin_no_decoy_locus = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/alevin/repeats_no_decoy_per_locus/alevin/quants_mat.gz",
                truth = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/truth.tsv.gz",
                repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard/unique_reads/sim_5k_pbmc_v3_repeats.counts.gz",
                repeats_only_unique = '~/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard_not_overlapping_genes/unique_reads/sim_5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz',
@@ -100,6 +103,7 @@ params <- list(repeats_alevin_locus = "/home/imallona/repeats_sc/runs/sim_5k_pbm
                scte = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/scTE/scTE.out.csv.gz",
                shao_counts = '~/repeats_sc/runs/sim_5k_pbmc_v3/zumis/sim_5k_zumis_count_dt.txt',
                shao_saf = '~/repeats_sc/annotation/shao/shao_GRCh38_te.saf',
+               shao_sam = '~/repeats_sc/runs/sim_5k_pbmc_v3/zumis/sim_5k_zumis_featurecount.sam.txt',
                reps_gtf = '~/repeats_sc/annotation/GRCh38_rmsk_TE.gtf.gz',
                nthreads = 40)
 ```
@@ -125,6 +129,17 @@ d$repeats_alevin <- tximeta::tximeta(
      ), type = "alevin")
 
 d$repeats_alevin <- assays(d$repeats_alevin)$counts
+```
+
+```{r}
+d$repeats_alevin_no_decoy <- tximeta::tximeta(
+     coldata = data.frame(
+         names = "genes",
+         files = params$repeats_alevin_no_decoy_locus,
+         stringsAsFactors = FALSE
+     ), type = "alevin")
+
+d$repeats_alevin_no_decoy <- assays(d$repeats_alevin_no_decoy)$counts
 ```
 
 
@@ -168,7 +183,6 @@ for (item in featurecounts_runs) {
 Read scTE
 
 ```{r scte}
-
 tmp <- data.table::fread(params$scte,
                          sep = ',',
                          header = TRUE)
@@ -197,6 +211,7 @@ rm(tmp)
 d$shao <- list()
 d$shao$counts <- fread(params$shao_counts)
 d$shao$saf <- fread(params$shao_saf)
+d$shao$sam <- fread(params$shao_sam)
 ## d$shao <- merge(d$shao$counts, d$shao$saf, by.x= 'feature', by.y = 'GeneID', all = TRUE)
 ```
 
@@ -214,12 +229,11 @@ saveRDS(file = 'd.rds', object = d)
 
 # Locus level 
 
-Beware downsized!
 
 ```{r, eval = FALSE}
-## just for downsampling to 100 cells, 1e6 repeats
+## heavy downsampling
 
-d <- lapply(d, function(x) return(head(x, 2e5)[,1:100]))
+d <- lapply(d, function(x) return(head(x, 1e4)[,1:50]))
 
 ## scte does not provide outputs at the locus level
 sapply(d, dim)
@@ -274,7 +288,49 @@ res <- do.call(rbind.data.frame, res)
 colnames(res) <-  c('cell', 'true', 'correct', 'multi', 'missing', 'wrong')
 props[['repeats_alevin']] <- res
 props[['repeats_alevin']]$flavour <- 'repeats_alevin'
+
 ```
+
+For alevin without decoy
+
+```{r}
+
+res <- list()
+for (cell in unique(truth$cell)) {
+
+    if (cell %in% colnames(d$repeats_alevin_no_decoy)) {
+        true <- truth[truth$cell == cell, 'id']
+
+        tmp <- d$repeats_alevin_no_decoy[,cell]
+        observed <- tmp[tmp > 0]
+
+        ## among these, some are observed 'fractionally'
+        correct <- observed[observed == 1]
+
+        ## under- or overestimation
+        multi <- observed[observed != 1]
+
+        missing <- setdiff(true, names(observed))
+        wrong <- setdiff(names(observed), true)
+
+        res[[cell]] <- setNames(c(cell,
+                                  length(true), length(correct), length(multi),
+                                  length(missing),
+                                  length(wrong)),
+                                c('true', 'correct', 'multi', 'missing', 'wrong'))
+    }
+    else {
+        res[[cell]] <- setNames( c(cell, length(true), 0, 0, length(true), 0),
+                                c('cell', 'true', 'correct', 'multi', 'missing', 'wrong'))
+    }
+}
+
+res <- do.call(rbind.data.frame, res)
+colnames(res) <-  c('cell', 'true', 'correct', 'multi', 'missing', 'wrong')
+props[['repeats_alevin_no_decoy']] <- res
+props[['repeats_alevin_no_decoy']]$flavour <- 'repeats_alevin_no_decoy'
+```
+
 
 <!-- For feature counts -->
 
@@ -591,6 +647,7 @@ grouped %>% ggplot(aes(x=Group.1, y=value, fill =variable)) +
     xlab('strategy') +
     ylab('alignments (number of)')
 
+
 ```
 
 # Grouping by repname etc, to be able to include scTE
@@ -654,88 +711,112 @@ for (item in c('name', 'family', 'class')) {
 ```
 
 Add Shao
+
+<!-- ```{r} -->
+
+<!-- d$shao$saf <- as.data.frame(d$shao$saf) -->
+
+<!-- overlaps <- mergeByOverlaps(query = GRanges(seqnames = d$shao$saf$Chr, -->
+<!--                                      ranges = IRanges(d$shao$saf$Start, d$shao$saf$End), -->
+<!--                                      feature = d$shao$saf$GeneID), -->
+<!--                      subject = GRanges(seqnames = paste0('chr', truth$chr), -->
+<!--                                         ranges = IRanges(as.numeric(truth$start), -->
+<!--                                                          as.numeric(truth$end)), -->
+<!--                                        locus = truth$locus), -->
+<!--                      minoverlap = 30) -->
+
+<!-- ## still, these are not unique -->
+<!-- overlap <- as.data.frame(overlaps[c('feature', 'locus')]) -->
+<!-- dim(overlap) -->
+
+
+<!-- ``` -->
+
+<!-- Removing Shao's te identifiers with multiple assignments. Skipped, or the total mapping is very low. -->
+
+<!-- ```{r, eval = FALSE} -->
+<!-- overlap <- overlap[!duplicated(overlap$feature),] -->
+<!-- dim(overlap) -->
+<!-- ``` -->
+
+<!-- Getting the aggregated counts for Shao's -->
+
+<!-- ```{r} -->
+
+<!-- d$shao <- merge(d$shao$counts, overlap, by.x = 'feature', by.y='feature', all.x = TRUE) -->
+
+<!-- d$shao$name <- gsub("(.+);(.+);(.+);(.+)::.*", "\\1", d$shao$locus) -->
+<!-- d$shao$family <- gsub("(.+);(.+);(.+);(.+)::.*", "\\3", d$shao$locus) -->
+<!-- d$shao$class <- gsub("(.+);(.+);(.+);(.+);::.*", "\\4", d$shao$locus) -->
+
+<!-- flavour <- 'shao_EM' -->
+<!-- d$shao <- as.data.frame(d$shao) -->
+
+<!-- for (item in c('name', 'family', 'class')) { -->
+<!--     weighted <- aggregate(d$shao$EM_distri, by = list(d$shao[,item]), -->
+<!--                           function(x) sum(na.omit(x))) -->
+    
+    
+<!--     colnames(weighted) <- c(item, flavour) -->
+<!--     aggs[[item]][[flavour]] <- weighted        -->
+<!-- } -->
+
+<!-- ``` -->
+
+
 ```{r}
 
-## library(GenomicRanges)
-## overlaps <- findOverlaps(query = GRanges(seqnames = d$shao$Chr,
-##                                          ranges = IRanges(d$shao$Start, d$shao$End),
-##                                          strand = '+',
-##                                          feature = d$shao$feature),
-##                          subject = GRanges(seqnames = paste0('chr', truth$chr),
-##                                            ranges = IRanges(as.numeric(truth$start),
-##                                                             as.numeric(truth$end)),
-##                                            stand = '+',
-##                                            locus = truth$locus),
-##                          select = 'first')
-
-## overlaps <- findOverlaps(query = GRanges(seqnames = d$shao$Chr,
-##                                          ranges = IRanges(d$shao$Start, d$shao$End),
-##                                          strand = '+',
-##                                          feature = d$shao$feature),
-##                          subject = GRanges(seqnames = paste0('chr', truth$chr),
-##                                            ranges = IRanges(as.numeric(truth$start),
-##                                                             as.numeric(truth$end)),
-##                                            stand = '+',
-##                                            locus = truth$locus))
+does_overlap <- function(x) {
+    return (x$Chr == paste0('chr', x$sim_chr) | abs(x$Start - x$sim_start) < 100)
+}
 
 d$shao$saf <- as.data.frame(d$shao$saf)
+d$shao$counts <- as.data.frame(na.omit(d$shao$counts))
+d$shao$sam <- as.data.frame(d$shao$sam)
+
+d$shao$sam$sim_locus <-  gsub("(.+);(.+);(.+);(.+)::.*", "\\2", d$shao$sam$V1)
+d$shao$sam$sim_chr <-  gsub("(.*)_([0-9XY]+)_([0-9]+)_([0-9]+)_([+-]+)", "\\2",
+                            d$shao$sam$sim_locus)
+d$shao$sam$sim_start <-  as.numeric(gsub("(.*)_([0-9XY]+)_([0-9]+)_([0-9]+)_([+-]+)", "\\3",
+                              d$shao$sam$sim_locus))
+d$shao$sam$sim_end <-  as.numeric(gsub("(.*)_([0-9XY]+)_([0-9]+)_([0-9]+)_([+-]+)", "\\4",
+                            d$shao$sam$sim_locus))
+d$shao$sam$sim_family <-  gsub("(.+);(.+);(.+);(.+)::.*", "\\3", d$shao$sam$V1)
+d$shao$sam$sim_class <-  gsub("(.+);(.+);(.+);(.+);::.*", "\\4", d$shao$sam$V1)
+d$shao$sam$sim_name <- gsub("(.*)_([0-9XY]+)_([0-9]+)_([0-9]+)_([+-]+)", "\\1",
+                            d$shao$sam$sim_locus)
 
 
+str(d$shao)
+```
 
-## ## this works
-## hits <- findOverlaps(query = GRanges(seqnames = d$shao$saf$Chr,
-##                                      ranges = IRanges(d$shao$saf$Start, d$shao$saf$End),
-##                                      feature = d$shao$saf$GeneID),
-##                      subject = GRanges(seqnames = paste0('chr', truth$chr),
-##                                         ranges = IRanges(as.numeric(truth$start),
-##                                                          as.numeric(truth$end))))
+For those TE ids assigned to CB, retrieve the SAF coordinates
+```{r}
+d$shao$merged <- merge(d$shao$counts, d$shao$saf, by.x = 'feature', by.y = 'GeneID')
+head(d$shao$merged)
+```
 
-## counts <- countOverlaps(query = GRanges(seqnames = d$shao$saf$Chr,
-##                                      ranges = IRanges(d$shao$saf$Start, d$shao$saf$End),
-##                                      feature = d$shao$saf$GeneID),
-##                      subject = GRanges(seqnames = paste0('chr', truth$chr),
-##                                         ranges = IRanges(as.numeric(truth$start),
-##                                                          as.numeric(truth$end))))
-
-overlaps <- mergeByOverlaps(query = GRanges(seqnames = d$shao$saf$Chr,
-                                     ranges = IRanges(d$shao$saf$Start, d$shao$saf$End),
-                                     feature = d$shao$saf$GeneID),
-                     subject = GRanges(seqnames = paste0('chr', truth$chr),
-                                        ranges = IRanges(as.numeric(truth$start),
-                                                         as.numeric(truth$end)),
-                                       locus = truth$locus),
-                     minoverlap = 30)
-## this doesn't
-## query_df <- GRanges::extractROWSq(query = GRanges(seqnames = d$shao$saf$Chr,
-##                                         ranges = IRanges(d$shao$saf$Start, d$shao$saf$End),
-##                                         feature = d$shao$saf$GeneID),
-##                         queryHits(hits))
+Then, check if the coordinates match the ones from the mapping (they provide a SAM file)
 
 
-## overlaps <- mergeByOverlaps(query = GRanges(seqnames = d$shao$saf$Chr,
-##                                          ranges = IRanges(d$shao$saf$Start, d$shao$saf$End),
-##                                          feature = d$shao$saf$GeneID),
-##                          subject = GRanges(seqnames = paste0('chr', truth$chr),
-##                                            ranges = IRanges(as.numeric(truth$start),
-##                                                             as.numeric(truth$end)),
-##                                            locus = truth$locus),
-##                          select = 'first',
-##                          minoverlap = 30)
+```{r}
+d$shao$merged <- merge(d$shao$merged, d$shao$sam, by.x = 'feature', by.y = 'V4')
+d$shao$merged$overlaps <- does_overlap(d$shao$merged)
 
 
-## still, these are not unique
-overlap <- as.data.frame(overlaps[c('feature', 'locus')])
-dim(overlap)
+```
 
+```{r}
+tail(d$shao$sam)
+
+## all(d$shao$sam$family == d$shao$sam$class)
+table(d$shao$sam$mapped_name == d$shao$sam$sim_name)
+
+tmp <- merge(d$shao$counts, as.data.frame(d$shao$sam), by.x = 'feature', by.y = 'V4')
 
 ```
 
 Removing Shao's te identifiers with multiple assignments. Skipped, or the total mapping is very low.
-
-```{r, eval = TRUE}
-overlap <- overlap[!duplicated(overlap$feature),]
-dim(overlap)
-```
 
 Getting the aggregated counts for Shao's
 
@@ -760,6 +841,7 @@ for (item in c('name', 'family', 'class')) {
 }
 
 ```
+
 
 by Class
 

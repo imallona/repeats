@@ -18,8 +18,8 @@ RUN_TECH = 'chromium'
 ## Folder structure start --------------------------------------------------------------------- ##
 
 #@FIXME to be moved to config, not hardcoded!
-# BASE = op.join('/home', 'imallona', 'repeats_sc')
-BASE = op.join('/scratch', 'imallona', 'repeats_sc')
+BASE = op.join('/home', 'imallona', 'repeats_sc')
+# BASE = op.join('/scratch', 'imallona', 'repeats_sc')
 NTHREADS = 50
 NTHREADS_WITHIN=5
 LOCAL_MEM_GB = 100
@@ -661,6 +661,10 @@ rule knit_report:
            RUN_NAME + "_repeats.counts.gz"), 
         repeats_alevin_locus = op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats_per_locus',
                                        'alevin', 'quants_mat.gz'),
+        repeats_alevin_no_decoy_locus = op.join(BASE, 'runs', RUN_NAME, 'alevin',
+                                               'repeats_no_decoy_per_locus',
+                                       'alevin', 'quants_mat.gz'),
+       
         repeats_bowtie_unique = op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome",
                                         "unique_reads",
                                         "by_locus_repeats.counts.gz"),
@@ -687,6 +691,7 @@ rule knit_report:
                      repeats_only_multi = \"{input.repeats_only_multi}\", 
                      repeats_only_unique = \"{input.repeats_only_unique}\",
                      repeats_alevin_locus = \"{input.repeats_alevin_locus}\",
+                     repeats_alevin_no_decoy_locus = \"{input.repeats_alevin_no_decoy_locus}\",
                      repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\",
                      repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
                      scte = \"{input.scte}\",

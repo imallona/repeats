@@ -128,7 +128,7 @@ rule knit_ad_hoc_zheng:
                               flavour = 'cellranger_repeats'),
         config_fn = CONF
     params:
-        rmd = 'summarize_zheng_truth_cellranger.Rmd',
+        rmd = op.join('scripts', 'summarize_zheng_truth_cellranger.Rmd'),
         run_name = "zheng_truth",
         genes_cellranger_path = op.join(config["base"], 'runs', config["run_name"]),
         repeats_cellranger_path = op.join(config["base"], 'runs', config["run_name"]),
