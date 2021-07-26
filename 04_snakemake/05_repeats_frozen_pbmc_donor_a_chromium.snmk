@@ -229,7 +229,7 @@ rule run_cellranger_repeats:
                                      'repeats_' + config['genome'],
                                      'repeats_' + config['genome'], 'reference.json')
     params:
-        transcriptome = op.join(config['base'], 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38'),
+        transcriptome = op.join(config['base'], 'indices', 'cellranger', 'repeats_' + config['genome'], 'repeats_' + config['genome']),
         fastqs_path = op.join(config['base'], 'data', config["run_name"]),
         sample_name = config["run_name"],
         local_mem_gb = config["params"]["local_mem_gb"],

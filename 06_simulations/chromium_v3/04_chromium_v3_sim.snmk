@@ -20,7 +20,7 @@ RUN_TECH = 'chromium'
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
 # BASE = op.join('/scratch', 'imallona', 'repeats_sc')
-NTHREADS = 50
+NTHREADS = 5
 NTHREADS_WITHIN=5
 LOCAL_MEM_GB = 100
 GENOME= 'GRCh38'
@@ -129,7 +129,8 @@ rule all:
         op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv.gz'),
         op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats_no_decoy_per_locus', 'alevin',
-                'quants_mat.gz')
+                'quants_mat.gz'),
+        op.join(BASE, 'runs', RUN_NAME, 'zumis', 'sim_5k_zumis_count_dt.txt')
         # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
         #                regress_nfeature = ['TRUE', 'FALSE']),
         #  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
@@ -871,24 +872,169 @@ rule run_scte_on_cellranger:
         pigz -p {threads} --keep {output.tmp}
         """
 
-## these are coded under third_party, shao_installs.sh
-# rule run_shao_sample_zumi:
-#     input:
-#         ""
-#     output:
-#         ""
-#     shell:
-#         """
-#         zUMIs-master-TE.sh -y zUMIs_sample.yaml -d path_to_modified_zUMIs_package
-#         """
 
-# rule run_shao_quantify:
-#     input:
-#         ""
-#     output:
-#         ""
-#     shell:
-#         """
-#         scRNA_UMI_counting.R -f Sample_1_featurecount.sam.txt -r mm10_pc_exon_te_tx.saf -n Sample_1 -s 50 -m 1 -p 10
-#         """
+rule generate_shao_index:
+    params:
+        shao_id = 'shao_' + GENOME_SHORT,
+        genome = GENOME_SHORT,
+        rmsk_url = temp("http://hgdownload.cse.ucsc.edu/goldenpath/" + GENOME_SHORT + "/database/rmsk.txt.gz"),
+        refgene_url = temp("http://hgdownload.cse.ucsc.edu/goldenpath/" + GENOME_SHORT + "/database/refGene.txt.gz"),
+        path = op.join(BASE, 'annotation', 'shao'),
+        export_saf_files = "~/soft/TE_expression_in_scRNAseq/scripts/export_saf_files.r"
+    output:
+        rmsk_gz = op.join(BASE, 'annotation', 'shao', GENOME_SHORT, 'rmsk.txt.gz'),
+        refgene_gz = op.join(BASE, 'annotation', 'shao',  GENOME_SHORT, 'refGene.txt.gz'),
+        chrlengths = op.join(BASE, 'annotation', 'shao', GENOME_SHORT, 'chrlengths.txt'),
+        shao_te_saf = op.join(BASE, 'annotation', 'shao', GENOME_SHORT, 'shao_' + GENOME_SHORT + '_te.saf')
+    threads:
+        NTHREADS
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
         
+        wget {params.rmsk_url} -O {output.rmsk_gz}
+        wget {params.refgene_url}  -O {output.refgene_gz}
+
+        mysql  --user=genome --host=genome-mysql.cse.ucsc.edu -A -D {params.genome} \
+          -e 'select size from chromInfo' -B -N > {output.chrlengths}
+
+        {Rscript} {params.export_saf_files} \
+         -g {output.refgene_gz} \
+         -r {output.rmsk_gz} \
+         -l {output.chrlengths} \
+         -n {params.shao_id} \
+         -m chrM -p {threads}
+        """
+
+## @todo this should not be hardcoded 
+rule write_VERY_hardcoded_yaml_file_zumis_shao:
+    input:
+        not_used_actually = op.join(BASE, 'annotation', 'shao', GENOME_SHORT,
+                                    'shao_' + GENOME_SHORT + '_te.saf')
+    output:
+         yaml = op.join(BASE, 'runs', RUN_NAME, "shao", 'zumis.yaml')
+    shell:
+        """
+cat << EOF > {output.yaml}
+###########################################
+#Welcome to zUMIs
+#below, please fill the mandatory inputs
+#We expect full paths for all files.
+###########################################
+
+#define a project name that will be used to name output files
+project: sim_5k_zumis
+
+#Sequencing File Inputs:
+#For each input file, make one list object & define path and barcode ranges
+#base definition vocabulary: BC(n) UMI(n) cDNA(n).
+#Barcode range definition needs to account for all ranges. You can give several comma-separated ranges for BC & UMI sequences, eg. BC(1-6,20-26)
+#you can specify between 1 and 4 input files
+sequence_files:
+  file1:
+    name: /home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R2_001.fastq.gz  #path to first file
+    base_definition:
+      - BC(1-16) #example: BC(1-6)
+      - UMI(17-28) #example: UMI(7-16)
+  file2:
+    name: /home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R1_001.fastq.gz  #path to second file
+    base_definition:
+      - cDNA(1-92) #example: cDNA(1-50)
+
+#reference genome setup
+reference:
+  STAR_index: /home/imallona/repeats_sc/indices/star/GRCh38/transcriptome/
+  SAF_file: /home/imallona/repeats_sc/annotation/shao/shao_GRCh38_te.saf
+  # GTF_file: /home/imallona/repeats_sc/annotation/gencode.v33.primary_assembly.annotation.gtf.gz
+  additional_files: #Optional parameter. It is possible to give additional reference sequences here, eg ERCC.fa
+  additional_STAR_params: #Optional parameter. you may add custom mapping parameters to STAR here
+  allow_multimapping: yes #yes or no for multimapping option
+#output directory
+out_dir: /home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/zumis # directory
+
+###########################################
+#below, you may optionally change default parameters
+###########################################
+
+#number of processors to use
+num_threads: 20
+mem_limit: 100 #Memory limit in Gigabytes, null meaning unlimited RAM usage.
+
+#barcode & UMI filtering options
+#number of bases under the base quality cutoff that should be filtered out.
+#Phred score base-cutoff for quality control.
+filter_cutoffs:
+  BC_filter:
+    num_bases: 1
+    phred: 20
+  UMI_filter:
+    num_bases: 1
+    phred: 20
+
+#Options for Barcode handling
+#You can give either number of top barcodes to use or give an annotation of cell barcodes.
+#If you leave both barcode_num and barcode_file empty, zUMIs will perform automatic cell barcode selection for you!
+barcodes:
+  barcode_num: null
+  barcode_file: null
+  automatic: yes #Give yes/no to this option. If the cell barcodes should be detected automatically. If the barcode file is given in combination with automatic barcode detection, the list of given barcodes will be used as whitelist.
+  BarcodeBinning: 1 #Hamming distance binning of close cell barcode sequences.
+  nReadsperCell: 100 #Keep only the cell barcodes with atleast n number of reads.
+
+#Options related to counting of reads towards expression profiles
+counting_opts:
+  strand: 1 #Is the library stranded? 0 = unstranded, 1 = positively stranded, 2 = negatively stranded
+  countMultiMappingReads: yes #Do you want to count the multiple aligned reads
+  fracOverlap: 0.1 #percentage reads to overlap with features
+  twoPass: yes #perform basic STAR twoPass mapping
+
+
+#Start zUMIs from stage. Possible TEXT(Filtering, Mapping, Counting, Summarising). Default: Filtering.
+which_Stage: Filtering
+
+#define dependencies program paths
+samtools_exec: samtools #samtools executable
+Rscript_exec: /usr/local/R/R-4.1.0/bin/Rscript # Rscript #Rscript executable
+STAR_exec: /home/imallona/soft/star/STAR-2.7.3a/bin/Linux_x86_64/STAR #STAR executable
+pigz_exec: pigz #pigz executable
+
+#below, fqfilter will add a read_layout flag defining SE or PE
+zUMIs_directory: /home/imallona/soft/TE_expression_in_scRNAseq/scripts/zUMIs_TE_modified/
+read_layout: SE
+EOF
+        """
+# these are coded under third_party, shao_installs.sh
+rule run_shao:
+    input:
+        yaml = op.join(BASE, 'runs', RUN_NAME, "shao", 'zumis.yaml'),
+        shao_te_saf = op.join(BASE, 'annotation', 'shao', GENOME_SHORT, 'shao_' + GENOME_SHORT + '_te.saf')
+    params:
+        zumis_master_te = "~/soft/TE_expression_in_scRNAseq/scripts/zUMIs_TE_modified/zUMIs-master-TE.sh",
+        path = op.join(BASE, 'runs', RUN_NAME, "shao"),
+        path2 = op.join(BASE, 'runs', RUN_NAME, 'zumis'),
+        umi_counting = "~/soft/TE_expression_in_scRNAseq/scripts/scRNA_UMI_counting.R"
+    threads:
+        NTHREADS
+    output:
+        zumis = op.join(BASE, RUN_NAME, "zumis", "sim_5k_zumis_featurecount.sam.txt"),
+        dt = op.join(BASE, 'runs', RUN_NAME, 'zumis', 'sim_5k_zumis_count_dt.txt')
+    shell:
+        """        
+        mkdir -p {params.path} {params.path2}
+        cd {params.path}
+
+        {params.zumis_master_te} \
+          -y {input.yaml} \
+          -d {params.path}
+
+        {Rscript} {params.umi_counting} \
+         -f {output.zumis} \
+         -r {input.shao_te_saf} \
+         -n sim_5k_zumis \
+         -s 50 \
+         -m 1 \
+         -p {threads}
+
+        mv sim_5k_zumis_count_dt.txt {params.path}
+        """

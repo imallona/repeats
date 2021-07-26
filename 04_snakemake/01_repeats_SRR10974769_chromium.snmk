@@ -48,7 +48,7 @@ rule all:
                # regress_nfeature = ['TRUE', 'FALSE'])#,
         # op.join(config['base'], 'runs', config['run_name'], 'summarize_cellranger_run_report.html'),
         # op.join(config['base'], 'runs', config['run_name'], 'summarize_cellranger_run_report_genes_regressed_out.html')
-        # op.join(config['base'], 'indices', 'cellranger', 'repeats_hg38', 'Log.out'),
+        # op.join(config['base'], 'indices', 'cellranger', 'repeats_' + config['genome'], 'Log.out'),
         # op.join(config['base'], 'runs', config['run_name'], 'cellranger_standard', 'outs', 'web_summary.html'),
         # op.join(config['base'], 'runs', config['run_name'], 'cellranger_repeats', 'outs', 'web_summary.html'),
         # op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', config['run_name'] + "_repeats.counts.gz"),
@@ -201,7 +201,7 @@ rule run_cellranger_repeats:
         flag = op.join(config['base'], 'indices', 'cellranger', 'repeats_' + config['genome'],
                        'repeats_' + config['genome'], 'reference.json')
     params:
-        transcriptome = op.join(config['base'], 'indices', 'cellranger', 'repeats_hg38', 'repeats_hg38'),
+        transcriptome = op.join(config['base'], 'indices', 'cellranger', 'repeats_' + config['genome'], 'repeats_' + config['genome']),
         sample_name = config['run_name'],
         local_mem_gb = config['params']['local_mem_gb'],
         processing_path = op.join(config['base'], 'runs', config['run_name']),

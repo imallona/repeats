@@ -796,50 +796,78 @@ d$shao$merged <- merge(d$shao$counts, d$shao$saf, by.x = 'feature', by.y = 'Gene
 head(d$shao$merged)
 ```
 
-Then, check if the coordinates match the ones from the mapping (they provide a SAM file)
-
-
 ```{r}
-d$shao$merged <- merge(d$shao$merged, d$shao$sam, by.x = 'feature', by.y = 'V4')
-d$shao$merged$overlaps <- does_overlap(d$shao$merged)
+table(table(d$shao$saf$GeneID))
+table(d$shao$saf$type)
 
+## the alignments reported, some with multimappings
+dim(d$shao$sam)
+
+## the count table, with the counts and the SAF, depicting
+dim(d$shao$merged)
+head(d$shao$merged)
+head(d$shao$sam)
+head(truth)
 
 ```
 
-```{r}
-tail(d$shao$sam)
 
-## all(d$shao$sam$family == d$shao$sam$class)
-table(d$shao$sam$mapped_name == d$shao$sam$sim_name)
+<!-- Then, check if the coordinates match the ones from the mapping (they provide a SAM file) -->
 
-tmp <- merge(d$shao$counts, as.data.frame(d$shao$sam), by.x = 'feature', by.y = 'V4')
 
-```
+<!-- ```{r} -->
+<!-- d$shao$merged <- merge(d$shao$merged, d$shao$sam, by.x = 'feature', by.y = 'V4') -->
+<!-- d$shao$merged$overlaps <- does_overlap(d$shao$merged) -->
 
-Removing Shao's te identifiers with multiple assignments. Skipped, or the total mapping is very low.
 
-Getting the aggregated counts for Shao's
+<!-- ``` -->
 
-```{r}
+<!-- ```{r} -->
+<!-- tail(d$shao$sam) -->
 
-d$shao <- merge(d$shao$counts, overlap, by.x = 'feature', by.y='feature', all.x = TRUE)
+<!-- ## all(d$shao$sam$family == d$shao$sam$class) -->
+<!-- table(d$shao$sam$mapped_name == d$shao$sam$sim_name) -->
 
-d$shao$name <- gsub("(.+);(.+);(.+);(.+)::.*", "\\1", d$shao$locus)
-d$shao$family <- gsub("(.+);(.+);(.+);(.+)::.*", "\\3", d$shao$locus)
-d$shao$class <- gsub("(.+);(.+);(.+);(.+);::.*", "\\4", d$shao$locus)
+<!-- tmp <- merge(d$shao$counts, as.data.frame(d$shao$sam), by.x = 'feature', by.y = 'V4') -->
 
-flavour <- 'shao_EM'
-d$shao <- as.data.frame(d$shao)
+<!-- ``` -->
 
-for (item in c('name', 'family', 'class')) {
-    weighted <- aggregate(d$shao$EM_distri, by = list(d$shao[,item]),
-                          function(x) sum(na.omit(x)))
+<!-- Removing Shao's te identifiers with multiple assignments. Skipped, or the total mapping is very low. -->
+
+<!-- Getting the aggregated counts for Shao's -->
+
+<!-- ```{r} -->
+
+<!-- d$shao <- merge(d$shao$counts, overlap, by.x = 'feature', by.y='feature', all.x = TRUE) -->
+
+<!-- d$shao$name <- gsub("(.+);(.+);(.+);(.+)::.*", "\\1", d$shao$locus) -->
+<!-- d$shao$family <- gsub("(.+);(.+);(.+);(.+)::.*", "\\3", d$shao$locus) -->
+<!-- d$shao$class <- gsub("(.+);(.+);(.+);(.+);::.*", "\\4", d$shao$locus) -->
+
+<!-- flavour <- 'shao_EM' -->
+<!-- d$shao <- as.data.frame(d$shao) -->
+
+<!-- for (item in c('name', 'family', 'class')) { -->
+<!--     weighted <- aggregate(d$shao$EM_distri, by = list(d$shao[,item]), -->
+<!--                           function(x) sum(na.omit(x))) -->
     
     
-    colnames(weighted) <- c(item, flavour)
-    aggs[[item]][[flavour]] <- weighted       
+<!--     colnames(weighted) <- c(item, flavour) -->
+<!--     aggs[[item]][[flavour]] <- weighted        -->
+<!-- } -->
+
+<!-- ``` -->
+
+
+```{r}
+## head(d$shao$merged)
+head(unique(truth$cell))
+head(unique(d$shao$merged$RG))
+intersect(unique(truth$cell), unique(d$shao$merged$RG))
+for (RG in unique(truth$cell)) {
+    ## subsetting the the current cell
+    curr <- d$shao$merged[d$shao$merged$RG == RG,]
 }
-
 ```
 
 

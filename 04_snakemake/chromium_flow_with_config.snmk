@@ -755,7 +755,7 @@ rule index_cellranger_repeats:
        --nthreads {threads} \
        --memgb {params.local_mem_gb} &> {log}
 
-       rm {params.uncompressed_fa}
+       # rm {params.uncompressed_fa}
        touch {output.flag}
        """
 
