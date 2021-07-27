@@ -94,6 +94,7 @@ opts_chunk$set(fig.width = 5,
 
 options(bitmapType='cairo')
 ## getOption('bitmapType')
+setDTthreads(threads = 2)
 ```
 
 

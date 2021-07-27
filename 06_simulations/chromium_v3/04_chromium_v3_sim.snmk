@@ -20,11 +20,12 @@ RUN_TECH = 'chromium'
 #@FIXME to be moved to config, not hardcoded!
 BASE = op.join('/home', 'imallona', 'repeats_sc')
 # BASE = op.join('/scratch', 'imallona', 'repeats_sc')
-NTHREADS = 5
+NTHREADS = 10
 NTHREADS_WITHIN=5
 LOCAL_MEM_GB = 100
 GENOME= 'GRCh38'
 GENOME_SHORT = 'hg38'
+SHAO_PATH=op.join('/home', 'imallona', 'src', 'repeats_sc', 'third_party') 
 
 ## @FIXME to be moved to config
 GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
@@ -125,7 +126,7 @@ rule all:
         expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
                             "by_locus_repeats.counts.gz"),
                multimappers = ['multimappers', 'unique_reads']),
-        op.join(BASE, 'runs', RUN_NAME, 'sim_postproc.html'),
+        # op.join(BASE, 'runs', RUN_NAME, 'sim_postproc.html'),
         op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv.gz'),
         op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats_no_decoy_per_locus', 'alevin',
@@ -879,8 +880,9 @@ rule generate_shao_index:
         genome = GENOME_SHORT,
         rmsk_url = temp("http://hgdownload.cse.ucsc.edu/goldenpath/" + GENOME_SHORT + "/database/rmsk.txt.gz"),
         refgene_url = temp("http://hgdownload.cse.ucsc.edu/goldenpath/" + GENOME_SHORT + "/database/refGene.txt.gz"),
-        path = op.join(BASE, 'annotation', 'shao'),
-        export_saf_files = "~/soft/TE_expression_in_scRNAseq/scripts/export_saf_files.r"
+        path = op.join(BASE, 'annotation', 'shao', GENOME_SHORT),
+        export_saf_files = op.join(SHAO_PATH, 'TE_expression_in_scRNAseq',
+                                   'scripts', 'export_saf_files.r')
     output:
         rmsk_gz = op.join(BASE, 'annotation', 'shao', GENOME_SHORT, 'rmsk.txt.gz'),
         refgene_gz = op.join(BASE, 'annotation', 'shao',  GENOME_SHORT, 'refGene.txt.gz'),
@@ -913,9 +915,13 @@ rule write_VERY_hardcoded_yaml_file_zumis_shao:
         not_used_actually = op.join(BASE, 'annotation', 'shao', GENOME_SHORT,
                                     'shao_' + GENOME_SHORT + '_te.saf')
     output:
-         yaml = op.join(BASE, 'runs', RUN_NAME, "shao", 'zumis.yaml')
+        yaml = op.join(BASE, 'runs', RUN_NAME, "shao", 'zumis.yaml')
+    params:
+        path = op.join(BASE, 'runs', RUN_NAME, "shao")
     shell:
         """
+mkdir -p {params.path}
+
 cat << EOF > {output.yaml}
 ###########################################
 #Welcome to zUMIs
@@ -933,12 +939,12 @@ project: sim_5k_zumis
 #you can specify between 1 and 4 input files
 sequence_files:
   file1:
-    name: /home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R2_001.fastq.gz  #path to first file
+    name: /home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R1_001.fastq.gz  #path to first file
     base_definition:
       - BC(1-16) #example: BC(1-6)
       - UMI(17-28) #example: UMI(7-16)
   file2:
-    name: /home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R1_001.fastq.gz  #path to second file
+    name: /home/imallona/repeats_sc/data/sim_5k_pbmc_v3/sim_5k_pbmc_v3_S1_L002_R2_001.fastq.gz  #path to second file
     base_definition:
       - cDNA(1-92) #example: cDNA(1-50)
 
@@ -958,8 +964,8 @@ out_dir: /home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/zumis # directory
 ###########################################
 
 #number of processors to use
-num_threads: 20
-mem_limit: 100 #Memory limit in Gigabytes, null meaning unlimited RAM usage.
+num_threads: 10
+mem_limit: 300 #Memory limit in Gigabytes, null meaning unlimited RAM usage.
 
 #barcode & UMI filtering options
 #number of bases under the base quality cutoff that should be filtered out.
@@ -1003,26 +1009,32 @@ pigz_exec: pigz #pigz executable
 zUMIs_directory: /home/imallona/soft/TE_expression_in_scRNAseq/scripts/zUMIs_TE_modified/
 read_layout: SE
 EOF
-        """
+    """
+
 # these are coded under third_party, shao_installs.sh
 rule run_shao:
     input:
         yaml = op.join(BASE, 'runs', RUN_NAME, "shao", 'zumis.yaml'),
-        shao_te_saf = op.join(BASE, 'annotation', 'shao', GENOME_SHORT, 'shao_' + GENOME_SHORT + '_te.saf')
+        shao_te_saf = op.join(BASE, 'annotation', 'shao', GENOME_SHORT,
+                              'shao_' + GENOME_SHORT + '_te.saf')
     params:
-        zumis_master_te = "~/soft/TE_expression_in_scRNAseq/scripts/zUMIs_TE_modified/zUMIs-master-TE.sh",
-        path = op.join(BASE, 'runs', RUN_NAME, "shao"),
+        zumis_master_te = op.join(SHAO_PATH,
+                                  'TE_expression_in_scRNAseq', 'scripts',
+                                  'zUMIs_TE_modified', 'zUMIs-master-TE.sh'),
+        path = op.join(SHAO_PATH, 'TE_expression_in_scRNAseq', 'scripts', 'zUMIs_TE_modified'),
         path2 = op.join(BASE, 'runs', RUN_NAME, 'zumis'),
-        umi_counting = "~/soft/TE_expression_in_scRNAseq/scripts/scRNA_UMI_counting.R"
+        umi_counting = op.join(SHAO_PATH,
+                               "TE_expression_in_scRNAseq", 'scripts',
+                               "scRNA_UMI_counting.R")
     threads:
         NTHREADS
     output:
-        zumis = op.join(BASE, RUN_NAME, "zumis", "sim_5k_zumis_featurecount.sam.txt"),
+        zumis = op.join(BASE, 'runs', RUN_NAME, "zumis", "sim_5k_zumis_featurecount.sam.txt"),
         dt = op.join(BASE, 'runs', RUN_NAME, 'zumis', 'sim_5k_zumis_count_dt.txt')
     shell:
         """        
         mkdir -p {params.path} {params.path2}
-        cd {params.path}
+        cd {params.path2}
 
         {params.zumis_master_te} \
           -y {input.yaml} \
@@ -1035,6 +1047,4 @@ rule run_shao:
          -s 50 \
          -m 1 \
          -p {threads}
-
-        mv sim_5k_zumis_count_dt.txt {params.path}
         """
