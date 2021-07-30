@@ -63,6 +63,7 @@ suppressPackageStartupMessages({
 ##                        "pheatmap",
 ##                        lib = "/home/imallona/R/bioc-312"), dependencies = TRUE)
 
+
 ```
 
 ```{r, include = FALSE, eval = TRUE}
@@ -125,7 +126,9 @@ d$repeats_alevin <- tximeta::tximeta(
      coldata = data.frame(
          names = "genes",
          files = params$repeats_alevin_locus,
-         stringsAsFactors = FALSE
+         stringsAsFactors = FALSE,
+         skipMeta = TRUE,
+         skipSeqinfo = TRUE
      ), type = "alevin")
 
 d$repeats_alevin <- assays(d$repeats_alevin)$counts
@@ -136,7 +139,9 @@ d$repeats_alevin_no_decoy <- tximeta::tximeta(
      coldata = data.frame(
          names = "genes",
          files = params$repeats_alevin_no_decoy_locus,
-         stringsAsFactors = FALSE
+         stringsAsFactors = FALSE,
+         skipMeta = TRUE,
+         skipSeqinfo = TRUE
      ), type = "alevin")
 
 d$repeats_alevin_no_decoy <- assays(d$repeats_alevin_no_decoy)$counts
@@ -149,14 +154,13 @@ read_featurecounts <- function(fn){
     tmp <- data.table::fread(fn,
                              sep = '\t', header = TRUE,
                              drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
-    rownames(tmp) <- tmp$Geneid ## here
+    gene_ids <- tmp$Geneid ## here
 
     colnames(tmp) <- gsub(".*:([A-Z]+)-1.*.bam","\\1", colnames(tmp))
     ## tmp <- tmp[,7:ncol(tmp)]
+    tmp  <- as(object = as.matrix(tmp[,-'Geneid']), Class = "dgCMatrix")
+    rownames(tmp) <- gene_ids
 
-    tmp <- as.data.frame(tmp)
-    rownames(tmp) <- tmp$Geneid
-    tmp <- tmp[,-1]
 
     return(tmp)
 }
@@ -204,15 +208,15 @@ rm(tmp)
 
 ```
 
-
+```{r}
 # read shao
 
-```{r}
 d$shao <- list()
 d$shao$counts <- fread(params$shao_counts)
 d$shao$saf <- fread(params$shao_saf)
 d$shao$sam <- fread(params$shao_sam)
 ## d$shao <- merge(d$shao$counts, d$shao$saf, by.x= 'feature', by.y = 'GeneID', all = TRUE)
+
 ```
 
 ```{r}
@@ -220,12 +224,87 @@ d$shao$sam <- fread(params$shao_sam)
 truth$chr <- gsub(".*::(.+):([0-9]+)-([0-9]+)", "\\1", truth$locus)
 truth$start <- gsub("(.+):([0-9]+)-([0-9]+)", "\\2", truth$locus)
 truth$end <- gsub("(.+):([0-9]+)-([0-9]+)", "\\3", truth$locus)
-
 ```
 
 ```{r, eval = FALSE}
 saveRDS(file = 'd.rds', object = d)
 ```
+
+
+Assign Shao's `EM_distri`buted counts to the original simulated reads according to their overlap
+
+
+```{r}
+## we consider a te_x identifier overlaps with a real simulated read if
+##  cell barcodes and coordinates match and overlap
+does_overlap <- function(x) {
+    return (x$Chr == paste0('chr', x$sim_chr) &
+            x$sim_start < x$End &
+            x$sim_end >= x$Start)
+}
+```
+
+We use a SAF that does contain all TEs, regardless of whether overlapping RefGenes
+
+```{r}
+d$shao$saf <- as.data.frame(d$shao$saf)
+head(d$shao$saf)
+
+d$shao$counts <- as.data.frame(na.omit(d$shao$counts))
+head(d$shao$counts)
+```
+
+We also use the SAM file from the mapping to be able to get the original read information, which was encoded at the read name level.
+
+```{r}
+d$shao$sam <- as.data.frame(d$shao$sam)
+head(d$shao$sam)
+```
+
+```{r}
+d$shao$sam$sim_locus <-  gsub("(.+);(.+);(.+);(.+)::.*", "\\2", d$shao$sam$V1)
+d$shao$sam$sim_chr <-  gsub("(.*)_([0-9XY]+)_([0-9]+)_([0-9]+)_([+-]+)", "\\2",
+                            d$shao$sam$sim_locus)
+d$shao$sam$sim_start <-  as.numeric(gsub("(.*)_([0-9XY]+)_([0-9]+)_([0-9]+)_([+-]+)", "\\3",
+                              d$shao$sam$sim_locus))
+d$shao$sam$sim_end <-  as.numeric(gsub("(.*)_([0-9XY]+)_([0-9]+)_([0-9]+)_([+-]+)", "\\4",
+                            d$shao$sam$sim_locus))
+d$shao$sam$sim_family <-  gsub("(.+);(.+);(.+);(.+)::.*", "\\3", d$shao$sam$V1)
+d$shao$sam$sim_class <-  gsub("(.+);(.+);(.+);(.+);::.*", "\\4", d$shao$sam$V1)
+d$shao$sam$sim_name <- gsub("(.*)_([0-9XY]+)_([0-9]+)_([0-9]+)_([+-]+)", "\\1",
+                            d$shao$sam$sim_locus)
+
+
+```
+
+For those TE ids which were counted, and hence assigned to a cell barcode, we retrieve the SAF coordinates
+
+```{r}
+d$shao$merged <- merge(d$shao$counts, d$shao$saf, by.x = 'feature', by.y = 'GeneID', all.x = TRUE)
+head(d$shao$merged)
+```
+
+Then, merge with the SAM file to assign TE_x identifers to CBs, but also to the original simulated read name/origin
+
+```{r}
+d$shao$merged <- merge(d$shao$merged, d$shao$sam, by.x = 'feature', by.y = 'V4', all.x = TRUE)
+d$shao$merged <- d$shao$merged[!is.na(d$shao$merged$RG),]
+head(d$shao$merged)
+
+```
+
+Some of the ZUMI's RGs were not simulated - we'll remove them from the analysis.
+
+Then, we check whether the te_x feature identifier's coordinates overlap the simulated reads' coordinates
+
+```{r}
+d$shao$merged$overlaps <- does_overlap(d$shao$merged)
+table(d$shao$merged$V2 == d$shao$merged$RG)
+d$shao$merged <- d$shao$merged[d$shao$merged$V2 == d$shao$merged$RG,]
+table(d$shao$merged$overlaps)
+## d$shao <- as.data.frame(d$shao$merged)
+```
+
 
 # Locus level 
 
@@ -244,91 +323,108 @@ sapply(d, function(x) head(colnames(x)))
 
 ```
 
-Proportion of correctly mapped, incorrectly mapped, unaligned
+Proportion of correctly mapped, incorrectly mapped, unaligned etc, using dgCmatrices.
 
 ```{r}
 props <- list()
 ```
 
-For alevin
+We define: 
+- correct, unique mapping, simulated read maps to the simulated origin
+- multi, multimapping, regardless of where does it map
+- wrong, the reported mapping coordinates were not simulated (for that cell)
+- missing, the simulated reads are not present neither as correct or multimapping
 
 ```{r}
+## 130 GB
+options(future.globals.maxSize = 130 * 1024^3)
 
-res <- list()
-for (cell in unique(truth$cell)) {
+plan(multiprocess, workers = NTHREADS)
 
-    if (cell %in% colnames(d$repeats_alevin)) {
-        true <- truth[truth$cell == cell, 'id']
+fc  <- c(featurecounts_runs, grep('alevin', names(d), value = TRUE))
 
-        tmp <- d$repeats_alevin[,cell]
-        observed <- tmp[tmp > 0]
+props2 <- future_lapply(fc, function(x) {
+    res <- list()
+    for (cell in unique(truth$cell)) {
 
-        ## among these, some are observed 'fractionally'
-        correct <- observed[observed == 1]
+        if (cell %in% colnames(d[[x]])) {
+            true <- truth[truth$cell == cell, 'id']
 
-        ## under- or overestimation
-        multi <- observed[observed != 1]
+            tmp <- d[[x]][,cell]
+            observed <- tmp[tmp > 0]
 
-        missing <- setdiff(true, names(observed))
-        wrong <- setdiff(names(observed), true)
+            ## among these, some are observed 'fractionally'
+            correct <- observed[observed == 1]
 
-        res[[cell]] <- setNames(c(cell,
-                                  length(true), length(correct), length(multi),
-                                  length(missing),
-                                  length(wrong)),
-                                c('true', 'correct', 'multi', 'missing', 'wrong'))
+            ## under- or overestimation
+            multi <- observed[observed != 1]
+
+            missing <- setdiff(true, names(observed))
+            wrong <- setdiff(names(observed), true)
+
+            stopifnot(all(missing %in% true))
+
+            res[[cell]] <- setNames(c(cell,
+                                      length(true), length(correct), length(multi),
+                                      length(missing),
+                                      length(wrong)),
+                                    c('cell', 'true', 'correct', 'multi', 'missing', 'wrong'))
+        }
+        else {
+            res[[cell]] <- setNames( c(cell, length(true), 0, 0, length(true), 0),
+                                    c('cell', 'true', 'correct', 'multi', 'missing', 'wrong'))
+        }
     }
-    else {
-        res[[cell]] <- setNames( c(cell, length(true), 0, 0, length(true), 0),
-                                c('cell', 'true', 'correct', 'multi', 'missing', 'wrong'))
-    }
-}
 
-res <- do.call(rbind.data.frame, res)
-colnames(res) <-  c('cell', 'true', 'correct', 'multi', 'missing', 'wrong')
-props[['repeats_alevin']] <- res
-props[['repeats_alevin']]$flavour <- 'repeats_alevin'
+    res <- do.call(rbind.data.frame, res)
+    colnames(res) <-  c('cell', 'true', 'correct', 'multi', 'missing', 'wrong')
+    res$flavour <- x
+    return(res)
+})
 
-```
 
-For alevin without decoy
+## res <- list()
+## for (cell in unique(truth$cell)) {
 
-```{r}
+##     if (cell %in% colnames(d$repeats_alevin)) {
+##         true <- truth[truth$cell == cell, 'id']
 
-res <- list()
-for (cell in unique(truth$cell)) {
+##         tmp <- d$repeats_alevin[,cell]
+##         observed <- tmp[tmp > 0]
 
-    if (cell %in% colnames(d$repeats_alevin_no_decoy)) {
-        true <- truth[truth$cell == cell, 'id']
+##         ## among these, some are observed 'fractionally'
+##         correct <- observed[observed == 1]
 
-        tmp <- d$repeats_alevin_no_decoy[,cell]
-        observed <- tmp[tmp > 0]
+##         ## under- or overestimation
+##         multi <- observed[observed != 1]
 
-        ## among these, some are observed 'fractionally'
-        correct <- observed[observed == 1]
+##         missing <- setdiff(true, names(observed))
+##         wrong <- setdiff(names(observed), true)
 
-        ## under- or overestimation
-        multi <- observed[observed != 1]
+##         stopifnot(all(missing %in% true))
 
-        missing <- setdiff(true, names(observed))
-        wrong <- setdiff(names(observed), true)
+##         res[[cell]] <- setNames(c(cell,
+##                                   length(true), length(correct), length(multi),
+##                                   length(missing),
+##                                   length(wrong)),
+##                                 c('cell', 'true', 'correct', 'multi', 'missing', 'wrong'))
+##     }
+##     else {
+##         res[[cell]] <- setNames( c(cell, length(true), 0, 0, length(true), 0),
+##                                 c('cell', 'true', 'correct', 'multi', 'missing', 'wrong'))
+##     }
+##     ## stopifnot(as.numeric(res[[cell]]['true']) == (as.numeric(res[[cell]]['correct']) +
+##     ##                                               as.numeric(res[[cell]]['multi']) +
+##     ##                                               as.numeric(res[[cell]]['missing']) +
+##     ##                                               as.numeric(res[[cell]]['wrong'])))
+## }
 
-        res[[cell]] <- setNames(c(cell,
-                                  length(true), length(correct), length(multi),
-                                  length(missing),
-                                  length(wrong)),
-                                c('true', 'correct', 'multi', 'missing', 'wrong'))
-    }
-    else {
-        res[[cell]] <- setNames( c(cell, length(true), 0, 0, length(true), 0),
-                                c('cell', 'true', 'correct', 'multi', 'missing', 'wrong'))
-    }
-}
+## res <- do.call(rbind.data.frame, res)
+## colnames(res) <-  c('cell', 'true', 'correct', 'multi', 'missing', 'wrong')
+## props[['repeats_alevin']] <- res
+## props[['repeats_alevin']]$flavour <- 'repeats_alevin'
 
-res <- do.call(rbind.data.frame, res)
-colnames(res) <-  c('cell', 'true', 'correct', 'multi', 'missing', 'wrong')
-props[['repeats_alevin_no_decoy']] <- res
-props[['repeats_alevin_no_decoy']]$flavour <- 'repeats_alevin_no_decoy'
+
 ```
 
 
@@ -376,78 +472,68 @@ props[['repeats_alevin_no_decoy']]$flavour <- 'repeats_alevin_no_decoy'
 <!-- ``` -->
 
 
-<!-- make this faster -->
 
-<!-- ```{r} -->
 
-<!-- y <- list() -->
-<!-- for (ii in seq_along(X)) { -->
-<!--   y[[ii]] <- local({ -->
-<!--     x <- X[[ii]] -->
-<!--     tmp <- sqrt(x) -->
-<!--     tmp            ## same as return(tmp) -->
-<!--   }) -->
-<!-- } -->
+Shao: now we get the proportions of correct/multimapping etc for the truth. Mind that the sum of multimap, wrong, missing and observed might not match the simulated, and that we added an extra step of overlapping the reported TE identifier's coordinates with the simulated ones.
 
-<!-- library(future.apply) -->
-<!-- plan(multiprocess) ## => parallelize on your local computer -->
+Here:
 
-<!-- X <- 1:5 -->
-
-<!-- y <- future_lapply(X, function(x) { -->
-<!--   tmp <- sqrt(x) -->
-<!--   tmp -->
-<!-- }) -->
-
-<!-- ``` -->
+- correct, unique mappings that also overlap the simulated read
+- multi, multimapping, regardless of whether the mapping site is ok or not
+- wrong, the reported coordinates do not overlap any of the simulated repeats for that cell
+- missing, the simulated reads are not present neither as correct or multimapping
 
 
 ```{r}
-## 130 GB
-options(future.globals.maxSize = 130 * 1024^3)
 
-plan(multiprocess, workers = NTHREADS) 
+```
 
-## no scte nor assembly because one uses repName aggregated data
-##   and the other does not give a meaningful identifier
-## fc  <- c(featurecounts_runs, 'scte')
-fc  <- featurecounts_runs
+```{r}
+res <- list()
+for (cell in unique(truth$cell)) {
 
-props2 <- future_lapply(fc, function(x) {
-    res <- list()
-    for (cell in unique(truth$cell)) {
+    if (cell %in% d$shao$RG) {
+        true <- truth[truth$cell == cell, 'id']
 
-        if (cell %in% colnames(d[[x]])) {
-            true <- truth[truth$cell == cell, 'id']
+        observed <- d$shao$merged[d$shao$merged$RG == cell,]        
+        obs_counts <- d$shao$counts[d$shao$counts$RG == cell,]       
 
-            observed <- rownames(d[[x]])[d[[x]][,cell] > 0]
+        ## with all the merging, I introduce some dupes-
+        ##  stop procedure if those exceed 2% of the original records
+        stopifnot(abs(nrow(observed) - nrow(obs_counts)) < nrow(obs_counts)*0.02)
+        ## among these, some te_x overlap with the simulated reads
+        correct <- observed[observed$overlaps &
+                            !duplicated(observed$sim_locus) &
+                            observed$EM_distri == 1, 'sim_locus']
 
-            ## among these, some are observed 'fractionally'
-            correct <- observed[d[[x]][observed,cell] == 1]
+        ## multimapping
+        ## multi <- unique(observed[observed$EM_distri != 1 , 'sim_locus'])
+        multi <- observed[duplicated(observed$sim_locus), 'sim_locus']
 
-            ## under- or overestimation
-            multi <- observed[d[[x]][observed,cell] != 1]
+        wrong <- unique(observed[!observed$overlaps, 'sim_locus'])
 
-            missing <- setdiff(true, observed)
-            wrong <- setdiff(observed, true)
+        missing <- setdiff(true, unique(observed$sim_locus))
 
-            res[[cell]] <- setNames(c(cell,
-                                      length(true), length(correct), length(multi),
-                                      length(missing),
-                                      length(wrong)),
-                                    c('cell', 'true', 'correct', 'multi', 'missing', 'wrong'))
-        }
-        else {
-            res[[cell]] <- setNames( c(cell, length(true), 0, 0, length(true), 0),
-                                    c('cell', 'true', 'correct', 'multi', 'missing', 'wrong'))
-        }
+        res[[cell]] <- setNames(c(cell,
+                                  length(true), length(correct), length(multi),
+                                  length(missing),
+                                  length(wrong)),
+                                c('cell', 'true', 'correct', 'multi', 'missing', 'wrong'))
     }
+    else {
+        res[[cell]] <- setNames( c(cell, length(true), 0, 0, length(true), 0),
+                                c('cell', 'true', 'correct', 'multi', 'missing', 'wrong'))
+    }
+    ## stopifnot(as.numeric(res[[cell]]['true']) == (as.numeric(res[[cell]]['correct']) +
+    ##                                            as.numeric(res[[cell]]['multi']) +
+    ##                                            as.numeric(res[[cell]]['missing']) +
+    ##                                            as.numeric(res[[cell]]['wrong'])))
+}
 
-    res <- do.call(rbind.data.frame, res)
-    colnames(res) <-  c('cell', 'true', 'correct', 'multi', 'missing', 'wrong')
-    res$flavour <- x
-    return(res)
-})
+res <- do.call(rbind.data.frame, res)
+colnames(res) <-  c('cell', 'true', 'correct', 'multi', 'missing', 'wrong')
+props[['shao']] <- res
+props[['shao']]$flavour <- 'shao'
 
 ```
 
@@ -616,6 +702,7 @@ ggplot(fd2, aes(x=variable, weight=mean, ymin=lower, ymax=upper, fill=flavour)) 
     xlab('strategy') +
     ylab('alignments per cell (proportion)')
 
+
 ```
 
 
@@ -625,6 +712,9 @@ From incorrectly mapped, get those that at least mach the repName, repFamily, or
 
 ```{r}
 fd <- do.call(rbind.data.frame, c(props$alevin, props2))
+
+## fd <- reshape2::melt(fd,  id.vars = c('cell', 'flavour'))
+## fd$value <- as.numeric(fd$value)
 
 grouped <- aggregate(list(correct = as.numeric(fd$correct),
                           truth = as.numeric(fd$true),
@@ -710,115 +800,7 @@ for (item in c('name', 'family', 'class')) {
 }
 ```
 
-Add Shao
-
-<!-- ```{r} -->
-
-<!-- d$shao$saf <- as.data.frame(d$shao$saf) -->
-
-<!-- overlaps <- mergeByOverlaps(query = GRanges(seqnames = d$shao$saf$Chr, -->
-<!--                                      ranges = IRanges(d$shao$saf$Start, d$shao$saf$End), -->
-<!--                                      feature = d$shao$saf$GeneID), -->
-<!--                      subject = GRanges(seqnames = paste0('chr', truth$chr), -->
-<!--                                         ranges = IRanges(as.numeric(truth$start), -->
-<!--                                                          as.numeric(truth$end)), -->
-<!--                                        locus = truth$locus), -->
-<!--                      minoverlap = 30) -->
-
-<!-- ## still, these are not unique -->
-<!-- overlap <- as.data.frame(overlaps[c('feature', 'locus')]) -->
-<!-- dim(overlap) -->
-
-
-<!-- ``` -->
-
-<!-- Removing Shao's te identifiers with multiple assignments. Skipped, or the total mapping is very low. -->
-
-<!-- ```{r, eval = FALSE} -->
-<!-- overlap <- overlap[!duplicated(overlap$feature),] -->
-<!-- dim(overlap) -->
-<!-- ``` -->
-
-<!-- Getting the aggregated counts for Shao's -->
-
-<!-- ```{r} -->
-
-<!-- d$shao <- merge(d$shao$counts, overlap, by.x = 'feature', by.y='feature', all.x = TRUE) -->
-
-<!-- d$shao$name <- gsub("(.+);(.+);(.+);(.+)::.*", "\\1", d$shao$locus) -->
-<!-- d$shao$family <- gsub("(.+);(.+);(.+);(.+)::.*", "\\3", d$shao$locus) -->
-<!-- d$shao$class <- gsub("(.+);(.+);(.+);(.+);::.*", "\\4", d$shao$locus) -->
-
-<!-- flavour <- 'shao_EM' -->
-<!-- d$shao <- as.data.frame(d$shao) -->
-
-<!-- for (item in c('name', 'family', 'class')) { -->
-<!--     weighted <- aggregate(d$shao$EM_distri, by = list(d$shao[,item]), -->
-<!--                           function(x) sum(na.omit(x))) -->
-    
-    
-<!--     colnames(weighted) <- c(item, flavour) -->
-<!--     aggs[[item]][[flavour]] <- weighted        -->
-<!-- } -->
-
-<!-- ``` -->
-
-
-```{r}
-
-does_overlap <- function(x) {
-    return (x$Chr == paste0('chr', x$sim_chr) | abs(x$Start - x$sim_start) < 100)
-}
-
-d$shao$saf <- as.data.frame(d$shao$saf)
-d$shao$counts <- as.data.frame(na.omit(d$shao$counts))
-d$shao$sam <- as.data.frame(d$shao$sam)
-
-d$shao$sam$sim_locus <-  gsub("(.+);(.+);(.+);(.+)::.*", "\\2", d$shao$sam$V1)
-d$shao$sam$sim_chr <-  gsub("(.*)_([0-9XY]+)_([0-9]+)_([0-9]+)_([+-]+)", "\\2",
-                            d$shao$sam$sim_locus)
-d$shao$sam$sim_start <-  as.numeric(gsub("(.*)_([0-9XY]+)_([0-9]+)_([0-9]+)_([+-]+)", "\\3",
-                              d$shao$sam$sim_locus))
-d$shao$sam$sim_end <-  as.numeric(gsub("(.*)_([0-9XY]+)_([0-9]+)_([0-9]+)_([+-]+)", "\\4",
-                            d$shao$sam$sim_locus))
-d$shao$sam$sim_family <-  gsub("(.+);(.+);(.+);(.+)::.*", "\\3", d$shao$sam$V1)
-d$shao$sam$sim_class <-  gsub("(.+);(.+);(.+);(.+);::.*", "\\4", d$shao$sam$V1)
-d$shao$sam$sim_name <- gsub("(.*)_([0-9XY]+)_([0-9]+)_([0-9]+)_([+-]+)", "\\1",
-                            d$shao$sam$sim_locus)
-
-
-str(d$shao)
 ```
-
-For those TE ids assigned to CB, retrieve the SAF coordinates
-```{r}
-d$shao$merged <- merge(d$shao$counts, d$shao$saf, by.x = 'feature', by.y = 'GeneID')
-head(d$shao$merged)
-```
-
-```{r}
-table(table(d$shao$saf$GeneID))
-table(d$shao$saf$type)
-
-## the alignments reported, some with multimappings
-dim(d$shao$sam)
-
-## the count table, with the counts and the SAF, depicting
-dim(d$shao$merged)
-head(d$shao$merged)
-head(d$shao$sam)
-head(truth)
-
-```
-
-
-<!-- Then, check if the coordinates match the ones from the mapping (they provide a SAM file) -->
-
-
-<!-- ```{r} -->
-<!-- d$shao$merged <- merge(d$shao$merged, d$shao$sam, by.x = 'feature', by.y = 'V4') -->
-<!-- d$shao$merged$overlaps <- does_overlap(d$shao$merged) -->
-
 
 <!-- ``` -->
 
@@ -861,9 +843,10 @@ head(truth)
 
 ```{r}
 ## head(d$shao$merged)
-head(unique(truth$cell))
-head(unique(d$shao$merged$RG))
-intersect(unique(truth$cell), unique(d$shao$merged$RG))
+## head(unique(truth$cell))
+## head(unique(d$shao$merged$RG))
+## intersect(unique(truth$cell), unique(d$shao$merged$RG))
+## intersect(unique(truth$umi), unique(d$shao$merged$RG))
 for (RG in unique(truth$cell)) {
     ## subsetting the the current cell
     curr <- d$shao$merged[d$shao$merged$RG == RG,]
