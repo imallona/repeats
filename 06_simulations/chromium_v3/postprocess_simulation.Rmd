@@ -49,6 +49,7 @@ suppressPackageStartupMessages({
     library(future.apply)
     library(data.table)
     library(GenomicRanges)
+    library(scales)
 })
 
 ## if (!requireNamespace("BiocManager", quietly = TRUE))
@@ -66,6 +67,28 @@ suppressPackageStartupMessages({
 
 ```
 
+
+```{r}
+flavour_annot <- read.csv(text="id,multimapping,overlap
+truth,truth,truth
+repeats_alevin,multimapping,strict
+repeats_alevin_no_decoy,multimapping,all
+repeats_featurecounts_unique,unique,all
+repeats_only_unique,unique,strict
+repeats_featurecounts_multi,multimapping,all
+repeats_only_multi,multimapping,strict
+repeats_bowtie_unique,unique,all
+scte,multimapping,all
+shao,multimapping,all", header = TRUE)
+```
+
+
+```{r}
+## palettes definition
+pal_mapping <- setNames(c("#3fadaf","#cb5362","#6ea84e","#9d6cc1","#bb873c"),
+                        c('truth', 'correct', 'multimapping', 'wrong', 'missing'))
+```
+
 ```{r, include = FALSE, eval = TRUE}
 BASE <- file.path('/home', 'imallona', 'repeats_sc')
 ```
@@ -79,7 +102,7 @@ opts_chunk$set(fig.width = 5,
                include = TRUE,
                cache.lazy = FALSE,
                warning = TRUE,
-               error = TRUE,
+               error = FALSE,
                message = FALSE)
 
 
@@ -277,6 +300,7 @@ d$shao$sam$sim_name <- gsub("(.*)_([0-9XY]+)_([0-9]+)_([0-9]+)_([+-]+)", "\\1",
 
 ```
 
+
 For those TE ids which were counted, and hence assigned to a cell barcode, we retrieve the SAF coordinates
 
 ```{r}
@@ -352,9 +376,10 @@ props2 <- future_lapply(fc, function(x) {
 
             tmp <- d[[x]][,cell]
             observed <- tmp[tmp > 0]
+            ## names(observed) <- rownames(tmp)[tmp>0]
 
-            ## among these, some are observed 'fractionally'
-            correct <- observed[observed == 1]
+            ## among these, some are observed 'fractionally', if multimappers are allowed
+            correct <- observed[names(observed) %in% true] 
 
             ## under- or overestimation
             multi <- observed[observed != 1]
@@ -484,35 +509,139 @@ Here:
 - missing, the simulated reads are not present neither as correct or multimapping
 
 
-```{r}
 
-```
+<!-- ```{r} -->
+<!-- res <- list() -->
+<!-- for (cell in unique(truth$cell)) { -->
+
+<!--     if (cell %in% d$shao$counts$RG) { -->
+<!--         true <- truth[truth$cell == cell, 'id'] -->
+
+<!--         ## observed <- na.omit(d$shao$merged[d$shao$merged$RG == cell,]) -->
+<!--         obs_counts <- d$shao$counts[d$shao$counts$RG == cell,] -->
+
+<!--         ## test to do the merges locally start -->
+<!--         foo <- merge(obs_counts, d$shao$saf, by.x = 'feature', by.y = 'GeneID', all.x = TRUE) -->
+<!--         observed <-  na.omit(merge(foo, d$shao$sam, by.x = 'feature', by.y = 'V4', all.x = TRUE)) -->
+<!--         observed$overlaps <- does_overlap(observed) -->
+
+<!--         ## we disambiguate the tes with two potential origins to one, prioritizing the one that -->
+<!--         ##   does overlap -->
+<!--         observed <- observed[order(observed$feature, observed$overlap, decreasing = TRUE),] -->
+<!--         prev <- 'empty' -->
+<!--         observed$keep <- TRUE -->
+<!--         for (i in 1:nrow(observed)) { -->
+<!--             ## cat(prev, curr, i, '\n') -->
+<!--             curr <- observed$feature[i] -->
+<!--             if (curr == prev) { -->
+<!--                 observed$keep[i] <- FALSE -->
+<!--             } -->
+<!--             prev <- curr  -->
+<!--         } -->
+
+<!--         observed <- observed[observed$keep,] -->
+        
+<!--         ## test end -->
+
+<!--         ## with all the merging, I introduce some dupes- -->
+<!--         ##  stop procedure if those exceed 2% of the original records -->
+<!--         ## stopifnot(abs(nrow(observed) - nrow(obs_counts)) < nrow(obs_counts)*0.02) -->
+<!--         ## among these, some te_x overlap with the simulated reads -->
+<!--         correct <- observed[observed$overlaps & -->
+<!--                             !duplicated(observed$sim_locus) & -->
+<!--                             observed$EM_distri == 1 & -->
+<!--                             observed$sim_locus %in% true, 'sim_locus'] -->
+
+<!--         ## multimapping -->
+<!--         ## multi <- unique(observed[observed$EM_distri != 1 , 'sim_locus']) -->
+<!--         ## simulated reads perspective -->
+<!--         multi <- observed[duplicated(observed$sim_locus) | -->
+<!--                         observed$EM_distri != 1, 'sim_locus'] -->
+
+<!--         wrong <- unique(observed[!observed$overlaps, -->
+<!--                                    'sim_locus' ]) -->
+
+<!--         missing <- setdiff(true, unique(observed$sim_locus)) -->
+<!--         ## missing <- setdiff(true, unique(c(correct, multi))) -->
+
+<!--         res[[cell]] <- setNames(c(cell, -->
+<!--                                   length(true), length(correct), length(multi), -->
+<!--                                   length(missing), -->
+<!--                                   length(wrong)), -->
+<!--                                 c('cell', 'true', 'correct', 'multi', 'missing', 'wrong')) -->
+<!--     } -->
+<!--     else { -->
+<!--         res[[cell]] <- setNames( c(cell, length(true), 0, 0, length(true), 0), -->
+<!--                                 c('cell', 'true', 'correct', 'multi', 'missing', 'wrong')) -->
+<!--     } -->
+<!--     ## stopifnot(as.numeric(res[[cell]]['true']) == (as.numeric(res[[cell]]['correct']) + -->
+<!--     ##                                            as.numeric(res[[cell]]['multi']) + -->
+<!--     ##                                            as.numeric(res[[cell]]['missing']) + -->
+<!--     ##                                            as.numeric(res[[cell]]['wrong']))) -->
+<!-- } -->
+
+<!-- res <- do.call(rbind.data.frame, res) -->
+<!-- colnames(res) <-  c('cell', 'true', 'correct', 'multi', 'missing', 'wrong') -->
+<!-- props[['shao']] <- res -->
+<!-- props[['shao']]$flavour <- 'shao' -->
+
+<!-- ``` -->
+
+
 
 ```{r}
 res <- list()
 for (cell in unique(truth$cell)) {
 
-    if (cell %in% d$shao$RG) {
+    if (cell %in% d$shao$counts$RG) {
         true <- truth[truth$cell == cell, 'id']
 
-        observed <- d$shao$merged[d$shao$merged$RG == cell,]        
-        obs_counts <- d$shao$counts[d$shao$counts$RG == cell,]       
+        ## observed <- na.omit(d$shao$merged[d$shao$merged$RG == cell,])
+        obs_counts <- d$shao$counts[d$shao$counts$RG == cell,]
+
+        ## test to do the merges locally start
+        foo <- merge(obs_counts, d$shao$saf, by.x = 'feature', by.y = 'GeneID', all.x = TRUE)
+        observed <-  na.omit(merge(foo, d$shao$sam, by.x = 'feature', by.y = 'V4', all.x = TRUE))
+        observed$overlaps <- does_overlap(observed)
+
+        ## ## we disambiguate the tes with two potential origins to one, prioritizing the one that
+        ## ##   does overlap
+        ## observed <- observed[order(observed$feature, observed$overlap, decreasing = TRUE),]
+        ## prev <- 'empty'
+        ## observed$keep <- TRUE
+        ## for (i in 1:nrow(observed)) {
+        ##     ## cat(prev, curr, i, '\n')
+        ##     curr <- observed$feature[i]
+        ##     if (curr == prev) {
+        ##         observed$keep[i] <- FALSE
+        ##     }
+        ##     prev <- curr 
+        ## }
+
+        ## observed <- observed[observed$keep,]
+        
+        ## test end
 
         ## with all the merging, I introduce some dupes-
         ##  stop procedure if those exceed 2% of the original records
-        stopifnot(abs(nrow(observed) - nrow(obs_counts)) < nrow(obs_counts)*0.02)
+        ## stopifnot(abs(nrow(observed) - nrow(obs_counts)) < nrow(obs_counts)*0.02)
         ## among these, some te_x overlap with the simulated reads
         correct <- observed[observed$overlaps &
                             !duplicated(observed$sim_locus) &
-                            observed$EM_distri == 1, 'sim_locus']
+                            observed$EM_distri == 1 &
+                            observed$sim_locus %in% true, 'sim_locus']
 
         ## multimapping
         ## multi <- unique(observed[observed$EM_distri != 1 , 'sim_locus'])
-        multi <- observed[duplicated(observed$sim_locus), 'sim_locus']
+        ## simulated reads perspective
+        multi <- observed[duplicated(observed$sim_locus) |
+                        observed$EM_distri != 1, 'sim_locus']
 
-        wrong <- unique(observed[!observed$overlaps, 'sim_locus'])
+        wrong <- unique(observed[!observed$overlaps,
+                                   'sim_locus' ])
 
         missing <- setdiff(true, unique(observed$sim_locus))
+        ## missing <- setdiff(true, unique(c(correct, multi)))
 
         res[[cell]] <- setNames(c(cell,
                                   length(true), length(correct), length(multi),
@@ -537,6 +666,7 @@ props[['shao']]$flavour <- 'shao'
 
 ```
 
+
 ```{r}
 sapply(d, function(x) head(colnames(x)))
 sapply(props2, function(x) head(colnames(x)))
@@ -552,8 +682,10 @@ saveRDS(file = 'props.rds', object = c(props, props2))
 ```{r}
 fd <- do.call(rbind.data.frame, c(props, props2))
 tail(fd)
+for (col in setdiff(colnames(fd), c('flavour', 'cell'))) {
+    fd[,col] <- as.numeric(fd[,col])
+}
 ```
-
 
 ```{r}
 ## stolen from https://stackoverflow.com/questions/53241804/error-bars-incorrectly-positioned-in-a-stacked-bar-graph-r
@@ -614,14 +746,16 @@ fd2$variable <- factor(fd2$variable, levels = c('correct', 'multimapping', 'wron
 
 ```
 
+
 ```{r}
 ggplot(fd2, aes(x=flavour, weight=mean, ymin=lower, ymax=upper, fill=variable)) +
     geom_bar      (position=position_dodge(), aes(y=mean), stat="identity") +
     geom_errorbar (position=position_dodge(width=0.9), colour="black", width = 0.2) +
     theme_bw() +
     scale_x_discrete(limits = unique(fd2$flavour)) +
-    scale_fill_grey(name = 'mapping\ncategory') +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    ## scale_fill_grey(name = 'mapping\ncategory') +
+    scale_fill_manual("mapping\ncategory", values = pal_mapping) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
     xlab('strategy') +
     ylab('alignments per cell (counts)')
 ```
@@ -679,12 +813,23 @@ fd2$variable <- factor(fd2$variable, levels = c('correct', 'multimapping', 'wron
 
 
 ```{r}
+
+ggplot(data = fd2,
+       mapping = aes_string(x = "variable", 
+                            y = "flavour")) +
+    geom_point(mapping = aes_string(size = "mean"))
+
+```
+
+
+```{r}
 ggplot(fd2, aes(x=flavour, weight=mean, ymin=lower, ymax=upper, fill=variable)) +
     geom_bar      (position=position_dodge(), aes(y=mean), stat="identity") +
     geom_errorbar (position=position_dodge(width=0.9), colour="black", width = 0.2) +
     theme_bw() +
     scale_x_discrete(limits = unique(fd$flavour)) +
-    scale_fill_grey(name = 'mapping\ncategory') +
+    ## scale_fill_grey(name = 'mapping\ncategory') +
+    scale_fill_manual("mapping\ncategory", values = pal_mapping) + 
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     xlab('strategy') +
     ylab('alignments per cell (proportion)')
@@ -711,7 +856,7 @@ From incorrectly mapped, get those that at least mach the repName, repFamily, or
 # Not averages, but rather total amounts
 
 ```{r}
-fd <- do.call(rbind.data.frame, c(props$alevin, props2))
+fd <- do.call(rbind.data.frame, c(props, props2))
 
 ## fd <- reshape2::melt(fd,  id.vars = c('cell', 'flavour'))
 ## fd$value <- as.numeric(fd$value)
@@ -719,20 +864,21 @@ fd <- do.call(rbind.data.frame, c(props$alevin, props2))
 grouped <- aggregate(list(correct = as.numeric(fd$correct),
                           truth = as.numeric(fd$true),
                           wrong = as.numeric(fd$wrong),
-                          multi = as.numeric(fd$multi),
+                          multimapping = as.numeric(fd$multi),
                           missing = as.numeric(fd$missing)),
                      by = list(fd$flavour), sum)
 
 grouped <- reshape2::melt(grouped, id.vars = 'Group.1') 
 grouped$variable <- factor(grouped$variable, levels = c('truth', 'correct',
-                                                        'multi', 'missing', 'wrong'))
+                                                        'multimapping', 'missing', 'wrong'))
 
 levels(grouped$variable)
 grouped %>% ggplot(aes(x=Group.1, y=value, fill =variable)) +
     geom_bar      (position=position_dodge(), stat="identity") +
     theme_bw() +
     scale_x_discrete(limits = unique(fd$flavour)) +
-    scale_fill_grey(name = 'mapping\ncategory') +
+    scale_fill_manual("mapping\ncategory", values = pal_mapping) + 
+    ## scale_fill_grey(name = 'mapping\ncategory') +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     xlab('strategy') +
     ylab('alignments (number of)')
@@ -747,58 +893,91 @@ Proportion of families?
 ```{r}
 
 aggs <- list()
-
 for (item in c('name', 'family', 'class')) {
+    tryCatch({
+        flavour <- 'truth'
+        
+        ## truth contains a dictionary
+        ## we weight half counts for multimappers (truth doesn't have them, but other tools might)
+        weighted <- as.data.frame(table(truth[,item], truth$count))
+        head(weighted)
+        weighted$weight <- as.numeric(as.character(weighted$Var2)) * weighted$Freq
+        
+        weighted <- aggregate(weighted$weight, by = list(weighted$Var1), sum)
+        colnames(weighted) <- c(item, 'truth')
+        aggs[[item]] <- list(truth = weighted)
 
-    ## truth contains a dictionary
-    ## we weight half counts for multimappers (truth doesn't have them, but other tools might)
-    weighted <- as.data.frame(table(truth[,item], truth$count))
-    head(weighted)
-    weighted$weight <- as.numeric(as.character(weighted$Var2)) * weighted$Freq
-    
-    weighted <- aggregate(weighted$weight, by = list(weighted$Var1), sum)
-    colnames(weighted) <- c(item, 'truth')
-    aggs[[item]] <- list(truth = weighted)
+        cat('done truth ', item, '\n\n')
 
-    for (flavour in setdiff(names(d), 'shao')) {
-        if (flavour == 'scte') {
-            d[[flavour]][] <- lapply(d[[flavour]], function(x) {
-                if(is.factor(x)) as.numeric(as.character(x))
-                else if (is.character(x)) as.numeric(x)
-                else x
-            })
+        for (flavour in rev(names(d))) {
+            if (flavour == 'scte') {
+                d[[flavour]][] <- lapply(d[[flavour]], function(x) {
+                    if(is.factor(x)) as.numeric(as.character(x))
+                    else if (is.character(x)) as.numeric(x)
+                    else x
+                })
+                
+                summed <- rowSums(d[[flavour]])
+                summed <- data.frame(name = names(summed),
+                                     sum = summed)
+
+                annot <- truth[,c('name', item)]
+                annot <- annot[!duplicated(annot),]
+
+                summed <- merge(summed,
+                                annot,
+                                by.x = 'name',
+                                by.y = 'name')
+
+                weighted <- aggregate(summed$sum, by = list(summed[,item]), sum)
+                colnames(weighted) <- c(item, flavour)
+                aggs[[item]][[flavour]] <- weighted
+            }
+            else if (flavour == 'shao') {
+                summed <- aggregate(d$shao$merged$EM_distri,
+                                    by=list(name = d$shao$merged$sim_name), FUN = sum)
+                
+                colnames(summed) <- c('name', 'sum')
+
+                annot <- truth[,c('name', item)]
+                annot <- annot[!duplicated(annot),]
+                
+                summed <- merge(summed, annot,
+                                by.x = 'name',
+                                by.y = 'name')
+                
+                weighted <- aggregate(summed$sum, by = list(summed[,item]), sum)
+                colnames(weighted) <- c(item, flavour)
+                aggs[[item]][[flavour]] <- weighted        
+                
+            }
+            else {
+                summed <- rowSums(d[[flavour]])
+                summed <- data.frame(id = names(summed),
+                                     sum = summed)
+                summed <- merge(summed, truth[,c('id', item)],
+                                by.x = 'id',
+                                by.y = 'id')
+                
+                weighted <- aggregate(summed$sum, by = list(summed[,item]), sum)
+                colnames(weighted) <- c(item, flavour)
+                aggs[[item]][[flavour]] <- weighted            
+            }
+            cat('done ', item, flavour, '\n\n')
             
-            summed <- rowSums(d[[flavour]])
-            summed <- data.frame(name = names(summed),
-                                 sum = summed)
-
-            annot <- truth[,c('name', item)]
-            annot <- annot[!duplicated(annot),]
-
-            summed <- merge(summed,
-                            annot,
-                            by.x = 'name',
-                            by.y = 'name')
-
-            weighted <- aggregate(summed$sum, by = list(summed[,item]), sum)
-            colnames(weighted) <- c(item, flavour)
-            aggs[[item]][[flavour]] <- weighted       
         }
-        else {
-            summed <- rowSums(d[[flavour]])
-            summed <- data.frame(id = names(summed),
-                                 sum = summed)
-            summed <- merge(summed, truth[,c('id', item)],
-                            by.x = 'id',
-                            by.y = 'id')
-            
-            weighted <- aggregate(summed$sum, by = list(summed[,item]), sum)
-            colnames(weighted) <- c(item, flavour)
-            aggs[[item]][[flavour]] <- weighted            
-        }
-    }
+    }, error = function(x) cat(item, '\n',
+                               ## 'flavour', flavour, '\n',
+                               ## 'error', str(x), '\n',
+                               ## 'summed', str(summed), '\n',
+                               ## 'weighted', str(weighted),
+                               str(x),
+                               '\n\n'))
 }
 ```
+
+
+```{r}
 
 ```
 
@@ -841,17 +1020,17 @@ for (item in c('name', 'family', 'class')) {
 <!-- ``` -->
 
 
-```{r}
-## head(d$shao$merged)
-## head(unique(truth$cell))
-## head(unique(d$shao$merged$RG))
-## intersect(unique(truth$cell), unique(d$shao$merged$RG))
-## intersect(unique(truth$umi), unique(d$shao$merged$RG))
-for (RG in unique(truth$cell)) {
-    ## subsetting the the current cell
-    curr <- d$shao$merged[d$shao$merged$RG == RG,]
-}
-```
+<!-- ```{r} -->
+<!-- ## head(d$shao$merged) -->
+<!-- ## head(unique(truth$cell)) -->
+<!-- ## head(unique(d$shao$merged$RG)) -->
+<!-- ## intersect(unique(truth$cell), unique(d$shao$merged$RG)) -->
+<!-- ## intersect(unique(truth$umi), unique(d$shao$merged$RG)) -->
+<!-- for (RG in unique(truth$cell)) { -->
+<!--     ## subsetting the the current cell -->
+<!--     curr <- d$shao$merged[d$shao$merged$RG == RG,] -->
+<!-- } -->
+<!-- ``` -->
 
 
 by Class
@@ -862,33 +1041,116 @@ for (flavour in aggs$class) {
     tmp <- merge(tmp, flavour, by = 'class', all.x = TRUE)
 }
 
-
 tmp <- melt(tmp,  id.vars = c('class'))
 colnames(tmp) <- c('class', 'flavour', 'counts')
 
-ggplot(tmp, aes(fill = class, y = counts, x = flavour)) + 
-    geom_bar(position="stack", stat="identity")  +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+## remove the classes that have a '?' on them
+tmp <- tmp[grep('?', tmp$class, invert = TRUE, fixed = TRUE),]
 ```
 
 
 ```{r}
-ggplot(tmp, aes(fill = flavour, y = counts, x = class)) + 
-    geom_bar(position="dodge", stat="identity")  +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+## sort classes by number of members in truth
+sorted_classes <- rev(tmp[tmp$flavour == 'truth', ][order(tmp[tmp$flavour == 'truth', 'counts'], decreasing = TRUE), 'class'])
 
+tmp$class <- factor(as.character(tmp$class), levels = sorted_classes)
+
+## tmp$multimap <- NA
+## tmp[tmp$flavour %in% c('repeats_alevin', 'repeats_alevin_no_decoy',
+##                        'repeats_featurecounts_multi', 'repeats_only_multi',
+##                        'scte')] <- 'multimappers'
+
+
+## tmp <- tmp[order(tmp$class, tmp$counts, decreasing = TRUE),]
+## tmp$class <- as.factor(tmp$class)
+
+```
+
+<!-- palette from https://medialab.github.io/iwanthue/ -->
+```{r}
+class_pal <- c("#81722e",
+              "#5ab74b",
+              "#7561cf",
+              "#a2b046",
+              "#647fc6",
+              "#d59a45",
+              "#45aecf",
+              "#cf5330",
+              "#5cbf93",
+              "#d63d65",
+              "#478146",
+              "#c089d2",
+              "#c452bb",
+              "#a0497b",
+              "#b96750",
+              "#e2809f")
+```
+
+```{r}
+tmp <- merge(tmp, flavour_annot, by.x = 'flavour', by.y = 'id', all.x = TRUE)
+tmp$overlap <- factor(tmp$overlap, levels = c('truth', 'all', 'strict'))
+tmp$multimapping <- factor(tmp$multimapping, levels = c('truth', 'unique', 'multimapping'))
+```
+
+```{r}
+
+ggplot(tmp, aes(fill = class, y = counts, x = flavour)) + 
+    geom_bar(position="stack", stat="identity", width = 1, colour = 'black')  +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    scale_fill_manual(values = class_pal) +
+    facet_grid(~overlap*multimapping, scales = "free", space = "free") 
+```
+
+
+
+
+```{r}
+
+## logp3_trans <- trans_new(
+##   name = "logp",
+##   trans = function(x) log(x + 3),
+##   inverse = function(x) exp(x) - 3,
+##   breaks = log_breaks()
+## )
+
+ggplot(tmp, aes(fill = class, y = counts, x = flavour)) + 
+    geom_bar(position="stack", stat="identity", colour = 'black')  +
+    scale_y_continuous(trans = 'sqrt', labels = label_scientific(digits = 3)) +
+    ## coord_trans(y='log10') +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    scale_fill_manual(values = class_pal) +
+    facet_grid(~overlap*multimapping, scales = "free", space = "free") 
 ```
 
 
 ```{r}
-ggplot(tmp, aes(fill = class, y = counts, x = flavour)) + 
-    geom_bar(position="dodge", stat="identity")  +
+ggplot(data = tmp,
+       mapping = aes_string(y = "class", 
+                            x = "flavour")) +
+    geom_point(mapping = aes_string(size = "counts",
+                                    color = "counts")) +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
 ```
+
 
 
 by family, only the top 10 families in the truth are shown
+
+
+```{r}
+family_pal <-  c("#7ab743",
+                 "#7665ca",
+                 "#c59643",
+                 "#c25fbc",
+                 "#51b48c",
+                 "#d1406e",
+                 "#6a803a",
+                 "#6890ce",
+                 "#c75a3a",
+                 "#c16e8b")
+```
+
 
 
 ```{r}
@@ -903,29 +1165,24 @@ tmp <- reshape2::melt(tmp,  id.vars = c('family'))
 colnames(tmp) <- c('family', 'flavour', 'counts')
 
 tmp <- tmp[tmp$family %in% selected,]
-
-
-ggplot(tmp, aes(fill = family, y = counts, x = flavour)) + 
-    geom_bar(position="stack", stat="identity")  +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+tmp$family <- as.character(tmp$family)
 ```
 
 ```{r}
-ggplot(tmp, aes(fill = flavour, y = counts, x = family)) + 
-    geom_bar(position="dodge", stat="identity")  +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    scale_y_continuous(trans = 'log10')
-
+tmp <- merge(tmp, flavour_annot, by.x = 'flavour', by.y = 'id', all.x = TRUE)
+tmp$overlap <- factor(tmp$overlap, levels = c('truth', 'all', 'strict'))
+tmp$multimapping <- factor(tmp$multimapping, levels = c('truth', 'unique', 'multimapping'))
 ```
-
 
 ```{r}
 ggplot(tmp, aes(fill = family, y = counts, x = flavour)) + 
-    geom_bar(position="dodge", stat="identity")  +
+    geom_bar(position="stack", stat="identity", width = 1, colour = 'black')  +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    scale_y_continuous(trans = 'log10')
-
+    scale_fill_manual(values = family_pal) +
+    facet_grid(~overlap*multimapping, scales = "free", space = "free") 
+    
 ```
+
 
 
 by name, only the top 10 names are shown
@@ -943,31 +1200,49 @@ tmp <- melt(tmp,  id.vars = c('name'))
 colnames(tmp) <- c('name', 'flavour', 'counts')
 
 tmp <- tmp[tmp$name %in% selected,]
+```
 
+```{r}
+names_pal <- c("#c95171",
+               "#74b44a",
+               "#c852b5",
+               "#4baf90",
+               "#7965ce",
+               "#cc9d46",
+               "#5d8ece",
+               "#c85e3c",
+               "#b378b4",
+               "#707a35")
+```
 
+```{r}
+
+tmp <- merge(tmp, flavour_annot, by.x = 'flavour', by.y = 'id', all.x = TRUE)
+tmp$overlap <- factor(tmp$overlap, levels = c('truth', 'all', 'strict'))
+tmp$multimapping <- factor(tmp$multimapping, levels = c('truth', 'unique', 'multimapping'))
+```
+
+```{r}
 ggplot(tmp, aes(fill = name, y = counts, x = flavour)) + 
-    geom_bar(position="stack", stat="identity")  +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-```
-
-```{r}
-ggplot(tmp, aes(fill = flavour, y = counts, x = name)) + 
-    geom_bar(position="dodge", stat="identity")  +
+    geom_bar(position="stack", stat="identity", width = 1, colour = 'black')  +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    scale_y_continuous(trans = 'log10')
+    scale_fill_manual(values = names_pal) +
+    facet_grid(~overlap*multimapping, scales = "free", space = "free") 
+    
+```
+
+
+# Timestamp
+
+```{r, cache = FALSE}
+date()
+sessionInfo()
+devtools::session_info()
 
 ```
 
 ```{r}
-ggplot(tmp, aes(fill = name, y = counts, x = flavour)) + 
-    geom_bar(position="dodge", stat="identity")  +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    scale_y_continuous(trans = 'log10')
-
-```
-
-```{r}
-knit::exit()
+knitr::knit_exit()
 ```
 
 # Cells corr
