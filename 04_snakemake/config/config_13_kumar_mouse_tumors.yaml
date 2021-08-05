@@ -18,7 +18,7 @@ dependencies:
   get_barcodes: "/home/imallona/src/repeats_sc/04_snakemake/scripts/get_cell_barcodes.py"
   split_by_barcode: "/home/imallona/src/repeats_sc/04_snakemake/scripts/split_by_cell_barcode_in_sorted_bam.py"
 software:
-  Rscript: '/usr/local/R/R-4.0.5/bin/Rscript'
+  Rscript: '/usr/local/R/R-4.1.0/bin/Rscript'
   bowtie_build: '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
   bowtie: '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'
   pigz: '/usr/bin/pigz'

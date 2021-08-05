@@ -134,7 +134,7 @@ rule integration_kumar:
                multimappers = ['multimappers', 'unique_reads'],
                sample = get_samples())
     params:
-        rmd = 'integrate_runs_kumar.Rmd',
+        rmd = op.join('scripts', 'integrate_runs_kumar.Rmd'),
         data_path = op.join(config["base"], 'runs', config["run_name"]),
         Rscript = config['software']['Rscript']
     output:
@@ -612,7 +612,9 @@ rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams_by_sample:
 ##   (e.g. splitting the cells by CB from the cellranger standard output)
 rule map_bowtie_by_cell_by_sample:
     input:
-        flag = op.join(config["base"], "runs", config["run_name"], "{sample}", 'count_repeats_on_cellranger_standard', 'split.flag')
+        flag = op.join(config["base"], "runs", config["run_name"], "{sample}", 'count_repeats_on_cellranger_standard', 'split.flag'),
+        o1 = op.join(config['base'], 'indices', 'bowtie', config['genome'],
+                     'repeatome', op.splitext(op.basename(config['rep_gtf_url']))[0] + '.1.ebwt')
     output:
         flag_map_bowtie =  op.join(config["base"], "runs", config["run_name"], "{sample}", 'bowtie_repeatome', 'split_bowtie.flag')
     params:
@@ -621,6 +623,8 @@ rule map_bowtie_by_cell_by_sample:
         split_bam_path = op.join(config["base"], "runs", config["run_name"], "{sample}", 'count_repeats_on_cellranger_standard', 'split'),
         split_fastq_path = op.join(config["base"], "runs", config["run_name"], "{sample}", 'bowtie_repeatome'),
         repeatome = op.join(config["base"], 'indices', 'bowtie', config["genome"], 'repeatome', op.splitext(op.basename(config["rep_gtf_url"]))[0])
+    log:
+        op.join(config["base"], "runs", config["run_name"], "{sample}", 'bowtie_repeatome', 'bowtie_map.log')
     threads:
         config["params"]["nthreads"]
     shell:
@@ -644,8 +648,8 @@ rule map_bowtie_by_cell_by_sample:
               "$(basename $fn .bam)_bowtie.log"
 
             ## removing the fastq
-            rm "$fn"
-        done
+            # rm "$fn"
+        done &> {log}
 
         touch {output.flag_map_bowtie}
         """

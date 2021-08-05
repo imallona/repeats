@@ -126,12 +126,16 @@ rule all:
         expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
                             "by_locus_repeats.counts.gz"),
                multimappers = ['multimappers', 'unique_reads']),
-        # op.join(BASE, 'runs', RUN_NAME, 'sim_postproc.html'),
+        op.join(BASE, 'runs', RUN_NAME, 'sim_postproc.html'),
         op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv.gz'),
         op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats_no_decoy_per_locus', 'alevin',
                 'quants_mat.gz'),
-        op.join(BASE, 'runs', RUN_NAME, 'zumis', 'sim_5k_zumis_count_dt.txt')
+        op.join(BASE, 'runs', RUN_NAME, 'zumis', 'sim_5k_zumis_count_dt.txt'),
+        expand(op.join(BASE, "runs", RUN_NAME, 'count_repeats_loci_on_cellranger_repeats',
+                            '{multimappers}',
+                            RUN_NAME + "_repeats.counts.gz"),        
+                 multimappers = ['multimappers', 'unique_reads'])
         # expand(op.join(BASE, 'runs', RUN_NAME, RUN_NAME + '_pbmc_alevin_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'), regress_ncount = ['TRUE', 'FALSE'],
         #                regress_nfeature = ['TRUE', 'FALSE']),
         #  op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),
@@ -140,6 +144,120 @@ rule all:
         #                 "all_cells_repeats.counts.gz"),
         #         multimappers = ['multimappers', 'unique_reads'])
 
+
+rule spawn_cellranger_repeats_bam_file_by_cell:
+    input:
+        bam = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'possorted_genome_bam.bam'),
+        barcodes = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+    output:
+        rgs = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_repeats', 'rgs.txt')),
+        header = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_repeats', 'header.txt')),
+        body = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_repeats', 'body.txt.gz')),
+        shortened_bam = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_repeats', 'shortened.bam')),
+        flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_repeats', 'split.flag'),
+        path = directory(op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_repeats', 'split'))
+    threads:
+        NTHREADS
+    params:
+        barcodes_script = op.join('scripts', 'get_cell_barcodes.py'),
+        split_script = op.join('scripts','split_by_cell_barcode_in_sorted_bam.py'),
+        split_path = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_repeats', 'split')
+    log:
+        log1 = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_repeats', 'split_add_rg.log'),
+        log2 = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_repeats', 'split_pick.log'),
+    shell:
+        """
+        mkdir -p {output.path}
+        
+        # python3 {params.barcodes_script} {input.bam} | {PIGZ} -p {threads} > {output.rgs}
+
+        python3 {params.barcodes_script} {input.bam}  > {output.rgs}
+
+        rm -f {input.bam}.bai
+        samtools view -@ {threads} -H {input.bam} > {output.header}
+
+        ## updated 2 oct to handle SRR8847571
+        ( samtools view -@ {threads} {input.bam} | cut -f 1-15 | \
+        paste - {output.rgs} | \
+          fgrep "RG:Z" | \
+          sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
+
+
+        {PIGZ} --decompress -p {threads} --keep --stdout {output.body} | cat {output.header} - | samtools view -@ {threads} -Sb - > {output.shortened_bam}
+        
+        python3 {params.split_script} {output.shortened_bam} -outdir {params.split_path} -barcodes {input.barcodes} &> {log.log2}
+
+        touch {output.flag}
+
+        """
+
+        
+rule run_featurecounts_spawned_bams_cellranger_repeats_by_locus:
+    input:
+        bam = op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs',
+                      'possorted_genome_bam.bam'),
+        flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_repeats',
+                       'split.flag'),
+        gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
+    params:
+        path = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_repeats', 'split')
+    output:
+        counts  = temp(op.join(BASE, "runs", RUN_NAME, 'count_repeats_loci_on_cellranger_repeats',
+                               '{multimappers}',
+                               RUN_NAME + "_repeats.counts")),
+        gz_counts = op.join(BASE, "runs", RUN_NAME, 'count_repeats_loci_on_cellranger_repeats',
+                            '{multimappers}',
+                            RUN_NAME + "_repeats.counts.gz"),
+        summary = op.join(BASE, "runs", RUN_NAME, 'count_repeats_loci_on_cellranger_repeats',
+                          '{multimappers}',
+                            RUN_NAME + "_repeats.counts.summary")
+    log:
+        op.join(BASE, 'runs', RUN_NAME, 'count_repeats_loci_on_cellranger_repeats',
+                '{multimappers}',
+                RUN_NAME + "_repeats_counting.log")   
+    threads:
+        NTHREADS_WITHIN
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            mkdir -p {params.path}
+            cd {params.path}
+
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g transcript_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            -M \
+            --fraction \
+            -R CORE \
+            {params.path}/*bam  2>&1 > {log}
+
+            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+            # {PIGZ} -p {threads} "*featureCounts"
+
+            """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            mkdir -p {params.path}
+            cd {params.path}
+
+            {FEATURECOUNTS} -T {threads} \
+            -t exon \
+            -g transcript_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            -R CORE \
+            {params.path}/*bam  2>&1 > {log}
+
+            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+            # {PIGZ} -p {threads} "*featureCounts"
+            """)
+        
 
 rule run_simulation:
     input:
@@ -643,6 +761,14 @@ rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams_per_locus:
 
 rule knit_report:
     input:
+        repeats_repeats_unique = op.join(
+           BASE, "runs", RUN_NAME, 'count_repeats_loci_on_cellranger_repeats',
+           'unique_reads',
+           RUN_NAME + "_repeats.counts.gz"),
+        repeats_repeats_multi = op.join(
+           BASE, "runs", RUN_NAME, 'count_repeats_loci_on_cellranger_repeats',
+           'unique_reads',
+           RUN_NAME + "_repeats.counts.gz"),        
         repeats_only_multi = op.join(
            BASE, "runs", RUN_NAME,
            'count_repeats_loci_on_cellranger_standard_not_overlapping_genes',
@@ -674,8 +800,13 @@ rule knit_report:
                                         "multimappers",
                                         "by_locus_repeats.counts.gz"),
         scte = op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv.gz'),
-        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz")
-            
+        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),
+        shao_counts = op.join(BASE, 'runs', RUN_NAME, 'zumis',
+                              'sim_5k_zumis_count_dt.txt'),
+        shao_saf = op.join(BASE, 'annotation', 'shao', GENOME_SHORT,
+                           'shao_' + GENOME_SHORT + '_te.saf'),
+        shao_sam = op.join(BASE, 'runs', RUN_NAME, 'zumis',
+                              'sim_5k_zumis_featurecount.sam.txt')                    
     params:
         rmd = 'postprocess_simulation.Rmd',
         run_name = RUN_NAME,
@@ -688,15 +819,20 @@ rule knit_report:
         {Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
           output_file = \"{output.html}\", 
           params = list(truth = \"{input.truth}\", 
-                     repeats_featurecounts_multi = \"{input.repeats_featurecounts_multi}\", 
-                     repeats_featurecounts_unique = \"{input.repeats_featurecounts_unique}\",
-                     repeats_only_multi = \"{input.repeats_only_multi}\", 
-                     repeats_only_unique = \"{input.repeats_only_unique}\",
+                     repeats_lenient_multi = \"{input.repeats_featurecounts_multi}\", 
+                     repeats_lenient_unique = \"{input.repeats_featurecounts_unique}\",
+                     repeats_strict_multi = \"{input.repeats_only_multi}\", 
+                     repeats_strict_unique = \"{input.repeats_only_unique}\",
                      repeats_alevin_locus = \"{input.repeats_alevin_locus}\",
                      repeats_alevin_no_decoy_locus = \"{input.repeats_alevin_no_decoy_locus}\",
                      repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\",
                      repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\",
+                     repeats_unique = \"{input.repeats_repeats_unique}\",
+                     repeats_multi = \"{input.repeats_repeats_multi}\",
                      scte = \"{input.scte}\",
+                     shao_counts = \"{input.shao_counts}\",
+                     shao_saf = \"{input.shao_saf}\",
+                     shao_sam = \"{input.shao_sam}\",
                      nthreads = {params.threads}))' &> {log}
         """
 
@@ -1029,8 +1165,9 @@ rule run_shao:
     threads:
         NTHREADS
     output:
-        zumis = op.join(BASE, 'runs', RUN_NAME, "zumis", "sim_5k_zumis_featurecount.sam.txt"),
-        dt = op.join(BASE, 'runs', RUN_NAME, 'zumis', 'sim_5k_zumis_count_dt.txt')
+        dt = op.join(BASE, 'runs', RUN_NAME, 'zumis', 'sim_5k_zumis_count_dt.txt'),
+        shao_sam =op.join(BASE, 'runs', RUN_NAME, 'zumis',
+                              'sim_5k_zumis_featurecount.sam.txt')
     shell:
         """        
         mkdir -p {params.path} {params.path2}
@@ -1041,7 +1178,7 @@ rule run_shao:
           -d {params.path}
 
         {Rscript} {params.umi_counting} \
-         -f {output.zumis} \
+         -f {output.dt} \
          -r {input.shao_te_saf} \
          -n sim_5k_zumis \
          -s 50 \

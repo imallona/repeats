@@ -460,7 +460,7 @@ if (params$genes_alevin != "None") {
                          "gene_biotype", "start_position", "end_position")
     annot$biomart = "ENSEMBL_MART_ENSEMBL" 
     annot$dataset = "hsapiens_gene_ensembl"
-    annot$host = "asia.ensembl.org"
+    annot$host = "ensembl.org"
     annot$bmart <- biomaRt::useMart(biomart = annot$biomart, dataset = annot$dataset, 
                                     host = annot$host)
 

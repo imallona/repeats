@@ -94,7 +94,7 @@ opts_chunk$set(fig.width = 5,
 
 options(bitmapType='cairo')
 ## getOption('bitmapType')
-setDTthreads(threads = 2)
+setDTthreads(threads = 20)
 ```
 
 
@@ -129,22 +129,37 @@ ac <- function(col, alpha=1){
 ##                repeats_featurecounts= "/home/imallona/repeats_sc/runs/SRR10974769/count_repeats_on_cellranger_standard/SRR10974769_repeats.counts.gz",
 ##                identifier = 'test')
 
-params <- list(identifier = "5k_pbmc_v3",
-               genes_cellranger = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
-               repeats_cellranger = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
-               repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard/multimappers/5k_pbmc_v3_repeats.counts.gz",
-               repeats_only_featurecounts_control_multi = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers/5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz",
-               repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard/unique_reads/5k_pbmc_v3_repeats.counts.gz",
-               repeats_only_featurecounts_control_unique = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz",
-               seurat_output = "/home/imallona/tmp/test.rds",
-               regress_genes_nCount = FALSE,
-               regress_genes_nFeatures = FALSE,
-               repeats_bowtie_unique = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/bowtie_repeatome/unique_reads/all_cells_repeats.counts.gz',
-               ## repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/bowtie_repeatome/multimappers/all_cells_repeats.counts.gz',
-               genes_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/genes/alevin/quants_mat.gz',
-               repeats_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/repeats/alevin/quants_mat.gz')
+## params <- list(identifier = "5k_pbmc_v3",
+##                genes_cellranger = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz',
+##                repeats_cellranger = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz",
+##                repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard/multimappers/5k_pbmc_v3_repeats.counts.gz",
+##                repeats_only_featurecounts_control_multi = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers/5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz",
+##                repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard/unique_reads/5k_pbmc_v3_repeats.counts.gz",
+##                repeats_only_featurecounts_control_unique = "/home/imallona/repeats_sc/runs/5k_pbmc_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz",
+##                seurat_output = "/home/imallona/tmp/test.rds",
+##                regress_genes_nCount = FALSE,
+##                regress_genes_nFeatures = FALSE,
+##                repeats_bowtie_unique = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/bowtie_repeatome/unique_reads/all_cells_repeats.counts.gz',
+##                ## repeats_bowtie_multi = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/bowtie_repeatome/multimappers/all_cells_repeats.counts.gz',
+##                genes_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/genes/alevin/quants_mat.gz',
+##                repeats_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/repeats/alevin/quants_mat.gz')
 
-
+params <- list(identifier = "pbmc_10k_v3", 
+                     genes_cellranger = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz", 
+                     repeats_cellranger = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz", 
+                     markers_output = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_markers_regress_nCount_FALSE_nFeature_FALSE.rds", 
+                     repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/count_repeats_on_cellranger_standard/multimappers/pbmc_10k_v3_repeats.counts.gz", 
+                     repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/count_repeats_on_cellranger_standard/unique_reads/pbmc_10k_v3_repeats.counts.gz",
+                     repeats_only_featurecounts_control_multi = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers/pbmc_10k_v3_repeats_not_overlapping_genes.counts.gz", 
+                     repeats_only_featurecounts_control_unique = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/pbmc_10k_v3_repeats_not_overlapping_genes.counts.gz",
+                     seurat_output = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds", 
+                     aris_output = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_aris_regress_nCount_FALSE_nFeature_FALSE.rds", 
+                     regress_genes_nCount = "FALSE", 
+                     regress_genes_nFeature = "FALSE",
+                     repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/bowtie_repeatome/unique_reads/all_cells_repeats.counts.gz", 
+                     genes_alevin = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/alevin/genes/alevin/quants_mat.gz",
+                     repeats_alevin = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/alevin/repeats/alevin/quants_mat.gz",
+                     cobra_output = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_cobra_regress_nCount_FALSE_nFeature_FALSE.rds")
 
 
 ## params <- list(identifier = "frozen_pbmc_donor_a",
@@ -364,7 +379,7 @@ if (params$repeats_only_featurecounts_control_multi != "None") {
 
 Bowtie data
 
-```{r}
+```{r bowtie_load}
 if (params$repeats_bowtie_unique != "None") { 
     tmp <- data.table::fread(params$repeats_bowtie_unique, sep = '\t', header = TRUE,
                              drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
@@ -423,7 +438,7 @@ if (params$repeats_bowtie_unique != "None") {
 
 Alevin
 
-```{r}
+```{r alevin_load}
 if (params$genes_alevin != "None") {
     d$genes_alevin <- tximeta::tximeta(coldata = data.frame(
                                            names = "genes",
@@ -2344,83 +2359,83 @@ tryCatch({
 <!-- pheatmap(oned_cor, cluster_rows = hc_cor, cluster_cols = hc_cor, display_numbers = TRUE ) -->
 <!-- ``` -->
 
-## For repeats
+<!-- ## For repeats -->
 
 
-## Euclidean distance
+<!-- ## Euclidean distance -->
 
 
-```{r}
+<!-- ```{r} -->
 
 
-repeats_shared <- Reduce(intersect, sapply(d[grep('repeats|both', names(d))], rownames))
-cells_shared <- Reduce(intersect, sapply(d[grep('repeats|both', names(d))], colnames))
-## rather, use old variable from the qc step
-##cells_shared <- selected_cells
+<!-- repeats_shared <- Reduce(intersect, sapply(d[grep('repeats|both', names(d))], rownames)) -->
+<!-- cells_shared <- Reduce(intersect, sapply(d[grep('repeats|both', names(d))], colnames)) -->
+<!-- ## rather, use old variable from the qc step -->
+<!-- ##cells_shared <- selected_cells -->
 
-stopifnot(length(repeats_shared) > 0)
+<!-- stopifnot(length(repeats_shared) > 0) -->
 
 
 
-stopifnot(length(cells_shared) > 0)
+<!-- stopifnot(length(cells_shared) > 0) -->
           
     
-## oned <- lapply(d, function(x) as.vector(as.matrix(
-                                  ## GetAssayData(d[[x]])[repeats_shared, cells_shared], 'counts')))
+<!-- ## oned <- lapply(d, function(x) as.vector(as.matrix( -->
+<!--                                   ## GetAssayData(d[[x]])[repeats_shared, cells_shared], 'counts'))) -->
 
 
-oned <- list()
-for (item in grep('repeats', names(d), value = TRUE)) {
-      oned[[item]] <- as.vector(as.matrix(
-          GetAssayData(d[[item]], 'counts')[repeats_shared, cells_shared]))
-}
+<!-- oned <- list() -->
+<!-- for (item in grep('repeats', names(d), value = TRUE)) { -->
+<!--       oned[[item]] <- as.vector(as.matrix( -->
+<!--           GetAssayData(d[[item]], 'counts')[repeats_shared, cells_shared])) -->
+<!-- } -->
 
-## oned_df <- setNames(object = do.call(rbind.data.frame, oned),
-##                     c(NULL,  grep('repeats', names(d), value = TRUE)))
+<!-- ## oned_df <- setNames(object = do.call(rbind.data.frame, oned), -->
+<!-- ##                     c(NULL,  grep('repeats', names(d), value = TRUE))) -->
 
-oned_df <- t(simplify2array(oned))
+<!-- oned_df <- t(simplify2array(oned)) -->
 
-rm(oned)
+<!-- rm(oned) -->
 
-oned_dist <- dist(oned_df,  method = 'euclidean')
+<!-- oned_dist <- dist(oned_df,  method = 'euclidean') -->
 
-oned_dist <- as.data.frame(as.matrix(oned_dist))
+<!-- oned_dist <- as.data.frame(as.matrix(oned_dist)) -->
 
-colnames(oned_dist) <-  grep('repeats', names(d), value = TRUE)
-rownames(oned_dist) <- colnames(oned_dist)
-head(oned_dist)
-hc_dist <- hclust(d = as.dist(oned_dist), method = 'ward.D')
-
-
-plot(hc_dist)
-
-```
-
-Plus pheatmap-like representation.. of the distances maybe?
-
-```{r, fig.width = 8, fig.height = 8}
-pheatmap(oned_dist, cluster_rows = hc_dist, cluster_cols = hc_dist)
-```
+<!-- colnames(oned_dist) <-  grep('repeats', names(d), value = TRUE) -->
+<!-- rownames(oned_dist) <- colnames(oned_dist) -->
+<!-- head(oned_dist) -->
+<!-- hc_dist <- hclust(d = as.dist(oned_dist), method = 'ward.D') -->
 
 
+<!-- plot(hc_dist) -->
 
-### Correlations
+<!-- ``` -->
 
-Similarly, for Spearman's correlations (it's not angular distances! 1 - rho value here).
+<!-- Plus pheatmap-like representation.. of the distances maybe? -->
 
-```{r}
-oned_cor <- cor(t(oned_df), method = 'spearman')
-
-oned_cor <- as.data.frame(as.matrix(oned_cor))
-
-colnames(oned_cor) <-  grep('repeats', names(d), value = TRUE)
-rownames(oned_cor) <- colnames(oned_cor)
-head(oned_cor)
-hc_cor <- hclust(d = as.dist(1- oned_cor))
+<!-- ```{r, fig.width = 8, fig.height = 8} -->
+<!-- pheatmap(oned_dist, cluster_rows = hc_dist, cluster_cols = hc_dist) -->
+<!-- ``` -->
 
 
-plot(hc_cor)
-```
+
+<!-- ### Correlations -->
+
+<!-- Similarly, for Spearman's correlations (it's not angular distances! 1 - rho value here). -->
+
+<!-- ```{r} -->
+<!-- oned_cor <- cor(t(oned_df), method = 'spearman') -->
+
+<!-- oned_cor <- as.data.frame(as.matrix(oned_cor)) -->
+
+<!-- colnames(oned_cor) <-  grep('repeats', names(d), value = TRUE) -->
+<!-- rownames(oned_cor) <- colnames(oned_cor) -->
+<!-- head(oned_cor) -->
+<!-- hc_cor <- hclust(d = as.dist(1- oned_cor)) -->
+
+
+<!-- plot(hc_cor) -->
+<!-- ``` -->
 
 # Export objects
 
