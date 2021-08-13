@@ -12,9 +12,8 @@ output:
     df_print: kable
     theme: lumen
     always_allow_html: yes
+    self_contained: no
 ---
-
-```
 params:
     repeats_unique: ""
     repeats_multi: ""
@@ -33,7 +32,6 @@ params:
     truth: ""
     reps_gtf: ""
     nthreads: ""
-```
 
 Memory intensive, caution (see future memory options)
 
@@ -52,6 +50,8 @@ suppressPackageStartupMessages({
     library(data.table)
     library(GenomicRanges)
     library(scales)
+    library(grid)
+    # library(plyr)
 })
 
 ## if (!requireNamespace("BiocManager", quietly = TRUE))
@@ -84,7 +84,7 @@ suppressPackageStartupMessages({
 ## shao,multimapping,all", header = TRUE)
 flavour_annot <- read.csv(text="id,multimapping,overlap,gtf
 truth,truth,truth,truth
-repeats_alevin,multimapping,strict,repeats
+repeats_alevin,multimapping,all,genes_decoy
 repeats_alevin_no_decoy,multimapping,all,repeats
 repeats_lenient_unique,unique,all,genes
 repeats_strict_unique,unique,strict,genes
@@ -94,7 +94,7 @@ repeats_bowtie_unique,unique,all,repeats
 scte,multimapping,all,repeats
 shao,multimapping,all,repeats
 repeats_unique,unique,all,repeats
-repeats_multi, multimapping,all,repeats", header = TRUE)
+repeats_multi,multimapping,all,repeats", header = TRUE)
 ```
 
 
@@ -111,7 +111,7 @@ BASE <- file.path('/home', 'imallona', 'repeats_sc')
 ```{r, include = FALSE, eval = TRUE}
 opts_chunk$set(fig.width = 5,
                fig.height = 5,
-               dev = 'png',
+               dev = c('png', 'pdf'),              
                cache = TRUE,
                echo = TRUE,
                include = TRUE,
@@ -130,20 +130,20 @@ options(bitmapType='cairo')
 
 
 ```{r justfordebugging, include = FALSE, eval = TRUE}
-params <- list(repeats_alevin_locus = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/alevin/repeats_per_locus/alevin/quants_mat.gz",
-               repeats_alevin_no_decoy_locus = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/alevin/repeats_no_decoy_per_locus/alevin/quants_mat.gz",
-               truth = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/truth.tsv.gz",
-               repeats_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_repeats/unique_reads/sim_5k_pbmc_v3_repeats.counts.gz",
-               repeats_multi = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_repeats/multimappers/sim_5k_pbmc_v3_repeats.counts.gz",
-               repeats_lenient_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard/unique_reads/sim_5k_pbmc_v3_repeats.counts.gz",
-               repeats_strict_unique = '~/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard_not_overlapping_genes/unique_reads/sim_5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz',
-               repeats_lenient_multi = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard/multimappers/sim_5k_pbmc_v3_repeats.counts.gz",
-               repeats_strict_multi = '~/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard_not_overlapping_genes/multimappers/sim_5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz',
-               repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/bowtie_repeatome/unique_reads/by_locus_repeats.counts.gz",
-               scte = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/scTE/scTE.out.csv.gz",
-               shao_counts = '~/repeats_sc/runs/sim_5k_pbmc_v3/zumis/sim_5k_zumis_count_dt.txt',
+params <- list(repeats_alevin_locus = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/alevin/repeats_per_locus/alevin/quants_mat.gz",
+               repeats_alevin_no_decoy_locus = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/alevin/repeats_no_decoy_per_locus/alevin/quants_mat.gz",
+               truth = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3LOWPERF/truth.tsv.gz",
+               repeats_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/count_repeats_loci_on_cellranger_repeats/unique_reads/sim_5k_pbmc_v3_repeats.counts.gz",
+               repeats_multi = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/count_repeats_loci_on_cellranger_repeats/multimappers/sim_5k_pbmc_v3_repeats.counts.gz",
+               repeats_lenient_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/count_repeats_loci_on_cellranger_standard/unique_reads/sim_5k_pbmc_v3_repeats.counts.gz",
+               repeats_strict_unique = '~/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/count_repeats_loci_on_cellranger_standard_not_overlapping_genes/unique_reads/sim_5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz',
+               repeats_lenient_multi = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/count_repeats_loci_on_cellranger_standard/multimappers/sim_5k_pbmc_v3_repeats.counts.gz",
+               repeats_strict_multi = '~/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/count_repeats_loci_on_cellranger_standard_not_overlapping_genes/multimappers/sim_5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz',
+               repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/bowtie_repeatome/unique_reads/by_locus_repeats.counts.gz",
+               scte = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/scTE/scTE.out.csv.gz",
+               shao_counts = '~/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/zumis/sim_5k_zumis_count_dt.txt',
                shao_saf = '~/repeats_sc/annotation/shao/shao_GRCh38_te.saf',
-               shao_sam = '~/repeats_sc/runs/sim_5k_pbmc_v3/zumis/sim_5k_zumis_featurecount.sam.txt',
+               shao_sam = '~/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/zumis/sim_5k_zumis_featurecount.sam.txt',
                reps_gtf = '~/repeats_sc/annotation/GRCh38_rmsk_TE.gtf.gz',
                nthreads = 40)
 ```
@@ -219,15 +219,16 @@ featurecounts_runs <- c('repeats_unique',
                         'repeats_strict_unique',
                         'repeats_lenient_multi',
                         'repeats_strict_multi',
-                        'repeats_bowtie_unique',
-                        'repeats_bowtie_multi')
+                        'repeats_bowtie_unique')
 ```
 
 
 ```{r}
 for (item in featurecounts_runs) {
-    d[[item]] <- read_featurecounts(params[[item]])
-    ## colnames(d[[item]]) <-  gsub(".*:([A-Z]+)-1.*.bam","\\1", colnames(d[[item]]))
+    tryCatch({
+        d[[item]] <- read_featurecounts(params[[item]])
+        ## colnames(d[[item]]) <-  gsub(".*:([A-Z]+)-1.*.bam","\\1", colnames(d[[item]]))
+    }, error = function(x) cat(str(x), '\n', fn, '\n'))
 }
 ```
 
@@ -305,7 +306,7 @@ head(d$shao$counts)
 We also use the SAM file from the mapping to be able to get the original read information, which was encoded at the read name level.
 
 ```{r}
-d$shao$sam <- as.data.frame(d$shao$sam)
+## d$shao$sam <- as.data.frame(d$shao$sam)
 head(d$shao$sam)
 ```
 
@@ -407,7 +408,7 @@ props2 <- future_lapply(fc, function(x) {
             correct <- observed[names(observed) %in% true] 
 
             ## under- or overestimation
-            multi <- observed[observed != 1]
+            multi <- observed[observed < 1]
 
             missing <- setdiff(true, names(observed))
             wrong <- setdiff(names(observed), true)
@@ -617,9 +618,9 @@ Here:
 ```{r}
 res <- list()
 for (cell in unique(truth$cell)) {
-
+    true <- truth[truth$cell == cell, 'id']
+    
     if (cell %in% d$shao$counts$RG) {
-        true <- truth[truth$cell == cell, 'id']
 
         ## observed <- na.omit(d$shao$merged[d$shao$merged$RG == cell,])
         obs_counts <- d$shao$counts[d$shao$counts$RG == cell,]
@@ -746,13 +747,13 @@ fd$variable <- factor(fd$variable, levels = rev(c('correct', 'multimapping', 'mi
 ```
 
 ```{r}
-fd2 <- as.data.frame(group_by(fd, flavour, variable) %>%
-              summarize(mean = mean(value),
+fd2 <- as.data.frame(dplyr::group_by(fd, flavour, variable) %>%
+              dplyr::summarize(mean = mean(value),
                         sd = sd(value),
                         lower = mean(value) - sd(value),
                         upper = mean(value) + sd(value)) %>%
-              arrange(flavour) %>%
-              group_by(flavour)) 
+              dplyr::arrange(flavour) %>%
+              dplyr::group_by(flavour)) 
 
 fd2$variable <- factor(fd2$variable, levels = c('correct', 'multimapping', 'wrong', 'missing'))
 
@@ -779,24 +780,24 @@ ggplot(fd2, aes(x=flavour, weight=mean, ymin=lower, ymax=upper, fill=variable)) 
     theme_bw() +
     scale_x_discrete(limits = unique(fd2$flavour)) +
     ## scale_fill_grey(name = 'mapping\ncategory') +
-    scale_fill_manual("mapping\ncategory", values = pal_mapping) +
+    scale_fill_manual("mapping\ncategory", values = pal_mapping[levels(fd2$variable)]) +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
     xlab('strategy') +
-    ylab('alignments per cell (counts)')
+    ylab('repeats loci per cell (counts)')
 ```
 
-```{r}
-ggplot(fd2, aes(x=variable, weight=mean, ymin=lower, ymax=upper, fill=flavour)) +
-    geom_bar      (position=position_dodge(), aes(y=mean), stat="identity") +
-    geom_errorbar (position=position_dodge(width=0.9), colour="black", width = 0.2) +
-    theme_bw() +
-    scale_x_discrete(limits = unique(fd2$variable)) +
-    scale_fill_grey(name = 'mapping\ncategory') +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    xlab('strategy') +
-    ylab('alignments per cell (counts)')
+<!-- ```{r} -->
+<!-- ggplot(fd2, aes(x=variable, weight=mean, ymin=lower, ymax=upper, fill=flavour)) + -->
+<!--     geom_bar      (position=position_dodge(), aes(y=mean), stat="identity") + -->
+<!--     geom_errorbar (position=position_dodge(width=0.9), colour="black", width = 0.2) + -->
+<!--     theme_bw() + -->
+<!--     scale_x_discrete(limits = unique(fd2$variable)) + -->
+<!--     scale_fill_grey(name = 'mapping\ncategory') + -->
+<!--     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + -->
+<!--     xlab('strategy') + -->
+<!--     ylab('alignments per cell (counts)') -->
 
-```
+<!-- ``` -->
 
 Maybe the same with percentages of the simulated reads?
 
@@ -824,13 +825,13 @@ fd$variable <- factor(fd$variable, levels = rev(c('correct', 'multimapping', 'mi
 
 
 
-fd2 <- as.data.frame(group_by(fd, flavour, variable) %>%
-              summarize(mean = mean(value),
+fd2 <- as.data.frame(dplyr::group_by(fd, flavour, variable) %>%
+              dplyr::summarize(mean = mean(value),
                         sd = sd(value),
                         lower = mean(value) - sd(value),
                         upper = mean(value) + sd(value)) %>%
-              arrange(flavour) %>%
-              group_by(flavour)) 
+              dplyr::arrange(flavour) %>%
+              dplyr::group_by(flavour)) 
 
 fd2$variable <- factor(fd2$variable, levels = c('correct', 'multimapping', 'wrong', 'missing'))
 
@@ -854,10 +855,10 @@ ggplot(fd2, aes(x=flavour, weight=mean, ymin=lower, ymax=upper, fill=variable)) 
     theme_bw() +
     scale_x_discrete(limits = unique(fd$flavour)) +
     ## scale_fill_grey(name = 'mapping\ncategory') +
-    scale_fill_manual("mapping\ncategory", values = pal_mapping) + 
+    scale_fill_manual("mapping\ncategory", values = pal_mapping[levels(fd2$variable)]) + 
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     xlab('strategy') +
-    ylab('alignments per cell (proportion)')
+    ylab('repeats loci per cell (proportion)')
 ```
 
 
@@ -897,12 +898,15 @@ grouped <- reshape2::melt(grouped, id.vars = 'Group.1')
 grouped$variable <- factor(grouped$variable, levels = c('truth', 'correct',
                                                         'multimapping', 'missing', 'wrong'))
 
+## grouped$variable <- factor(grouped$variable, levels = c('correct',
+##                                                         'multimapping', 'missing', 'wrong'))
+
 levels(grouped$variable)
 grouped %>% ggplot(aes(x=Group.1, y=value, fill =variable)) +
     geom_bar      (position=position_dodge(), stat="identity") +
     theme_bw() +
     scale_x_discrete(limits = unique(fd$flavour)) +
-    scale_fill_manual("mapping\ncategory", values = pal_mapping) + 
+    scale_fill_manual("mapping\ncategory", values = pal_mapping[levels(grouped$variable)]) + 
     ## scale_fill_grey(name = 'mapping\ncategory') +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     xlab('strategy') +
@@ -932,7 +936,6 @@ for (item in c('name', 'family', 'class')) {
         colnames(weighted) <- c(item, 'truth')
         aggs[[item]] <- list(truth = weighted)
 
-        cat('done truth ', item, '\n\n')
 
         for (flavour in rev(names(d))) {
             if (flavour == 'scte') {
@@ -988,7 +991,6 @@ for (item in c('name', 'family', 'class')) {
                 colnames(weighted) <- c(item, flavour)
                 aggs[[item]][[flavour]] <- weighted            
             }
-            cat('done ', item, flavour, '\n\n')
             
         }
     }, error = function(x) cat(item, '\n',
@@ -1002,9 +1004,6 @@ for (item in c('name', 'family', 'class')) {
 ```
 
 
-```{r}
-
-```
 
 <!-- ``` -->
 
@@ -1113,50 +1112,156 @@ class_pal <- c("#81722e",
 
 ```{r}
 tmp <- merge(tmp, flavour_annot, by.x = 'flavour', by.y = 'id', all.x = TRUE)
+tmp$counts[is.na(tmp$counts)] <- 0
 tmp$overlap <- factor(tmp$overlap, levels = c('truth', 'all', 'strict'))
 tmp$multimapping <- factor(tmp$multimapping, levels = c('truth', 'unique', 'multimapping'))
 ```
 
+
 ```{r}
 
+## percentages
+tmp <- plyr::ddply(tmp, .(flavour), transform, percent = counts/sum(counts) * 100)
+tmp$percent[tmp$percent == NA] <- 0
+tmp$label <- sprintf("%.1f", tmp$percent)
+
+## to hide labels for very small bars
+tmp$label <- ifelse(as.numeric(tmp$label) >= 0.2, tmp$label, NA)
+```
+
+
+<!-- ```{r} -->
+
+<!-- ggplot(tmp, aes(fill = class, y = counts, x = flavour)) +  -->
+<!--     geom_bar(position="stack", stat="identity", width = 1, colour = 'black')  + -->
+<!--     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + -->
+<!--     scale_fill_manual(values = class_pal) + -->
+<!--     geom_text(aes(label = label), position = position_stack(vjust = 0.5), size = 2) + -->
+<!--     facet_grid(~overlap*multimapping, scales = "free", space = "free") + -->
+<!--     ylab('# repeats loci') -->
+<!-- ``` -->
+
+Better facet wrap labels
+
+
+```{r}
+tmp$mapping <- ifelse(tmp$gtf == 'repeats', 'repeats', 'genes')
+tmp$mapping[tmp$gtf == 'truth'] <- 'truth'
+tmp$mapping[tmp$gtf == 'genes_decoy'] <- 'decoy'
+
+tmp$multi <- ifelse(tmp$multimapping == 'multimapping', 'yes', 'no')
+tmp$multi[tmp$multimapping == 'truth'] <- ''
+
+tmp$repeats <- ifelse(tmp$overlap == 'strict', 'strict', 'lenient')
+tmp$repeats[tmp$overlap == 'truth'] <- ''
+    
 ggplot(tmp, aes(fill = class, y = counts, x = flavour)) + 
     geom_bar(position="stack", stat="identity", width = 1, colour = 'black')  +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     scale_fill_manual(values = class_pal) +
-    facet_grid(~overlap*multimapping, scales = "free", space = "free") 
+    geom_text(aes(label = label), position = position_stack(vjust = 0.5), size = 2) +
+    facet_grid(~mapping*multi*repeats,
+               labeller = label_context, scales = "free", space = "free") +
+    ylab('# repeats loci')
 ```
 
-
-
-
 ```{r}
+# the empty one is the truth
+tmp$mapping <- factor(tmp$mapping, levels = c('truth', 'genes', 'repeats', 'decoy'))
+tmp$multi <- factor(tmp$multi, levels = c('', 'yes', 'no'))
+tmp$repeats <- factor(tmp$repeats, levels = c('', 'lenient', 'strict'))
+```
 
-## logp3_trans <- trans_new(
-##   name = "logp",
-##   trans = function(x) log(x + 3),
-##   inverse = function(x) exp(x) - 3,
-##   breaks = log_breaks()
-## )
-
+```{r final_class, fig.width=7, fig.height=5}
 ggplot(tmp, aes(fill = class, y = counts, x = flavour)) + 
-    geom_bar(position="stack", stat="identity", colour = 'black')  +
-    scale_y_continuous(trans = 'sqrt', labels = label_scientific(digits = 3)) +
-    ## coord_trans(y='log10') +
+    geom_bar(position="stack", stat="identity", width = 1, colour = 'black')  +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     scale_fill_manual(values = class_pal) +
-    facet_grid(~overlap*multimapping, scales = "free", space = "free") 
+    geom_text(aes(label = label), position = position_stack(vjust = 0.5), size = 2) +
+    facet_grid(~repeats*mapping*multi,
+                scales = "free", space = "free") +
+    ylab('# repeats loci') +
+    guides(shape = guide_legend(override.aes = list(size = 3)),
+           fill=guide_legend(ncol=2))
+
+grid.text("repeat definition", x = unit(0.78, "npc"), y = unit(0.97, "npc"),
+          gp = gpar(fontsize = 10), just = 'left')
+grid.text("mapping", x = unit(0.78, "npc"), y = unit(0.935, "npc"),
+          gp = gpar(fontsize = 10), just = 'left')
+grid.text("multimapping", x = unit(0.78, "npc"), y = unit(0.90, "npc"),
+          gp = gpar(fontsize = 10), just = 'left')
 ```
 
 
-```{r}
-ggplot(data = tmp,
-       mapping = aes_string(y = "class", 
-                            x = "flavour")) +
-    geom_point(mapping = aes_string(size = "counts",
-                                    color = "counts")) +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+<!-- ```{r} -->
 
-```
+<!-- ## logp3_trans <- trans_new( -->
+<!-- ##   name = "logp", -->
+<!-- ##   trans = function(x) log(x + 3), -->
+<!-- ##   inverse = function(x) exp(x) - 3, -->
+<!-- ##   breaks = log_breaks() -->
+<!-- ## ) -->
+
+<!-- ggplot(tmp, aes(fill = class, y = counts, x = flavour)) +  -->
+<!--     geom_bar(position="stack", stat="identity", colour = 'black')  + -->
+<!--     scale_y_continuous(trans = 'sqrt', labels = label_scientific(digits = 3)) + -->
+<!--     ## coord_trans(y='log10') + -->
+<!--     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + -->
+<!--     scale_fill_manual(values = class_pal) + -->
+<!--     facet_grid(~overlap*multimapping, scales = "free", space = "free") + -->
+<!--     geom_text(aes(label = label), position = position_stack(vjust = 0.5), size = 2) + -->
+<!--     ylab('# repeats loci') -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- ggplot(data = tmp, -->
+<!--        mapping = aes_string(y = "class",  -->
+<!--                             x = "flavour")) + -->
+<!--     geom_point(mapping = aes_string(size = "counts", -->
+<!--                                     color = "counts")) + -->
+<!--     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) -->
+
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- p <- ggplot(data = tmp, -->
+<!--             mapping = aes_string(x = "class",  -->
+<!--                                  y = "flavour")) + -->
+<!--     geom_point(mapping = aes_string(size = "counts", -->
+<!--                                     color = "percent")) + -->
+<!--     scale_color_viridis() + -->
+<!--     scale_x_discrete(limits = rev(levels(tmp$class))) + -->
+<!--     scale_y_discrete(limits = rev(levels(tmp$flavour))) + -->
+    
+<!--     ## scale_size_identity(trans="log",guide="legend") + -->
+<!--     theme(panel.background = element_blank(), -->
+<!--           axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+ -->
+<!--     facet_grid(multimapping*overlap~., scales = "free", space = "free", drop = TRUE) -->
+
+<!-- print(p) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- ggplot(data = tmp, -->
+<!--            mapping = aes_string(x = "class",  -->
+<!--                                  y = "flavour")) + -->
+<!--     geom_point(mapping = aes_string(size = "counts", -->
+<!--                                     color = "percent")) + -->
+<!--     scale_color_viridis() + -->
+<!--     scale_x_discrete(limits = rev(levels(tmp$class))) + -->
+<!--     scale_y_discrete(limits = rev(levels(tmp$flavour))) + -->
+    
+<!--     ## scale_size_identity(trans="log",guide="legend") + -->
+<!--     theme(panel.background = element_blank(), -->
+<!--           axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+ -->
+<!--     facet_grid(multimapping*overlap~., scales = "free", space = "free", drop = TRUE) -->
+
+
+<!-- ``` -->
+
+
 
 
 
@@ -1195,19 +1300,69 @@ tmp$family <- as.character(tmp$family)
 
 ```{r}
 tmp <- merge(tmp, flavour_annot, by.x = 'flavour', by.y = 'id', all.x = TRUE)
+tmp$counts[is.na(tmp$counts)] <- 0
 tmp$overlap <- factor(tmp$overlap, levels = c('truth', 'all', 'strict'))
 tmp$multimapping <- factor(tmp$multimapping, levels = c('truth', 'unique', 'multimapping'))
 ```
 
 ```{r}
+
+# Calculate percentages
+tmp <- plyr::ddply(tmp, .(flavour), transform, percent = counts/sum(counts) * 100)
+tmp$percent[tmp$percent == NA] <- 0
+tmp$label <- sprintf("%.1f", tmp$percent)
+
+## to hide labels for very small bars
+tmp$label <- ifelse(as.numeric(tmp$label) >= 0.2, tmp$label, NA)
+```
+
+
+
+<!-- ```{r} -->
+<!-- ggplot(tmp, aes(fill = family, y = counts, x = flavour)) +  -->
+<!--     geom_bar(position="stack", stat="identity", width = 1, colour = 'black')  + -->
+<!--     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + -->
+<!--     scale_fill_manual(values = family_pal) + -->
+<!--     geom_text(aes(label = label), position = position_stack(vjust = 0.5), size = 2) + -->
+<!--     facet_grid(~overlap*multimapping, scales = "free", space = "free") + -->
+<!--     ylab('# repeats loci') -->
+    
+<!-- ``` -->
+
+
+```{r final_family, fig.width=7, fig.height=5}
+tmp$mapping <- ifelse(tmp$gtf == 'repeats', 'repeats', 'genes')
+tmp$mapping[tmp$gtf == 'truth'] <- 'truth'
+tmp$mapping[tmp$gtf == 'genes_decoy'] <- 'decoy'
+
+tmp$multi <- ifelse(tmp$multimapping == 'multimapping', 'yes', 'no')
+tmp$multi[tmp$multimapping == 'truth'] <- ''
+
+tmp$repeats <- ifelse(tmp$overlap == 'strict', 'strict', 'lenient')
+tmp$repeats[tmp$overlap == 'truth'] <- ''
+
+tmp$mapping <- factor(tmp$mapping, levels = c('truth', 'genes', 'repeats', 'decoy'))
+tmp$multi <- factor(tmp$multi, levels = c('', 'yes', 'no'))
+tmp$repeats <- factor(tmp$repeats, levels = c('', 'lenient', 'strict'))
+
 ggplot(tmp, aes(fill = family, y = counts, x = flavour)) + 
     geom_bar(position="stack", stat="identity", width = 1, colour = 'black')  +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    scale_fill_manual(values = family_pal) +
-    facet_grid(~overlap*multimapping, scales = "free", space = "free") 
-    
-```
+    scale_fill_manual(values = class_pal) +
+    geom_text(aes(label = label), position = position_stack(vjust = 0.5), size = 2) +
+    facet_grid(~repeats*mapping*multi,
+                scales = "free", space = "free") +
+    ylab('# repeats loci') +
+    guides(shape = guide_legend(override.aes = list(size = 3)),
+           fill=guide_legend(ncol=2))
 
+grid.text("repeat definition", x = unit(0.78, "npc"), y = unit(0.97, "npc"),
+          gp = gpar(fontsize = 10), just = 'left')
+grid.text("mapping", x = unit(0.78, "npc"), y = unit(0.935, "npc"),
+          gp = gpar(fontsize = 10), just = 'left')
+grid.text("multimapping", x = unit(0.78, "npc"), y = unit(0.90, "npc"),
+          gp = gpar(fontsize = 10), just = 'left')
+```
 
 
 by name, only the top 10 names are shown
@@ -1243,8 +1398,20 @@ names_pal <- c("#c95171",
 ```{r}
 
 tmp <- merge(tmp, flavour_annot, by.x = 'flavour', by.y = 'id', all.x = TRUE)
+tmp$counts[is.na(tmp$counts)] <- 0
 tmp$overlap <- factor(tmp$overlap, levels = c('truth', 'all', 'strict'))
 tmp$multimapping <- factor(tmp$multimapping, levels = c('truth', 'unique', 'multimapping'))
+```
+
+```{r}
+
+# Calculate percentages
+tmp <- plyr::ddply(tmp, .(flavour), transform, percent = counts/sum(counts) * 100)
+tmp$percent[tmp$percent == NA] <- 0
+tmp$label <- sprintf("%.1f", tmp$percent)
+
+## to hide labels for very small bars
+tmp$label <- ifelse(as.numeric(tmp$label) >= 0.2, tmp$label, NA)
 ```
 
 ```{r}
@@ -1252,8 +1419,44 @@ ggplot(tmp, aes(fill = name, y = counts, x = flavour)) +
     geom_bar(position="stack", stat="identity", width = 1, colour = 'black')  +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
     scale_fill_manual(values = names_pal) +
-    facet_grid(~overlap*multimapping, scales = "free", space = "free") 
+    geom_text(aes(label = label), position = position_stack(vjust = 0.5), size = 2) +
+    facet_grid(~overlap*multimapping, scales = "free", space = "free") +
+    ylab('# repeats loci')
     
+```
+
+```{r final_name, fig.width=7, fig.height=5}
+tmp$mapping <- ifelse(tmp$gtf == 'repeats', 'repeats', 'genes')
+tmp$mapping[tmp$gtf == 'truth'] <- 'truth'
+tmp$mapping[tmp$gtf == 'genes_decoy'] <- 'decoy'
+
+tmp$multi <- ifelse(tmp$multimapping == 'multimapping', 'yes', 'no')
+tmp$multi[tmp$multimapping == 'truth'] <- ''
+
+tmp$repeats <- ifelse(tmp$overlap == 'strict', 'strict', 'lenient')
+tmp$repeats[tmp$overlap == 'truth'] <- ''
+
+tmp$mapping <- factor(tmp$mapping, levels = c('truth', 'genes', 'repeats', 'decoy'))
+tmp$multi <- factor(tmp$multi, levels = c('', 'yes', 'no'))
+tmp$repeats <- factor(tmp$repeats, levels = c('', 'lenient', 'strict'))
+
+ggplot(tmp, aes(fill = name, y = counts, x = flavour)) + 
+    geom_bar(position="stack", stat="identity", width = 1, colour = 'black')  +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+    scale_fill_manual(values = class_pal) +
+    geom_text(aes(label = label), position = position_stack(vjust = 0.5), size = 2) +
+    facet_grid(~repeats*mapping*multi,
+                scales = "free", space = "free") +
+    ylab('# repeats loci') +
+    guides(shape = guide_legend(override.aes = list(size = 3)),
+           fill=guide_legend(ncol=2))
+
+grid.text("repeat definition", x = unit(0.85, "npc"), y = unit(0.97, "npc"),
+          gp = gpar(fontsize = 10), just = 'left')
+grid.text("mapping", x = unit(0.85, "npc"), y = unit(0.935, "npc"),
+          gp = gpar(fontsize = 10), just = 'left')
+grid.text("multimapping", x = unit(0.85, "npc"), y = unit(0.90, "npc"),
+          gp = gpar(fontsize = 10), just = 'left')
 ```
 
 
@@ -1266,119 +1469,119 @@ devtools::session_info()
 
 ```
 
-```{r}
-knitr::knit_exit()
-```
+<!-- ```{r} -->
+<!-- knitr::knit_exit() -->
+<!-- ``` -->
 
-# Cells corr
-
-
-Some pairwise correlations for randomly picked cells
+<!-- # Cells corr -->
 
 
-```{r}
-set.seed(64554)
-sampled <- sample(x = truth$cell, size = 10, replace = FALSE)
+<!-- Some pairwise correlations for randomly picked cells -->
 
 
-for (cell in sampled) {
-    tmp <- list()
-    tmp$truth <- truth[truth$cell == cell, 'id']
-    for (item in grep('repeats', names(d), value = TRUE)) {
-        tmp[[item]] <- rownames(d[[item]])[d[[item]][,cell] > 0]
+<!-- ```{r} -->
+<!-- set.seed(64554) -->
+<!-- sampled <- sample(x = truth$cell, size = 10, replace = FALSE) -->
 
-    }
 
-    ## build a matrix with binary distances?
+<!-- for (cell in sampled) { -->
+<!--     tmp <- list() -->
+<!--     tmp$truth <- truth[truth$cell == cell, 'id'] -->
+<!--     for (item in grep('repeats', names(d), value = TRUE)) { -->
+<!--         tmp[[item]] <- rownames(d[[item]])[d[[item]][,cell] > 0] -->
+
+<!--     } -->
+
+<!--     ## build a matrix with binary distances? -->
     
     
-}
+<!-- } -->
 
-```
+<!-- ``` -->
 
-```{r, eval = FALSE}
-print('knit me')
-knit::exit()
-```
+<!-- ```{r, eval = FALSE} -->
+<!-- print('knit me') -->
+<!-- knitr::exit() -->
+<!-- ``` -->
 
-# are the wrong mappings things from the same family?
-
-
-```{r}
+<!-- # are the wrong mappings things from the same family? -->
 
 
+<!-- ```{r} -->
 
-gtf <- fread(params$reps_gtf, colClasses = c(rep('NULL', 8), 'character'))
 
-reg <- 'gene_id "(.+)"; transcript_id "(.+)"; family_id "(.+)"; class_id "(.+)";'
 
-gtf$id <- gsub(pattern = reg, replacement = '\\2', x = gtf$V9)
-gtf$name <- gsub(pattern = reg, replacement = '\\1', x = gtf$V9)
-gtf$family <- gsub(pattern = reg, replacement = '\\3', x = gtf$V9)
-gtf$class <- gsub(pattern = reg, replacement = '\\4', x = gtf$V9)
+<!-- gtf <- fread(params$reps_gtf, colClasses = c(rep('NULL', 8), 'character')) -->
 
-gtf <- as.data.frame(gtf[,c('id', 'name', 'family', 'class')])
+<!-- reg <- 'gene_id "(.+)"; transcript_id "(.+)"; family_id "(.+)"; class_id "(.+)";' -->
 
-fds <- list()
-for (item in setdiff(names(params), c('scte', 'shao_saf', 'truth', 'shao_counts', 'nthreads'))) {
-    for (fn in list.files(dirname(params[[item]]), pattern = "*featureCounts")){
-        print(fn)
-        foo <- as.data.frame(fread(fn, sep = '\t'))
-        foo <- merge(foo, gtf, by.x= 'V4', by.y = 'id', all.x = TRUE)
-        colnames(foo) <- c('mapped.id', 'read_name', 'status', 'count', 'mapped.name', 'mapped.family',
-                           'mapped.class')
+<!-- gtf$id <- gsub(pattern = reg, replacement = '\\2', x = gtf$V9) -->
+<!-- gtf$name <- gsub(pattern = reg, replacement = '\\1', x = gtf$V9) -->
+<!-- gtf$family <- gsub(pattern = reg, replacement = '\\3', x = gtf$V9) -->
+<!-- gtf$class <- gsub(pattern = reg, replacement = '\\4', x = gtf$V9) -->
 
-        foo$sim.id <- gsub(pattern = '(.+);(.+);(.+);(.+);.*', replacement = '\\2', x = foo$read_name)
-        foo <- merge(foo, gtf, by.x= 'sim.id', by.y = 'id', all.x = TRUE)
-        ## head(foo)
+<!-- gtf <- as.data.frame(gtf[,c('id', 'name', 'family', 'class')]) -->
 
-        ## spawn multioverlaps?
-        ## strsplit(foo$V4, split = ",")
-        ## data.frame(V1 = rep(df$V1, sapply(s, length)), V2 = unlist(s))
+<!-- fds <- list() -->
+<!-- for (item in setdiff(names(params), c('scte', 'shao_saf', 'truth', 'shao_counts', 'nthreads'))) { -->
+<!--     for (fn in list.files(dirname(params[[item]]), pattern = "*featureCounts")){ -->
+<!--         print(fn) -->
+<!--         foo <- as.data.frame(fread(fn, sep = '\t')) -->
+<!--         foo <- merge(foo, gtf, by.x= 'V4', by.y = 'id', all.x = TRUE) -->
+<!--         colnames(foo) <- c('mapped.id', 'read_name', 'status', 'count', 'mapped.name', 'mapped.family', -->
+<!--                            'mapped.class') -->
+
+<!--         foo$sim.id <- gsub(pattern = '(.+);(.+);(.+);(.+);.*', replacement = '\\2', x = foo$read_name) -->
+<!--         foo <- merge(foo, gtf, by.x= 'sim.id', by.y = 'id', all.x = TRUE) -->
+<!--         ## head(foo) -->
+
+<!--         ## spawn multioverlaps? -->
+<!--         ## strsplit(foo$V4, split = ",") -->
+<!--         ## data.frame(V1 = rep(df$V1, sapply(s, length)), V2 = unlist(s)) -->
         
-        colnames(foo)[9:11] <- c('sim.name', 'sim.family', 'sim.class') 
+<!--         colnames(foo)[9:11] <- c('sim.name', 'sim.family', 'sim.class')  -->
 
         
-        fds[[fn]] <- list(fn = fn,
-                          family.correct = sum(na.omit(foo$mapped.family == foo$sim.family)),
-                          family.wrong = sum(na.omit(foo$mapped.family != foo$sim.family)),
-                          name.correct = sum(na.omit(foo$mapped.name == foo$sim.name)),
-                          name.wrong = sum(na.omit(foo$mapped.name != foo$sim.name)),
-                          class.correct = sum(na.omit(foo$mapped.class == foo$sim.class)),
-                          class.wrong = sum(na.omit(foo$mapped.class != foo$sim.class)),
-                          Unassigned_MultiMapping = sum(foo$status == 'Unassigned_MultiMapping'),
-                          Unassigned_NoFeatures = sum(foo$status == 'Unassigned_NoFeatures'),
-                          Unassigned_Unmapped = sum(foo$status == 'Unassigned_Unmapped'),
-                          Unassigned_Ambiguity = sum(foo$status == 'Unassigned_Ambiguity'),
-                          Assigned = sum(foo$status == 'Assigned'))
+<!--         fds[[fn]] <- list(fn = fn, -->
+<!--                           family.correct = sum(na.omit(foo$mapped.family == foo$sim.family)), -->
+<!--                           family.wrong = sum(na.omit(foo$mapped.family != foo$sim.family)), -->
+<!--                           name.correct = sum(na.omit(foo$mapped.name == foo$sim.name)), -->
+<!--                           name.wrong = sum(na.omit(foo$mapped.name != foo$sim.name)), -->
+<!--                           class.correct = sum(na.omit(foo$mapped.class == foo$sim.class)), -->
+<!--                           class.wrong = sum(na.omit(foo$mapped.class != foo$sim.class)), -->
+<!--                           Unassigned_MultiMapping = sum(foo$status == 'Unassigned_MultiMapping'), -->
+<!--                           Unassigned_NoFeatures = sum(foo$status == 'Unassigned_NoFeatures'), -->
+<!--                           Unassigned_Unmapped = sum(foo$status == 'Unassigned_Unmapped'), -->
+<!--                           Unassigned_Ambiguity = sum(foo$status == 'Unassigned_Ambiguity'), -->
+<!--                           Assigned = sum(foo$status == 'Assigned')) -->
                           
         
         
 
-        data.frame(cbind(table(foo$mapped.family == foo$sim.family, useNA = 'always')))
+<!--         data.frame(cbind(table(foo$mapped.family == foo$sim.family, useNA = 'always'))) -->
                               
-        table(foo$mapped.name == foo$sim.name, useNA = 'always')
-        table(foo$mapped.class == foo$sim.class, useNA = 'always')
-        table(foo$status)
+<!--         table(foo$mapped.name == foo$sim.name, useNA = 'always') -->
+<!--         table(foo$mapped.class == foo$sim.class, useNA = 'always') -->
+<!--         table(foo$status) -->
 
 
-    }
+<!--     } -->
         
-}
+<!-- } -->
 
-```
+<!-- ``` -->
 
-# Timestamp
+<!-- # Timestamp -->
 
-```{r sessionInfo, cache = FALSE}
-date()
-sessionInfo()
-devtools::session_info()
+<!-- ```{r sessionInfo, cache = FALSE} -->
+<!-- date() -->
+<!-- sessionInfo() -->
+<!-- devtools::session_info() -->
 
-```
+<!-- ``` -->
 
-```{r}
-knitr::knit_exit()
-```
+<!-- ```{r} -->
+<!-- knitr::knit_exit() -->
+<!-- ``` -->
 
 

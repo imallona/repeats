@@ -125,6 +125,8 @@ fi
 
 source 02_simulate_ground_truth_fastqs.sh
 
+mkdir -p $HOME/repeats_sc/data/sim_5k_pbmc_v3
+
 ## function from the script above
 touch "$R2_SIM_ORIGIN"
 echo simulate_cdna $LENGTH $QUAL_SYMBOL $GTF $GENOME_FASTA $NTHREADS $BEDTOOLS_BIN $R2_SIM_ORIGIN

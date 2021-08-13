@@ -262,19 +262,25 @@ rule run_featurecounts_spawned_bams_cellranger_repeats_by_locus:
 rule run_simulation:
     input:
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL)),
-        genome_fasta = op.join(BASE, 'annotation', op.basename(GENOME_URL))
+        genome_fasta = op.join(BASE, 'annotation', op.basename(GENOME_URL)),
+        r1_origin = op.join(BASE, 'data', '5k_pbmc_v3', '5k_pbmc_v3_fastqs',
+                            "5k_pbmc_v3_S1_L002_R1_001.fastq.gz"),
+        r2_sim_origin =  op.join(BASE, 'data', '5k_pbmc_v3', '5k_pbmc_v3_fastqs',
+                                 "5k_pbmc_v3_S1_L002_R2_001.fastq.gz")
     output:
         genome_fasta_uncomp = temp(op.join(BASE, 'annotation', op.splitext(op.basename(GENOME_URL))[0])),
         truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),       
         i1_sim =  op.join(BASE, 'data', RUN_NAME, 'sim_5k_pbmc_v3_S1_L002_I1_001.fastq.gz'),
         r1_sim =  op.join(BASE, 'data', RUN_NAME, 'sim_5k_pbmc_v3_S1_L002_R1_001.fastq.gz'),
-        r2_sim_origin =  op.join(BASE, 'data', RUN_NAME, "sim_5k_pbmc_v3_S1_L002_R2_001.fastq.gz")
+        r2_sim =  op.join(BASE, 'data', RUN_NAME, 'sim_5k_pbmc_v3_S1_L002_R2_001.fastq.gz')
     params:
         path = op.join(BASE, 'data', RUN_NAME),
         length = 91,
         bedtools = BEDTOOLS,
         i1_origin = op.join(BASE, 'data', RUN_NAME, "5k_pbmc_v3_S1_L002_I1_001.fastq.gz"),
-        r1_origin = op.join(BASE, 'data', RUN_NAME, "5k_pbmc_v3_S1_L002_R1_001.fastq.gz"),
+        # r1_origin = op.join(BASE, 'data', RUN_NAME, "5k_pbmc_v3_S1_L002_R1_001.fastq.gz"),
+        # r1_origin = op.join(BASE, 'data', '5k_pbmc_v3', '5k_pbmc_v3_fastqs',
+        #                          "5k_pbmc_v3_S1_L002_R1_001.fastq.gz"),
         truth_count_table = op.join(BASE, 'data', RUN_NAME, "truth.tsv"),
         cb=16,
         umi=12,
@@ -282,7 +288,7 @@ rule run_simulation:
         dependency = "02_simulate_ground_truth_fastqs.sh",
         ti1_sim =  op.join(BASE, 'data', RUN_NAME, "sim_5k_pbmc_v3_S1_L002_I1_001.fastq"),
         tr1_sim =  op.join(BASE, 'data', RUN_NAME, "sim_5k_pbmc_v3_S1_L002_R1_001.fastq"),
-        tr2_sim_origin =  op.join(BASE, 'data', RUN_NAME, "sim_5k_pbmc_v3_S1_L002_R2_001.fastq"), 
+        tr2_sim_origin =  op.join(BASE, 'data', RUN_NAME, "sim_5k_pbmc_v3_S1_L002_R2_001.fastq")
     log:
         op.join(BASE, 'data', RUN_NAME, "simulation.log")
     threads:
@@ -290,19 +296,6 @@ rule run_simulation:
     shell:
         """
         mkdir -p {params.path}
-        # cd {params.path}
-
-        # source {params.dependency}
-
-        # ## function from the script above
-        # touch {output.r2_sim_origin}
-        # simulate_cdna $LENGTH $QUAL_SYMBOL $GTF $GENOME_FASTA $NTHREADS $BEDTOOLS_BIN $R2_SIM_ORIGIN
-
-        # gunzip {params.path}/*
-
-        # source 02_simulate_ground_truth_fastqs.sh
-
-        # pigz --decompress -p {threads} --keep {input.genome_fasta}
 
         bash 03_simulate_chromium_v3.sh --length {params.length} \
         --nthreads {threads} \
@@ -311,7 +304,7 @@ rule run_simulation:
         --genome_fasta {output.genome_fasta_uncomp} \
         --bedtools_bin {params.bedtools} \
         --i1_origin {params.i1_origin} \
-        --r1_origin {params.r1_origin} \
+        --r1_origin {input.r1_origin} \
         --r2_sim_origin {params.tr2_sim_origin} \
         --i1_sim {params.ti1_sim} \
         --r1_sim {params.tr1_sim} \
@@ -336,6 +329,7 @@ rule run_cellranger_repeats:
         local_mem_gb = LOCAL_MEM_GB,
         processing_path = op.join(BASE, 'runs', RUN_NAME)
     output:
+        op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'possorted_genome_bam.bam'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'web_summary.html'),
         op.join(BASE, 'runs', RUN_NAME, 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
     threads:
@@ -452,7 +446,7 @@ rule TESTING_map_salmon_repeats_chromium_no_decoy_per_locus:
         cb = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R1*fastq.gz')))),
         r2 = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R2*fastq.gz')))) 
     log:
-        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium.log')
+        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium_no_decoy_per_locus.log')
     shell:
         """
     mkdir -p {params.processing_path}
@@ -551,7 +545,7 @@ rule map_salmon_repeats_chromium_per_locus:
         cb = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R1*fastq.gz')))),
         r2 = ' '.join(sorted(glob(op.join(BASE, 'data', RUN_NAME, '*R2*fastq.gz')))) 
     log:
-        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium.log')
+        op.join(BASE, 'runs', RUN_NAME, 'run_salmon_repeats_chromium_per_locus.log')
     shell:
         """
     mkdir -p {params.processing_path}
@@ -575,6 +569,7 @@ rule map_salmon_repeats_chromium_per_locus:
         
 rule run_featurecounts_spawned_bams_per_locus:
     input:
+        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),
         flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split.flag'),
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
     params:
@@ -635,6 +630,7 @@ rule run_featurecounts_spawned_bams_per_locus:
                     
 rule test_featurecounts_o:
     input:
+        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),
         flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split.flag'),
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
     params:
@@ -698,6 +694,7 @@ rule test_featurecounts_o:
             
 rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams_per_locus:
     input:
+        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),
         flag = op.join(BASE, "runs", RUN_NAME, 'count_repeats_on_cellranger_standard', 'split.flag'),
         gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL) + '_minus_' + op.basename(GENES_GTF_URL))
     params:
@@ -806,7 +803,8 @@ rule knit_report:
         shao_saf = op.join(BASE, 'annotation', 'shao', GENOME_SHORT,
                            'shao_' + GENOME_SHORT + '_te.saf'),
         shao_sam = op.join(BASE, 'runs', RUN_NAME, 'zumis',
-                              'sim_5k_zumis_featurecount.sam.txt')                    
+                              'sim_5k_zumis_featurecount.sam.txt'),
+        reps_gtf = op.join(BASE, 'annotation', op.basename(REP_GTF_URL))
     params:
         rmd = 'postprocess_simulation.Rmd',
         run_name = RUN_NAME,
@@ -833,6 +831,7 @@ rule knit_report:
                      shao_counts = \"{input.shao_counts}\",
                      shao_saf = \"{input.shao_saf}\",
                      shao_sam = \"{input.shao_sam}\",
+                     reps_gtf = \"{input.reps_gtf}\",
                      nthreads = {params.threads}))' &> {log}
         """
 
@@ -979,6 +978,7 @@ rule generate_scte_index:
 
 rule run_scte_on_cellranger:
     input:
+        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),
         bam = op.join(BASE, 'runs', RUN_NAME, 'cellranger_standard', 'outs',
                       'possorted_genome_bam.bam'),
         idx = op.join(BASE,  'annotation', 'scTE', GENOME_SHORT, GENOME_SHORT + ".exclusive.idx")
@@ -1150,6 +1150,7 @@ EOF
 # these are coded under third_party, shao_installs.sh
 rule run_shao:
     input:
+        truth = op.join(BASE, 'data', RUN_NAME, "truth.tsv.gz"),
         yaml = op.join(BASE, 'runs', RUN_NAME, "shao", 'zumis.yaml'),
         shao_te_saf = op.join(BASE, 'annotation', 'shao', GENOME_SHORT,
                               'shao_' + GENOME_SHORT + '_te.saf')
@@ -1178,7 +1179,7 @@ rule run_shao:
           -d {params.path}
 
         {Rscript} {params.umi_counting} \
-         -f {output.dt} \
+         -f {output.shao_sam} \
          -r {input.shao_te_saf} \
          -n sim_5k_zumis \
          -s 50 \

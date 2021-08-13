@@ -255,6 +255,7 @@ cytotoxic_t,Cytotoxic_T_cell,"#1F78B4"
 b_cells,B_cell,"#B2DF8A"
 cd56_nk,Natural_killer_cell,"#33A02C"
 cd14_monocytes,CD14+_monocyte,"#FB9A99"
+
 missing_cd16mono,CD16+_monocyte,"#E31A1C"
 missing_dendritic,Dendritic_cell,"#FDBF6F"
 missing_plasmacytoid,Plasmacytoid_dendritic_cell,"#FF7F00"
@@ -375,11 +376,16 @@ for (rds in params) {
             d[[sapply(strsplit(dirname(rds), .Platform$file.sep),
                       function(x) return(x[6]))]] <- readRDS(file = rds)
         },
-        error = function(x) print(sprintf('error detected and ignored loading data: \n%s\n', x)))
+        error = function(x) print(sprintf('%s\nerror detected and ignored loading data: \n%s\n',
+                                          x, item)))
     }
 }
 ```
 
+
+```{r}
+names(d)
+```
 
 ```{r, include = FALSE, eval = TRUE}
 annot <- list()
