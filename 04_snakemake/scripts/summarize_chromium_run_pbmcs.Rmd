@@ -2443,7 +2443,7 @@ List of seurat objects
 
 ```{r save_outputs, cache = FALSE}
 saveRDS(object = d, file = params$seurat_output)
-saveRDS(object = aris_stored, file = params$aris_output)
+## saveRDS(object = aris_stored, file = params$aris_output)
 saveRDS(object = cobra, file = params$cobra_output)
 saveRDS(object = ml, file = params$markers_output)
 ```

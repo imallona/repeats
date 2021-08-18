@@ -31,11 +31,12 @@ CONFIG2 = op.join(BASE, 'data', RUN_NAME, 'tcells.conf')
 GENOME_URL = 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz'
 # GENES_GTF_URL =  'ftp://ftp.ensembl.org/pub/release-98/gtf/homo_sapiens/Homo_sapiens.GRCh38.98.gtf.gz'
 GENES_GTF_URL = 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz'
-REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
+# REP_GTF_URL = 'http://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_rmsk_TE.gtf.gz'
+REP_GTF_URL = 'hg38_rmsk.gtf.gz'
 
 ## @FIXME to be moved to config
-GTF_MAKING_SCRIPT = '~/src/repeats_sc/04_snakemake/gtf_maker.R'
-GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/gtf_parser.R'
+GTF_MAKING_SCRIPT = '~/src/repeats_sc/04_snakemake/scripts/gtf_maker.R'
+GTF_PARSING_RSCRIPT = '~/src/repeats_sc/04_snakemake/scripts/gtf_parser.R'
 
 BOWTIE_BUILD = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie-build'
 BOWTIE = '/home/imallona/soft/bowtie/bowtie-1.2.3/bowtie'
@@ -48,7 +49,7 @@ FEATURECOUNTS = '~/soft/subread/subread-2.0.0-source/bin/featureCounts'
 SALMON = '~/soft/salmon/salmon-1.1.0_linux_x86_64/bin/salmon'
 CELLRANGER = '~/soft/cellranger/cellranger-3.1.0/cellranger'
 BEDTOOLS = '~/soft/bedtools/bedtools-2.29.2/bin/bedtools'
-Rscript = '/usr/local/R/R-3.6.1/bin/Rscript'
+Rscript = '/usr/local/R/R-4.1.0/bin/Rscript'
 
 ## this is needed to be hardcoded/config file
 
@@ -116,9 +117,7 @@ rule knit:
         repeats_only_multi = op.join(BASE, 'runs', RUN_NAME, 'star_transcriptome', 'repeats_no_overlap',
                                       "multimappers", RUN_NAME + '_repeats_no_overlap_genes.counts.gz'),
         repeats_bowtie_unique = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome',
-                                        'unique_reads', RUN_NAME + '_bowtie_repeats.counts.gz'),
-        repeats_bowtie_multi = op.join(BASE, 'runs', RUN_NAME, 'bowtie_repeatome',
-                                        'multimappers', RUN_NAME + '_bowtie_repeats.counts.gz')
+                                        'unique_reads', RUN_NAME + '_bowtie_repeats.counts.gz')
     params:
         rmd = '01_bulk_rnaseq_monocytes_gse80095_postproc.Rmd',
         run_name = RUN_NAME
@@ -136,8 +135,7 @@ rule knit:
           genes_star = \"{input.genes_star}\", 
           repeats_star_unique = \"{input.repeats_star_unique}\", 
           repeats_star_multi = \"{input.repeats_star_multi}\", 
-          repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\", 
-          repeats_bowtie_multi = \"{input.repeats_bowtie_multi}\", 
+          repeats_bowtie_unique = \"{input.repeats_bowtie_unique}\",
           repeats_only_unique = \"{input.repeats_only_unique}\",
           repeats_only_multi = \"{input.repeats_only_multi}\",
           expression_output = \"{output.expression}\",
@@ -204,7 +202,7 @@ rule feature_counts_repeats_no_overlap_genes_spawned_bams:
            -o  {output.counts} \
            -M \
            --fraction \
-           {params.path}/*bam  2>&1 > {log}
+           {params.path}/*bam  &> {log}
 
            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
 
@@ -221,7 +219,7 @@ rule feature_counts_repeats_no_overlap_genes_spawned_bams:
            -g gene_id \
            -a {input.gtf} \
            -o  {output.counts} \
-           {params.path}/*bam  2>&1 > {log}
+           {params.path}/*bam  &> {log}
 
            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
            """)
@@ -265,7 +263,7 @@ rule featurecounts_repeats_repeatome_pe:
            -o  {output.counts} \
            -M \
            --fraction \
-           {params.path}/*bam  2>&1 > {log}
+           {params.path}/*bam  &> {log}
 
            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
 
@@ -282,7 +280,7 @@ rule featurecounts_repeats_repeatome_pe:
            -g gene_id \
            -a {input.fake_repeatome_gtf} \
            -o  {output.counts} \
-           {params.path}/*bam  2>&1 > {log}
+           {params.path}/*bam  &> {log}
 
            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
            """)
@@ -350,7 +348,7 @@ rule featurecounts_repeats_transcriptome_pe:
            -o  {output.counts} \
            -M \
            --fraction \
-           {params.path}/*bam  2>&1 > {log}
+           {params.path}/*bam  &> {log}
 
            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
 
@@ -367,7 +365,7 @@ rule featurecounts_repeats_transcriptome_pe:
            -g gene_id \
            -a {input.gtf} \
            -o  {output.counts} \
-           {params.path}/*bam  2>&1 > {log}
+           {params.path}/*bam  &> {log}
 
            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
            """)
@@ -452,7 +450,7 @@ rule featurecounts_repeats_transcriptome:
            -o  {output.counts} \
            -M \
            --fraction \
-           {params.path}/*bam  2>&1 > {log}
+           {params.path}/*bam  &> {log}
 
            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
 
@@ -468,7 +466,7 @@ rule featurecounts_repeats_transcriptome:
            -g gene_id \
            -a {input.gtf} \
            -o  {output.counts} \
-           {params.path}/*bam  2>&1 > {log}
+           {params.path}/*bam  &> {log}
 
            {PIGZ} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
            """)

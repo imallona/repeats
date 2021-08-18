@@ -37,9 +37,13 @@ while (TRUE) {
     ## gsub("(^.*)(_\\w*?)$", "\\1", 'Alusp_eo_bar_baz', perl=TRUE)
     ## gsub("(^.*)(_\\w*?)$", "\\1", 'Alusp-eo', perl=TRUE)
     ## gsub("(^.*)(_\\w*?)$", "\\1", 'Alusp_eo', perl=TRUE)
-    family <- gsub("(^.*)(_\\w*?)$", "\\1", line[1], perl = TRUE)
+
+   
+    family <-gsub("(^.*)(_\\w*?)$", "\\1", line[1], perl = TRUE)
+
+    ## USE THIS FOR LOCUS-BASED REPEATOMES
     parsed <- c(line[1], 'repeat', 'exon', "1", line[2], "0.000000", '+', '.', sprintf('gene_id "%s"; transcript_id "%s";', family, line[1]))
-    
+  
     cat(sprintf('%s\n', paste(parsed, collapse = '\t')))
 }
 

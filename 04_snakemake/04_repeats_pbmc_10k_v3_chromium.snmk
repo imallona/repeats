@@ -289,11 +289,12 @@ rule knit_report_chromium_no_bowtie:
     params:
         rmd = op.join('scripts', 'summarize_chromium_run_pbmcs.Rmd'),
         run_name = config['run_name'],
-        Rscript = config['software']['Rscript']
+        Rscript = config['software']['Rscript'],
+        aris = "skipped"
     output:
         html = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_no_bowtie_pbmc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
         rds = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_no_bowtie_pmbc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-        aris = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_no_bowtie_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+        # aris = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_no_bowtie_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
         cobra = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_no_bowtie_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
         markers = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_no_bowtie_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
     log:
@@ -311,7 +312,7 @@ rule knit_report_chromium_no_bowtie:
                      repeats_only_featurecounts_control_multi = \"{input.repeats_only_featurecounts_control_multi}\", 
                      repeats_only_featurecounts_control_unique = \"{input.repeats_only_featurecounts_control_unique}\",
                      seurat_output = \"{output.rds}\", 
-                     aris_output = \"{output.aris}\", 
+                     aris_output = \"{params.aris}\", 
                      regress_genes_nCount = \"{wildcards.regress_ncount}\", 
                      regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
                      repeats_bowtie_unique = \"None\", 

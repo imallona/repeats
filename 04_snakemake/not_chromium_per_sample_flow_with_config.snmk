@@ -126,7 +126,7 @@ rule profile_featurecounts_run_repeats_no_overlap_on_transcriptome:
 #        {Rscript} {params.script} --summary {input.summary} --output {output.png} --identifier {params.flavour}
 #        """
             
-rule featurecounts_repeats_repeatome_bowtie:
+rule nonchromium_featurecounts_repeats_repeatome_bowtie:
     input:
         bam = op.join(config["base"], "runs", config["run_name"], 'bowtie_repeatome', "{srr}.bam"),
         gtf = op.join(config["base"], 'annotation', op.basename(config["rep_gtf_url"])),

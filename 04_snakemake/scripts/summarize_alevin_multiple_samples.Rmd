@@ -18,7 +18,6 @@ params:
   repeats_star_unique: ""
   repeats_star_multi: ""
   repeats_bowtie_unique: ""
-  repeats_bowtie_multi: ""
   repeats_only_unique: ""
   repeats_only_multi: ""
   genes_featurecounts: ""               
@@ -109,6 +108,7 @@ ac <- function(col, alpha=1){
 coef_var <- function(x){
         (sd(x)/mean(x))*100
 }
+
 
 ```
 
@@ -212,6 +212,7 @@ tail(cellmeta)
 
 conf <- read.csv(params$config_fn, header = FALSE)
 head(conf)
+
 
 ```
 
@@ -536,15 +537,11 @@ rm(counts)
 
 ```
 
-
-
-
-
 ## Both
 
 Both alevin 
 
-```{r}
+```{r both_alevin}
 
 common_cells <- intersect(colnames(d$genes_alevin), colnames(d$repeats_alevin))
 
@@ -564,8 +561,7 @@ d$both_alevin <- CreateSeuratObject(
 
 ## Other modalities
 
-```{r eval = TRUE}
-
+```{r other_modalities, eval = TRUE}
 process_featurecounts_grouped_by_cb_umi <- function(fn, id = "",
                                                     annotate_genes = FALSE,
                                                     accepted_barcodes = 'void') {
@@ -631,6 +627,7 @@ process_featurecounts_grouped_by_cb_umi <- function(fn, id = "",
                                        useCache = FALSE)
 
 
+
         tmp <- merge(data.frame(ensembl_gene_id = rownames(wide)),
                      by = 'ensembl_gene_id', feature_info, all.x = TRUE)
 
@@ -647,7 +644,86 @@ process_featurecounts_grouped_by_cb_umi <- function(fn, id = "",
 }
 ```
 
-```{r}
+
+```{r, eval = FALSE}
+speed_up_process_featurecounts_grouped_by_cb_umi <- function(fn, id = "",
+                                                    annotate_genes = FALSE,
+                                                    accepted_barcodes = 'void') {
+    ## Featurecounts-based repeats
+    counts <- data.table::fread(fn, header = FALSE)
+    ## cb first, umi second
+    tryCatch({
+        colnames(counts) <- c('cb', 'umi', 'gene')
+    }, error = function(x) print(paste(head(counts, 1), collapse = ";")))
+
+    if (length(accepted_barcodes) > 1) {
+        counts2 <- counts[counts$cb %in% accepted_barcodes,]
+        if (nrow(counts2) < 1) stop(sprintf('item %s\n%s\nacceptedbarcode: %s\nbarcode in count table: %s',
+                                           'something went wrong with the barcodes subsetting',
+                                           item,
+                                           accepted_barcodes[1],
+                                           counts$cb[1]))
+        counts <- counts2
+        rm(counts2)
+    }
+    wide <- reshape2::dcast(counts  %>% 
+                            group_by(cb, gene) %>%
+                            summarise(count = length(unique(umi))),
+                            gene ~ cb, value.var="count")
+    
+    rownames(wide) <- wide$gene
+    wide <- wide[,-1]
+    rm(counts)
+
+    ## ## add missing accepted barcodes with 0 values for all genes/repeats
+    ## missing <- setdiff(accepted_barcodes, colnames(wide))
+    ## wide[,missing] <- 0
+
+    ## ## ordering
+    ## wide <- wide[,accepted_barcodes] 
+                                    
+    ## annotation needed if yes
+    if (annotate_genes) {
+        
+        annot <- list()
+
+        annot$ids <- unique(rownames(wide))
+
+        annot$filters = "ensembl_gene_id" # not ensembl_gene_id_version
+        annot$attributes = c(annot$filters, "external_gene_name", "chromosome_name", 
+                             "gene_biotype", "start_position", "end_position")
+        annot$biomart = "ENSEMBL_MART_ENSEMBL" 
+        annot$dataset = "hsapiens_gene_ensembl"
+        annot$host = "asia.ensembl.org"
+
+        ## biomartCacheClear()
+
+        annot$bmart <- biomaRt::useMart(biomart = annot$biomart, dataset = annot$dataset, 
+                                        host = annot$host)
+
+        feature_info <- biomaRt::getBM(attributes = annot$attributes,
+                                       filters = annot$filters, 
+                                       values = annot$ids, mart = annot$bmart,
+                                       useCache = FALSE)
+
+
+        tmp <- merge(data.frame(ensembl_gene_id = rownames(wide)),
+                     by = 'ensembl_gene_id', feature_info, all.x = TRUE)
+
+        rownames(tmp) <- tmp$ensembl_gene_id
+        tmp <- tmp[rownames(wide),]
+
+        stopifnot(rownames(wide) == tmp$ensembl_gene_id)
+
+        rownames(wide) <- sprintf('%s_%s', tmp$ensembl_gene_id, tmp$external_gene_name)
+
+    }
+
+    return(wide)
+}
+```
+
+```{r loadfeaturecounts}
 
 for (item in grep('repeats|genes',
                   grep('alevin|regress', names(params), invert = TRUE, value = TRUE),
@@ -668,10 +744,10 @@ for (item in grep('repeats|genes',
 
     counts <- list()
     for (run in unique(as.character(ding$run))) {
-        print(sprintf('%s %s', item, run))
+        message(sprintf('%s %s', item, run))
         counts[[run]] <- list()
         for (fn in ding[ding$run == run, 'fns']) {
-            print(fn)
+            message(fn)
             
             srr <- sapply(strsplit(basename(fn), '[\\._]'), function(x) return(x[1]))
             
@@ -694,7 +770,7 @@ for (item in grep('repeats|genes',
         colnames(tmp) <- cbs
         rownames(tmp) <- genenames
         for (srr in names(counts[[run]])) {
-            print(srr)
+            message(srr)
             for (cell in colnames(counts[[run]][[srr]])) {
                 tmp[genenames,cell] <- tmp[genenames,cell] + counts[[run]][[srr]][genenames, cell]
             }
@@ -712,6 +788,7 @@ for (item in grep('repeats|genes',
         ## colnames(counts[[run]]) <- sprintf('%s_%s', run, colnames(counts[[run]]))
     }
 
+    message('looped till here')
     ## check to add undetected features
     genenames <- unique(unlist(sapply(counts, rownames)))
     for (run in names(counts)) {
@@ -746,14 +823,14 @@ for (item in grep('repeats|genes',
 
 ```
 
-```{r}
+```{r eval = FALSE}
 d
 
 saveRDS(d, file = paste0(params$seurat_output, '.debug') ) # todo remove
 ```
 
 
-```{r}
+```{r checks_after_fc}
 GetAssayData(d$repeats_alevin)[1:3, 1:3]
 GetAssayData(d$genes_alevin)[1:3, 1:3]
 GetAssayData(d$genes_featurecounts)[1:3, 1:3]

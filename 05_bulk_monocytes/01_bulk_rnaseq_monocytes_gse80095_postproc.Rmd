@@ -13,9 +13,8 @@ output:
     theme: lumen
     self_contained: yes
 params:
-  identifier: ""   
+  identifier: ""
   repeats_bowtie_unique: ""
-  repeats_bowtie_multi: ""
   repeats_star_unique: ""
   repeats_star_multi: ""
   repeats_only_unique: ""
@@ -25,8 +24,22 @@ params:
   expression_output: ""
 ---
 
+
 # Config
 
+
+```{r eval = FALSE}
+params = list(identifier = "bulk_GSE80095", 
+          genes_star = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/genes/bulk_GSE80095_star_genes.counts.gz", 
+          repeats_star_unique = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/repeats/unique_reads/bulk_GSE80095_star_transcriptome_repeats.counts.gz", 
+          repeats_star_multi = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/repeats/multimappers/bulk_GSE80095_star_transcriptome_repeats.counts.gz", 
+          repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bowtie_repeatome/unique_reads/bulk_GSE80095_bowtie_repeats.counts.gz", 
+          repeats_bowtie_multi = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bowtie_repeatome/multimappers/bulk_GSE80095_bowtie_repeats.counts.gz", 
+          repeats_only_unique = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/repeats_no_overlap/unique_reads/bulk_GSE80095_repeats_no_overlap_genes.counts.gz",
+          expression_output = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_expression.rds",
+          de_output = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_de.rds")
+
+```
 
 ## Parameters
 
@@ -102,9 +115,7 @@ ac <- function(col, alpha=1){
 
 ```
 
-
 ```{r}
-
 read_featurecounts <- function(fn, identifier, add_gene_symbols = FALSE, remove_dirname = TRUE) {
     ## Featurecounts-based repeats
     counts <- data.table::fread(fn, sep = '\t', header = TRUE,
@@ -167,24 +178,6 @@ read_featurecounts <- function(fn, identifier, add_gene_symbols = FALSE, remove_
 
 # Data load
 
-```{r, eval = FALSE}
-params <- list(identifier = "bulk_GSE80095", 
-          genes_star = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/genes/bulk_GSE80095_star_genes.counts.gz", 
-          repeats_star_unique = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/repeats/unique_reads/bulk_GSE80095_star_transcriptome_repeats.counts.gz", 
-          repeats_star_multi = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/repeats/multimappers/bulk_GSE80095_star_transcriptome_repeats.counts.gz", 
-          repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bowtie_repeatome/unique_reads/bulk_GSE80095_bowtie_repeats.counts.gz", 
-          repeats_bowtie_multi = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bowtie_repeatome/multimappers/bulk_GSE80095_bowtie_repeats.counts.gz", 
-          repeats_only_unique = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/repeats_no_overlap/unique_reads/bulk_GSE80095_repeats_no_overlap_genes.counts.gz",
-          repeats_only_multi = "/home/imallona/repeats_sc/runs/bulk_GSE80095/star_transcriptome/repeats_no_overlap/multimappers/bulk_GSE80095_repeats_no_overlap_genes.counts.gz",
-          seurat_output = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_pmbc_smartseq2_regress_nCount_FALSE_nFeature_TRUE.rds", 
-          aris_output = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_aris_regress_nCount_FALSE_nFeature_TRUE.rds", 
-          cobra_output = "/home/imallona/repeats_sc/runs/bulk_GSE80095/bulk_GSE80095_cobra_regress_nCount_FALSE_nFeature_TRUE.rds",
-     regress_genes_nCount = "FALSE",
-     regress_genes_nFeature = "TRUE")
-
-
-```
-
 Annotation for monocytes
 
 ```{r}
@@ -224,7 +217,9 @@ table(annot$sample)
 
 ```
 
-```{r}
+
+
+```{r dge_build}
 d <- list()
 
 
