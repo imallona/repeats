@@ -8,6 +8,7 @@
 import os.path as op
 from glob import glob
 
+include: "base_functions_with_config.snmk"
 
 rule profile_featurecounts_run_bowtie:
     input:        
@@ -400,40 +401,37 @@ rule featurecounts_repeats_from_star:
        {params.pigz} --keep  -p {threads} {output.counts}            
             """)
 
-rule get_repeats_not_overlapping_genes_gtf:
-    input:
-        repeats_gtf = op.join(config["base"], 'annotation', op.basename(config["rep_gtf_url"])),
-        genes_gtf =  op.join(config["base"], 'annotation', op.basename(config["genes_gtf_url"]))
-    output:
-        gtf = op.join(config["base"], 'annotation', op.basename(config["rep_gtf_url"]) + '_minus_' + op.basename(config["genes_gtf_url"])),
-        repeats_gtf_decomp = temp(op.join(config["base"], 'annotation', op.basename(config["rep_gtf_url"])) + '.tmp.gtf'),
-        genes_gtf_decomp =  temp(op.join(config["base"], 'annotation', op.basename(config["genes_gtf_url"])) + '.tmp.gtf'),
-        genesbed = temp(op.join(config["base"], 'annotation', op.basename(config["genes_gtf_url"])) + '.tmp.bed')
-    params:
-        threads = config["params"]["nthreads"],
-        # bedops_path= config["software"]["bedops"],
-        gtf2bed =  config["software"]["gtf2bed"],
-        bedtools = config['software']['bedtools'],
-        pigz = config['software']['pigz']
-    shell:
-        """
-        ## this doesn't neither start
+# rule get_repeats_not_overlapping_genes_gtf:
+#     input:
+#         repeats_gtf = op.join(config["base"], 'annotation', op.basename(config["rep_gtf_url"])),
+#         genes_gtf =  op.join(config["base"], 'annotation', op.basename(config["genes_gtf_url"]))
+#     output:
+#         gtf = op.join(config["base"], 'annotation', op.basename(config["rep_gtf_url"]) + '_minus_' + op.basename(config["genes_gtf_url"])),
+#         repeats_gtf_decomp = temp(op.join(config["base"], 'annotation', op.basename(config["rep_gtf_url"])) + '.tmp.gtf'),
+#         genes_gtf_decomp =  temp(op.join(config["base"], 'annotation', op.basename(config["genes_gtf_url"])) + '.tmp.gtf'),
+#         genesbed = temp(op.join(config["base"], 'annotation', op.basename(config["genes_gtf_url"])) + '.tmp.bed')
+#     params:
+#         threads = config["params"]["nthreads"],
+#         # bedops_path= config["software"]["bedops"],
+#         gtf2bed =  config["software"]["gtf2bed"],
+#         bedtools = config['software']['bedtools'],
+#         pigz = config['software']['pigz']
+#     shell:
+#         """
+#         ## this doesn't neither start
 
-        {params.pigz} --decompress --keep --stdout  {input.repeats_gtf} | \
-               sed 's/chr//g' > {output.repeats_gtf_decomp}
-        {params.pigz} --decompress --keep  --stdout  {input.genes_gtf} | \
-               sed 's/chr//g' > {output.genes_gtf_decomp}
+#         {params.pigz} --decompress --keep --stdout  {input.repeats_gtf} | \
+#                sed 's/chr//g' > {output.repeats_gtf_decomp}
+#         {params.pigz} --decompress --keep  --stdout  {input.genes_gtf} | \
+#                sed 's/chr//g' > {output.genes_gtf_decomp}
 
-        # # let's transform genes in bed and then use bedtools
-        # export PATH={params.bedops_path}:$PATH
+#         awk '{{ if ($0 ~ "transcript_id") print $0; else print $0" transcript_id "";"; }}' \
+#            {output.genes_gtf_decomp} | {params.gtf2bed} - > {output.genesbed}
 
-        awk '{{ if ($0 ~ "transcript_id") print $0; else print $0" transcript_id "";"; }}' \
-           {output.genes_gtf_decomp} | {params.gtf2bed} - > {output.genesbed}
-
-        {params.bedtools} intersect -a {output.repeats_gtf_decomp} \
-          -b {output.genesbed} \
-          -v | {params.pigz} --stdout > {output.gtf}
-        """
+#         {params.bedtools} intersect -a {output.repeats_gtf_decomp} \
+#           -b {output.genesbed} \
+#           -v | {params.pigz} --stdout > {output.gtf}
+#         """
 
  
 rule map_bowtie_repeatome_se:

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # target=04_repeats_pbmc_10k_v3_chromium.snmk
-target=16_ground_truth_zheng.snmk
+target=09_pbmc8k_chromium.snmk
 cp "$target"{,.backup}
 
 sed -i 's/BASE/config["base"]/g' "$target"

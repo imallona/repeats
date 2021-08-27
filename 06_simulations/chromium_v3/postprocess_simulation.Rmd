@@ -13,8 +13,7 @@ output:
     theme: lumen
     always_allow_html: yes
     self_contained: no
----
-params:
+    params:
     repeats_unique: ""
     repeats_multi: ""
     repeats_lenient_unique: ""
@@ -32,6 +31,8 @@ params:
     truth: ""
     reps_gtf: ""
     nthreads: ""
+---
+
 
 Memory intensive, caution (see future memory options)
 
@@ -51,6 +52,9 @@ suppressPackageStartupMessages({
     library(GenomicRanges)
     library(scales)
     library(grid)
+    ## library(nnet)
+    library(XNomial)
+    library(ExactMultinom)
     # library(plyr)
 })
 
@@ -129,21 +133,21 @@ options(bitmapType='cairo')
 ```
 
 
-```{r justfordebugging, include = FALSE, eval = TRUE}
-params <- list(repeats_alevin_locus = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/alevin/repeats_per_locus/alevin/quants_mat.gz",
-               repeats_alevin_no_decoy_locus = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/alevin/repeats_no_decoy_per_locus/alevin/quants_mat.gz",
-               truth = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3LOWPERF/truth.tsv.gz",
-               repeats_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/count_repeats_loci_on_cellranger_repeats/unique_reads/sim_5k_pbmc_v3_repeats.counts.gz",
-               repeats_multi = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/count_repeats_loci_on_cellranger_repeats/multimappers/sim_5k_pbmc_v3_repeats.counts.gz",
-               repeats_lenient_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/count_repeats_loci_on_cellranger_standard/unique_reads/sim_5k_pbmc_v3_repeats.counts.gz",
-               repeats_strict_unique = '~/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/count_repeats_loci_on_cellranger_standard_not_overlapping_genes/unique_reads/sim_5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz',
-               repeats_lenient_multi = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/count_repeats_loci_on_cellranger_standard/multimappers/sim_5k_pbmc_v3_repeats.counts.gz",
-               repeats_strict_multi = '~/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/count_repeats_loci_on_cellranger_standard_not_overlapping_genes/multimappers/sim_5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz',
-               repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/bowtie_repeatome/unique_reads/by_locus_repeats.counts.gz",
-               scte = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/scTE/scTE.out.csv.gz",
-               shao_counts = '~/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/zumis/sim_5k_zumis_count_dt.txt',
+```{r justfordebugging, include = FALSE, eval = FALSE}
+params <- list(repeats_alevin_locus = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/alevin/repeats_per_locus/alevin/quants_mat.gz",
+               repeats_alevin_no_decoy_locus = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/alevin/repeats_no_decoy_per_locus/alevin/quants_mat.gz",
+               truth = "/home/imallona/repeats_sc/data/sim_5k_pbmc_v3/truth.tsv.gz",
+               repeats_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_repeats/unique_reads/sim_5k_pbmc_v3_repeats.counts.gz",
+               repeats_multi = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_repeats/multimappers/sim_5k_pbmc_v3_repeats.counts.gz",
+               repeats_lenient_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard/unique_reads/sim_5k_pbmc_v3_repeats.counts.gz",
+               repeats_strict_unique = '~/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard_not_overlapping_genes/unique_reads/sim_5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz',
+               repeats_lenient_multi = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard/multimappers/sim_5k_pbmc_v3_repeats.counts.gz",
+               repeats_strict_multi = '~/repeats_sc/runs/sim_5k_pbmc_v3/count_repeats_loci_on_cellranger_standard_not_overlapping_genes/multimappers/sim_5k_pbmc_v3_repeats_not_overlapping_genes.counts.gz',
+               repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/bowtie_repeatome/unique_reads/by_locus_repeats.counts.gz",
+               scte = "/home/imallona/repeats_sc/runs/sim_5k_pbmc_v3/scTE/scTE.out.csv.gz",
+               shao_counts = '~/repeats_sc/runs/sim_5k_pbmc_v3/zumis/sim_5k_zumis_count_dt.txt',
                shao_saf = '~/repeats_sc/annotation/shao/shao_GRCh38_te.saf',
-               shao_sam = '~/repeats_sc/runs/sim_5k_pbmc_v3LOWPERF/zumis/sim_5k_zumis_featurecount.sam.txt',
+               shao_sam = '~/repeats_sc/runs/sim_5k_pbmc_v3/zumis/sim_5k_zumis_featurecount.sam.txt',
                reps_gtf = '~/repeats_sc/annotation/GRCh38_rmsk_TE.gtf.gz',
                nthreads = 40)
 ```
@@ -171,6 +175,7 @@ d$repeats_alevin <- tximeta::tximeta(
      ), type = "alevin")
 
 d$repeats_alevin <- assays(d$repeats_alevin)$counts
+
 ```
 
 ```{r}
@@ -1261,9 +1266,63 @@ grid.text("multimapping", x = unit(0.78, "npc"), y = unit(0.90, "npc"),
 
 <!-- ``` -->
 
+Multinomial exact goodness of fit tests, each flavour vs the truth
+
+```
+Error in xmulti(expected, observed, detail = 3, histobins = TRUE) : 
+The numbers of observations are too large causing underflow error. The monte carlo version, "xmonte" is recommended for this case.
+```
 
 
+```{r, results = 'asis'}
 
+
+tests <- list()
+outer_tests <- list()
+for (flavour in setdiff(levels(tmp$flavour), 'truth')) {
+    ## print(flavour)
+
+    ##     expr: vector containing expectation. The length should be the same
+    ##       as that of 'obs' and they should be non-negative summing to
+    ## '> 0'. They need not be integers or sum to one.
+    
+    expected <- tmp[tmp$flavour == 'truth', 'percent']/100
+    names(expected) <- tmp[tmp$flavour == 'truth', 'class']
+    
+    ## obs: vector containing the observed numbers. All are non-negative
+    ##          integers summing to '> 0'.
+    observed <- tmp[tmp$flavour == flavour, 'counts']
+    names(observed) <- tmp[tmp$flavour == flavour, 'class']
+
+    observed <- observed[names(expected)]
+    stopifnot(names(observed) == names(expected))
+
+    ## 'observed' shoud be non-negative integers
+    observed[observed==0] <- 1
+    
+    tests[[flavour]] <- xmonte(expr = expected, obs = round(observed), detail = 1)
+    ## print(tests[[flavour]])
+}
+
+sapply(tests, function(x) return(x$asymptotic.p.value))
+outer_tests[['class']] <- tests
+```
+
+<!-- Trying with another multinomial goodness of fit test -->
+
+<!-- ```{r} -->
+
+<!-- ExactMultinom:: multinom.test( -->
+<!--                     x = round(observed), -->
+<!--                     p = expected, -->
+<!--                     stat = "Prob", -->
+<!--                     method = "asymptotic", -->
+<!--                     theta = 1e-04, -->
+<!--                     timelimit = 10, -->
+<!--                     N = 10000) -->
+
+
+<!-- ``` -->
 
 by family, only the top 10 families in the truth are shown
 
@@ -1363,6 +1422,39 @@ grid.text("mapping", x = unit(0.78, "npc"), y = unit(0.935, "npc"),
 grid.text("multimapping", x = unit(0.78, "npc"), y = unit(0.90, "npc"),
           gp = gpar(fontsize = 10), just = 'left')
 ```
+
+
+
+```{r, results = 'asis'}
+tests <- list()
+for (flavour in setdiff(levels(tmp$flavour), 'truth')) {
+    ## print(flavour)
+
+    ##     expr: vector containing expectation. The length should be the same
+    ##       as that of 'obs' and they should be non-negative summing to
+    ## '> 0'. They need not be integers or sum to one.
+    
+    expected <- tmp[tmp$flavour == 'truth', 'percent']/100
+    names(expected) <- tmp[tmp$flavour == 'truth', 'family']
+    
+    ## obs: vector containing the observed numbers. All are non-negative
+    ##          integers summing to '> 0'.
+    observed <- tmp[tmp$flavour == flavour, 'counts']
+    names(observed) <- tmp[tmp$flavour == flavour, 'family']
+
+    observed <- observed[names(expected)]
+    stopifnot(names(observed) == names(expected))
+
+    ## 'observed' shoud be non-negative integers
+    observed[observed==0] <- 1
+    
+    tests[[flavour]] <- xmonte(expr = expected, obs = round(observed), detail = 1)
+    ## print(tests[[flavour]])
+}
+sapply(tests, function(x) return(x$asymptotic.p.value))
+outer_tests[['family']] <- tests
+```
+
 
 
 by name, only the top 10 names are shown

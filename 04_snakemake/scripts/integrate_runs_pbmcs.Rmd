@@ -289,7 +289,6 @@ flavours_order <- c('genes_cellranger', 'genes_alevin',
 ```
 
 ```{r, include = FALSE, eval = TRUE}
-
 palettes <- list(
     cell = read.table(text = 'id,color
 CD4+_T_cell,"#A6CEE3"
@@ -339,14 +338,15 @@ palettes$run <- data.frame(
 
 palettes$run <- merge( palettes$run, palettes$technology, by.x = 'technology', by.y = 'id')    
 all(levels(palettes$run$id) == datasets_order)
+
 ```
 
 
 
 ```{r justfordebugging, include = FALSE, eval = FALSE}
-params <- list( chromium1 = '/home/imallona/repeats_sc/runs/pbmc8k/pbmc8k_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
+params <- list( chromium1 = '/home/imallona/repeats_sc/runs/pbmc8k/pbmc8k_pmbc_alevin_regress_nCount_TRUE_nFeature_TRUE.rds',
         chromium2 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
-        chromium3 = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
+        chromium3 = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_no_bowtie_pmbc_chromium_regress_nCount_TRUE_nFeature_TRUE.rds',
         smartseq1 = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/pbmcs_smartseq2_ding_pmbc_smartseq2_regress_nCount_FALSE_nFeature_FALSE.rds',
         chromium4 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
         dropseq = "/home/imallona/repeats_sc/runs/ding_dropseq/ding_dropseq_pmbc_dropseq_regress_nCount_FALSE_nFeature_FALSE.rds",
@@ -412,35 +412,45 @@ annot$flavour <- data.frame(id = unique(unlist(sapply(d, names))))
 
 annot$flavour$analyte <- 'NA'
 annot$flavour[grepl('genes', annot$flavour$id), 'analyte'] <- 'genes'
-annot$flavour[grepl('repeats', annot$flavour$id), 'analyte'] <- 'rmsk'
+annot$flavour[grepl('repeats', annot$flavour$id), 'analyte'] <- 'rmsk_lenient'
 annot$flavour[grepl('repeats_only', annot$flavour$id), 'analyte'] <- 'rmsk_strict'
 annot$flavour[grepl('both', annot$flavour$id), 'analyte'] <- 'genes+rmsk'
 
 annot$flavour$analyte <- factor(annot$flavour$analyte,
-                                levels = c('genes', 'genes+rmsk', 'rmsk', 'rmsk_strict'))
+                                levels = c('genes', 'genes+rmsk', 'rmsk_lenient', 'rmsk_strict'))
 
-
+unique(annot$flavour$analyte)
+## annot$flavour$reference <- 'NA'
+## annot$flavour[grepl('bowtie', annot$flavour$id), 'reference'] <- 'repeatome fa'
+## annot$flavour[grepl('repeats_alevin', annot$flavour$id), 'reference'] <- 'rmsk GTF, genes GTF'
+## annot$flavour[grepl('genes_alevin', annot$flavour$id), 'reference'] <- 'genes GTF'
+## annot$flavour[grepl('repeats_cellranger', annot$flavour$id), 'reference'] <- 'rmsk GTF'
+## annot$flavour[grepl('genes_cellranger', annot$flavour$id), 'reference'] <- 'genes GTF'
+## annot$flavour[grepl('both', annot$flavour$id), 'reference'] <- 'rmsk GTF, genes GTF'
+## annot$flavour[grepl('only|star', annot$flavour$id), 'reference'] <- 'rmsk GTF'
 annot$flavour$reference <- 'NA'
-annot$flavour[grepl('bowtie', annot$flavour$id), 'reference'] <- 'repeatome fa'
-annot$flavour[grepl('repeats_alevin', annot$flavour$id), 'reference'] <- 'rmsk GTF, genes GTF'
-annot$flavour[grepl('genes_alevin', annot$flavour$id), 'reference'] <- 'genes GTF'
-annot$flavour[grepl('repeats_cellranger', annot$flavour$id), 'reference'] <- 'rmsk GTF'
-annot$flavour[grepl('genes_cellranger', annot$flavour$id), 'reference'] <- 'genes GTF'
-annot$flavour[grepl('both', annot$flavour$id), 'reference'] <- 'rmsk GTF, genes GTF'
-annot$flavour[grepl('only|star', annot$flavour$id), 'reference'] <- 'rmsk GTF'
-
-annot$flavour
+annot$flavour[grepl('bowtie', annot$flavour$id), 'reference'] <- 'repeats'
+annot$flavour[grepl('repeats_alevin', annot$flavour$id), 'reference'] <- 'repeats'
+annot$flavour[grepl('genes_alevin', annot$flavour$id), 'reference'] <- 'genes'
+annot$flavour[grepl('repeats_cellranger', annot$flavour$id), 'reference'] <- 'repeats'
+annot$flavour[grepl('genes_cellranger', annot$flavour$id), 'reference'] <- 'genes'
+annot$flavour[grepl('featurecounts', annot$flavour$id), 'reference'] <- 'genes'
+annot$flavour[grepl('both', annot$flavour$id), 'reference'] <- 'genes+rmsk'
+annot$flavour[grepl('only', annot$flavour$id), 'reference'] <- 'repeats'
+unique(annot$flavour$reference)
 
 annot$flavour$multimapping <- 'NA'
 annot$flavour[grepl('multi', annot$flavour$id), 'multimapping'] <- 'multi'
-annot$flavour[grepl('alevin', annot$flavour$id), 'multimapping'] <- 'alevin'
+annot$flavour[grepl('alevin', annot$flavour$id), 'multimapping'] <- 'multi'
 annot$flavour[grepl('genes_star|unique', annot$flavour$id), 'multimapping'] <- 'unique'
-annot$flavour[grepl('cellranger', annot$flavour$id), 'multimapping'] <- 'cellranger'
+annot$flavour[grepl('cellranger', annot$flavour$id), 'multimapping'] <- 'unique'
 
-annot$flavour$gene_overlap <- 'potentially_genes'
-annot$flavour[grepl('repeats_alevin', annot$flavour$id), 'gene_overlap'] <- 'alevin_decoy'
-annot$flavour[grepl('genes|both', annot$flavour$id), 'gene_overlap'] <- 'potentially_genes'
-annot$flavour[grepl('only', annot$flavour$id), 'gene_overlap'] <- 'no_overlap'
+## maybe the alevin no decoy were not included (?)
+annot$flavour$gene_overlap <- 'potentially'
+annot$flavour[grepl('repeats_alevin', annot$flavour$id), 'gene_overlap'] <- 'not'
+annot$flavour[grepl('repeats_alevin_no_decoy', annot$flavour$id), 'gene_overlap'] <- 'potentially'
+annot$flavour[grepl('genes|both', annot$flavour$id), 'gene_overlap'] <- 'potentially'
+annot$flavour[grepl('only', annot$flavour$id), 'gene_overlap'] <- 'not'
 
 annot$flavour$id <- factor(annot$flavour$id, levels = flavours_order)
 
@@ -978,7 +988,7 @@ for (dimred in c('pca', 'tsne', 'umap')) {
 cobral <- list()
 
 for (rds in params) {
-    fn <- list.files(dirname(rds), pattern = '.*cobra.*TRUE.*TRUE.*')
+    fn <- list.files(dirname(rds), pattern = '.*cobra.*FALSE.*FALSE.*')
 
     tryCatch({
         cobral[[sapply(strsplit(dirname(rds), .Platform$file.sep),

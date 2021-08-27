@@ -8,6 +8,7 @@
 import os.path as op
 from glob import glob
 
+include: "base_functions_with_config.snmk"
 
 ## salmon start
 
@@ -794,96 +795,7 @@ rule index_cellranger_repeats:
 #           -b {output.genesbed} \
 #           -v | {params.pigz} --stdout > {output.gtf}
 #         """
-rule get_repeats_not_overlapping_genes_gtf_chr_string_aware:
-    input:
-         repeats_gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url'])),
-         genes_gtf =  op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url']))
-    output:
-         gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']) + '_minus_' + op.basename(config['genes_gtf_url'])),
-         repeats_gtf_decomp = temp(op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url'])) + '.tmp.gtf'),
-         genes_gtf_decomp =  temp(op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url'])) + '.tmp.gtf'),
-         genesbed = temp(op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url'])) + '.tmp.bed')
-    params:
-         threads = config['params']['nthreads'],
-         gtf2bed = config['software']['gtf2bed'],
-         pigz = config['software']['pigz'],
-         bedtools = config['software']['bedtools'],
-         remove_chr_string = config['params']['remove_chr_string_from_gtf']
-    run:
-        shell('export PATH="{params.gtf2bed}/..":"$PATH"')
-        if params.remove_chr_string:
-            shell("""
-            
-            {params.pigz} --decompress --keep --stdout  {input.repeats_gtf} | \
-            sed 's/chr//g' > {output.repeats_gtf_decomp}
-            
-            {params.pigz} --decompress --keep  --stdout  {input.genes_gtf} | \
-            sed 's/chr//g' > {output.genes_gtf_decomp}
-            
-            # # # let's transform genes in bed and then use bedtools
-            # export PATH={params.gtf2bed}/..:$PATH
 
-            awk '{{ if ($0 ~ "transcript_id") print $0; else print $0" transcript_id "";"; }}' \
-            {output.genes_gtf_decomp} | {params.gtf2bed} - > {output.genesbed}
-
-            {params.bedtools} intersect -a {output.repeats_gtf_decomp} \
-            -b {output.genesbed} \
-            -v | {params.pigz} --stdout > {output.gtf}
-            """)
-        else:
-            shell("""
-            {params.pigz} --decompress --keep --stdout  {input.repeats_gtf} \
-                 > {output.repeats_gtf_decomp}
-            {params.pigz} --decompress --keep  --stdout  {input.genes_gtf} \
-                 > {output.genes_gtf_decomp}
-    
-            # # # let's transform genes in bed and then use bedtools
-            # export PATH={params.gtf2bed}/..:$PATH
-
-            awk '{{ if ($0 ~ "transcript_id") print $0; else print $0" transcript_id "";"; }}' \
-            {output.genes_gtf_decomp} | {params.gtf2bed} - > {output.genesbed}
-
-            {params.bedtools} intersect -a {output.repeats_gtf_decomp} \
-            -b {output.genesbed} \
-            -v | {params.pigz} --stdout > {output.gtf}
-            """)
-
-        
-rule extract_repeatome_from_gtf:
-    priority: 100
-    input:
-        genome = op.join(config['base'], 'annotation', op.basename(config['genome_url'])),
-        gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']))
-    output:
-        genome_uncompressed = temp(op.join(config['base'], 'annotation', op.splitext(op.basename(config['genome_url']))[0])) + '.temp_extract',
-        fai = temp(op.join(config['base'], 'annotation', op.splitext(op.basename(config['genome_url']))[0])) + '.temp_extract.fai',
-        fasta = temp(op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0]) + '.fa'),
-        gtftemp = op.join(config['base'], 'annotation', 'temp_' + op.basename(config['rep_gtf_url'])),
-        fastagz = op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0]) + '.fa.gz'
-    params :
-        gtf_parsing = config['dependencies']['gtf_parsing'],
-        Rscript = config['software']['Rscript'],
-        bedtools = config['software']['bedtools'],
-        pigz = config['software']['pigz']
-    threads:
-        config['params']['nthreads']
-    shell:
-        """
-        {params.pigz} --keep --decompress -p {threads} -c  {input.genome} > {output.genome_uncompressed}
-
-        ## faking the GTF to describe the instance and not the 'exon'
-
-        {params.Rscript} {params.gtf_parsing} -g {input.gtf} | {params.pigz} -c -p {threads} > \
-          {output.gtftemp}        
-
-        {params.bedtools} getfasta -name -s -fi {output.genome_uncompressed} \
-          -bed {output.gtftemp} -fo {output.fasta}
-
-        ## remove the coordinates appended by bedtools!
-        sed 's/:/ /g' {output.fasta} | cut -f1 -d" " | \
-          {params.pigz}  -p {threads} -c > {output.fastagz}
-        
-        """
 
 ## hg38 hardcoded
 rule get_genome_fasta:
@@ -942,32 +854,7 @@ rule get_cellranger_data:
         
         tar xzvf {output.cellranger_gz}
         """
-       
-rule fake_gtf_repeatome_in_repeats_coordinates:
-    input:
-        fa = op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0] + '.fa.gz')
-    output:
-        fai = temp(op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0] + '.fa.fai')),
-        fauncomp = temp(op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0] + '.fa')),
-        fake_repeatome_gtf = op.join(config['base'], 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0]) + '.gtf.gz'
-    params:
-        gtf_making = config['dependencies']['gtf_making'],
-        path = op.join(config['base'], 'annotation'),
-        Rscript = config['software']['Rscript'],
-        pigz = config['software']['pigz']
-    threads:
-        config['params']['nthreads']
-    shell:
-        """
-        cd {params.path}
-        {params.pigz} -k --decompress -p {threads} {input.fa}
-
-        samtools faidx {output.fauncomp}
-        
-        {params.Rscript} {params.gtf_making} -f {output.fai} | \
-           {params.pigz} -c -p {threads} > {output.fake_repeatome_gtf}
-        
-        """
+   
 
 rule bowtie_index_repeatome_bowtie:
     input:
@@ -1054,94 +941,3 @@ rule TESTING_index_repeats_salmon_no_decoy:
            -t {input.repeats} -i {params.path} -k {params.k})  2> {log}
 
         """
-        
-rule build_gtf_cellranger_compliant_chr_string_aware:
-    priority:
-        100
-    output:
-        gtf = op.join(config['base'], 'annotation', config['rep_gtf_url']),
-        tmp = temp(op.join(op.join(config['base'], "runs", config['run_name'], 'tmp.dump.gz'))),
-        tmp_uncomp = temp(op.join(op.join(config['base'], "runs", config['run_name'], 'tmp.dump')))
-    params:
-        genome = config['genome_short'],
-        Rscript = config['software']['Rscript'],
-        pigz = config['software']['pigz'],
-        processing_path = op.join(config['base'], "runs", config['run_name']),
-        parser = op.join('scripts', 'parse_dump_gtf.R'),
-        remove_chr_string = config['params']['remove_chr_string_from_gtf']
-    log:
-        log1 = op.join(config['base'], 'annotation', config['rep_gtf_url'] + '_gtf_build.log'),
-        log2 = op.join(config['base'], 'annotation', config['rep_gtf_url'] + '_gtf_build_rscript.log')
-    threads:
-        config['params']['nthreads']
-    # run:
-    #     if params.remove_chr_string:
-    #         shell("""
-    #     # bash gtf_build.sh
-    #     echo 'removing chr strings'
-        
-    #     mysql --user=genome --host=genome-mysql.cse.ucsc.edu -D {params.genome} -A \
-    #        -B -sN -e  "select genoName, genoStart, genoEnd, swScore, strand, 
-    #            repName,repClass,repFamily
-    #        from rmsk
-    #        order by genoName,genoStart, genoEnd" | sed 's/^chr//g' | \
-    #               grep  -P '^[0-9]{{1,2}}\\t|^[XY]\\t' | \
-    #               {params.pigz} -p {threads} > {output.tmp} &> {log.log1}
-        
-    #     {params.Rscript} {params.parser} --rmsk {output.tmp} \
-    #             --source {params.genome} | pigz -p {threads} > {output.gtf} &> {log.log2}
-    #         """)
-    #     else:
-    #         shell("""
-    #     # bash gtf_build.sh
-    #     echo 'not removing chr strings'
-        
-    #     mysql --user=genome --host=genome-mysql.cse.ucsc.edu -D {params.genome} -A \
-    #        -B -sN -e  "select genoName, genoStart, genoEnd, swScore, strand, 
-    #            repName,repClass,repFamily
-    #        from rmsk
-    #        order by genoName,genoStart, genoEnd" |  \
-    #               grep -P '^chr[0-9]{{1,2}}\\t|^chr[XY]\\t' | \
-    #               {params.pigz} -p {threads} > {output.tmp} &> {log.log1}
-        
-    #     {params.Rscript} {params.parser} --rmsk {output.tmp} \
-    #             --source {params.genome} | pigz -p {threads} > {output.gtf} &> {log.log2}
-    #       """)
-    shell:
-        """
-        if [ '{params.remove_chr_string}' = 'True' ]
-        then
-
-        # bash gtf_build.sh
-          echo 'removing chr strings'
-        
-          mysql --user=genome --host=genome-mysql.cse.ucsc.edu -D {params.genome} -A \
-             -B -sN -e  'select genoName, genoStart, genoEnd, swScore, strand, 
-                 repName,repClass,repFamily
-             from rmsk
-             order by genoName,genoStart, genoEnd' | sed 's/^chr//g' | \
-                    grep  -P '^[0-9]{{1,2}}\\t|^[XY]\\t' > {output.tmp_uncomp} 
-
-          {params.pigz} -p {threads} {output.tmp_uncomp} --keep &> {log.log1}
-        
-          {params.Rscript} {params.parser} --rmsk {output.tmp} \
-                  --source {params.genome} | pigz -p {threads} -c > {output.gtf}
-        else
-            
-          # bash gtf_build.sh
-          echo 'not removing chr strings'
-        
-          mysql --user=genome --host=genome-mysql.cse.ucsc.edu -D {params.genome} -A \
-             -B -sN -e  'select genoName, genoStart, genoEnd, swScore, strand, 
-                 repName,repClass,repFamily
-             from rmsk
-             order by genoName,genoStart, genoEnd' |  \
-                    grep -P '^chr[0-9]{{1,2}}\\t|^chr[XY]\\t' > {output.tmp} 
-
-          {params.pigz} -p {threads} {output.tmp_uncomp} --keep &> {log.log1}
-        
-          {params.Rscript} {params.parser} --rmsk {output.tmp} \
-                  --source {params.genome} | pigz -p {threads} -c > {output.gtf}
-        fi
-        """
-

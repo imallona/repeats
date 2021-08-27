@@ -12,8 +12,8 @@ transcriptome_url: 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/rele
 cellranger_db_id: 'refdata-cellranger-GRCh38-3.0.0'
 cellranger_db_url: 'http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-GRCh38-3.0.0.tar.gz'
 dependencies:
-  gtf_parsing: './scripts/gtf_parser.R'
-  gtf_making: './scripts/gtf_maker.R'
+  gtf_parsing: '/home/imallona/src/repeats_sc/04_snakemake/scripts/gtf_parser.R'
+  gtf_making: '/home/imallona/src/repeats_sc/04_snakemake/scripts/gtf_maker.R'
   featurecounts_parsing: '/home/imallona/src/repeats_sc/04_snakemake/scripts/plot_featurecounts_profile.R'
 software:
   Rscript: '/usr/local/R/R-4.1.0/bin/Rscript'
