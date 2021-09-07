@@ -10,6 +10,9 @@ from glob import glob
 
 include: "base_functions_with_config.snmk"
 
+## num of bams processed at once in a featurecounts run; equal cells
+NUM_BAMS = 100
+
 ## start featurecounts atomization test #######################################
 
 def yield_files_in_chunks(folder, pattern, num_files):
@@ -20,7 +23,7 @@ def yield_files_in_chunks(folder, pattern, num_files):
 bam_sets = [item for item in yield_files_in_chunks(folder = op.join(
     config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split'),
                                                         pattern = '*bam',
-                                                        num_files = 100)]
+                                                        num_files = NUM_BAMS)]
 # the first bamfile from the split is the 'identifier'
 identifiers_sets = [op.splitext(op.basename(item[0]))[0] for item in bam_sets]
 
@@ -40,6 +43,10 @@ def get_subset_count_files(wildcards):
                            subset_id,
                            subset_id + '_' + config['run_name'] + "_repeats.counts.gz"))
     return(res)
+
+## as in `get_subset_count_files(wildcards)` to return just one
+def get_one_subset_count_file(wildcards):
+    return(get_subset_count_files(wildcards)[0])
 
 ## this lists all bam files analyzed within a subset, as defined in a dictionary
 def list_bams_within_subset(wildcards):
@@ -125,6 +132,11 @@ rule test_featurecounts_bam_subsets:
             {params.pigz} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
             """)
 
+#featurecounts outputs are:
+# Geneid  Chr     Start   End     Strand  Length  bam1 bam2 ... bamn
+"""
+So we're pasting the first 0,1,2,3,4,5 columns of the first file, to the 6:num_bams+6. 
+"""
 rule merge_featurecounts_in_chunks:
     input:
         # gz_counts = expand(op.join(config['base'], "runs", config['run_name'],
@@ -134,7 +146,8 @@ rule merge_featurecounts_in_chunks:
         #                            config['run_name'] + "_repeats.counts.gz"),
         #                    bam_subset = bam_sets.keys(),
         #                    multimappers = lambda wildcards: "".format(wildcards.multimappers))
-        gz_counts_in_chunks = get_subset_count_files
+        gz_counts_in_chunks = get_subset_count_files,
+        gz_counts_pivot = get_one_subset_count_file
     output:
         gz_counts_merged = op.join(config['base'], "runs", config['run_name'],
                             'count_repeats_on_cellranger_standard',
@@ -148,11 +161,23 @@ rule merge_featurecounts_in_chunks:
                               '{multimappers}'),
         featurecounts = config['software']['featurecounts'],
         pigz = config['software']['pigz']
+    threads:
+        config['params']['nthreads']        
     shell:
         """
-        {params.pigz} --decompress --to-stdout {input.gz_counts_in_chunks} | \
-           paste -d"\t" - | \
-           {params.pigz} --to-stdout > {output.gz_counts_merged}
+        # {params.pigz} --decompress --to-stdout {input.gz_counts_in_chunks} | \
+        #    paste -d"\t" - | \
+        #    {params.pigz} --to-stdout > {output.gz_counts_merged}
+        
+        command='paste -d"\t"'
+        command="$command <({params.pigz} -p {threads} -cd {input.gz_counts_pivot} | cut -f 1-6)"
+        
+        for i in {input.gz_counts_in_chunks}
+        do
+           command="$command <(gzip -cd $i | cut -f 7-)"
+        done
+        
+        eval $command | {params.pigz} -p {threads} --to-stdout > {output.gz_counts_merged}
         """
         
 # end featurecounts atomization end ######################
