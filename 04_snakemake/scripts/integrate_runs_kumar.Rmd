@@ -59,7 +59,7 @@ library(GEOquery)
 ```
 
 ```{r}
-BASE <- file.path('/home', 'imallona', 'repeats_sc')
+BASE <- file.path('/scratch', 'imallona', 'repeats_sc')
 ```
 
 ```{r}
@@ -280,11 +280,11 @@ for (srr in annot$Run) {
             'GSE121861_kumar_mouse_repeats.counts.gz'),
         srr)
                                                                  
-    d[['repeats_only_multi']][[srr]] <- load_featurecounts_repeats(
-        repeats_fn = file.path(
-            params$results_path, srr, 'count_repeats_on_cellranger_standard', 'multimappers',
-            'GSE121861_kumar_mouse_repeats.counts.gz'),
-        id = srr)
+    ## d[['repeats_only_multi']][[srr]] <- load_featurecounts_repeats(
+    ##     repeats_fn = file.path(
+    ##         params$results_path, srr, 'count_repeats_on_cellranger_standard', 'multimappers',
+    ##         'GSE121861_kumar_mouse_repeats.counts.gz'),
+    ##     id = srr)
 }
 
 for (flavour in names(d)) {

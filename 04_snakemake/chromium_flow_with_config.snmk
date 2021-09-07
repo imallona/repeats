@@ -10,6 +10,153 @@ from glob import glob
 
 include: "base_functions_with_config.snmk"
 
+## start featurecounts atomization test #######################################
+
+def yield_files_in_chunks(folder, pattern, num_files):
+    files = glob(op.join(folder, pattern))
+    for i in range(0, len(files), num_files):
+        yield files[i:i + num_files]
+
+bam_sets = [item for item in yield_files_in_chunks(folder = op.join(
+    config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split'),
+                                                        pattern = '*bam',
+                                                        num_files = 100)]
+# the first bamfile from the split is the 'identifier'
+identifiers_sets = [op.splitext(op.basename(item[0]))[0] for item in bam_sets]
+
+bam_sets = dict(zip(identifiers_sets, bam_sets))
+
+## in a setting with multiple bams -> getting multiple count outputs grouping bams in
+##   subsets -> final count table,
+##   this lists all the multiple count outputs from a run (to be summarized into a final
+##   count table)
+def get_subset_count_files(wildcards):
+    res = []
+    for subset_id in bam_sets.keys():
+        res.append(op.join(config['base'], "runs",
+                   config['run_name'],
+                           'count_repeats_on_cellranger_standard',
+                           wildcards.multimappers,
+                           subset_id,
+                           subset_id + '_' + config['run_name'] + "_repeats.counts.gz"))
+    return(res)
+
+## this lists all bam files analyzed within a subset, as defined in a dictionary
+def list_bams_within_subset(wildcards):
+    return(bam_sets[wildcards.bam_subset])
+    
+rule test_featurecounts_bam_subsets:
+    input:
+        flag = op.join(config['base'], "runs", config['run_name'],
+                       'count_repeats_on_cellranger_standard', 'split.flag'),
+        gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url'])),
+    params:
+        path = op.join(config['base'], "runs", config['run_name'],
+                       'count_repeats_on_cellranger_standard', 'split'),
+        output_path = op.join(config['base'], "runs", config['run_name'],
+                              'count_repeats_on_cellranger_standard',
+                              '{multimappers}',
+                              '{bam_subset}'),
+        featurecounts = config['software']['featurecounts'],
+        pigz = config['software']['pigz'],
+        # bams = bam_sets[wildcards.bam_subset]
+        # bams = lambda wildcards: bam_sets["".format(wildcards.bam_subset)]
+        bams = list_bams_within_subset
+    output:
+        counts  = temp(op.join(config['base'], "runs", config['run_name'],
+                               'count_repeats_on_cellranger_standard',
+                               '{multimappers}',
+                               '{bam_subset}',
+                               '{bam_subset}' + '_' + config['run_name'] + "_repeats.counts")),
+        gz_counts = temp(op.join(config['base'], "runs", config['run_name'],
+                                 'count_repeats_on_cellranger_standard',
+                                 '{multimappers}',
+                                 '{bam_subset}',
+                                 '{bam_subset}' + '_' + config['run_name'] + "_repeats.counts.gz")),
+        summary = temp(op.join(config['base'], "runs", config['run_name'],
+                               'count_repeats_on_cellranger_standard',
+                               '{multimappers}',
+                               '{bam_subset}',
+                            '{bam_subset}' + '_' + config['run_name'] + "_repeats.counts.summary"))
+    log :
+        log = op.join(config['base'], "runs",  config['run_name'],
+                      'count_repeats_on_cellranger_standard',
+                      '{multimappers}',
+                      '{bam_subset}',
+                      'feature_counts.log'),
+    threads:
+        # config['params']['nthreads']
+        5
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            mkdir -p {params.output_path}
+            cd {params.path}
+
+            {params.featurecounts} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            -M \
+            --fraction \
+            {params.bams}  &> {log}
+
+            {params.pigz} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+            """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            mkdir -p {params.output_path}
+
+            cd {params.path}
+
+            {params.featurecounts} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            {params.bams}  &> {log}
+
+            {params.pigz} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+            """)
+
+rule merge_featurecounts_in_chunks:
+    input:
+        # gz_counts = expand(op.join(config['base'], "runs", config['run_name'],
+        #                            'count_repeats_on_cellranger_standard',
+        #                            '{multimappers}',
+        #                            '{bam_subset}',
+        #                            config['run_name'] + "_repeats.counts.gz"),
+        #                    bam_subset = bam_sets.keys(),
+        #                    multimappers = lambda wildcards: "".format(wildcards.multimappers))
+        gz_counts_in_chunks = get_subset_count_files
+    output:
+        gz_counts_merged = op.join(config['base'], "runs", config['run_name'],
+                            'count_repeats_on_cellranger_standard',
+                            '{multimappers}',
+                            config['run_name'] + "TEST_repeats.counts.gz")
+    params:
+        path = op.join(config['base'], "runs", config['run_name'],
+                       'count_repeats_on_cellranger_standard', 'split'),
+        output_path = op.join(config['base'], "runs", config['run_name'],
+                              'count_repeats_on_cellranger_standard',
+                              '{multimappers}'),
+        featurecounts = config['software']['featurecounts'],
+        pigz = config['software']['pigz']
+    shell:
+        """
+        {params.pigz} --decompress --to-stdout {input.gz_counts_in_chunks} | \
+           paste -d"\t" - | \
+           {params.pigz} --to-stdout > {output.gz_counts_merged}
+        """
+        
+# end featurecounts atomization end ######################
+                        
 ## salmon start
 
 
@@ -119,18 +266,17 @@ rule get_txp2gene_gene:
     input:
         genes_gtf = op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url']))
     output:
-        op.join(config['base'], 'indices', 'salmon', config['genome'], 'genes_salmon',
-                'txp2gene.tsv')
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'genes_salmon', 'txp2gene.tsv')
     params:
         pigz = config['software']['pigz']
     shell:
-         """
-         # {params.pigz} --decompress -p {threads} -c {input.genes_gtf} | \
-           # grep transcript | awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
-
-         {params.pigz} --decompress -p {threads} -c {input.genes_gtf} | \
-           grep transcript | awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
-         """
+        """
+        # {params.pigz} --decompress -p {threads} -c {input.genes_gtf} | \
+        # grep transcript | awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+        
+        {params.pigz} --decompress -p {threads} -c {input.genes_gtf} | \
+        grep transcript | awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+        """
 
 ## untested @todo check
 # rule get_txp2gene_repeat:
@@ -167,12 +313,11 @@ rule get_txp2gene_repeat:
 
                 
 ## samon end
-
-
 rule profile_featurecounts_run_repeats:
     input:        
-        summary = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard',
-                          "{multimappers}",
+        summary = op.join(config['base'], "runs", config['run_name'],
+                          'count_repeats_on_cellranger_standard',
+                          '{multimappers}',
                           config['run_name'] + "_repeats.counts.summary")
     params:
         path = op.join(config['base'], "runs", config['run_name'],
@@ -182,16 +327,18 @@ rule profile_featurecounts_run_repeats:
         gtf = 'cellranger_repeats',
         Rscript = config['software']['Rscript']
     output:
-        png = op.join(config['base'], "runs", config['run_name'], "count_repeats_on_cellranger_standard",
+        png = op.join(config['base'], "runs", config['run_name'],
+                      "count_repeats_on_cellranger_standard",
                       "{multimappers}",
                       config['run_name'] + "_transcriptome_repeats.counts.summary.png")
-    threads: 1
+    threads:
+        1
     shell:
-       """
-       cd {params.path}
-       
-       {params.Rscript} {params.script} --summary {input.summary} --output {output.png} \
-           --identifier {params.gtf}
+        """
+    cd {params.path}
+    
+    {params.Rscript} {params.script} --summary {input.summary} --output {output.png} \
+    --identifier {params.gtf}
        """
 
 ## potentially broken, multimappers wildcard missing
@@ -406,7 +553,7 @@ rule run_featurecounts_spawned_bams:
             -o  {output.counts} \
             -M \
             --fraction \
-            {params.path}/*bam  2>&1 > {log}
+            {params.path}/*bam  &> {log}
 
             {params.pigz} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
 
@@ -422,7 +569,7 @@ rule run_featurecounts_spawned_bams:
             -g gene_id \
             -a {input.gtf} \
             -o  {output.counts} \
-            {params.path}/*bam  2>&1 > {log}
+            {params.path}/*bam  &> {log}
 
             {params.pigz} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
             """)
@@ -478,7 +625,7 @@ rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
             -o  {output.counts} \
             -M \
             --fraction \
-            {params.path}/*bam  2>&1 > {log}
+            {params.path}/*bam &> {log}
 
             {params.pigz} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
 
@@ -494,7 +641,7 @@ rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
             -g gene_id \
             -a {input.gtf} \
             -o  {output.counts} \
-            {params.path}/*bam  2>&1 > {log}
+            {params.path}/*bam  &> {log}
 
             {params.pigz} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
             """)

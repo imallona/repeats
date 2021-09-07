@@ -178,19 +178,20 @@ params <- list(identifier = "SRR8847571",
                repeats_alevin = '/home/imallona/repeats_sc/runs/SRR8847571/alevin/repeats/alevin/quants_mat.gz')
 
 params = list(identifier = "GSE121861_kumar_mouse", 
-                     genes_cellranger = "/scratch/imallona/repeats_sc/runs/GSE121861_kumar_mouse/SRR8165399/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz", 
-                     repeats_cellranger = "/scratch/imallona/repeats_sc/runs/GSE121861_kumar_mouse/SRR8165399/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz", 
-                     repeats_featurecounts_multi = "/scratch/imallona/repeats_sc/runs/GSE121861_kumar_mouse/SRR8165399/count_repeats_on_cellranger_standard/multimappers/GSE121861_kumar_mouse_repeats.counts.gz", 
-                     repeats_featurecounts_unique = "/scratch/imallona/repeats_sc/runs/GSE121861_kumar_mouse/SRR8165399/count_repeats_on_cellranger_standard/unique_reads/GSE121861_kumar_mouse_repeats.counts.gz",
-                     repeats_only_featurecounts_control_multi = "/scratch/imallona/repeats_sc/runs/GSE121861_kumar_mouse/SRR8165399/count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers/GSE121861_kumar_mouse_repeats_not_overlapping_genes.counts.gz", 
-                     repeats_only_featurecounts_control_unique = "/scratch/imallona/repeats_sc/runs/GSE121861_kumar_mouse/SRR8165399/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/GSE121861_kumar_mouse_repeats_not_overlapping_genes.counts.gz",
-                     seurat_output = "/scratch/imallona/repeats_sc/runs/GSE121861_kumar_mouse/SRR8165399/SRR8165399_chromium_regress_nCount_FALSE_nFeature_FALSE.rds", 
-                     aris_output = "/scratch/imallona/repeats_sc/runs/GSE121861_kumar_mouse/SRR8165399/SRR8165399_aris_regress_nCount_FALSE_nFeature_FALSE.rds", 
+                     genes_cellranger = "/scratch/imallona/repeats_sc/runs/GSE121861_kumar_mouse/SRR8165412/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz", 
+                     repeats_cellranger = "/scratch/imallona/repeats_sc/runs/GSE121861_kumar_mouse/SRR8165412/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz", 
+                     repeats_featurecounts_multi = "None", 
+                     repeats_featurecounts_unique = "None",
+                     repeats_only_featurecounts_control_multi = "None", 
+                     repeats_only_featurecounts_control_unique = "/scratch/imallona/repeats_sc/runs/GSE121861_kumar_mouse/SRR8165412/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/GSE121861_kumar_mouse_repeats_not_overlapping_genes.counts.gz",
+                     seurat_output = "/scratch/imallona/repeats_sc/runs/GSE121861_kumar_mouse/SRR8165412/SRR8165412_chromium_regress_nCount_FALSE_nFeature_FALSE.rds", 
+                     aris_output = "/scratch/imallona/repeats_sc/runs/GSE121861_kumar_mouse/SRR8165412/SRR8165412_aris_regress_nCount_FALSE_nFeature_FALSE.rds", 
                      regress_genes_nCount = "FALSE", 
                      regress_genes_nFeature = "FALSE",
                      repeats_bowtie_unique = "None", 
-                     genes_alevin = "/scratch/imallona/repeats_sc/runs/GSE121861_kumar_mouse/alevin/genes/alevin/quants_mat.gz",
-              repeats_alevin = "/scratch/imallona/repeats_sc/runs/GSE121861_kumar_mouse/alevin/repeats/alevin/quants_mat.gz")
+                     genes_alevin = "None",
+                     repeats_alevin = "None")
+
               
 ```
 
@@ -842,8 +843,6 @@ for (item in names(d)) {
     cat('\n\n')
 }
 
-
-
 ```
 
 ## Dimred PCA {.tabset}
@@ -904,8 +903,12 @@ for (item in names(d)) {
     }
 
     d[[item]] <- RunUMAP(d[[item]], dims = NUM_PCS)
-        
-    d[[item]] <- RunTSNE(d[[item]], dims = NUM_PCS, check_duplicates = FALSE )
+
+    ## if the num cells is too low, manually set a low perplexity; 30 is default
+    d[[item]] <- RunTSNE(d[[item]], dims = NUM_PCS, check_duplicates = FALSE,
+                         perplexity = ifelse(nrow(d[[item]]@meta.data) >= 100,
+                                             yes = 30,
+                                             no = 5))
 }
 
 
@@ -991,7 +994,7 @@ aris_stored[['genes__repeats_cr']] <- aris
 ## Genes vs repeats (featurecounts multimappers)
 
 
-```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
+```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE, error = TRUE}
 aris <- list()
 i <- 1
 for (genes_res in seq(0.2, 2, 0.2)) {
@@ -1019,7 +1022,7 @@ colnames(aris) <- c('genes_res', 'repeats_fc_res', 'ari')
 aris$ari <- as.numeric(as.character(aris$ari))
 ```
 
-```{r, fig.width = 6, fig.height = 6}
+```{r, fig.width = 6, fig.height = 6, error = TRUE}
 aris_wide <- reshape2::dcast(aris, genes_res~repeats_fc_res, value.var="ari")
 
 rownames(aris_wide)<- aris_wide$genes_res
@@ -1029,7 +1032,7 @@ pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
          color = colorRampPalette(c("white","blue"))(20))
 ```
 
-```{r}
+```{r, error = TRUE}
 aris_stored[['genes__repeats_fc_multi']] <- aris
 ```
 
@@ -1037,7 +1040,7 @@ aris_stored[['genes__repeats_fc_multi']] <- aris
 ## Genes vs repeats (featurecounts uniquemappers)
 
 
-```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
+```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE, error = TRUE}
 aris <- list()
 i <- 1
 for (genes_res in seq(0.2, 2, 0.2)) {
@@ -1065,7 +1068,7 @@ colnames(aris) <- c('genes_res', 'repeats_fc_res', 'ari')
 aris$ari <- as.numeric(as.character(aris$ari))
 ```
 
-```{r, fig.width = 6, fig.height = 6}
+```{r, fig.width = 6, fig.height = 6, error = TRUE}
 aris_wide <- reshape2::dcast(aris, genes_res~repeats_fc_res, value.var="ari")
 
 rownames(aris_wide)<- aris_wide$genes_res
@@ -1075,7 +1078,7 @@ pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
          color = colorRampPalette(c("white","blue"))(20))
 ```
 
-```{r}
+```{r, error = TRUE}
 aris_stored[['genes__repeats_fc_unique']] <- aris
 ```
 
@@ -1083,7 +1086,7 @@ aris_stored[['genes__repeats_fc_unique']] <- aris
 
 ## Repeats cellranger vs repeats featurecounts multimappers
 
-```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
+```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE, error = TRUE}
 aris <- list()
 i <- 1
 for (featurecounts_multi_res in seq(0.2, 2, 0.2)) {
@@ -1110,7 +1113,7 @@ aris$ari <- as.numeric(as.character(aris$ari))
 ```
 
 
-```{r, fig.width = 6, fig.height = 6}
+```{r, fig.width = 6, fig.height = 6, error = TRUE}
 aris_wide <- reshape2::dcast(aris, featurecounts_multi_res~repeats_res, value.var="ari")
 
 rownames(aris_wide)<- aris_wide$featurecounts_multi_res
@@ -1120,14 +1123,14 @@ pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
          color = colorRampPalette(c("white","blue"))(20))
 ```
 
-```{r}
+```{r, error = TRUE}
 aris_stored[['repeats_cr__repeats_fc_multi']] <- aris
 
 ```
 
 ## Repeats cellranger vs repeats featurecounts uniquemappers
 
-```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
+```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE, error = TRUE}
 aris <- list()
 i <- 1
 for (featurecounts_unique_res in seq(0.2, 2, 0.2)) {
@@ -1154,7 +1157,7 @@ aris$ari <- as.numeric(as.character(aris$ari))
 ```
 
 
-```{r, fig.width = 6, fig.height = 6}
+```{r, fig.width = 6, fig.height = 6, error = TRUE}
 aris_wide <- reshape2::dcast(aris, featurecounts_unique_res~repeats_res, value.var="ari")
 
 rownames(aris_wide)<- aris_wide$featurecounts_unique_res
@@ -1164,7 +1167,7 @@ pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
          color = colorRampPalette(c("white","blue"))(20))
 ```
 
-```{r}
+```{r, error = TRUE}
 aris_stored[['repeats_cr__repeats_fc_unique']] <- aris
 
 ```
@@ -1172,7 +1175,7 @@ aris_stored[['repeats_cr__repeats_fc_unique']] <- aris
 ## Genes vs repeats controls
 
 
-```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE}
+```{r, results = 'asis', fig.width = 4, fig.height = 4, cache = FALSE, error = TRUE}
 aris <- list()
 i <- 1
 for (control_res in seq(0.2, 2, 0.2)) {
@@ -1201,7 +1204,7 @@ aris$ari <- as.numeric(as.character(aris$ari))
 ```
 
 
-```{r, fig.width = 6, fig.height = 6}
+```{r, fig.width = 6, fig.height = 6, error = TRUE}
 aris_wide <- reshape2::dcast(aris, control_res~genes_res, value.var="ari")
 
 rownames(aris_wide)<- aris_wide$control_res
@@ -1211,7 +1214,7 @@ pheatmap(aris_wide, cluster_rows = FALSE, cluster_cols = FALSE,
          color = colorRampPalette(c("white","blue"))(20))
 ```
 
-```{r}
+```{r, error = TRUE}
 aris_stored[['control_fc_unique__genes_cr']] <- aris
 
 ```
@@ -1312,4 +1315,3 @@ sessionInfo()
 devtools::session_info()
 
 ```
-

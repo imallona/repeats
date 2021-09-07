@@ -9,10 +9,20 @@ import os.path as op
 from glob import glob
 
 # https://www.ncbi.nlm.nih.gov/Traces/study/?query_key=8&WebEnv=MCID_5f7acd5b7a1fbfa3a968b8a2&o=protocol_sam_s%3Ad
-SRRS = ['SRR8165390', 'SRR8165391', 'SRR8165392', 'SRR8165393', 'SRR8165394', 'SRR8165395',
+SRRS_FULL = ['SRR8165390', 'SRR8165391', 'SRR8165392', 'SRR8165393', 'SRR8165394', 'SRR8165395',
         'SRR8165396', 'SRR8165397', 'SRR8165398', 'SRR8165399', 'SRR8165400', 'SRR8165401',
         'SRR8165402', 'SRR8165404', 'SRR8165405', 'SRR8165406', 'SRR8165407', 'SRR8165408',
         'SRR8165409', 'SRR8165410', 'SRR8165411', 'SRR8165412', 'SRR8165413', 'SRR8165414',
+        'SRR8165415', 'SRR8165416', 'SRR8165417', 'SRR8165418', 'SRR8165419', 'SRR8165420',
+        'SRR8165421', 'SRR8165422', 'SRR8165423', 'SRR8165424', 'SRR8165425', 'SRR8165426',
+        'SRR8165427', 'SRR8165428', 'SRR8165429', 'SRR8165430', 'SRR8165431', 'SRR8165432',
+        'SRR8165433', 'SRR8165434', 'SRR8165435', 'SRR8165436', 'SRR8165437', 'SRR8165438']
+
+# a SRR is not fully ok/ low cell number - skipping
+SRRS = ['SRR8165390', 'SRR8165391', 'SRR8165392', 'SRR8165393', 'SRR8165394', 'SRR8165395',
+        'SRR8165396', 'SRR8165397', 'SRR8165398', 'SRR8165399', 'SRR8165400', 'SRR8165401',
+        'SRR8165402', 'SRR8165404', 'SRR8165405', 'SRR8165406', 'SRR8165407', 'SRR8165408',
+        'SRR8165409', 'SRR8165410',               'SRR8165412', 'SRR8165413', 'SRR8165414',
         'SRR8165415', 'SRR8165416', 'SRR8165417', 'SRR8165418', 'SRR8165419', 'SRR8165420',
         'SRR8165421', 'SRR8165422', 'SRR8165423', 'SRR8165424', 'SRR8165425', 'SRR8165426',
         'SRR8165427', 'SRR8165428', 'SRR8165429', 'SRR8165430', 'SRR8165431', 'SRR8165432',
@@ -105,7 +115,8 @@ rule all:
         expand(op.join(config["base"], 'runs', config["run_name"], '{sample}', '{sample}_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
                sample = get_samples(),
                regress_ncount = ['FALSE'],
-               regress_nfeature = ['FALSE'])
+               regress_nfeature = ['FALSE']),
+        op.join(config["base"], 'runs', 'kumar_integration.html')
 
         ## files: just two files, from the many generated during the process
 
@@ -156,19 +167,19 @@ rule knit_report_chromium_agnostic_per_sample:
     input:
         genes = op.join(config["base"], 'runs', config["run_name"], '{sample}', 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
         repeats = op.join(config["base"], 'runs', config["run_name"], '{sample}', 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
-        featurecounts_multi = op.join(config["base"], "runs", config["run_name"], '{sample}',
-                                      'count_repeats_on_cellranger_standard',
-                                      'multimappers',
-                                      config["run_name"] + "_repeats.counts.gz"),
-        featurecounts_unique = op.join(config["base"], "runs", config["run_name"], '{sample}',
-                                      'count_repeats_on_cellranger_standard',
-                                      'unique_reads',
-                                      config["run_name"] + "_repeats.counts.gz"),
-        repeats_only_featurecounts_control_multi = op.join(
-            config["base"], "runs", config["run_name"], '{sample}',
-            'count_repeats_on_cellranger_standard_not_overlapping_genes',
-            'multimappers',
-            config["run_name"] + "_repeats_not_overlapping_genes.counts.gz"),
+        # featurecounts_multi = op.join(config["base"], "runs", config["run_name"], '{sample}',
+        #                               'count_repeats_on_cellranger_standard',
+        #                               'multimappers',
+        #                               config["run_name"] + "_repeats.counts.gz"),
+        # featurecounts_unique = op.join(config["base"], "runs", config["run_name"], '{sample}',
+        #                               'count_repeats_on_cellranger_standard',
+        #                               'unique_reads',
+        #                               config["run_name"] + "_repeats.counts.gz"),
+        # repeats_only_featurecounts_control_multi = op.join(
+        #     config["base"], "runs", config["run_name"], '{sample}',
+        #     'count_repeats_on_cellranger_standard_not_overlapping_genes',
+        #     'multimappers',
+        #     config["run_name"] + "_repeats_not_overlapping_genes.counts.gz"),
         repeats_only_featurecounts_control_unique = op.join(
             config["base"], "runs", config["run_name"], '{sample}',
             'count_repeats_on_cellranger_standard_not_overlapping_genes',
@@ -204,17 +215,17 @@ rule knit_report_chromium_agnostic_per_sample:
           params = list(identifier = \"{params.run_name}\", 
                      genes_cellranger = \"{input.genes}\", 
                      repeats_cellranger = \"{input.repeats}\", 
-                     repeats_featurecounts_multi = \"{input.featurecounts_multi}\", 
-                     repeats_featurecounts_unique = \"{input.featurecounts_unique}\",
-                     repeats_only_featurecounts_control_multi = \"{input.repeats_only_featurecounts_control_multi}\", 
+                     repeats_featurecounts_multi = \"None\", 
+                     repeats_featurecounts_unique = \"None\",
+                     repeats_only_featurecounts_control_multi = \"None\", 
                      repeats_only_featurecounts_control_unique = \"{input.repeats_only_featurecounts_control_unique}\",
                      seurat_output = \"{output.rds}\", 
                      aris_output = \"{output.aris}\", 
                      regress_genes_nCount = \"{wildcards.regress_ncount}\", 
                      regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
                      repeats_bowtie_unique = \"None\", 
-                     genes_alevin = \"{input.genes_alevin}\",
-                     repeats_alevin = \"{input.repeats_alevin}\"))' &> {log}
+                     genes_alevin = \"None\",
+                     repeats_alevin = \"None\"))' &> {log}
         """
 
     
