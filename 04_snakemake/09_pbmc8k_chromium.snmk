@@ -58,19 +58,25 @@ include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow_with_config.s
 #                        '{multimappers}',
 #                        "all_cells_repeats.counts.gz"),
 #                multimappers = ['unique_reads'])
-               
-
-    
+  
 rule all:
     input:
         # expand(op.join(config["base"], 'runs', config["run_name"], config["run_name"] + '_pbmc_chromium_no_bowtie_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
         #        regress_ncount = ['FALSE'],
         #        regress_nfeature = ['FALSE'])
         expand(op.join(config['base'], "runs", config['run_name'],
-                'count_repeats_on_cellranger_standard',
+                '{task}',
                 '{multimappers}',
-                       config['run_name'] + "TEST_repeats.counts.gz"),
-               multimappers = ['multimappers', 'unique_reads'])
+                       config['run_name'] + "_TEST2_repeats.counts.gz"),
+               multimappers = ['multimappers', 'unique_reads'],
+               task = ['count_repeats_on_cellranger_standard',
+                       'count_repeats_on_cellranger_standard_not_overlapping_genes']),
+        expand(op.join(config['base'], "runs", config['run_name'],
+                '{task}',
+                '{multimappers}',
+                       config['run_name'] + "_TEST2_repeats.counts.gz"),
+               multimappers = ['unique_reads'],
+               task = ['bowtie_repeatome'])
                
 rule knit_pbmc8:
     input:

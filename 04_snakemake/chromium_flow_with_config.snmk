@@ -9,6 +9,7 @@ import os.path as op
 from glob import glob
 
 include: "base_functions_with_config.snmk"
+include: "featurecounts_runs.snmk"
 
 ## num of bams processed at once in a featurecounts run; equal cells
 NUM_BAMS = 100
