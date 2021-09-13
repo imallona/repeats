@@ -2,8 +2,12 @@
 ##
 ## 7th Sept 2021
 
-gtfs_dict = {'count_repeats_on_cellranger_standard' : op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url'])),
-             'count_repeats_on_cellranger_repeats' : op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url'])),
+from math import ceil
+
+gtfs_dict = {'count_repeats_on_cellranger_standard' : op.join(config['base'], 'annotation',
+                                                              op.basename(config['rep_gtf_url'])),
+             'count_repeats_on_cellranger_repeats' : op.join(config['base'], 'annotation',
+                                                             op.basename(config['rep_gtf_url'])),
              'bowtie_repeatome': op.join(config['base'], 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0]) + '.gtf.gz',
              'count_repeats_on_cellranger_standard_not_overlapping_genes' : op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']) + '_minus_' + op.basename(config['genes_gtf_url']))}
 
@@ -12,12 +16,107 @@ input_flags_dict = {'count_repeats_on_cellranger_standard': op.join(config['base
                     'count_repeats_on_cellranger_standard_not_overlapping_genes': op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split.flag'),
                     'count_repeats_on_cellranger_repeats': op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_repeats', 'split.flag'),
                     'bowtie_repeatome': op.join(config['base'], "runs", config['run_name'], 'bowtie_repeatome', 'split_bowtie.flag')}
-             
+
+## lists all files in a folder with pattern pattern, and then reports
+##  them scattered in groups of num_files
+def yield_files_in_chunks(folder, pattern, num_files):
+    files = glob(op.join(folder, pattern))
+    for i in range(0, len(files), num_files):
+        yield files[i:i + num_files]
+
+# ## bamsets must depend on the task
+# bam_sets = [item for item in yield_files_in_chunks(folder = op.join(
+#     config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split'),
+#                                                         pattern = '*bam',
+#                                                         num_files = NUM_BAMS)]
+# # the first bamfile from the split is the 'identifier'
+# identifiers_sets = [op.splitext(op.basename(item[0]))[0] for item in bam_sets]
+
+# bam_sets = dict(zip(identifiers_sets, bam_sets))
+
+def get_bam_sets(wildcards):
+    if wildcards.task == 'count_repeats_on_cellranger_standard_not_overlapping_genes':
+        bam_sets = [item for item in yield_files_in_chunks(folder = op.join(
+            config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard',
+            'split'),
+                                                           pattern = '*bam',
+                                                           num_files = NUM_BAMS)]
+    elif wildcards.task == 'bowtie_repeatome':
+        bam_sets = [item for item in yield_files_in_chunks(folder = op.join(
+        config['base'], "runs", config['run_name'], wildcards.task),
+                                                       pattern = '*bam',
+                                                       num_files = NUM_BAMS)]
+    else:
+        bam_sets = [item for item in yield_files_in_chunks(folder = op.join(
+            config['base'], "runs", config['run_name'], wildcards.task, 'split'),
+                                                           pattern = '*bam',
+                                                           num_files = NUM_BAMS)]
+    
+    identifiers_sets = [op.splitext(op.basename(item[0]))[0] for item in bam_sets]
+    
+    bam_sets = dict(zip(identifiers_sets, bam_sets))
+    
+    return(bam_sets)
+
+
+## debugging start
+if False:
+    from snakemake.io import *
+    config = {'run_name': 'pbmc8k',
+              'base': '/home/imallona/repeats_sc',
+              'run_tech': 'chromium',
+              'genome': 'GRCh38',
+              'genome_short': 'hg38',
+              'genome_url': 'ftp://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz',
+              'genes_gtf_url': 'ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_33/gencode.v33.primary_assembly.annotation.gtf.gz',
+              'rep_gtf_url': 'hg38_rmsk.gtf.gz'}
+
+    wildcards = Namedlist(fromdict = {'task': 'count_repeats_on_cellranger_standard_not_overlapping_genes', 'multimappers': 'multimappers'})
+
+    wildcards = Namedlist(fromdict = {'task': 'bowtie_repeatome', 'multimappers': 'multimappers'})
+
+    [item for item in yield_files_in_chunks(folder = op.join(
+        config['base'], "runs", config['run_name'], wildcards.task),
+                                            pattern = '*bam',
+                                            num_files = NUM_BAMS)]
+    
+    get_bam_sets(wildcards)
+## debugging end
+
+
+## in a setting with multiple bams -> getting multiple count outputs grouping bams in
+##   subsets -> final count table,
+##   this lists all the multiple count outputs from a run (to be summarized into a final
+##   count table)
+def get_subset_count_files(wildcards):
+    bam_sets = get_bam_sets(wildcards)
+    res = []
+    for subset_id in bam_sets.keys():
+        res.append(op.join(config['base'], "runs",
+                   config['run_name'],
+                           'count_repeats_on_cellranger_standard',
+                           wildcards.multimappers,
+                           subset_id,
+                           subset_id + '_' + config['run_name'] + "_repeats.counts.gz"))
+    return(res)
+
+## as in `get_subset_count_files(wildcards)` to return just one
+def get_one_subset_count_file(wildcards):
+    return(get_subset_count_files(wildcards)[0])
+
+## this lists all bam files analyzed within a subset, as defined in a dictionary
+def list_bams_within_subset(wildcards):
+    bam_sets = get_bam_sets(wildcards)
+    return(bam_sets[wildcards.bam_subset])
+
+
 def get_gtf_by_task(wildcards):
     return(gtfs_dict[wildcards.task])
 
+
 def get_input_flag_by_task(wildcards):
-    return(input_flags_dict[wildcards.task])  
+    return(input_flags_dict[wildcards.task])
+
 
 def get_featurecounts_input_path(wildcards):
     return(op.dirname(input_flags_dict[wildcards.task]))
@@ -26,11 +125,13 @@ def get_featurecounts_input_path(wildcards):
 def get_one_subset_count_file_by_task(wildcards):
     return(get_subset_count_files_by_task(wildcards)[0])
 
+
 ## in a setting with multiple bams -> getting multiple count outputs grouping bams in
 ##   subsets -> final count table,
 ##   this lists all the multiple count outputs from a run (to be summarized into a final
 ##   count table)
 def get_subset_count_files_by_task(wildcards):
+    bam_sets = get_bam_sets(wildcards)
     res = []
     for subset_id in bam_sets.keys():
         res.append(op.join(config['base'], "runs",
@@ -43,12 +144,24 @@ def get_subset_count_files_by_task(wildcards):
 
 ## this lists all bam files analyzed within a subset, as defined in a dictionary
 def list_bams_within_subset(wildcards):
+    bam_sets = get_bam_sets(wildcards)
     return(bam_sets[wildcards.bam_subset])
+
+## we run less bowtie_repeatome featurecounts job concurrently than ny other count;
+##   this is to circumvent the high IO pressure of featurecounting with a 4M entries GTF
+## reducing concurrent tasks for bowtie
+def get_threads_featurecounts(task):
+    cores = ceil(config['params']['nthreads']/10)
+    if task == 'bowtie_repeatome':
+        cores = ceil(config['params']['nthreads']/20)
+    return(cores)
+    
 
 rule featurecounts_in_subsets:
     input:
         flag = get_input_flag_by_task,
-        gtf = get_gtf_by_task
+        gtf = get_gtf_by_task,
+        bams = list_bams_within_subset
     params:
         path = get_featurecounts_input_path,
         output_path = op.join(config['base'], "runs", config['run_name'],
@@ -81,10 +194,12 @@ rule featurecounts_in_subsets:
                       '{bam_subset}',
                       'subset_{bam_subset}_feature_counts.log'),
     threads:
+        # get_threads_featurecounts("{wildcards.task}")
         2
-    run:
-        if wildcards.multimappers == 'multimappers':
-            shell("""
+    shell:
+        """
+        if [ {wildcards.multimappers} = 'multimappers' ]
+        then
             echo multimappers allowed
 
             mkdir -p {params.output_path}
@@ -101,9 +216,8 @@ rule featurecounts_in_subsets:
 
             {params.pigz} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
 
-            """)
-        elif wildcards.multimappers == 'unique_reads':
-            shell("""
+        elif [ {wildcards.multimappers} == 'unique_reads' ]
+        then
             echo unique only
 
             mkdir -p {params.output_path}
@@ -118,7 +232,8 @@ rule featurecounts_in_subsets:
             {params.bams}  &> {log}
 
             {params.pigz} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
-            """)
+        fi
+        """
 
 #featurecounts outputs are:
 # Geneid  Chr     Start   End     Strand  Length  bam1 bam2 ... bamn
@@ -133,7 +248,7 @@ rule merge_featurecounts_in_chunks_generalized:
         gz_counts_merged = op.join(config['base'], "runs", config['run_name'],
                             '{task}',
                             '{multimappers}',
-                            config['run_name'] + "_TEST2_repeats.counts.gz")
+                            config['run_name'] + "_repeats.counts.gz")
     params:
         path = op.join(config['base'], "runs", config['run_name'],
                        '{task}', 'split'),
@@ -154,5 +269,5 @@ rule merge_featurecounts_in_chunks_generalized:
            command="$command <(gzip -cd $i | cut -f 6-)"
         done
         
-        eval $command | {params.pigz} -p {threads} --to-stdout > {output.gz_counts_merged}
+        eval $command | sed 's/ /\\t/g' | {params.pigz} -p {threads} --to-stdout > {output.gz_counts_merged}
         """

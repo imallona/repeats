@@ -95,6 +95,7 @@ opts_chunk$set(fig.width = 5,
 options(bitmapType='cairo')
 ## getOption('bitmapType')
 setDTthreads(threads = 20)
+
 ```
 
 
@@ -144,22 +145,22 @@ ac <- function(col, alpha=1){
 ##                genes_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/genes/alevin/quants_mat.gz',
 ##                repeats_alevin = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/alevin/repeats/alevin/quants_mat.gz')
 
-params <- list(identifier = "pbmc_10k_v3", 
-                     genes_cellranger = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz", 
-                     repeats_cellranger = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz", 
-                     markers_output = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_markers_regress_nCount_FALSE_nFeature_FALSE.rds", 
-                     repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/count_repeats_on_cellranger_standard/multimappers/pbmc_10k_v3_repeats.counts.gz", 
-                     repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/count_repeats_on_cellranger_standard/unique_reads/pbmc_10k_v3_repeats.counts.gz",
-                     repeats_only_featurecounts_control_multi = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers/pbmc_10k_v3_repeats_not_overlapping_genes.counts.gz", 
-                     repeats_only_featurecounts_control_unique = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/pbmc_10k_v3_repeats_not_overlapping_genes.counts.gz",
-                     seurat_output = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds", 
-                     aris_output = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_aris_regress_nCount_FALSE_nFeature_FALSE.rds", 
+params <- list(identifier = "pbmc8k", 
+                     genes_cellranger = "/home/imallona/repeats_sc/runs/pbmc8k/cellranger_standard/outs/filtered_feature_bc_matrix/barcodes.tsv.gz", 
+                     repeats_cellranger = "/home/imallona/repeats_sc/runs/pbmc8k/cellranger_repeats/outs/filtered_feature_bc_matrix/barcodes.tsv.gz", 
+                     markers_output = "/home/imallona/repeats_sc/runs/pbmc8k/pbmc8k_markers_regress_nCount_FALSE_nFeature_FALSE.rds", 
+                     repeats_featurecounts_multi = "/home/imallona/repeats_sc/runs/pbmc8k/count_repeats_on_cellranger_standard/multimappers/pbmc8k_repeats.counts.gz", 
+                     repeats_featurecounts_unique = "/home/imallona/repeats_sc/runs/pbmc8k/count_repeats_on_cellranger_standard/unique_reads/pbmc8k_repeats.counts.gz",
+                     repeats_only_featurecounts_control_multi = "/home/imallona/repeats_sc/runs/pbmc8k/count_repeats_on_cellranger_standard_not_overlapping_genes/multimappers/pbmc8k_repeats_not_overlapping_genes.counts.gz", 
+                     repeats_only_featurecounts_control_unique = "/home/imallona/repeats_sc/runs/pbmc8k/count_repeats_on_cellranger_standard_not_overlapping_genes/unique_reads/pbmc8k_repeats_not_overlapping_genes.counts.gz",
+                     seurat_output = "/home/imallona/repeats_sc/runs/pbmc8k/pbmc8k_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds", 
+                     aris_output = "/home/imallona/repeats_sc/runs/pbmc8k/pbmc8k_aris_regress_nCount_FALSE_nFeature_FALSE.rds", 
                      regress_genes_nCount = "FALSE", 
                      regress_genes_nFeature = "FALSE",
-                     repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/bowtie_repeatome/unique_reads/all_cells_repeats.counts.gz", 
-                     genes_alevin = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/alevin/genes/alevin/quants_mat.gz",
-                     repeats_alevin = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/alevin/repeats/alevin/quants_mat.gz",
-                     cobra_output = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_cobra_regress_nCount_FALSE_nFeature_FALSE.rds")
+                     repeats_bowtie_unique = "/home/imallona/repeats_sc/runs/pbmc8k/bowtie_repeatome/unique_reads/all_cells_repeats.counts.gz", 
+                     genes_alevin = "/home/imallona/repeats_sc/runs/pbmc8k/alevin/genes/alevin/quants_mat.gz",
+                     repeats_alevin = "/home/imallona/repeats_sc/runs/pbmc8k/alevin/repeats/alevin/quants_mat.gz",
+                     cobra_output = "/home/imallona/repeats_sc/runs/pbmc8k/pbmc8k_cobra_regress_nCount_FALSE_nFeature_FALSE.rds")
 
 
 ## params <- list(identifier = "frozen_pbmc_donor_a",
@@ -218,7 +219,8 @@ d$repeats_cellranger <- CreateSeuratObject(counts = Read10X(data.dir = path),
 
 if (params$repeats_featurecounts_multi != "None") {
     ## Featurecounts-based repeats with multimappers
-    tmp <- data.table::fread(params$repeats_featurecounts_multi, sep = '\t', header = TRUE,
+    tmp <- data.table::fread(params$repeats_featurecounts_multi, sep = '\t', sep2 = ' ',
+                             header = TRUE,
                              drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
     rownames(tmp) <- tmp$Geneid ## here
     colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
@@ -240,6 +242,7 @@ if (params$repeats_featurecounts_multi != "None") {
 
     rm(tmp)
 }
+
 
 ```
 
@@ -331,6 +334,7 @@ if (params$repeats_only_featurecounts_control_unique != "None") {
 
     rm(tmp)
 }
+ 
 ```
 
 Mixed (genes + uniquely mapping repeats not overlapping genes) object generation
@@ -518,116 +522,116 @@ if (params$repeats_alevin != "None" & params$genes_alevin != "None") {
 
 ```
 
-# Read assignment descriptive
+<!-- # Read assignment descriptive -->
 
-@todo add paths explicitly (not recursive from `params$identifier`)
+<!-- @todo add paths explicitly (not recursive from `params$identifier`) -->
 
-@todo fix this to check all featurecounts stuff directly
+<!-- @todo fix this to check all featurecounts stuff directly -->
 
-Four cells selected randomly.
+<!-- Four cells selected randomly. -->
 
-```{r}
-## summaries <- list.files(file.path('/home/imallona', 'repeats_sc', 'runs', params$identifier),
-##                         pattern = '.*summary.*csv', recursive = TRUE)
-## summaries
+<!-- ```{r} -->
+<!-- ## summaries <- list.files(file.path('/home/imallona', 'repeats_sc', 'runs', params$identifier), -->
+<!-- ##                         pattern = '.*summary.*csv', recursive = TRUE) -->
+<!-- ## summaries -->
 
-base <- file.path('/home/imallona', 'repeats_sc', 'runs')
+<!-- base <- file.path('/home/imallona', 'repeats_sc', 'runs') -->
 
-## /home/imallona/repeats_sc/runs/pbmc_10k_v3/cellranger_standard/outs/metrics_summary.csv
+<!-- ## /home/imallona/repeats_sc/runs/pbmc_10k_v3/cellranger_standard/outs/metrics_summary.csv -->
 
-summaries_cg <- list(genes_cellranger = file.path(
-                      base, params$identifier, 'cellranger_standard',
-                      'outs', 'metrics_summary.csv'),
-                  repeats_cellranger = file.path(
-                      base, params$identifier, 'cellranger_repeats',
-                      'outs', 'metrics_summary.csv'))
-summaries_fc <- list(
-    repeats_no_overlap_unique = file.path(
-        base, params$identifier,
-        'count_repeats_on_cellranger_standard_not_overlapping_genes',
-        'unique_reads',
-        paste0(params$identifier, '_transcriptome_repeats_not_genes.counts.summary.png_barplot.csv')),
-    repeats_featurecounts_unique = file.path(
-        base, params$identifier,
-        'count_repeats_on_cellranger_standard',
-        'unique_reads',
-        paste0(params$identifier, '_transcriptome_repeats.counts.summary.png_barplot.csv')),
-    repeats_no_overlap_multi = file.path(
-        base, params$identifier,        
-        'count_repeats_on_cellranger_standard_not_overlapping_genes',
-        'multimappers',
-        paste0(params$identifier, '_transcriptome_repeats_not_genes.counts.summary.png_barplot.csv')),
-    repeats_featurecounts_multi = file.path(
-        base, params$identifier,
-        'count_repeats_on_cellranger_standard',
-        'multimappers',
-        paste0(params$identifier, '_transcriptome_repeats.counts.summary.png_barplot.csv'))
-    )
+<!-- summaries_cg <- list(genes_cellranger = file.path( -->
+<!--                       base, params$identifier, 'cellranger_standard', -->
+<!--                       'outs', 'metrics_summary.csv'), -->
+<!--                   repeats_cellranger = file.path( -->
+<!--                       base, params$identifier, 'cellranger_repeats', -->
+<!--                       'outs', 'metrics_summary.csv')) -->
+<!-- summaries_fc <- list( -->
+<!--     repeats_no_overlap_unique = file.path( -->
+<!--         base, params$identifier, -->
+<!--         'count_repeats_on_cellranger_standard_not_overlapping_genes', -->
+<!--         'unique_reads', -->
+<!--         paste0(params$identifier, '_transcriptome_repeats_not_genes.counts.summary.png_barplot.csv')), -->
+<!--     repeats_featurecounts_unique = file.path( -->
+<!--         base, params$identifier, -->
+<!--         'count_repeats_on_cellranger_standard', -->
+<!--         'unique_reads', -->
+<!--         paste0(params$identifier, '_transcriptome_repeats.counts.summary.png_barplot.csv')), -->
+<!--     repeats_no_overlap_multi = file.path( -->
+<!--         base, params$identifier,         -->
+<!--         'count_repeats_on_cellranger_standard_not_overlapping_genes', -->
+<!--         'multimappers', -->
+<!--         paste0(params$identifier, '_transcriptome_repeats_not_genes.counts.summary.png_barplot.csv')), -->
+<!--     repeats_featurecounts_multi = file.path( -->
+<!--         base, params$identifier, -->
+<!--         'count_repeats_on_cellranger_standard', -->
+<!--         'multimappers', -->
+<!--         paste0(params$identifier, '_transcriptome_repeats.counts.summary.png_barplot.csv')) -->
+<!--     ) -->
 
                       
-sm <- list()
+<!-- sm <- list() -->
 
-## summaries cellranger
-for (su in names(summaries_cg)) {
-    tmp <- data.table::fread(summaries_cg[[su]], header = TRUE, sep = ',')
-    tmp <- data.frame(Status = colnames(tmp),
-                      bam = params$identifier,
-                      pct = gsub(',', '', gsub('%', '', tmp[1,])),
-                      count = NA)
+<!-- ## summaries cellranger -->
+<!-- for (su in names(summaries_cg)) { -->
+<!--     tmp <- data.table::fread(summaries_cg[[su]], header = TRUE, sep = ',') -->
+<!--     tmp <- data.frame(Status = colnames(tmp), -->
+<!--                       bam = params$identifier, -->
+<!--                       pct = gsub(',', '', gsub('%', '', tmp[1,])), -->
+<!--                       count = NA) -->
 
-    tmp$Status <- gsub(' ', '_', tmp$Status)
-    numreads <- as.numeric(as.character(tmp[tmp$Status == 'Number_of_Reads','pct']))
-    tmp$pct <- as.numeric(gsub(',', '', tmp$pct))
-    tmp$count <- tmp$pct*numreads
-    tmp$id <- su
-    tmp <- tmp[grep('^Reads', tmp$Status),]
-    tmp$id <- su
-    sm[[su]] <- tmp
-}
+<!--     tmp$Status <- gsub(' ', '_', tmp$Status) -->
+<!--     numreads <- as.numeric(as.character(tmp[tmp$Status == 'Number_of_Reads','pct'])) -->
+<!--     tmp$pct <- as.numeric(gsub(',', '', tmp$pct)) -->
+<!--     tmp$count <- tmp$pct*numreads -->
+<!--     tmp$id <- su -->
+<!--     tmp <- tmp[grep('^Reads', tmp$Status),] -->
+<!--     tmp$id <- su -->
+<!--     sm[[su]] <- tmp -->
+<!-- } -->
 
-sm
+<!-- sm -->
 
-## summaries_fc
+<!-- ## summaries_fc -->
 
-for (su in names(summaries_fc)) {
-    sm[[su]] <- as.data.frame(data.table::fread(summaries_fc[[su]], header = TRUE, drop = 1))
+<!-- for (su in names(summaries_fc)) { -->
+<!--     sm[[su]] <- as.data.frame(data.table::fread(summaries_fc[[su]], header = TRUE, drop = 1)) -->
     
-    sm[[su]]$id <- su
+<!--     sm[[su]]$id <- su -->
 
-}
+<!-- } -->
 
-sm <- do.call(rbind.data.frame, sm)
+<!-- sm <- do.call(rbind.data.frame, sm) -->
 
-sm <- as.data.frame(sm)
+<!-- sm <- as.data.frame(sm) -->
 
 
-sm <- sm[sm$Status %in% c('Assigned', 'Unassigned_MultiMapping', 'Unassigned_NoFeatures',
-                          'Unassigned_Ambiguity', 'Reads_Mapped_Confidently_to_Exonic_Regions',
-                          'Reads_Mapped_Confidently_to_Intergenic_Regions',
-                          'Reads_Mapped_Confidently_to_Transcriptome',
-                          'Reads_Mapped_Confidently_to_Intronic_Regions'),]
+<!-- sm <- sm[sm$Status %in% c('Assigned', 'Unassigned_MultiMapping', 'Unassigned_NoFeatures', -->
+<!--                           'Unassigned_Ambiguity', 'Reads_Mapped_Confidently_to_Exonic_Regions', -->
+<!--                           'Reads_Mapped_Confidently_to_Intergenic_Regions', -->
+<!--                           'Reads_Mapped_Confidently_to_Transcriptome', -->
+<!--                           'Reads_Mapped_Confidently_to_Intronic_Regions'),] -->
 
-sm$id <- factor(sm$id)
+<!-- sm$id <- factor(sm$id) -->
 
-## head(sm)
-## table(sm$bam)
-sm$cell <- gsub('_Aligned.sortedByCoord.out', '', sm$bam)
-sm$cell <- gsub('.bam', '', sm$cell)
+<!-- ## head(sm) -->
+<!-- ## table(sm$bam) -->
+<!-- sm$cell <- gsub('_Aligned.sortedByCoord.out', '', sm$bam) -->
+<!-- sm$cell <- gsub('.bam', '', sm$cell) -->
 
-```
+<!-- ``` -->
 
-```{r, fig.width = 8, fig.height = 8}
-ggplot(data=as.data.frame(sm), aes(x=id, y=pct, col = cell, group = cell)) +
-    geom_point() + geom_line()+
-    facet_wrap(~Status, ncol = 4)+
-    geom_text(aes(label=sprintf('%.2g', count)), size=3,
-              vjust = -0.5) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    ylab ('read assignments (%; text indicate counts)') +
-    xlab('status') + ggtitle(params$identifier) +
-    theme(legend.position="bottom") +  guides(col = guide_legend(nrow = 3))
+<!-- ```{r, fig.width = 8, fig.height = 8} -->
+<!-- ggplot(data=as.data.frame(sm), aes(x=id, y=pct, col = cell, group = cell)) + -->
+<!--     geom_point() + geom_line()+ -->
+<!--     facet_wrap(~Status, ncol = 4)+ -->
+<!--     geom_text(aes(label=sprintf('%.2g', count)), size=3, -->
+<!--               vjust = -0.5) + -->
+<!--     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + -->
+<!--     ylab ('read assignments (%; text indicate counts)') + -->
+<!--     xlab('status') + ggtitle(params$identifier) + -->
+<!--     theme(legend.position="bottom") +  guides(col = guide_legend(nrow = 3)) -->
 
-```
+<!-- ``` -->
 
 
 # Basic Seurat processing

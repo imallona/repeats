@@ -29,6 +29,9 @@ for item in ['bowtie', 'star', 'salmon']:
 
 include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow_with_config.snmk"
 
+## num of bams processed at once in a featurecounts run; equal cells
+NUM_BAMS = 40
+
     
 # rule all:
 #     input:
@@ -61,95 +64,101 @@ include: "/home/imallona/src/repeats_sc/04_snakemake/chromium_flow_with_config.s
   
 rule all:
     input:
-        # expand(op.join(config["base"], 'runs', config["run_name"], config["run_name"] + '_pbmc_chromium_no_bowtie_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+        # expand(op.join(config["base"], 'runs', config["run_name"], config["run_name"] + '_pbmc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
         #        regress_ncount = ['FALSE'],
-        #        regress_nfeature = ['FALSE'])
+        #        regress_nfeature = ['FALSE']),
         expand(op.join(config['base'], "runs", config['run_name'],
                 '{task}',
                 '{multimappers}',
-                       config['run_name'] + "_TEST2_repeats.counts.gz"),
+                       config['run_name'] + "_repeats.counts.gz"),
                multimappers = ['multimappers', 'unique_reads'],
                task = ['count_repeats_on_cellranger_standard',
                        'count_repeats_on_cellranger_standard_not_overlapping_genes']),
         expand(op.join(config['base'], "runs", config['run_name'],
                 '{task}',
                 '{multimappers}',
-                       config['run_name'] + "_TEST2_repeats.counts.gz"),
+                       config['run_name'] + "_repeats.counts.gz"),
                multimappers = ['unique_reads'],
                task = ['bowtie_repeatome'])
                
-rule knit_pbmc8:
-    input:
-        genes = op.join(config['base'], 'runs', config['run_name'], 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
-        repeats = op.join(config['base'], 'runs', config['run_name'], 'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
-        featurecounts_multi = op.join(config['base'], "runs", config['run_name'],
-                                      'count_repeats_on_cellranger_standard',
-                                      'multimappers',
-                                      config['run_name'] + "_repeats.counts.gz"),
-        featurecounts_unique = op.join(config['base'], "runs", config['run_name'],
-                                      'count_repeats_on_cellranger_standard',
-                                      'unique_reads',
-                                      config['run_name'] + "_repeats.counts.gz"),
-        repeats_only_featurecounts_control_multi = op.join(
-            config['base'], "runs", config['run_name'],
-            'count_repeats_on_cellranger_standard_not_overlapping_genes',
-            'multimappers',
-            config['run_name'] + "_repeats_not_overlapping_genes.counts.gz"),
-        repeats_only_featurecounts_control_unique = op.join(
-            config['base'], "runs", config['run_name'],
-            'count_repeats_on_cellranger_standard_not_overlapping_genes',
-            'unique_reads',
-            config['run_name'] + "_repeats_not_overlapping_genes.counts.gz"),
-        # repeats_bowtie_multi = op.join(
-        #     config['base'], "runs", config['run_name'],
-        #     'bowtie_repeatome',
-        #     'multimappers',
-        #     'all_cells_repeats.counts.gz'),
-        # repeats_bowtie_unique = op.join(
-        #     config['base'], "runs", config['run_name'],
-        #     'bowtie_repeatome',
-        #     'unique_reads',
-        #     'all_cells_repeats.counts.gz'),
-        genes_alevin = op.join(config['base'], 'runs', config['run_name'], 'alevin', 'genes', 'alevin',
-                               'quants_mat.gz'),
-        repeats_alevin = op.join(config['base'], 'runs', config['run_name'], 'alevin', 'repeats', 'alevin',
-                                 'quants_mat.gz')
+# rule knit_pbmc8:
+#     input:
+#         genes = op.join(config['base'], 'runs', config['run_name'],
+#                         'cellranger_standard', 'outs',
+#                         'filtered_feature_bc_matrix', 'barcodes.tsv.gz'),
+#         repeats = op.join(config['base'], 'runs', config['run_name'],
+#                           'cellranger_repeats', 'outs', 'filtered_feature_bc_matrix',
+#                           'barcodes.tsv.gz'),
+#         featurecounts_multi = op.join(config['base'], "runs", config['run_name'],
+#                                       'count_repeats_on_cellranger_standard',
+#                                       'multimappers',
+#                                       config['run_name'] + "_repeats.counts.gz"),
+#         featurecounts_unique = op.join(config['base'], "runs", config['run_name'],
+#                                       'count_repeats_on_cellranger_standard',
+#                                       'unique_reads',
+#                                       config['run_name'] + "_repeats.counts.gz"),
+#         repeats_only_featurecounts_control_multi = op.join(
+#             config['base'], "runs", config['run_name'],
+#             'count_repeats_on_cellranger_standard_not_overlapping_genes',
+#             'multimappers',
+#             config['run_name'] + "_repeats_not_overlapping_genes.counts.gz"),
+#         repeats_only_featurecounts_control_unique = op.join(
+#             config['base'], "runs", config['run_name'],
+#             'count_repeats_on_cellranger_standard_not_overlapping_genes',
+#             'unique_reads',
+#             config['run_name'] + "_repeats_not_overlapping_genes.counts.gz"),
+#         # repeats_bowtie_multi = op.join(
+#         #     config['base'], "runs", config['run_name'],
+#         #     'bowtie_repeatome',
+#         #     'multimappers',
+#         #     'all_cells_repeats.counts.gz'),
+#         repeats_bowtie_unique = op.join(
+#             config['base'], "runs", config['run_name'],
+#             'bowtie_repeatome',
+#             'unique_reads',
+#             'all_cells_repeats.counts.gz'),
+#         genes_alevin = op.join(config['base'], 'runs', config['run_name'], 'alevin',
+#                                'genes', 'alevin',
+#                                'quants_mat.gz'),
+#         repeats_alevin = op.join(config['base'], 'runs', config['run_name'], 'alevin',
+#                                  'repeats', 'alevin',
+#                                  'quants_mat.gz')
         
             
-    params:
-        rmd = op.join('scripts', 'summarize_chromium_run_pbmcs.Rmd'),
-        run_name = config['run_name'],
-        Rscript = config['software']['Rscript'],
-        aris = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-    output:
-        html = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_pbmc_chromium_no_bowtie_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
-        rds = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_pmbc_chromium_no_bowtie_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-        # aris = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-        cobra = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_cobra_no_bowtie_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
-        markers = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_markers_no_bowtie_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
-    log:
-        op.join(config['base'], 'runs', config['run_name'], config['run_name'] + 'summarize_chromium_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}_no_bowtie.log')
-    shell:
-        """
-        {params.Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
-          output_file = \"{output.html}\", 
-          params = list(identifier = \"{params.run_name}\", 
-                     genes_cellranger = \"{input.genes}\", 
-                     repeats_cellranger = \"{input.repeats}\", 
-                     markers_output = \"{output.markers}\", 
-                     repeats_featurecounts_multi = \"{input.featurecounts_multi}\", 
-                     repeats_featurecounts_unique = \"{input.featurecounts_unique}\",
-                     repeats_only_featurecounts_control_multi = \"{input.repeats_only_featurecounts_control_multi}\", 
-                     repeats_only_featurecounts_control_unique = \"{input.repeats_only_featurecounts_control_unique}\",
-                     seurat_output = \"{output.rds}\", 
-                     aris_output = \"{params.aris}\", 
-                     regress_genes_nCount = \"{wildcards.regress_ncount}\", 
-                     regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
-                     repeats_bowtie_unique = \"None\", 
-                     genes_alevin = \"{input.genes_alevin}\",
-                     repeats_alevin = \"{input.repeats_alevin}\",
-                     cobra_output = \"{output.cobra}\"))' &> {log}
-        """
+#     params:
+#         rmd = op.join('scripts', 'summarize_chromium_run_pbmcs.Rmd'),
+#         run_name = config['run_name'],
+#         Rscript = config['software']['Rscript'],
+#         aris = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+#     output:
+#         html = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_pbmc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html'),
+#         rds = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_pmbc_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+#         # aris = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_aris_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+#         cobra = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_cobra_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds'),
+#         markers = op.join(config['base'], 'runs', config['run_name'], config['run_name'] + '_markers_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.rds')
+#     log:
+#         op.join(config['base'], 'runs', config['run_name'], config['run_name'] + 'summarize_chromium_run_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.log')
+#     shell:
+#         """
+#         {params.Rscript} -e 'rmarkdown::render(\"{params.rmd}\", 
+#           output_file = \"{output.html}\", 
+#           params = list(identifier = \"{params.run_name}\", 
+#                      genes_cellranger = \"{input.genes}\", 
+#                      repeats_cellranger = \"{input.repeats}\", 
+#                      markers_output = \"{output.markers}\", 
+#                      repeats_featurecounts_multi = \"{input.featurecounts_multi}\", 
+#                      repeats_featurecounts_unique = \"{input.featurecounts_unique}\",
+#                      repeats_only_featurecounts_control_multi = \"{input.repeats_only_featurecounts_control_multi}\", 
+#                      repeats_only_featurecounts_control_unique = \"{input.repeats_only_featurecounts_control_unique}\",
+#                      seurat_output = \"{output.rds}\", 
+#                      aris_output = \"{params.aris}\", 
+#                      regress_genes_nCount = \"{wildcards.regress_ncount}\", 
+#                      regress_genes_nFeature = \"{wildcards.regress_nfeature}\",
+#                      repeats_bowtie_unique = \"None\", 
+#                      genes_alevin = \"{input.genes_alevin}\",
+#                      repeats_alevin = \"{input.repeats_alevin}\",
+#                      cobra_output = \"{output.cobra}\"))' &> {log}
+#         """
         
 rule get_pbmc_8k:
     priority: 100
