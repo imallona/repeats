@@ -125,7 +125,7 @@ rule all:
         op.join(BASE, 'runs', RUN_NAME, 'alevin', 'repeats_per_locus', 'alevin', 'quants_mat.gz'),
         expand(op.join(BASE, "runs", RUN_NAME, "bowtie_repeatome", "{multimappers}",
                             "by_locus_repeats.counts.gz"),
-               multimappers = ['multimappers', 'unique_reads']),
+               multimappers = ['unique_reads']),
         op.join(BASE, 'runs', RUN_NAME, 'sim_postproc.html'),
         op.join(BASE, 'runs', RUN_NAME, 'scTE', 'scTE.out.csv.gz'),
         op.join(BASE, "runs", RUN_NAME, 'bowtie_repeatome', 'split_bowtie.flag'),

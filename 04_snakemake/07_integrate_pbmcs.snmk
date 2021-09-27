@@ -33,7 +33,6 @@ rule profile_all_missing_mapping_rates:
         c1 = '/home/imallona/repeats_sc/runs/pbmc8k/pbmc8k_pmbc_alevin_regress_nCount_TRUE_nFeature_TRUE.rds',
         c2 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
         s1 = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/pbmcs_smartseq2_ding_pmbc_smartseq2_regress_nCount_FALSE_nFeature_FALSE.rds',
-        # c3 = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
         c3 = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_no_bowtie_pmbc_chromium_regress_nCount_TRUE_nFeature_TRUE.rds",
         c4 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
         celseq2 = '/home/imallona/repeats_sc/runs/ding_celseq2/ding_celseq2_pmbc_celseq2_regress_nCount_FALSE_nFeature_FALSE.rds',
@@ -64,13 +63,11 @@ rule profile_all_missing_mapping_rates:
 # @todo this comes from other reports, fix!
 rule integration_pbmcs:
     input:
-        # c1 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
-        # c1 = '/home/imallona/repeats_sc/runs/pbmc8k/pbmc8k_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
         c1 = '/home/imallona/repeats_sc/runs/pbmc8k/pbmc8k_pmbc_alevin_regress_nCount_TRUE_nFeature_TRUE.rds',
         c2 = '/home/imallona/repeats_sc/runs/5k_pbmc_v3/5k_pbmc_v3_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
         s1 = '/home/imallona/repeats_sc/runs/pbmcs_smartseq2_ding/pbmcs_smartseq2_ding_pmbc_smartseq2_regress_nCount_FALSE_nFeature_FALSE.rds',
-        c3 = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
-        c3 = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_no_bowtie_pmbc_chromium_regress_nCount_TRUE_nFeature_TRUE.rds",
+        # c3 = '/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
+        c3 = "/home/imallona/repeats_sc/runs/pbmc_10k_v3/pbmc_10k_v3_no_bowtie_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds",
         c4 = '/home/imallona/repeats_sc/runs/frozen_pbmc_donor_a/frozen_pbmc_donor_a_pmbc_chromium_regress_nCount_FALSE_nFeature_FALSE.rds',
         celseq2 = '/home/imallona/repeats_sc/runs/ding_celseq2/ding_celseq2_pmbc_celseq2_regress_nCount_FALSE_nFeature_FALSE.rds',
         dropseq = '/home/imallona/repeats_sc/runs/ding_dropseq/ding_dropseq_pmbc_dropseq_regress_nCount_FALSE_nFeature_FALSE.rds',

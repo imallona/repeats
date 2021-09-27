@@ -11,6 +11,7 @@ output:
     number_sections: true
     df_print: kable
     theme: lumen
+---
 params:
   identifier: ""   
   genes_cellranger: ""
@@ -28,8 +29,6 @@ params:
   markers_output: ""
   regress_genes_nCount: ""
   regress_genes_nFeature: ""
----
-
 
 # Config
 
@@ -37,7 +36,7 @@ params:
 
 Rendered for sample:
 
-```{r}
+```{r, eval = TRUE}
 print(params)
 ```
 
@@ -223,12 +222,13 @@ if (params$repeats_featurecounts_multi != "None") {
                              header = TRUE,
                              drop = c('Chr', 'Start', 'End', 'Strand', 'Length'))
     rownames(tmp) <- tmp$Geneid ## here
-    colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))
+    colnames(tmp) <- gsub(".*:([A-Z]+-1).bam","\\1", colnames(tmp))    
     ## tmp <- tmp[,7:ncol(tmp)]
 
     tmp <- as.data.frame(tmp)
     rownames(tmp) <- tmp$Geneid
     tmp <- tmp[,-1]
+    tmp <- tmp[,grep('Length', colnames(tmp), invert = TRUE)]
 
     d$repeats_featurecounts_multi <- CreateSeuratObject(
         tmp,
@@ -242,8 +242,6 @@ if (params$repeats_featurecounts_multi != "None") {
 
     rm(tmp)
 }
-
-
 ```
 
 ```{r}
@@ -256,8 +254,9 @@ if (params$repeats_featurecounts_unique != "None") {
     ## tmp <- tmp[,7:ncol(tmp)]
 
     tmp <- as.data.frame(tmp)
-    rownames(tmp) <- tmp$Geneid
+    rownames(tmp) <- tmp$Geneid    
     tmp <- tmp[,-1]
+    tmp <- tmp[,grep('Length', colnames(tmp), invert = TRUE)]
 
     d$repeats_featurecounts_unique <- CreateSeuratObject(
         tmp,
@@ -289,7 +288,7 @@ if (params$repeats_only_featurecounts_control_multi != "None") {
     tmp <- as.data.frame(tmp)
     rownames(tmp) <- tmp$Geneid
     tmp <- tmp[,-1]
-
+    tmp <- tmp[,grep('Length', colnames(tmp), invert = TRUE)]
 
     d$control_repeats_only_multi <- CreateSeuratObject(
         tmp,
@@ -320,7 +319,7 @@ if (params$repeats_only_featurecounts_control_unique != "None") {
     tmp <- as.data.frame(tmp)
     rownames(tmp) <- tmp$Geneid
     tmp <- tmp[,-1]
-
+    tmp <- tmp[,grep('Length', colnames(tmp), invert = TRUE)]
 
     d$control_repeats_only_unique <- CreateSeuratObject(
         tmp,
@@ -395,7 +394,7 @@ if (params$repeats_bowtie_unique != "None") {
     tmp <- as.data.frame(tmp)
     rownames(tmp) <- tmp$Geneid
     tmp <- tmp[,-1]
-
+    tmp <- tmp[,grep('Length', colnames(tmp), invert = TRUE)]
 
     d$repeats_bowtie_unique <- CreateSeuratObject(
         tmp,
@@ -667,31 +666,33 @@ print(data.frame(ByLibSize = sum(libsize.drop),
                  Remaining = length(selected_cells)))
 ```
 
-```{r, results = 'asis', fig.width = 8, fig.height = 4}
+```{r check_qc, results = 'asis', fig.width = 8, fig.height = 4}
 for (item in names(d)) {
-    cat("### ", item, "\n\n")
-    ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
-    if (item == 'genes_cellranger') {
-        d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
+    tryCatch({
+        cat("### ", item, "\n\n")
+        ## stop(grep("^MT-", rownames(d[[item]]), value = TRUE))
+        if (item == 'genes_cellranger') {
+            d[[item]][["percent.mt"]] <- PercentageFeatureSet(d[[item]], pattern = "^MT-")
 
-        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt") +
-              geom_vline(xintercept = attributes(libsize.drop)$thresholds) +
-              geom_hline(yintercept = attributes(mito.drop)$thresholds))
+            print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "percent.mt") +
+                  geom_vline(xintercept = attributes(libsize.drop)$thresholds) +
+                  geom_hline(yintercept = attributes(mito.drop)$thresholds))
+            
+            print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+                          ncol = 3))
+
+        } else {
+            print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2))
+            
+        }
+
+        d[[item]]@meta.data$qc_pass <- rownames(d[[item]]@meta.data) %in% selected_cells
         
-        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
-                      ncol = 3))
-
-    } else {
-        print(VlnPlot(d[[item]], features = c("nFeature_RNA", "nCount_RNA"), ncol = 2))
-    
-    }
-
-    d[[item]]@meta.data$qc_pass <- rownames(d[[item]]@meta.data) %in% selected_cells
-    
-    print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA",
-                         group.by = 'qc_pass', shape.by = 'qc_pass'))
-    
-    cat('\n\n')
+        print(FeatureScatter(d[[item]], feature1 = "nCount_RNA", feature2 = "nFeature_RNA",
+                             group.by = 'qc_pass', shape.by = 'qc_pass'))
+        
+        cat('\n\n')
+    }, error = function(x) print(item, x))
 }
 
 ```

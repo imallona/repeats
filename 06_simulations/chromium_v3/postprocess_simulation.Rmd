@@ -339,10 +339,12 @@ d$shao$merged <- merge(d$shao$counts, d$shao$saf, by.x = 'feature', by.y = 'Gene
 head(d$shao$merged)
 ```
 
-Then, merge with the SAM file to assign TE_x identifers to CBs, but also to the original simulated read name/origin
+Then, merge with the SAM file to assign TE_x identifers to CBs, but also to the original simulated read name/origin. Merging is based on feature and RG identity.
 
 ```{r}
-d$shao$merged <- merge(d$shao$merged, d$shao$sam, by.x = 'feature', by.y = 'V4', all.x = TRUE)
+d$shao$merged <- merge(d$shao$merged, d$shao$sam, by.x = c('feature', 'RG'),
+                       by.y = c('V4', 'V2'),
+                       all.x = TRUE)
 d$shao$merged <- d$shao$merged[!is.na(d$shao$merged$RG),]
 head(d$shao$merged)
 
@@ -354,8 +356,6 @@ Then, we check whether the te_x feature identifier's coordinates overlap the sim
 
 ```{r}
 d$shao$merged$overlaps <- does_overlap(d$shao$merged)
-table(d$shao$merged$V2 == d$shao$merged$RG)
-d$shao$merged <- d$shao$merged[d$shao$merged$V2 == d$shao$merged$RG,]
 table(d$shao$merged$overlaps)
 ## d$shao <- as.data.frame(d$shao$merged)
 ```
@@ -786,6 +786,25 @@ ggplot(fd2, aes(x=flavour, weight=mean, ymin=lower, ymax=upper, fill=variable)) 
     scale_x_discrete(limits = unique(fd2$flavour)) +
     ## scale_fill_grey(name = 'mapping\ncategory') +
     scale_fill_manual("mapping\ncategory", values = pal_mapping[levels(fd2$variable)]) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+    xlab('strategy') +
+    ylab('repeats loci per cell (counts)')
+```
+
+
+Alternative with just the correct/wrong/missing
+
+```{r}
+curr <- fd2[fd2$variable != 'multimapping',]
+ggplot(curr,
+       aes(x=flavour, weight=mean, ymin=lower, ymax=upper, fill=variable)) +
+    geom_bar      (position=position_dodge(), aes(y=mean), stat="identity") +
+    geom_errorbar (position=position_dodge(width=0.9), colour="black", width = 0.2) +
+    theme_bw() +
+    scale_x_discrete(limits = unique(fd2$flavour)) +
+    ## scale_fill_grey(name = 'mapping\ncategory') +
+    scale_fill_manual("mapping\ncategory",
+                      values = pal_mapping[levels(curr$variable)]) +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
     xlab('strategy') +
     ylab('repeats loci per cell (counts)')
