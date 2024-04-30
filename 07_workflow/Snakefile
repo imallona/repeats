@@ -1,0 +1,47 @@
+#!/usr/bin/env snakemake -s
+## 
+## Rules to process (currently) chromium flavours; using config files
+##
+## Izaskun Mallona
+## GPLv3
+
+import os.path as op
+from glob import glob
+from snakemake.utils import validate
+
+include: op.join('src', 'utils.snmk')
+include: op.join('src', 'data_retrieval.snmk')
+include: op.join('src', 'reports.snmk')
+include: op.join('src', 'bowtie.snmk')
+include: op.join('src', 'salmon.snmk')
+include: op.join('src', 'featurecounts.snmk')
+include: op.join('src', 'cellranger.snmk')
+
+#configfile: op.join('config', "config_02_repeats_pbmc5k_chromium.yaml")
+# validate(config, schema = op.join("schemas", "config.schema.yaml"))
+
+# print(config)
+try:
+   if not op.exists(op.dirname(op.join(config["base"], 'annotation'))):
+      os.makedirs(op.join(config["base"], 'annotation'))
+except OSError as err:
+   print(err)
+      
+for item in ['bowtie', 'star', 'salmon']:
+   try:
+      if not op.exists(op.dirname(op.join(config["base"], 'indices', item))):
+         os.makedirs(op.join(config["base"], 'indices', item))
+   except OSError as err:
+      print(err)
+
+rule all:
+    input:
+        op.join(config['base'], 'indices', 'cellranger', op.basename(config['cellranger_db_url'])),
+        op.join(config['base'], 'indices', 'cellranger', 'repeats_' + config['genome'], 'Log.out')
+        # op.join(config['base'], 'runs', config['run_name'],
+        #         config['run_name'] + '_chromium_regress_nCount_{regress_ncount}_nFeature_{regress_nfeature}.html')
+
+
+
+
+

@@ -1,0 +1,264 @@
+rule profile_featurecounts_run_repeats:
+    input:        
+        summary = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard',
+                          "{multimappers}",
+                          config['run_name'] + "_repeats.counts.summary")
+    params:
+        path = op.join(config['base'], "runs", config['run_name'],
+                       "count_repeats_on_cellranger_standard",
+                       "{multimappers}"),
+        script = config['dependencies']['featurecounts_parsing'],
+        gtf = 'cellranger_repeats',
+        Rscript = config['software']['Rscript']
+    output:
+        png = op.join(config['base'], "runs", config['run_name'], "count_repeats_on_cellranger_standard",
+                      "{multimappers}",
+                      config['run_name'] + "_transcriptome_repeats.counts.summary.png")
+    threads: 1
+    shell:
+       """
+       cd {params.path}
+       
+       {params.Rscript} {params.script} --summary {input.summary} --output {output.png} \
+           --identifier {params.gtf}
+       """
+
+## potentially broken, multimappers wildcard missing
+rule profile_featurecounts_run_repeats_not_genes:
+    input:        
+        summary = op.join(config['base'], "runs", config['run_name'],
+                          'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                          "{multimappers}",
+                          config['run_name'] + "_repeats_not_overlapping_genes.counts.summary")
+    params:
+        path = op.join(config['base'], "runs", config['run_name'],                       
+                       "count_repeats_on_cellranger_standard_not_overlapping_genes",
+                       "{multimappers}"),
+        script = config['dependencies']['featurecounts_parsing'],
+        gtf = 'cellranger_repeats_not_genes',
+        Rscript = config['software']['Rscript']
+    output:
+        png = op.join(config['base'], "runs", config['run_name'],
+                      "count_repeats_on_cellranger_standard_not_overlapping_genes",
+                      "{multimappers}",
+                      config['run_name'] + "_transcriptome_repeats_not_genes.counts.summary.png")
+    threads: 1
+    shell:
+       """
+       cd {params.path}
+       
+       {params.Rscript} {params.script} --summary {input.summary} --output {output.png} \
+          --identifier {params.gtf}
+       """    
+
+rule run_featurecounts_spawned_bams:
+    input:
+        flag = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split.flag'),
+        gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']))
+    params:
+        path = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split'),
+        featurecounts = config['software']['featurecounts'],
+        pigz = config['software']['pigz']
+    output:
+        counts  = temp(op.join(config['base'], "runs", config['run_name'],
+                               'count_repeats_on_cellranger_standard',
+                               '{multimappers}',
+                               config['run_name'] + "_repeats.counts")),
+        gz_counts = op.join(config['base'], "runs", config['run_name'],
+                            'count_repeats_on_cellranger_standard',
+                            '{multimappers}',
+                            config['run_name'] + "_repeats.counts.gz"),
+        summary = op.join(config['base'], "runs", config['run_name'],
+                          'count_repeats_on_cellranger_standard',
+                          '{multimappers}',
+                            config['run_name'] + "_repeats.counts.summary")
+    log :
+        log = op.join(config['base'], "runs",  config['run_name'],
+                      'count_repeats_on_cellranger_standard',
+                      '{multimappers}',                      
+                      'feature_counts.log'),
+    threads:
+        config['params']['nthreads']
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            cd {params.path}
+
+            {params.featurecounts} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            -M \
+            --fraction \
+            {params.path}/*bam  2>&1 > {log}
+
+            {params.pigz} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+            """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            cd {params.path}
+
+            {params.featurecounts} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            {params.path}/*bam  2>&1 > {log}
+
+            {params.pigz} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+            """)
+
+rule run_feature_counts_repeats_not_overlapping_genes_spawned_bams:
+    input:
+        flag = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split.flag'),
+        gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']) + '_minus_' + op.basename(config['genes_gtf_url']))
+    params:
+        path = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split'),
+        featurecounts = config['software']['featurecounts'],
+        pigz = config['software']['pigz']
+    output:
+        counts  = temp(op.join(config['base'], "runs", config['run_name'],
+                               'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                               '{multimappers}',
+                               config['run_name'] + "_repeats_not_overlapping_genes.counts")),
+        gz_counts = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                            '{multimappers}',
+                            config['run_name'] + "_repeats_not_overlapping_genes.counts.gz"),
+        summary = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                          '{multimappers}',
+                           config['run_name'] + "_repeats_not_overlapping_genes.counts.summary")
+    log :
+        log = op.join(config['base'], "runs",  config['run_name'], 'count_repeats_on_cellranger_standard_not_overlapping_genes',
+                      '{multimappers}'
+                      'feature_counts_not_overlapping_genes.log'),
+    threads:
+        config['params']['nthreads']
+    # shell: """
+    # cd {params.path}
+
+    # {FEATURECOUNTS} -T {threads} \
+    # -t exon \
+    # -g gene_id \
+    # -a {input.gtf} \
+    # -o  {output.counts} \
+    # {params.path}/*bam  2>&1 > {log}
+
+    # {PIGZ} --keep -p {threads} {output.counts}
+    # """
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            cd {params.path}
+
+            {params.featurecounts} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            -M \
+            --fraction \
+            {params.path}/*bam  2>&1 > {log}
+
+            {params.pigz} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+            """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            cd {params.path}
+
+            {params.featurecounts} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            {params.path}/*bam  2>&1 > {log}
+
+            {params.pigz} -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+            """)
+
+rule featurecounts_bowtie_repeats_repeatome:
+    input:
+        # bam = op.join(config['base'], "runs", config['run_name'], "bowtie_repeatome", "{fastq}.bam"),
+        flag_map_bowtie =  op.join(config['base'], "runs", config['run_name'], 'bowtie_repeatome', 'split_bowtie.flag'),
+        gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url'])),
+        fake_repeatome_gtf = op.join(config['base'], 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0]) + '.gtf.gz'
+    output:
+        counts  = temp(op.join(config['base'], "runs", config['run_name'], "bowtie_repeatome", "{multimappers}",
+                               "all_cells_repeats.counts")),
+        gz_counts = op.join(config['base'], "runs", config['run_name'], "bowtie_repeatome", "{multimappers}",
+                            "all_cells_repeats.counts.gz")
+    params:
+        bam_path = op.join(config['base'], "runs", config['run_name'], 'bowtie_repeatome'),
+        processing_path = op.join(config['base'], "runs", config['run_name'], "{multimappers}",
+                                  'bowtie_repeatome'),
+        featurecounts = config['software']['featurecounts'],
+        pigz = config['software']['pigz']
+    log :
+        op.join(config['base'], "runs", config['run_name'], "bowtie_repeatome", "{multimappers}", "all_cell_featurecounts.log")
+    threads:
+        config['params']['nthreads']
+    # shell:
+    #    """
+    #    ## note multimappers are counted
+
+    #    mkdir -p {params.processing_path}
+
+    #    cd {params.processing_path}
+       
+    #    {FEATURECOUNTS} -T {threads} \
+    #    -t exon \
+    #    -g gene_id \
+    #    -a {input.fake_repeatome_gtf} \
+    #    -o  {output.counts} \
+    #    -M \
+    #    {params.bam_path}/*bam  &> {log}
+
+    #    {PIGZ} --keep  -p {threads} {output.counts}
+    #    """
+    run:
+        if wildcards.multimappers == 'multimappers':
+            shell("""
+            echo multimappers allowed
+
+            mkdir -p {params.processing_path}
+
+            cd {params.processing_path}
+            
+            {params.featurecounts} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.fake_repeatome_gtf} \
+            -o  {output.counts} \
+            -M --fraction \
+            {params.bam_path}/*bam  &> {log}
+
+            {params.pigz} --keep  -p {threads} {output.counts}
+         """)
+        elif wildcards.multimappers == 'unique_reads':
+            shell("""
+            echo unique only
+
+            mkdir -p {params.processing_path}
+
+            cd {params.processing_path}
+            
+            {params.featurecounts} -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.fake_repeatome_gtf} \
+            -o  {output.counts} \
+            {params.bam_path}/*bam  &> {log}
+
+            {params.pigz} --keep  -p {threads} {output.counts}
+
+            """)

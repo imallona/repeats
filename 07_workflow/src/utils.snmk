@@ -1,0 +1,142 @@
+rule spawn_cellranger_bam_file_by_cell:
+    input:
+        bam = op.join(config['base'], 'runs', config['run_name'], 'cellranger_standard', 'outs', 'possorted_genome_bam.bam'),
+        barcodes = op.join(config['base'], 'runs', config['run_name'], 'cellranger_standard', 'outs', 'filtered_feature_bc_matrix', 'barcodes.tsv.gz')
+    output:
+        rgs = temp(op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'rgs.txt')),
+        header = temp(op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'header.txt')),
+        body = temp(op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'body.txt.gz')),
+        shortened_bam = temp(op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'shortened.bam')),
+        flag = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split.flag'),
+        path = directory(op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split'))
+    threads:
+        config['params']['nthreads']
+    params:
+        barcodes_script = 'get_cell_barcodes.py',
+        split_script = 'split_by_cell_barcode_in_sorted_bam.py',
+        split_path = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split')
+    log:
+        log1 = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split_add_rg.log'),
+        log2 = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split_pick.log'),
+    shell:
+        """
+        mkdir -p {output.path}
+        
+        # python3 {params.barcodes_script} {input.bam} | {PIGZ} -p {threads} > {output.rgs}
+
+        python3 {params.barcodes_script} {input.bam}  > {output.rgs}
+
+        samtools view -@ {threads} -H {input.bam} > {output.header}
+
+        # ## buffer size in sort due to https://superuser.com/questions/938558/sort-parallel-isnt-parallelizing
+        # ( samtools view -@ {threads} {input.bam} | cut -f 1-15 | \
+        # paste - {output.rgs} | \
+        #   sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
+        ## updated 2 oct to handle SRR8847571
+        ( samtools view -@ {threads} {input.bam} | cut -f 1-15 | \
+        paste - {output.rgs} | \
+          fgrep "RG:Z" | \
+          sed 's/\t$//' | sort -S1G --parallel={threads} -k16 | {PIGZ} -p {threads} --keep --stdout > {output.body} ) &> {log.log1}
+
+
+        {PIGZ} --decompress -p {threads} --keep --stdout {output.body} | cat {output.header} - | samtools view -@ {threads} -Sb - > {output.shortened_bam}
+        
+        python3 split_by_cell_barcode_in_sorted_bam.py {output.shortened_bam} -outdir {params.split_path} -barcodes {input.barcodes} &> {log.log2}
+
+        touch {output.flag}
+
+        """
+
+        ## use this! @todo
+rule get_repeats_not_overlapping_genes_gtf:
+    input:
+        repeats_gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url'])),
+        genes_gtf =  op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url']))
+    output:
+        gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']) + '_minus_' + op.basename(config['genes_gtf_url'])),
+        repeats_gtf_decomp = temp(op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url'])) + '.tmp.gtf'),
+        genes_gtf_decomp =  temp(op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url'])) + '.tmp.gtf'),
+        genesbed = temp(op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url'])) + '.tmp.bed')
+    params:
+        threads = config['params']['nthreads'],
+        gtf2bed = config['software']['gtf2bed'] 
+    shell:
+        """
+
+        {params.pigz} --decompress --keep --stdout  {input.repeats_gtf} | \
+               sed 's/chr//g' > {output.repeats_gtf_decomp}
+        {params.pigz} --decompress --keep  --stdout  {input.genes_gtf} | \
+               sed 's/chr//g' > {output.genes_gtf_decomp}
+    
+        # # # let's transform genes in bed and then use bedtools
+        # export PATH={params.gtf2bed}/..:$PATH
+
+        awk '{{ if ($0 ~ "transcript_id") print $0; else print $0" transcript_id "";"; }}' \
+           {output.genes_gtf_decomp} | {params.gtf2bed} - > {output.genesbed}
+
+        {params.bedtools} intersect -a {output.repeats_gtf_decomp} \
+          -b {output.genesbed} \
+          -v | {params.pigz} --stdout > {output.gtf}
+        """
+        
+rule extract_repeatome_from_gtf:
+    priority: 100
+    input:
+        genome = op.join(config['base'], 'annotation', op.basename(config['genome_url'])),
+        gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']))
+    output:
+        genome_uncompressed = temp(op.join(config['base'], 'annotation', op.splitext(op.basename(config['genome_url']))[0])) + '.temp_extract',
+        fai = temp(op.join(config['base'], 'annotation', op.splitext(op.basename(config['genome_url']))[0])) + '.temp_extract.fai',
+        fasta = temp(op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0]) + '.fa'),
+        gtftemp = op.join(config['base'], 'annotation', 'temp_' + op.basename(config['rep_gtf_url'])),
+        fastagz = op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0]) + '.fa.gz'
+    params :
+        gtf_parsing = config['dependencies']['gtf_parsing'],
+        Rscript = config['software']['Rscript'],
+        bedtools = config['software']['bedtools'],
+        pigz = config['software']['pigz']
+    threads:
+        config['params']['nthreads']
+    shell:
+        """
+        {PIGZ} --keep --decompress -p {threads} -c  {input.genome} > {output.genome_uncompressed}
+
+        ## faking the GTF to describe the instance and not the 'exon'
+
+        {params.Rscript} {params.gtf_parsing} -g {input.gtf} | {params.pigz} -c -p {threads} > \
+          {output.gtftemp}        
+
+        {params.bedtools} getfasta -name -s -fi {output.genome_uncompressed} \
+          -bed {output.gtftemp} -fo {output.fasta}
+
+        ## remove the coordinates appended by bedtools!
+        sed 's/:/ /g' {output.fasta} | cut -f1 -d" " | \
+          {params.pigz}  -p {threads} -c > {output.fastagz}
+        
+        """
+
+rule fake_gtf_repeatome_in_repeats_coordinates:
+    input:
+        fa = op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0] + '.fa.gz')
+    output:
+        fai = temp(op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0] + '.fa.fai')),
+        fauncomp = temp(op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0] + '.fa')),
+        fake_repeatome_gtf = op.join(config['base'], 'annotation', 'fake_repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0]) + '.gtf.gz'
+    params:
+        gtf_making = config['dependencies']['gtf_making'],
+        path = op.join(config['base'], 'annotation'),
+        Rscript = config['software']['Rscript'],
+        pigz = config['software']['pigz']
+    threads:
+        config['params']['nthreads']
+    shell:
+        """
+        cd {params.path}
+        {params.pigz} -k --decompress -p {threads} {input.fa}
+
+        samtools faidx {output.fauncomp}
+        
+        {params.Rscript} {params.rscript} -f {output.fai} | \
+           {params.pigz} -c -p {threads} > {output.fake_repeatome_gtf}
+        
+        """

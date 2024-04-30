@@ -1,0 +1,128 @@
+
+# https://salmon.readthedocs.io/en/latest/alevin.html
+# ./bin/salmon index -t transcripts.fa -i transcripts_index --decoys decoys.txt -k 31
+## shall I use a decoy? https://github.com/COMBINE-lab/SalmonTools/README.md
+# apparently not
+# **NOTE:** Salmon version [v1.0](https://github.com/COMBINE-lab/salmon/releases/tag/v1.0.0) can directly index the genome and transcriptome and doesn't mandates to run the `generateDecoyTranscriptome` script, however it's still backward compatible. Please checkout [this](https://combine-lab.github.io/alevin-tutorial/2019/selective-alignment/) tutorial on how to run salmon with full genome + transcriptome without the annotation.
+rule index_genes_salmon_no_decoy:
+    input:
+        transcripts = op.join(config['base'], 'annotation', op.basename(config['transcriptome_url']))
+    params:
+        k = 31,
+        path = op.join(config['base'], 'indices', 'salmon', config['genome'], 'genes_salmon'),
+        salmon = config['software']['salmon']
+    log:
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'genes_salmon', 'genes_salmon_index.log')
+    threads:
+        config['params']['nthreads']
+    output:
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'genes_salmon', 'duplicate_clusters.tsv'),
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'genes_salmon', 'complete_ref_lens.bin')
+    shell:        
+        """
+        mkdir -p {params.path}
+        
+        ({params.salmon} index --gencode -p {threads} index \
+           -t {input.transcripts} -i {params.path} -k {params.k})  2> {log}
+
+        touch -c {params.path}
+        """
+        
+rule get_transcriptome_fasta:
+    priority:
+        100
+    output:
+        tmp = temp(op.join(config['base'], 'annotation', op.basename(config['transcriptome_url']) + '_temp.fa.gz')),
+        tx = temp(op.join(config['base'], 'annotation', op.basename(config['transcriptome_url'])))
+    params:
+        url = config['transcriptome_url'],
+        pigz = config['software']['pigz']
+    threads:
+        config['params']['nthreads']
+    shell:
+        """
+        curl -s -L -C - {params.url} -o {output.tmp}
+
+        ## to go from
+        # >ENST00000456328.2|ENSG00000223972.5|OTTHUMG0000000096 (etc)
+        # to
+        # >ENST00000456328.2
+        {params.pigz} -p {threads} --decompress --keep -c {output.tmp}  |  cut -d '|' -f1 | \
+        {params.pigz} -p {threads} -c  > {output.tx}
+        """
+
+rule get_decoy:
+    input:
+        transcriptome = op.join(config['base'], 'annotation', op.basename(config['transcriptome_url']))
+    output:        
+        decoys = op.join(config['base'], 'annotation', op.splitext(op.basename(config['transcriptome_url']))[0] + '_transcriptome_decoys.txt')
+    params:
+        pigz = config['software']['pigz']
+    threads:
+       config['params']['nthreads']
+    shell:
+        """
+        {params.pigz} --decompress --keep --processes {threads} --to-stdout {input.transcriptome} |  grep ">" | \
+        cut -d ">" -f 2 | cut -d "|" -f 1 > {output.decoys}
+        """
+
+rule index_repeats_salmon_repeats_with_decoy_transcriptome:
+    input:
+        repeats = op.join(config['base'], 'annotation', 'repeatome_from_' + op.splitext(op.basename(config['rep_gtf_url']))[0] + '.fa.gz'),
+        # genome =  op.join(config['base'], 'annotation', op.basename(config['genome_url'])),
+        transcriptome = op.join(config['base'], 'annotation', op.basename(config['transcriptome_url'])),
+        decoys =  op.join(config['base'], 'annotation', op.splitext(op.basename(config['transcriptome_url']))[0] + '_transcriptome_decoys.txt')
+    output:
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon', 'duplicate_clusters.tsv'),
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon', 'complete_ref_lens.bin')
+    params:
+        path = op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon'),
+        k = 31,
+        salmon = config['software']['salmon']
+    threads:
+        config['params']['nthreads']
+    log:
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon_index.log')
+    shell:
+        """
+        mkdir -p {params.path}
+        
+        ({params.salmon} index -p {threads} \
+          index -t <( zcat {input.repeats} {input.transcriptome}) -i {params.path} -k {params.k} \
+          -d {input.decoys}) 2> {log}
+        """
+
+        
+# from https://gist.github.com/k3yavi/c501705ed2d29b12b0d10cf78b3ed001
+## and https://github.com/COMBINE-lab/salmon/issues/336 to get the `attribute` instead of
+##   the group
+rule get_txp2gene_gene:
+    input:
+        genes_gtf = op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url']))
+    output:
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'genes_salmon',
+                'txp2gene.tsv')
+    params:
+        pigz = config['software']['pigz']
+    shell:
+         """
+         {params.pigz} --decompress -p {threads} -c {input.genes_gtf} | \
+           grep transcript | awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+         """
+
+## untested @todo check
+rule get_txp2gene_repeat:
+    input:
+        repeats_gtf = op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']))
+    output:
+        op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon', 'txp2gene.tsv')
+    params:
+        path = op.join(config['base'], 'indices', 'salmon', config['genome'], 'repeats_salmon'),
+        pigz = config['software']['pigz']
+    shell:
+        """
+        mkdir -p {params.path}
+        
+        {params.pigz} --decompress -p {threads} -c {input.repeats_gtf} | grep transcript | \
+        awk '{{print $12,$10}}' | sed -e 's|"||g' -e 's|;||g' | uniq > {output}
+        """

@@ -1,0 +1,3 @@
+- `chromium.snmk` original file, with config
+- `not_chromium.snmk`, original file, with config
+- `Snakefile`, ongoing harmonization

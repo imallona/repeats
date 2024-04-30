@@ -1,0 +1,40 @@
+rule map_bowtie_by_cell_unique:
+    input:
+        flag = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split.flag')
+    output:
+        flag_map_bowtie =  op.join(config['base'], "runs", config['run_name'], 'bowtie_repeatome', 'split_bowtie.flag')
+    params:
+        split_bam_path = op.join(config['base'], "runs", config['run_name'], 'count_repeats_on_cellranger_standard', 'split'),
+        split_fastq_path = op.join(config['base'], "runs", config['run_name'], 'bowtie_repeatome'),
+        repeatome = op.join(config['base'], 'indices', 'bowtie', config['genome'], 'repeatome', op.splitext(op.basename(config['rep_gtf_url']))[0]),
+        bedtools = config['software']['bedtools'],
+        bowtie = config['software']['bowtie']
+    threads:
+        config['params']['nthreads']
+    shell:
+        """
+        mkdir -p {params.split_fastq_path}
+        cd {params.split_fastq_path}
+
+        for fn in $(find {params.split_bam_path} -name "*bam")
+        do
+           echo "$fn"
+           
+           {params.bedtools} bamtofastq -i "$fn" -fq "$(basename $fn .bam).fastq"
+        
+           ( {params.bowtie} -q \
+            -v 2 \
+            --threads {threads} \
+            --best --strata \
+            -m 1 \
+            --sam \
+            --chunkmbs 128 {params.repeatome} "$(basename $fn .bam).fastq" | \
+              samtools view -@ {threads} -bS - > "$(basename $fn .bam)_bowtie.bam" ) 2> \
+              "$(basename $fn .bam)_bowtie.log"
+
+            ## removing the fastq
+            rm "$fn"
+        done
+
+        touch {output.flag_map_bowtie}
+        """

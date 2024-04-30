@@ -1,0 +1,55 @@
+rule get_genome_fasta:
+    priority:
+        100
+    output:
+        op.join(config['base'], 'annotation', op.basename(config['genome_url']))
+    params:
+        url = config['genome_url']
+    shell:
+        """
+        curl -s -L -C - {params.url} -o {output}
+        """
+      
+rule get_repeats_gtf:
+    priority:
+        100
+    params:
+        url = config['rep_gtf_url'],
+        genome_path = op.join(config['base'], 'annotation')
+    output:
+        op.join(config['base'], 'annotation', op.basename(config['rep_gtf_url']))
+    shell:
+        """        
+        curl -s -L -C - {params.url} -o {output}
+        """
+        
+rule get_genes_gtf:
+    priority:
+        100
+    params:
+        url = config['genes_gtf_url']
+    output:
+        gtf = op.join(config['base'], 'annotation', op.basename(config['genes_gtf_url']))
+    shell:
+        """    
+        curl -s -L -C - {params.url} -o {output.gtf}
+        """
+
+rule get_cellranger_data:
+    priority:
+        100
+    params:
+        url = config['cellranger_db_url'],
+        path = op.join(config['base'], 'indices', 'cellranger')
+    output:
+        cellranger_gz = op.join(config['base'], 'indices', 'cellranger', op.basename(config['cellranger_db_url'])),
+        uncomp = op.join(config['base'], 'indices', 'cellranger', config['cellranger_db_id'], 'reference.json')
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+
+        curl -s -L -C - {params.url} -o {output.cellranger_gz}
+        
+        tar xzvf {output.cellranger_gz}
+        """
