@@ -1,0 +1,27 @@
+#!/usr/bin/env snakemake -s
+##
+## Izaskun Mallona
+## GPLv3
+
+import os.path as op
+from glob import glob
+import re
+
+configfile: "config.yaml"
+
+include: "utils.snmk"
+include: "simulations.snmk"
+
+print(config)
+
+for item in ['annotations', 'simulations', 'tmp', 'logs']:
+    try:
+        if not op.exists(op.dirname(op.join(config['base'], item))):
+            os.makedirs(op.join(config['base'], item))
+    except OSError as err:
+        print(err)
+
+rule all:
+    input:
+        op.join(config['base'], 'simulations', 'cdna.fastq.gz')
+

@@ -1,0 +1,21 @@
+#!/usr/bin/env snakemake -s
+##
+## Izaskun Mallona
+## GPLv3
+
+"""
+Utils
+"""
+
+import os.path as op
+from glob import glob
+import re, os
+
+
+      
+# for item in ['bowtie', 'star', 'salmon']:
+#    try:
+#       if not op.exists(op.dirname(op.join(BASE, 'indices', item))):
+#          os.makedirs(op.join(BASE, 'indices', item))
+#    except OSError as err:
+#       print(err)

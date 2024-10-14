@@ -1,0 +1,76 @@
+#!/usr/bin/env/snakemake -s
+
+"""
+gets a randomly picked subsequence inside each line of a GTF record (repeats file)
+ (maybe it should do it on beds, because gtfs lines from GTFs are nested but anyway)
+and mimics a fastq record with uniform base quality values
+"""
+rule simulate_smartseq:
+    conda:
+        op.join('envs', 'repeats.yaml')
+    input:
+        gtf = config['repeats_gtf'], # op.join(config['base'], 'annotation', 'mm10_rmsk_chr1.gtf.gz'),
+        fasta = config['genome_fasta_gz'] # op.join(config['base'], 'annotation', 'mm10_chr1.fa.gz')
+    output:
+        sampled_intervals = temp(op.join(config['base'], 'tmp', 'sampled_intervals.bed')),
+        sampled_fasta = temp(op.join(config['base'], 'tmp', 'sampled_intervals.fa')),
+        fasta_uncomp = temp(op.join(config['base'], 'tmp', 'genome.fa')),
+        cdna_fastqs = op.join(config['base'], 'simulations', 'cdna.fastq.gz')
+    params:
+        length = 92,
+        qual_symbol = 'F'
+    # log:
+    #     op.join(config['base'], 'logs', 'simulations.log')
+    threads:
+        20
+    shell:
+        """
+        pigz -d -p {threads} -c {input.gtf} | \
+         awk -v RL="{params.length}" '{{OFS=FS="\\t"}}{{
+         $0=$0;
+         L=$6
+         chrom=$1
+         start=$4
+         end=$5
+         strand=$7
+         name=$9
+         srand(NR);
+         if (RL >= L)
+            print chrom,start,end,name,".",strand
+         else
+            min=$4
+         max=$5-$RL
+         R=int(min+rand()*(max-min+1))
+         print chrom,R,R+RL,name,".",strand
+        }}' > {output.sampled_intervals}
+
+        sed -i r's/gene_id//g ; s/transcript_id//g; s/class_id// ; s/family_id// ; s/"//g ; s/ //g' \
+          {output.sampled_intervals} 
+
+        pigz --keep --decompress -p {threads} {input.fasta} -c > {output.fasta_uncomp}
+
+        bedtools getfasta -fi {output.fasta_uncomp} \
+          -bed {output.sampled_intervals} \
+          -tab -name > {output.sampled_fasta}
+
+        # fastq-ify
+                
+        awk -v qual="{params.qual_symbol}" 'OFS=FS="\\t" {{
+          $0=$0;
+          L=length($2)
+          fa=$2
+          name=$1
+
+          printf "@"name"\\n"; 
+          printf fa"\\n";
+          printf "+\\n"
+          for(c=0;c<L;c++) printf qual; printf "\\n"
+          }}' {output.sampled_fasta} | pigz -c -p {threads} > {output.cdna_fastqs}
+
+        """
+
+     
+      
+       
+
+       

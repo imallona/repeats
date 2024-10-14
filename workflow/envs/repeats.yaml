@@ -1,0 +1,12 @@
+name: repeats
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - bioconda::htslib
+  - bioconda::samtools
+  - bioconda::star
+  - conda-forge:pigz
+  - bioconda::salmon
+  - bioconda::bedtools
