@@ -1,13 +1,14 @@
 # Standardization
 
 - [x] smartseq2 simulations
-- [] reference building
-- [] starsolo
-- [] application to given inputs
-- [] pseudoalns
+- [ ] reference building
+- [ ] starsolo
+- [ ] application to given inputs
+- [ ] pseudoalns
+
+# execution
 
 # old
-
 
 - ADD repeat GTF deduplication for ERVs and other complex repeat families
 

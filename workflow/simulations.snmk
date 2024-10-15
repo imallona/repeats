@@ -61,7 +61,7 @@ rule simulate_smartseq:
           fa=$2
           name=$1
 
-          printf "@"name"\\n"; 
+          printf "@"NR"_"name"\\n"; 
           printf fa"\\n";
           printf "+\\n"
           for(c=0;c<L;c++) printf qual; printf "\\n"
@@ -69,8 +69,26 @@ rule simulate_smartseq:
 
         """
 
-     
-      
-       
+"""
+Reuse the same reads for two cells named simul1 and simul2
+"""
+rule write_manifest:
+    # conda:
+    #     op.join('envs', 'repeats.yaml')
+    input:
+        cdna_fastqs = op.join(config['base'], 'simulations', 'cdna.fastq.gz')
+    output:
+        manifest = op.join(config['base'], 'simulations', 'manifest.tsv')
+    params:
+        length = 92,
+        qual_symbol = 'F'
+    # log:
+    #     op.join(config['base'], 'logs', 'simulations.log')
+    threads:
+        1
+    run:
+        with open(output.manifest, 'w') as fh:
+            fh.write('\t'.join([input.cdna_fastqs, '-', 'simul1']))
+            fh.write('\t'.join([input.cdna_fastqs, '-', 'simul2'])) 
 
        

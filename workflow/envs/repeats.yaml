@@ -6,7 +6,7 @@ channels:
 dependencies:
   - bioconda::htslib
   - bioconda::samtools
-  - bioconda::star
+  - bioconda::star=2.7.11b
   - conda-forge:pigz
   - bioconda::salmon
   - bioconda::bedtools

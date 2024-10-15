@@ -1,0 +1,14 @@
+#!/usr/bin/env snakemake -n
+
+rule download_fastqs_from_sra:
+    params:
+        path = op.join(BASE, ''),
+        path_data = op.join(BASE, 'data', 'SRR10974769')
+    output:
+        op.join(BASE, 'runs', 'colon_cancer_lines_GSE144357', '{srr}_1.fastq.gz')
+    shell:
+        """
+        mkdir -p {params.path}
+        cd {params.path}
+        {FASTQDUMP} -I --gzip --split-files {wildcards.srr}
+        """

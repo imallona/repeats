@@ -3,6 +3,10 @@
 ## Izaskun Mallona
 ## GPLv3
 
+"""
+Repeats in scRNA-seq main Snakefile
+"""
+
 import os.path as op
 from glob import glob
 import re
@@ -11,10 +15,11 @@ configfile: "config.yaml"
 
 include: "utils.snmk"
 include: "simulations.snmk"
-
+include: "starsolo.snmk"
+    
 print(config)
 
-for item in ['annotations', 'simulations', 'tmp', 'logs']:
+for item in ['annotations', 'references', 'simulations', 'tmp', 'logs', 'benchmarks']:
     try:
         if not op.exists(op.dirname(op.join(config['base'], item))):
             os.makedirs(op.join(config['base'], item))
@@ -23,5 +28,7 @@ for item in ['annotations', 'simulations', 'tmp', 'logs']:
 
 rule all:
     input:
-        op.join(config['base'], 'simulations', 'cdna.fastq.gz')
+        op.join(config['base'], 'simulations', 'cdna.fastq.gz'),
+        expand(op.join(config['base'], 'starsolo', '{sample}', 'Aligned.sortedByCoord.out.bam'),
+               sample = config['sample'])
 

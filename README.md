@@ -1,12 +1,15 @@
-# Summary
+# Status
 
-v0.1 of https://bitbucket.org/imallona/repeats_sc/src/v0.1/
+- currently (2024): active development, see [TODO](TODO.md)
+- [old version v0.1](https://github.com/imallona/repeats/releases/tag/v0.1)
 
 # Summary
 
 We aimed to quantify conventional features (GENCODE) as well as repetitive elements (RepeatMasker) from multiple single-cell RNA-seq datasets using several analytical approaches, and starting from raw data, and looked for association with known cell metadata (e.g. cell types).
 
-# Data
+# v0.1 release
+
+## Data
 
 We reanalyzed the datasets listed below. We are very grateful to the original data producers and encourage checking their data release licenses and citing their publication(s).
 
@@ -33,7 +36,7 @@ Data are available at [Zenodo](https://doi.org/10.5281/zenodo.4584956) as genera
 
 # Contact
 
-izaskun dot mallona at gmail dot com
+izaskun dot mallona at gmail dot com or izaskun dot mallona at mls dot uzh dot ch
 
 # License
 
@@ -44,4 +47,5 @@ GNU General Public License (GPL)
 - Started Thu Jul 11 14:21:11 CEST 2019
 - Funded 15 Nov 2019
 - Re-enabled Mon Nov 18 14:18:09 CET 2019
+- Re-enabled Mon Oct 14 01:40:21 PM CEST 2024
 
