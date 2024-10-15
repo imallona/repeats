@@ -16,6 +16,7 @@ configfile: "config.yaml"
 include: "utils.snmk"
 include: "simulations.snmk"
 include: "starsolo.snmk"
+include: 'counting.snmk'
     
 print(config)
 
@@ -29,6 +30,8 @@ for item in ['annotations', 'references', 'simulations', 'tmp', 'logs', 'benchma
 rule all:
     input:
         op.join(config['base'], 'simulations', 'cdna.fastq.gz'),
-        expand(op.join(config['base'], 'starsolo', '{sample}', 'Aligned.sortedByCoord.out.bam'),
-               sample = config['sample'])
+        expand(op.join(config['base'], 'starsolo', '{sample}', '{multimappers}',
+                       'Aligned.sortedByCoord.out.bam.featureCounts.bam'),
+               sample = config['sample'],
+               multimappers = ['multimappers', 'unique_reads'])
 

@@ -10,3 +10,5 @@ dependencies:
   - conda-forge:pigz
   - bioconda::salmon
   - bioconda::bedtools
+  - bioconda::subread
+  - bioconda::umi_tools

@@ -1,0 +1,62 @@
+#!/usr/bin/env/snakemake -s
+
+"""
+BAM-based featurecounting
+"""
+
+
+
+rule featurecount_starsolo_bam:
+    input:
+        bam = op.join(config['base'], 'starsolo', '{sample}', 'Aligned.sortedByCoord.out.bam'),
+        gtf = config['repeats_gtf']
+    output:
+        counts  = temp(op.join(config['base'], 'starsolo', '{sample}', "{multimappers}", "{sample}.counts")),
+        gz_counts = op.join(config['base'], 'starsolo', '{sample}', "{multimappers}", "{sample}.counts.gz"),
+        fc_bam = op.join(config['base'], 'starsolo', '{sample}', "{multimappers}",
+                         'Aligned.sortedByCoord.out.bam.featureCounts.bam')
+    params:
+        path = op.join(config['base'], 'starsolo', '{sample}' "{multimappers}")
+    log:
+        op.join(config['base'], "logs", "{sample}_{multimappers}_featurecounts_starsolo.log")
+    threads:
+        workflow.cores
+    run:
+        if wildcards.multimappers == 'multimappers':
+           shell("""
+           echo multimappers allowed
+
+           mkdir -p {params.path} && cd {params.path}
+
+           featureCounts -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o {output.counts} \
+            -R BAM \
+            -M \
+            --fraction \
+            {input.bam}  2>&1 > {log}
+
+           pigz -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+
+           """)
+        elif wildcards.multimappers == 'unique_reads':
+           shell("""
+           echo unique only
+
+           mkdir -p {params.path} && cd {params.path}
+
+           featureCounts -T {threads} \
+            -t exon \
+            -g gene_id \
+            -a {input.gtf} \
+            -o  {output.counts} \
+            -R BAM \
+            {input.bam}  2>&1 > {log}
+
+           pigz -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+           """)
+
+# rule umitools_featurecounted_starsolo_bam:
+                    

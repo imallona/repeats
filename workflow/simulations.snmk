@@ -88,7 +88,7 @@ rule write_manifest:
         1
     run:
         with open(output.manifest, 'w') as fh:
-            fh.write('\t'.join([input.cdna_fastqs, '-', 'simul1']))
-            fh.write('\t'.join([input.cdna_fastqs, '-', 'simul2'])) 
+            fh.write('\t'.join([input.cdna_fastqs, '-', 'simul1\n']))
+            fh.write('\t'.join([input.cdna_fastqs, '-', 'simul2\n'])) 
 
        
