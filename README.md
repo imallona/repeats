@@ -7,6 +7,12 @@
 
 We aimed to quantify conventional features (GENCODE) as well as repetitive elements (RepeatMasker) from multiple single-cell RNA-seq datasets using several analytical approaches, and starting from raw data, and looked for association with known cell metadata (e.g. cell types).
 
+# Running
+
+```
+snakemake --use-conda --cores 10 -p
+```
+
 # v0.1 release
 
 ## Data

@@ -61,11 +61,12 @@ rule simulate_smartseq:
           fa=$2
           name=$1
 
-          printf "@"NR"_"name"\\n"; 
+          # so the NR is included as both CB and "UMI" for umitools
+          printf "@"name"__"NR"_"NR"\\n"; 
           printf fa"\\n";
           printf "+\\n"
           for(c=0;c<L;c++) printf qual; printf "\\n"
-          }}' {output.sampled_fasta} | pigz -c -p {threads} > {output.cdna_fastqs}
+          }}' {output.sampled_fasta} | tr -d '"' | sed 's/[ ;:-]/_/g' | pigz -c -p {threads} > {output.cdna_fastqs}
 
         """
 
