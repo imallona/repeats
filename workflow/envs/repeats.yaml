@@ -12,3 +12,5 @@ dependencies:
   - bioconda::bedtools
   - bioconda::subread
   - bioconda::umi_tools
+  #  - bioconda::parallel-fastq-dump
+  - bioconda::sra-tools

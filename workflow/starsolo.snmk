@@ -64,7 +64,7 @@ rule starsolo_smartseq:
     shell:
         """
    rm -rf {params.tmp} {params.path}/Solo.out
-   mkdir -p {params.path} 
+   mkdir -p {params.path}
 
    pigz --keep --decompress -p {threads} {input.gtf} -c > {output.gtf_uncomp}
 

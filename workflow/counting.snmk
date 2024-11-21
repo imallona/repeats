@@ -5,105 +5,107 @@ BAM-based featurecounting
 """
 
 
-## is this needed at all?
-rule featurecount_starsolo_bam:
-    # conda:
-    #     op.join('envs', 'repeats.yaml')
-    input:
-        bam = op.join(config['base'], 'starsolo', '{sample}', 'Aligned.sortedByCoord.out.bam'),
-        gtf = config['repeats_gtf']
-    output:
-        counts  = temp(op.join(config['base'], 'starsolo', '{sample}', "{multimappers}", "{sample}.counts")),
-        gz_counts = op.join(config['base'], 'starsolo', '{sample}', "{multimappers}", "{sample}.counts.gz"),
-        fc_bam_unsorted = temp(op.join(config['base'], 'starsolo', '{sample}', "{multimappers}",
-                         'Aligned.sortedByCoord.out.bam.featureCounts.bam'))
-    params:
-        path = op.join(config['base'], 'starsolo', '{sample}' "{multimappers}")
-    log:
-        op.join(config['base'], "logs", "{sample}_{multimappers}_featurecounts_starsolo.log")
-    threads:
-        workflow.cores
-    run:
-        if wildcards.multimappers == 'multimappers':
-           shell("""
-           echo multimappers allowed
+# Skip this altogether and use starsolos'
 
-           mkdir -p {params.path} && cd {params.path}
+# ## is this needed at all?
+# rule featurecount_starsolo_bam:
+#     # conda:
+#     #     op.join('envs', 'repeats.yaml')
+#     input:
+#         bam = op.join(config['base'], 'starsolo', '{sample}', 'Aligned.sortedByCoord.out.bam'),
+#         gtf = config['repeats_gtf']
+#     output:
+#         counts  = temp(op.join(config['base'], 'starsolo', '{sample}', "{multimappers}", "{sample}.counts")),
+#         gz_counts = op.join(config['base'], 'starsolo', '{sample}', "{multimappers}", "{sample}.counts.gz"),
+#         fc_bam_unsorted = temp(op.join(config['base'], 'starsolo', '{sample}', "{multimappers}",
+#                          'Aligned.sortedByCoord.out.bam.featureCounts.bam'))
+#     params:
+#         path = op.join(config['base'], 'starsolo', '{sample}' "{multimappers}")
+#     log:
+#         op.join(config['base'], "logs", "{sample}_{multimappers}_featurecounts_starsolo.log")
+#     threads:
+#         workflow.cores
+#     run:
+#         if wildcards.multimappers == 'multimappers':
+#            shell("""
+#            echo multimappers allowed
 
-           featureCounts -T {threads} \
-            -t exon \
-            -g gene_id \
-            -a {input.gtf} \
-            -o {output.counts} \
-            -R BAM \
-            -M \
-            --fraction \
-            {input.bam}  2>&1 > {log}
+#            mkdir -p {params.path} && cd {params.path}
 
-           pigz -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+#            featureCounts -T {threads} \
+#             -t exon \
+#             -g gene_id \
+#             -a {input.gtf} \
+#             -o {output.counts} \
+#             -R BAM \
+#             -M \
+#             --fraction \
+#             {input.bam}  2>&1 > {log}
 
-           """)
-        elif wildcards.multimappers == 'unique_reads':
-           shell("""
-           echo unique only
+#            pigz -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
 
-           mkdir -p {params.path} && cd {params.path}
+#            """)
+#         elif wildcards.multimappers == 'unique_reads':
+#            shell("""
+#            echo unique only
 
-           featureCounts -T {threads} \
-            -t exon \
-            -g gene_id \
-            -a {input.gtf} \
-            -o  {output.counts} \
-            -R BAM \
-            {input.bam}  2>&1 > {log}
+#            mkdir -p {params.path} && cd {params.path}
 
-           pigz -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
+#            featureCounts -T {threads} \
+#             -t exon \
+#             -g gene_id \
+#             -a {input.gtf} \
+#             -o  {output.counts} \
+#             -R BAM \
+#             {input.bam}  2>&1 > {log}
+
+#            pigz -f --keep -p {threads} {output.counts} -c > {output.gz_counts}
 
 
-           """)
+#            """)
 
 
-rule sort_index_bam:
-    conda:
-        op.join('envs', 'repeats.yaml')
-    input:
-        fc_bam_unsorted = op.join(config['base'], 'starsolo', '{sample}', "{multimappers}",
-                         'Aligned.sortedByCoord.out.bam.featureCounts.bam')
-    output:
-        fc_bam = op.join(config['base'], 'starsolo', '{sample}', "{multimappers}",
-                         'last.bam'),
-        fc_bai = op.join(config['base'], 'starsolo', '{sample}', "{multimappers}",
-                         'last.bam.bai')
-    params:
-        path = op.join(config['base'], 'starsolo', '{sample}' "{multimappers}")
-    log:
-        op.join(config['base'], "logs", "{sample}_{multimappers}_featurecounts_starsolo.log")
-    threads:
-        workflow.cores
-    shell:
-        """
-           samtools sort -@ {threads} {input.fc_bam_unsorted} > {output.fc_bam}
-           samtools index -@ {threads} {output.fc_bam}
-        """
+# rule sort_index_bam:
+#     conda:
+#         op.join('envs', 'repeats.yaml')
+#     input:
+#         fc_bam_unsorted = op.join(config['base'], 'starsolo', '{sample}', "{multimappers}",
+#                          'Aligned.sortedByCoord.out.bam.featureCounts.bam')
+#     output:
+#         fc_bam = op.join(config['base'], 'starsolo', '{sample}', "{multimappers}",
+#                          'last.bam'),
+#         fc_bai = op.join(config['base'], 'starsolo', '{sample}', "{multimappers}",
+#                          'last.bam.bai')
+#     params:
+#         path = op.join(config['base'], 'starsolo', '{sample}' "{multimappers}")
+#     log:
+#         op.join(config['base'], "logs", "{sample}_{multimappers}_featurecounts_starsolo.log")
+#     threads:
+#         workflow.cores
+#     shell:
+#         """
+#            samtools sort -@ {threads} {input.fc_bam_unsorted} > {output.fc_bam}
+#            samtools index -@ {threads} {output.fc_bam}
+#         """
     
-rule umitools_featurecounted_starsolo_bam:
-    conda:
-        op.join('envs', 'repeats.yaml')
-    input:
-        fc_bam = op.join(config['base'], 'starsolo', '{sample}', "{multimappers}",
-                         'last.bam')
-    output:
-        counts = op.join(config['base'], 'starsolo', '{sample}', "{multimappers}", 'counts.tsv.gz')
-    threads:
-        1
-    shell:
-       """
-       ## the ignore-umi works for simulations, but hardly for real world examples!
-       ## issue is, umi_tools expects the UMI to be appended to the read name
-       umi_tools count --per-gene \
-           --gene-tag=XT --assigned-status-tag=XS \
-           --per-cell -I {input.fc_bam} -S {output.counts}
-           # --ignore-umi 
+# rule umitools_featurecounted_starsolo_bam:
+#     conda:
+#         op.join('envs', 'repeats.yaml')
+#     input:
+#         fc_bam = op.join(config['base'], 'starsolo', '{sample}', "{multimappers}",
+#                          'last.bam')
+#     output:
+#         counts = op.join(config['base'], 'starsolo', '{sample}', "{multimappers}", 'counts.tsv.gz')
+#     threads:
+#         1
+#     shell:
+#        """
+#        ## the ignore-umi works for simulations, but hardly for real world examples!
+#        ## issue is, umi_tools expects the UMI to be appended to the read name
+#        umi_tools count --per-gene \
+#            --gene-tag=XT --assigned-status-tag=XS \
+#            --per-cell -I {input.fc_bam} -S {output.counts}
+#            # --ignore-umi 
 
-       """
+#        """
         
