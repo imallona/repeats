@@ -1,0 +1,24 @@
+sample: "colon_cancer_cell_lines"
+## base_path
+base: "/home/imallona/repeats/"
+aligners: ['starsolo']
+
+# https://labshare.cshl.edu/shares/mhammelllab/www-data/TEtranscripts/TE_GTF/GRCh38_Ensembl_rmsk_TE.gtf.gz
+repeats_gtf: "/home/imallona/repeats/GRCh38_Ensembl_rmsk_TE.gtf.gz"
+
+# https://ftp.ensembl.org/pub/release-112/gtf/homo_sapiens/Homo_sapiens.GRCh38.112.chr.gtf.gz
+genes_gtf: "/home/imallona/repeats/Homo_sapiens.GRCh38.112.chr.gtf.gz"
+
+# http://ftp.ensembl.org/pub/release-98/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.chromosome.1.fa.gz
+genome_fasta_gz: "/home/imallona/repeats/Homo_sapiens.GRCh38.dna.chromosome.1.fa.gz"
+
+max_mem_mb: 20000 ## these are megabytes
+
+soloMultiMappers: "Unique" # multimappers not allowed for SmartSeq2
+extraStarSoloArgs: ""
+
+
+## solo ####################################################################
+
+soloType: "CB_UMI_Simple"
+readFilesManifest: "/home/imallona/src/repeats/workflow/configs/colon_cancer_cell_lines_manifest.tsv"

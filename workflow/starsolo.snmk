@@ -33,44 +33,102 @@ rule star_index:
        --genomeDir {params.output_dir} \
        --genomeFastaFiles {output.fasta_uncomp} &> {log}
        """
-            
-rule starsolo_smartseq:
-    conda:
-        op.join('envs', 'repeats.yaml')
-    input:
-        # cdna = config['smartseq_cdna_fastq'],
-        gtf = config['repeats_gtf'],
-        index = op.join(config['base'] , 'references', 'star', 'SAindex'),
-        manifest = config['readFilesManifest']
-    output:
-        bam = op.join(config['base'], 'starsolo', '{sample}', 'Aligned.sortedByCoord.out.bam'),
-        gtf_uncomp = temp(op.join(config['base'] , 'tmp', '{sample}_repeats.gtf'))        
-    threads:
-        min(10, workflow.cores)
-    log:
-        op.join(config['base'], 'logs', 'starsolo_{sample}.log')
-    benchmark:
-        op.join(config['base'], 'benchmarks', 'star_{sample}.txt')
-    params:
-        threads = min(10, workflow.cores),
-        path = op.join(config['base'], 'starsolo', "{sample}/"),
-        index_path = op.join(config['base'] , 'references', 'star'),
-        tmp = op.join(config['base'], 'tmp', 'tmp_starsolo_{sample}'),
-        maxmem = config['max_mem_mb'] * 1024 * 1024,
-        soloMultiMappers = config['soloMultiMappers'],
-        extraStarSoloArgs = config['extraStarSoloArgs'],
-        gene_solo_path = op.join(config['base'], 'starsolo', '{sample}', 'Solo.out',
-                            'Gene')
-    shell:
-        """
-   rm -rf {params.tmp} {params.path}/Solo.out
-   mkdir -p {params.path}
 
-   pigz --keep --decompress -p {threads} {input.gtf} -c > {output.gtf_uncomp}
 
-   STAR --runThreadN {params.threads} \
+if config['soloType'] == 'SmartSeq':
+    rule starsolo_smartseq:
+        conda:
+            op.join('envs', 'repeats.yaml')
+        input:
+            # cdna = config['smartseq_cdna_fastq'],
+            gtf = config['repeats_gtf'],
+            index = op.join(config['base'] , 'references', 'star', 'SAindex'),
+            manifest = config['readFilesManifest']
+        output:
+            bam = op.join(config['base'], 'starsolo', '{sample}', 'Aligned.sortedByCoord.out.bam'),
+            gtf_uncomp = temp(op.join(config['base'] , 'tmp', '{sample}_repeats.gtf'))        
+        threads:
+            min(10, workflow.cores)
+        log:
+            op.join(config['base'], 'logs', 'starsolo_{sample}.log')
+        benchmark:
+            op.join(config['base'], 'benchmarks', 'star_{sample}.txt')
+        params:
+            threads = min(10, workflow.cores),
+            path = op.join(config['base'], 'starsolo', "{sample}/"),
+            index_path = op.join(config['base'] , 'references', 'star'),
+            tmp = op.join(config['base'], 'tmp', 'tmp_starsolo_{sample}'),
+            maxmem = config['max_mem_mb'] * 1024 * 1024,
+            soloMultiMappers = config['soloMultiMappers'],
+            extraStarSoloArgs = config['extraStarSoloArgs'],
+            gene_solo_path = op.join(config['base'], 'starsolo', '{sample}', 'Solo.out',
+                                     'Gene')
+        shell:
+           """
+    mkdir -p {params.tmp}
+    rm -rf {params.tmp} {params.path}/Solo.out
+    mkdir -p {params.path}
+
+    pigz --keep --decompress -p {threads} {input.gtf} -c > {output.gtf_uncomp}
+
+    STAR --runThreadN {params.threads} \
+    --runDirPerm All_RWX \
+    --soloType "SmartSeq" \
+    --genomeDir {params.index_path} \
+    --readFilesCommand pigz -d -c -p {threads} \
+    --outFileNamePrefix {params.path} \
+    --readFilesManifest {input.manifest} \
+    --soloCellReadStats None \
+    --soloFeatures Gene \
+    --soloCellFilter None \
+    --soloUMIdedup NoDedup \
+    --outSAMtype BAM SortedByCoordinate \
+    --quantMode GeneCounts \
+    --sjdbGTFfile {output.gtf_uncomp} \
+    --outTmpDir {params.tmp} \
+    --limitBAMsortRAM {params.maxmem} \
+    --soloMultiMappers {params.soloMultiMappers} {params.extraStarSoloArgs} 2> {log}
+
+    rm -rf {params.tmp}
+           """
+elif config['soloType'] == 'CB_UMI_Simple':
+    rule starsolo_simple:
+        conda:
+            op.join('envs', 'repeats.yaml')
+        input:
+            gtf = config['repeats_gtf'],
+            index = op.join(config['base'] , 'references', 'star', 'SAindex'),
+            manifest = config['readFilesManifest']
+        output:
+            bam = op.join(config['base'], 'starsolo', '{sample}', 'Aligned.sortedByCoord.out.bam'),
+            gtf_uncomp = temp(op.join(config['base'] , 'tmp', '{sample}_repeats.gtf'))        
+        threads:
+            min(10, workflow.cores)
+        log:
+            op.join(config['base'], 'logs', 'starsolo_{sample}.log')
+        benchmark:
+            op.join(config['base'], 'benchmarks', 'star_{sample}.txt')
+        params:
+            threads = min(10, workflow.cores),
+            path = op.join(config['base'], 'starsolo', "{sample}/"),
+            index_path = op.join(config['base'] , 'references', 'star'),
+            tmp = op.join(config['base'], 'tmp', 'tmp_starsolo_{sample}'),
+            maxmem = config['max_mem_mb'] * 1024 * 1024,
+            soloMultiMappers = config['soloMultiMappers'],
+            extraStarSoloArgs = config['extraStarSoloArgs'],
+            gene_solo_path = op.join(config['base'], 'starsolo', '{sample}', 'Solo.out',
+                                     'Gene')
+        shell:
+           """
+        mkdir -p {params.tmp}
+        rm -rf {params.tmp} {params.path}/Solo.out
+        mkdir -p {params.path}
+
+        pigz --keep --decompress -p {threads} {input.gtf} -c > {output.gtf_uncomp}
+
+        STAR --runThreadN {params.threads} \
         --runDirPerm All_RWX \
-        --soloType "SmartSeq" \
+        --soloType "CB_UMI_Simple" \
         --genomeDir {params.index_path} \
         --readFilesCommand pigz -d -c -p {threads} \
         --outFileNamePrefix {params.path} \
@@ -84,7 +142,10 @@ rule starsolo_smartseq:
         --sjdbGTFfile {output.gtf_uncomp} \
         --outTmpDir {params.tmp} \
         --limitBAMsortRAM {params.maxmem} \
+        --soloCBwhitelist None \
         --soloMultiMappers {params.soloMultiMappers} {params.extraStarSoloArgs} 2> {log}
 
         rm -rf {params.tmp}
-        """
+           """
+else:
+    print('Wrong "soloType" within the config file.')

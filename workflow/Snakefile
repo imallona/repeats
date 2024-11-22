@@ -16,8 +16,8 @@ configfile: "config.yaml"
 include: "utils.snmk"
 include: "simulations.snmk"
 include: "starsolo.snmk"
-#include: 'counting.snmk'
 include: "data_acquisition.snmk"
+#include: "alevin.snmk"
 
 print(config)
 
@@ -31,8 +31,8 @@ for item in ['annotations', 'references', 'simulations', 'tmp', 'logs', 'benchma
 ## also downloading some data, even if related to the non-simulations usecase
 rule all:
     input:
-        op.join(config['base'], 'simulations', 'cdna.fastq.gz'),
-        expand(op.join(config['base'], 'data', 'colon_cancer_lines', '{srr}_1.fastq.gz'),
+        # op.join(config['base'], 'simulations', 'cdna.fastq.gz'),
+        expand(op.join(config['base'], 'data', 'colon_cancer_cell_lines', '{srr}_1.fastq.gz'),
                srr = ['SRR10974769', 'SRR10974767']),
         expand(op.join(config['base'], 'starsolo', '{sample}', '{multimappers}',
                        'Aligned.sortedByCoord.out.bam'),
