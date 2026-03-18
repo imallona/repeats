@@ -1,45 +1,106 @@
 #!/usr/bin/env snakemake -s
-##
-## Izaskun Mallona
-## GPLv3
-
 """
-Repeats in scRNA-seq main Snakefile
+Repeats in scRNA-seq: simulation, alignment, and evaluation pipeline.
+Run with: snakemake --use-conda --cores N --configfile configs/simulation_smartseq2.yaml
 """
 
+import os
 import os.path as op
-from glob import glob
-import re
+from snakemake.utils import validate
 
 configfile: "config.yaml"
 
-include: "utils.snmk"
-include: "simulations.snmk"
-include: "starsolo.snmk"
+validate(config, schema="schemas/config.schema.yaml")
+
+include: "modules/download_references.snmk"
+include: "modules/reference.snmk"
 include: "data_acquisition.snmk"
-#include: "alevin.snmk"
 
-print(config)
+if config['mode'] == 'simulation':
+    include: "simulations.snmk"
 
-for item in ['annotations', 'references', 'simulations', 'tmp', 'logs', 'benchmarks']:
-    try:
-        if not op.exists(op.dirname(op.join(config['base'], item))):
-            os.makedirs(op.join(config['base'], item))
-    except OSError as err:
-        print(err)
+include: "starsolo.snmk"
+include: "modules/kallisto.snmk"
+include: "modules/alevin.snmk"
+include: "modules/bowtie2.snmk"
+include: "modules/normalize.snmk"
 
-## also downloading some data, even if related to the non-simulations usecase
+if config['mode'] == 'simulation':
+    include: "modules/evaluation.snmk"
+
+for subdir in ['tmp', 'logs', 'benchmarks', 'references', 'counts', 'evaluation']:
+    os.makedirs(op.join(config['base'], subdir), exist_ok=True)
+
+
+active_aligners = config.get('aligners', [])
+feature_sets = config.get('feature_sets', ['repeats'])
+sim_cfg = config.get('simulation', {})
+sim_technology = sim_cfg.get('technology', 'smartseq2')
+starsolo_modes = (config.get('aligner_params', {}).get('starsolo', {}).get('multimapper_modes', ['unique']))
+if sim_technology == 'smartseq2' and 'multimapping' in starsolo_modes:
+    print('Warning: STARsolo SmartSeq mode does not support EM multimappers. Removing multimapping from modes.')
+    starsolo_modes = [m for m in starsolo_modes if m != 'multimapping']
+
+sim_cell_ids = [f'cell_{i + 1:03d}' for i in range(sim_cfg.get('n_cells', 20))]
+
+eval_dir = op.join(config['base'], 'evaluation')
+counts_dir = op.join(config['base'], 'counts')
+
+
+def genic_filter_outputs():
+    if not config['reference'].get('filter_genic', False):
+        return []
+    refs = op.join(config['base'], 'references')
+    return [
+        op.join(refs, 'genic_repeats.gtf'),
+        op.join(refs, 'intergenic_repeats.gtf'),
+        op.join(refs, 'repeat_harboring_genes.gtf')
+    ]
+
+
+def simulation_outputs():
+    outputs = []
+    if sim_technology == 'smartseq2':
+        outputs += expand(
+            op.join(config['base'], 'simulations', 'smartseq2', '{cell_id}.fastq.gz'),
+            cell_id=sim_cell_ids)
+        outputs.append(op.join(config['base'], 'simulations', 'smartseq2', 'ground_truth.tsv'))
+    else:
+        outputs += [
+            op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz'),
+            op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz'),
+            op.join(config['base'], 'simulations', 'chromium', 'ground_truth.tsv')
+        ]
+    return outputs
+
+
+def aligner_count_outputs():
+    outputs = []
+    if 'starsolo' in active_aligners:
+        outputs += expand(op.join(counts_dir, 'starsolo_{multimappers}_{feature_set}.tsv'),
+                          multimappers=starsolo_modes, feature_set=feature_sets)
+    for aligner in ['kallisto', 'alevin', 'bowtie2']:
+        if aligner in active_aligners:
+            outputs += expand(op.join(counts_dir, f'{aligner}_{{feature_set}}.tsv'),
+                              feature_set=feature_sets)
+    return outputs
+
+
+def evaluation_outputs():
+    outputs = []
+    if 'starsolo' in active_aligners:
+        outputs += expand(op.join(eval_dir, 'starsolo_{multimappers}_global_metrics.tsv'),
+                          multimappers=starsolo_modes)
+    for aligner in ['kallisto', 'alevin', 'bowtie2']:
+        if aligner in active_aligners:
+            outputs.append(op.join(eval_dir, f'{aligner}_global_metrics.tsv'))
+    outputs.append(op.join(eval_dir, 'summary_global_metrics.tsv'))
+    return outputs
+
+
 rule all:
     input:
-        # op.join(config['base'], 'simulations', 'cdna.fastq.gz'),
-        expand(op.join(config['base'], 'data', 'colon_cancer_cell_lines', '{srr}_1.fastq.gz'),
-               srr = ['SRR10974769', 'SRR10974767']),
-        expand(op.join(config['base'], 'starsolo', '{sample}', '{multimappers}',
-                       'Aligned.sortedByCoord.out.bam'),
-               sample = config['sample'],
-               multimappers = ['multimappers', 'unique_reads'])
-        # expand(op.join(config['base'], 'starsolo', '{sample}', '{multimappers}',
-        #                'counts.tsv.gz'),
-        #        sample = config['sample'],
-        #        multimappers = ['multimappers', 'unique_reads'])
-
+        genic_filter_outputs(),
+        simulation_outputs() if config['mode'] == 'simulation' else [],
+        aligner_count_outputs(),
+        evaluation_outputs() if config['mode'] == 'simulation' else []

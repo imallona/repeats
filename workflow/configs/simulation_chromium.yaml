@@ -1,0 +1,41 @@
+base: "/home/imallona/repeats/sim_chromium"
+
+reference:
+  genome_fasta: "/home/imallona/repeats/refs/Homo_sapiens.GRCh38.dna.chromosome.1.fa.gz"
+  repeats_gtf: "/home/imallona/repeats/refs/GRCh38_Ensembl_rmsk_TE.gtf.gz"
+  genes_gtf: "/home/imallona/repeats/refs/Homo_sapiens.GRCh38.112.chr.gtf.gz"
+  chromosomes: ["1"]
+  filter_genic: true
+
+mode: simulation
+
+simulation:
+  technology: chromium
+  n_cells: 50
+  n_expressed_per_cell: 80
+  read_length: 90
+  cb_length: 16
+  umi_length: 12
+  seed: 42
+
+aligners:
+  - starsolo
+  - kallisto
+  - alevin
+  - bowtie2
+
+aligner_params:
+  starsolo:
+    multimapper_modes: ["unique", "multimapping"]
+    extra_args: ""
+  kallisto:
+    extra_args: ""
+  alevin:
+    extra_args: ""
+  bowtie2:
+    extra_args: ""
+    featurecounts_chunk_size: 50
+
+resources:
+  max_threads: 10
+  max_mem_mb: 20000

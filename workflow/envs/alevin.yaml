@@ -1,0 +1,8 @@
+name: repeats_alevin
+channels:
+  - bioconda
+  - conda-forge
+  - nodefaults
+dependencies:
+  - bioconda::salmon>=1.10
+  - conda-forge::pigz

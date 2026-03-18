@@ -1,0 +1,7 @@
+name: repeats_sratools
+channels:
+  - bioconda
+  - conda-forge
+  - nodefaults
+dependencies:
+  - bioconda::sra-tools

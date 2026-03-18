@@ -1,0 +1,96 @@
+#!/usr/bin/env snakemake -s
+"""
+Salmon quantification for SmartSeq2 and Chromium modes.
+
+SmartSeq2: salmon quant per cell (bulk mode, one run per cell FASTQ).
+Chromium:  salmon alevin with droplet chemistry flags.
+
+Both modes support a {feature_set} wildcard selecting which index and t2g to use.
+"""
+
+import os.path as op
+
+sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'smartseq2')
+
+
+if sim_technology == 'smartseq2':
+
+    rule salmon_quant_smartseq2_cell:
+        conda: op.join(workflow.basedir, 'envs', 'alevin.yaml')
+        input:
+            index_sentinel = lambda wc: op.join(config['base'], 'references', f'salmon_{wc.feature_set}', 'seq.bin'),
+            fastq = op.join(config['base'], 'simulations', 'smartseq2', '{cell_id}.fastq.gz')
+                    if config['mode'] == 'simulation'
+                    else lambda wc: config['real_data']['samples'][wc.cell_id]['R1']
+        output:
+            quant_sf = op.join(config['base'], 'alevin', '{feature_set}', 'smartseq2', '{cell_id}', 'quant.sf')
+        params:
+            outdir = op.join(config['base'], 'alevin', '{feature_set}', 'smartseq2', '{cell_id}'),
+            index_dir = lambda wc: op.join(config['base'], 'references', f'salmon_{wc.feature_set}'),
+            extra_args = config.get('aligner_params', {}).get('alevin', {}).get('extra_args', '')
+        log: op.join(config['base'], 'logs', 'salmon_{feature_set}_quant_smartseq2_{cell_id}.log')
+        benchmark: op.join(config['base'], 'benchmarks', 'salmon_{feature_set}_quant_smartseq2_{cell_id}.txt')
+        threads: 4
+        shell:
+            """
+            salmon quant \
+                --index {params.index_dir} \
+                --libType A \
+                --unmatedReads {input.fastq} \
+                --validateMappings \
+                --threads {threads} \
+                --output {params.outdir} \
+                {params.extra_args} 2> {log}
+            """
+
+else:
+
+    chemistry_to_alevin_flag = {
+        '10xv2': '--chromiumV1',
+        '10xv3': '--chromiumV3',
+    }
+
+    rule salmon_alevin_chromium:
+        conda: op.join(workflow.basedir, 'envs', 'alevin.yaml')
+        input:
+            index_sentinel = lambda wc: op.join(config['base'], 'references', f'salmon_{wc.feature_set}', 'seq.bin'),
+            r1 = op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
+                 if config['mode'] == 'simulation'
+                 else lambda wc: config['real_data']['samples'][wc.sample]['R1'],
+            r2 = op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
+                 if config['mode'] == 'simulation'
+                 else lambda wc: config['real_data']['samples'][wc.sample]['R2'],
+            t2g = lambda wc: t2g_path(wc)
+        output:
+            quants_mat = op.join(config['base'], 'alevin', '{feature_set}', 'chromium',
+                                 'alevin', 'quants_mat.gz'),
+            quants_rows = op.join(config['base'], 'alevin', '{feature_set}', 'chromium',
+                                  'alevin', 'quants_mat_rows.txt'),
+            quants_cols = op.join(config['base'], 'alevin', '{feature_set}', 'chromium',
+                                  'alevin', 'quants_mat_cols.txt')
+        params:
+            outdir = op.join(config['base'], 'alevin', '{feature_set}', 'chromium'),
+            index_dir = lambda wc: op.join(config['base'], 'references', f'salmon_{wc.feature_set}'),
+            cb_len = config.get('simulation', config.get('real_data', {})).get('cb_length', 16),
+            umi_len = config.get('simulation', config.get('real_data', {})).get('umi_length', 12),
+            chemistry = config.get('real_data', {}).get('chemistry', '10xv3'),
+            extra_args = config.get('aligner_params', {}).get('alevin', {}).get('extra_args', '')
+        log: op.join(config['base'], 'logs', 'salmon_{feature_set}_alevin_chromium.log')
+        benchmark: op.join(config['base'], 'benchmarks', 'salmon_{feature_set}_alevin_chromium.txt')
+        threads: config['resources']['max_threads']
+        run:
+            if config['mode'] == 'simulation':
+                chem_flag = f'--sketch --end 5 --barcodeLength {params.cb_len} --umiLength {params.umi_len}'
+            else:
+                chem_flag = chemistry_to_alevin_flag.get(params.chemistry, '--chromiumV3')
+            shell(
+                f"salmon alevin "
+                f"  --libType ISR "
+                f"  --index {{params.index_dir}} "
+                f"  -1 {{input.r1}} -2 {{input.r2}} "
+                f"  {chem_flag} "
+                f"  --tgMap {{input.t2g}} "
+                f"  --threads {{threads}} "
+                f"  --output {{params.outdir}} "
+                f"  {{params.extra_args}} 2> {{log}}"
+            )

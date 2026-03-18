@@ -1,0 +1,240 @@
+#!/usr/bin/env snakemake -s
+"""
+Reference building: genome index for STAR, repeat FASTA, gene transcript FASTA,
+and per-aligner indices parameterized by {feature_set}.
+
+feature_set values:
+  repeats   - full RepeatMasker annotation
+  genes     - full gene annotation (Ensembl GTF)
+
+Optional annotation subsets (produced when filter_genic: true in config):
+  genic_repeats           - repeats overlapping gene bodies
+  intergenic_repeats      - repeats outside all gene bodies
+  repeat_harboring_genes  - genes that overlap at least one repeat
+"""
+
+import os.path as op
+
+active_feature_sets = config.get('feature_sets', ['repeats'])
+
+
+rule decompress_genome:
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input: config['reference']['genome_fasta']
+    output: temp(op.join(config['base'], 'tmp', 'genome.fa'))
+    threads: config['resources']['max_threads']
+    shell: "pigz --decompress --keep --stdout --processes {threads} {input} > {output}"
+
+
+rule decompress_repeats_gtf:
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input: config['reference']['repeats_gtf']
+    output: temp(op.join(config['base'], 'tmp', 'repeats.gtf'))
+    threads: config['resources']['max_threads']
+    shell: "pigz --decompress --keep --stdout --processes {threads} {input} > {output}"
+
+
+rule decompress_genes_gtf:
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input: config['reference']['genes_gtf']
+    output: temp(op.join(config['base'], 'tmp', 'genes.gtf'))
+    threads: config['resources']['max_threads']
+    shell: "pigz --decompress --keep --stdout --processes {threads} {input} > {output}"
+
+
+rule star_genome_index:
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input:
+        genome = rules.decompress_genome.output,
+        repeats_gtf = rules.decompress_repeats_gtf.output
+    output:
+        index = op.join(config['base'], 'references', 'star', 'SAindex')
+    params:
+        index_dir = op.join(config['base'], 'references', 'star')
+    log: op.join(config['base'], 'logs', 'star_index.log')
+    benchmark: op.join(config['base'], 'benchmarks', 'star_index.txt')
+    threads: config['resources']['max_threads']
+    shell:
+        """
+        STAR --runThreadN {threads} \
+             --runMode genomeGenerate \
+             --genomeDir {params.index_dir} \
+             --genomeFastaFiles {input.genome} \
+             --sjdbGTFfile {input.repeats_gtf} &> {log}
+        """
+
+
+rule extract_repeat_fasta:
+    """Extract repeat element sequences from the genome as a FASTA for pseudo-alignment tools."""
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input:
+        genome = rules.decompress_genome.output,
+        repeats_gtf = rules.decompress_repeats_gtf.output
+    output:
+        repeat_fasta = op.join(config['base'], 'references', 'repeats.fa'),
+        bed = temp(op.join(config['base'], 'tmp', 'repeats.bed'))
+    log: op.join(config['base'], 'logs', 'extract_repeat_fasta.log')
+    benchmark: op.join(config['base'], 'benchmarks', 'extract_repeat_fasta.txt')
+    shell:
+        """
+        awk 'OFS="\\t" {{
+            if ($0 ~ /^#/) next
+            name = ""
+            n = split($9, attrs, ";")
+            for (i=1; i<=n; i++) {{
+                gsub(/^ +| +$/, "", attrs[i])
+                if (attrs[i] ~ /^gene_id/) {{
+                    gsub(/gene_id |"/, "", attrs[i])
+                    name = attrs[i]
+                }}
+            }}
+            if (name == "") name = $1"_"($4-1)"_"$5
+            print $1, $4-1, $5, name, ".", $7
+        }}' {input.repeats_gtf} | sort -k1,1 -k2,2n | uniq > {output.bed} 2> {log}
+
+        bedtools getfasta -fi {input.genome} \
+            -bed {output.bed} \
+            -s -name -fo {output.repeat_fasta} 2>> {log}
+        """
+
+
+rule extract_gene_transcripts:
+    """Extract spliced transcript sequences from the genes GTF for pseudo-aligner indexing."""
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input:
+        genome = rules.decompress_genome.output,
+        genes_gtf = rules.decompress_genes_gtf.output
+    output:
+        transcripts_fasta = op.join(config['base'], 'references', 'genes.fa')
+    log: op.join(config['base'], 'logs', 'extract_gene_transcripts.log')
+    benchmark: op.join(config['base'], 'benchmarks', 'extract_gene_transcripts.txt')
+    shell:
+        "gffread {input.genes_gtf} -g {input.genome} -w {output.transcripts_fasta} 2> {log}"
+
+
+def sequences_fasta(wildcards):
+    """Return the FASTA path for pseudo-aligner indexing given a feature_set wildcard."""
+    if wildcards.feature_set == 'genes':
+        return op.join(config['base'], 'references', 'genes.fa')
+    return op.join(config['base'], 'references', 'repeats.fa')
+
+
+rule build_repeat_t2g:
+    """Two-column TSV mapping each repeat name to itself (transcript = gene for repeats)."""
+    input: rules.extract_repeat_fasta.output.repeat_fasta
+    output: op.join(config['base'], 'references', 'repeats_t2g.tsv')
+    shell:
+        "grep '^>' {input} | sed 's/^>//' | awk 'OFS=\"\\t\" {{print $1, $1}}' > {output}"
+
+
+rule build_gene_t2g:
+    """Two-column TSV mapping each transcript_id to its gene_id from the genes GTF."""
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input: rules.decompress_genes_gtf.output
+    output: op.join(config['base'], 'references', 'genes_t2g.tsv')
+    shell:
+        r"""
+        awk '$3 == "transcript" {{
+            tid=""; gid=""
+            n = split($9, attrs, ";")
+            for (i=1; i<=n; i++) {{
+                gsub(/^ +| +$/, "", attrs[i])
+                if (attrs[i] ~ /^gene_id/) {{ gid=attrs[i]; gsub(/gene_id |"/, "", gid) }}
+                if (attrs[i] ~ /^transcript_id/) {{ tid=attrs[i]; gsub(/transcript_id |"/, "", tid) }}
+            }}
+            if (tid != "" && gid != "") print tid "\t" gid
+        }}' OFS="\t" {input} > {output}
+        """
+
+
+def t2g_path(wildcards):
+    """Return the transcript-to-gene mapping path for a given feature_set."""
+    if wildcards.feature_set == 'genes':
+        return op.join(config['base'], 'references', 'genes_t2g.tsv')
+    return op.join(config['base'], 'references', 'repeats_t2g.tsv')
+
+
+rule kallisto_index:
+    conda: op.join(workflow.basedir, 'envs', 'kallisto.yaml')
+    input: sequences_fasta
+    output: op.join(config['base'], 'references', 'kallisto', '{feature_set}.idx')
+    wildcard_constraints: feature_set = '[a-z_]+'
+    log: op.join(config['base'], 'logs', 'kallisto_{feature_set}_index.log')
+    benchmark: op.join(config['base'], 'benchmarks', 'kallisto_{feature_set}_index.txt')
+    shell: "kallisto index -i {output} {input} 2> {log}"
+
+
+rule salmon_index:
+    conda: op.join(workflow.basedir, 'envs', 'alevin.yaml')
+    input: sequences_fasta
+    output:
+        index = op.join(config['base'], 'references', 'salmon_{feature_set}', 'seq.bin')
+    params:
+        index_dir = op.join(config['base'], 'references', 'salmon_{feature_set}')
+    wildcard_constraints: feature_set = '[a-z_]+'
+    log: op.join(config['base'], 'logs', 'salmon_{feature_set}_index.log')
+    benchmark: op.join(config['base'], 'benchmarks', 'salmon_{feature_set}_index.txt')
+    threads: config['resources']['max_threads']
+    shell: "salmon index -t {input} -i {params.index_dir} -p {threads} 2> {log}"
+
+
+rule bowtie2_index:
+    conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input: sequences_fasta
+    output:
+        index = op.join(config['base'], 'references', 'bowtie2_{feature_set}', '{feature_set}.1.bt2')
+    params:
+        index_prefix = op.join(config['base'], 'references', 'bowtie2_{feature_set}', '{feature_set}')
+    wildcard_constraints: feature_set = '[a-z_]+'
+    log: op.join(config['base'], 'logs', 'bowtie2_{feature_set}_index.log')
+    benchmark: op.join(config['base'], 'benchmarks', 'bowtie2_{feature_set}_index.txt')
+    threads: config['resources']['max_threads']
+    shell: "bowtie2-build --threads {threads} {input} {params.index_prefix} 2> {log}"
+
+
+if config['reference'].get('filter_genic', False):
+
+    rule find_genic_repeats:
+        """Repeats overlapping at least one gene body."""
+        conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+        input:
+            repeats_gtf = rules.decompress_repeats_gtf.output,
+            genes_gtf = rules.decompress_genes_gtf.output
+        output:
+            op.join(config['base'], 'references', 'genic_repeats.gtf')
+        log: op.join(config['base'], 'logs', 'genic_repeats.log')
+        shell:
+            """
+            bedtools intersect -a {input.repeats_gtf} -b {input.genes_gtf} \
+                -u -s > {output} 2> {log}
+            """
+
+    rule find_intergenic_repeats:
+        """Repeats with no overlap to any gene body."""
+        conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+        input:
+            repeats_gtf = rules.decompress_repeats_gtf.output,
+            genes_gtf = rules.decompress_genes_gtf.output
+        output:
+            op.join(config['base'], 'references', 'intergenic_repeats.gtf')
+        log: op.join(config['base'], 'logs', 'intergenic_repeats.log')
+        shell:
+            """
+            bedtools intersect -a {input.repeats_gtf} -b {input.genes_gtf} \
+                -v > {output} 2> {log}
+            """
+
+    rule find_repeat_harboring_genes:
+        """Genes overlapping at least one repeat element."""
+        conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+        input:
+            genes_gtf = rules.decompress_genes_gtf.output,
+            repeats_gtf = rules.decompress_repeats_gtf.output
+        output:
+            op.join(config['base'], 'references', 'repeat_harboring_genes.gtf')
+        log: op.join(config['base'], 'logs', 'repeat_harboring_genes.log')
+        shell:
+            """
+            bedtools intersect -a {input.genes_gtf} -b {input.repeats_gtf} \
+                -u > {output} 2> {log}
+            """

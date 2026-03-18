@@ -1,0 +1,9 @@
+name: repeats_kallisto
+channels:
+  - bioconda
+  - conda-forge
+  - nodefaults
+dependencies:
+  - bioconda::kallisto>=0.50
+  - bioconda::bustools
+  - conda-forge::pigz

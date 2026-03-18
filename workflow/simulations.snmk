@@ -1,95 +1,105 @@
-#!/usr/bin/env/snakemake -s
+#!/usr/bin/env snakemake -s
+"""
+Simulation rules for SmartSeq2 and Chromium modes.
+Calls simulate_reads.py which streams FASTA chromosome by chromosome.
+Output FASTQs and ground_truth.tsv (with repeat family and class columns) land under
+  {base}/simulations/{technology}/
+"""
 
-"""
-gets a randomly picked subsequence inside each line of a GTF record (repeats file)
- (maybe it should do it on beds, because gtfs lines from GTFs are nested but anyway)
-and mimics a fastq record with uniform base quality values
-"""
-rule simulate_smartseq:
-    conda:
-        op.join('envs', 'repeats.yaml')
+import os.path as op
+
+
+sim_cfg = config.get('simulation', {})
+sim_technology = sim_cfg.get('technology', 'smartseq2')
+sim_n_cells = sim_cfg.get('n_cells', 20)
+sim_seed = sim_cfg.get('seed', 42)
+sim_chromosomes = config['reference'].get('chromosomes', [])
+
+sim_cell_ids = [f'cell_{i + 1:03d}' for i in range(sim_n_cells)]
+
+simulation_script = op.join(workflow.basedir, 'scripts', 'simulate_reads.py')
+
+
+rule simulate_smartseq2:
+    conda: op.join('envs', 'star.yaml')
     input:
-        gtf = config['repeats_gtf'], # op.join(config['base'], 'annotation', 'mm10_rmsk_chr1.gtf.gz'),
-        fasta = config['genome_fasta_gz'] # op.join(config['base'], 'annotation', 'mm10_chr1.fa.gz')
+        gtf = config['reference']['repeats_gtf'],
+        fasta = config['reference']['genome_fasta']
     output:
-        sampled_intervals = temp(op.join(config['base'], 'tmp', 'sampled_intervals.bed')),
-        sampled_fasta = temp(op.join(config['base'], 'tmp', 'sampled_intervals.fa')),
-        fasta_uncomp = temp(op.join(config['base'], 'tmp', 'genome.fa')),
-        cdna_fastqs = op.join(config['base'], 'simulations', 'cdna.fastq.gz')
+        ground_truth = op.join(config['base'], 'simulations', 'smartseq2', 'ground_truth.tsv'),
+        manifest = op.join(config['base'], 'simulations', 'smartseq2', 'manifest.tsv'),
+        repeat_fasta = op.join(config['base'], 'simulations', 'smartseq2', 'simulated_repeats.fa'),
+        cell_fastqs = expand(
+            op.join(config['base'], 'simulations', 'smartseq2', '{cell_id}.fastq.gz'),
+            cell_id=sim_cell_ids)
     params:
-        length = 92,
-        qual_symbol = 'F'
-    # log:
-    #     op.join(config['base'], 'logs', 'simulations.log')
-    threads:
-        20
+        outdir = op.join(config['base'], 'simulations', 'smartseq2'),
+        n_cells = sim_n_cells,
+        n_expressed = sim_cfg.get('n_expressed_per_cell', 100),
+        read_length = sim_cfg.get('read_length', 90),
+        seed = sim_seed,
+        chrom_args = '--chromosomes ' + ' '.join(sim_chromosomes) if sim_chromosomes else '',
+        max_per_chrom_arg = (
+            f'--max-repeats-per-chrom {sim_cfg["max_repeats_per_chrom"]}'
+            if sim_cfg.get('max_repeats_per_chrom') else ''
+        )
+    log: op.join(config['base'], 'logs', 'simulate_smartseq2.log')
+    benchmark: op.join(config['base'], 'benchmarks', 'simulate_smartseq2.txt')
     shell:
         """
-        pigz -d -p {threads} -c {input.gtf} | \
-         awk -v RL="{params.length}" '{{OFS=FS="\\t"}}{{
-         $0=$0;
-         L=$6
-         chrom=$1
-         start=$4
-         end=$5
-         strand=$7
-         name=$9
-         srand(NR);
-         if (RL >= L)
-            print chrom,start,end,name,".",strand
-         else
-            min=$4
-         max=$5-$RL
-         R=int(min+rand()*(max-min+1))
-         print chrom,R,R+RL,name,".",strand
-        }}' > {output.sampled_intervals}
-
-        sed -i r's/gene_id//g ; s/transcript_id//g; s/class_id// ; s/family_id// ; s/"//g ; s/ //g' \
-          {output.sampled_intervals} 
-
-        pigz --keep --decompress -p {threads} {input.fasta} -c > {output.fasta_uncomp}
-
-        bedtools getfasta -fi {output.fasta_uncomp} \
-          -bed {output.sampled_intervals} \
-          -tab -name > {output.sampled_fasta}
-
-        # fastq-ify
-                
-        awk -v qual="{params.qual_symbol}" 'OFS=FS="\\t" {{
-          $0=$0;
-          L=length($2)
-          fa=$2
-          name=$1
-
-          # so the NR is included as both CB and "UMI" for umitools
-          printf "@"name"__"NR"_"NR"\\n"; 
-          printf fa"\\n";
-          printf "+\\n"
-          for(c=0;c<L;c++) printf qual; printf "\\n"
-          }}' {output.sampled_fasta} | tr -d '"' | sed 's/[ ;:-]/_/g' | pigz -c -p {threads} > {output.cdna_fastqs}
-
+        python {simulation_script} \
+            --mode smartseq2 \
+            --gtf {input.gtf} \
+            --fasta {input.fasta} \
+            --outdir {params.outdir} \
+            --n-cells {params.n_cells} \
+            --n-expressed {params.n_expressed} \
+            --read-length {params.read_length} \
+            --seed {params.seed} \
+            {params.chrom_args} \
+            {params.max_per_chrom_arg} 2> {log}
         """
 
-"""
-Reuse the same reads for two cells named simul1 and simul2
-"""
-rule write_manifest:
-    # conda:
-    #     op.join('envs', 'repeats.yaml')
-    input:
-        cdna_fastqs = op.join(config['base'], 'simulations', 'cdna.fastq.gz')
-    output:
-        manifest = op.join(config['base'], 'simulations', 'manifest.tsv')
-    params:
-        length = 92,
-        qual_symbol = 'F'
-    # log:
-    #     op.join(config['base'], 'logs', 'simulations.log')
-    threads:
-        1
-    run:
-        with open(output.manifest, 'w') as fh:
-            fh.write('\t'.join([input.cdna_fastqs, '-', 'simul1\n']))
-            fh.write('\t'.join([input.cdna_fastqs, '-', 'simul2\n'])) 
 
-       
+rule simulate_chromium:
+    conda: op.join('envs', 'star.yaml')
+    input:
+        gtf = config['reference']['repeats_gtf'],
+        fasta = config['reference']['genome_fasta']
+    output:
+        ground_truth = op.join(config['base'], 'simulations', 'chromium', 'ground_truth.tsv'),
+        r1 = op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz'),
+        r2 = op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz'),
+        barcodes = op.join(config['base'], 'simulations', 'chromium', 'barcodes.txt'),
+        repeat_fasta = op.join(config['base'], 'simulations', 'chromium', 'simulated_repeats.fa')
+    params:
+        outdir = op.join(config['base'], 'simulations', 'chromium'),
+        n_cells = sim_n_cells,
+        n_expressed = sim_cfg.get('n_expressed_per_cell', 100),
+        read_length = sim_cfg.get('read_length', 90),
+        cb_length = sim_cfg.get('cb_length', 16),
+        umi_length = sim_cfg.get('umi_length', 12),
+        seed = sim_seed,
+        chrom_args = '--chromosomes ' + ' '.join(sim_chromosomes) if sim_chromosomes else '',
+        max_per_chrom_arg = (
+            f'--max-repeats-per-chrom {sim_cfg["max_repeats_per_chrom"]}'
+            if sim_cfg.get('max_repeats_per_chrom') else ''
+        )
+    log: op.join(config['base'], 'logs', 'simulate_chromium.log')
+    benchmark: op.join(config['base'], 'benchmarks', 'simulate_chromium.txt')
+    shell:
+        """
+        python {simulation_script} \
+            --mode chromium \
+            --gtf {input.gtf} \
+            --fasta {input.fasta} \
+            --outdir {params.outdir} \
+            --n-cells {params.n_cells} \
+            --n-expressed {params.n_expressed} \
+            --read-length {params.read_length} \
+            --cb-length {params.cb_length} \
+            --umi-length {params.umi_length} \
+            --seed {params.seed} \
+            {params.chrom_args} \
+            {params.max_per_chrom_arg} 2> {log}
+        """

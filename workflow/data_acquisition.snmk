@@ -1,28 +1,31 @@
-#!/usr/bin/env snakemake -n
+#!/usr/bin/env snakemake -s
+"""
+Download raw sequencing data from SRA.
+"""
 
-## this is hct116 dko https://www.ncbi.nlm.nih.gov/sra?term=SRX7639819 SRR10974769
-## this is hct116 wt https://www.ncbi.nlm.nih.gov/sra?term=SRX7639834  SRR10974767
-rule download_colon_cancer_cell_lines:
-    conda:
-        op.join('envs', 'repeats.yaml')
+import os.path as op
+
+
+rule download_sra_run:
+    conda: op.join('envs', 'sratools.yaml')
     params:
-        path = op.join(config['base'], 'data', 'colon_cancer_cell_lines')
+        outdir = op.join(config['base'], 'data', 'colon_cancer_cell_lines')
     output:
-        r1 = op.join(config['base'], 'data', 'colon_cancer_lines', '{srr}_1.fastq.gz')
+        r1 = op.join(config['base'], 'data', 'colon_cancer_cell_lines', '{srr}_1.fastq.gz'),
+        r2 = op.join(config['base'], 'data', 'colon_cancer_cell_lines', '{srr}_2.fastq.gz')
     log:
         prefetch = op.join(config['base'], 'logs', '{srr}_prefetch.log'),
-        vdbv = op.join(config['base'], 'logs', '{srr}_vdbvalidate.log'),
-        fd = op.join(config['base'], 'logs', '{srr}_prefetch.log') 
-    threads:
-        4
+        validate = op.join(config['base'], 'logs', '{srr}_validate.log'),
+        dump = op.join(config['base'], 'logs', '{srr}_fastqdump.log')
+    threads: 4
     shell:
         """
-        mkdir -p {params.path}
-        cd {params.path}
-        prefetch {wildcards.srr} --output-file {wildcards.srr}.sra &> {log.prefetch}
+        mkdir -p {params.outdir}
+        cd {params.outdir}
 
-        vdb-validate {wildcards.srr}.sra &> {log.vdbv}
-        fastq-dump --gzip --split-files  {wildcards.srr}.sra &> {log.fd}
+        prefetch {wildcards.srr} --output-file {wildcards.srr}.sra &> {log.prefetch}
+        vdb-validate {wildcards.srr}.sra &> {log.validate}
+        fastq-dump --gzip --split-files {wildcards.srr}.sra &> {log.dump}
 
         rm {wildcards.srr}.sra
         """

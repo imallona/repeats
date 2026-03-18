@@ -1,0 +1,12 @@
+name: repeats_evaluation
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - conda-forge::python>=3.10
+  - conda-forge::pandas
+  - conda-forge::scipy
+  - conda-forge::numpy
+  - conda-forge::matplotlib-base
+  - conda-forge::seaborn

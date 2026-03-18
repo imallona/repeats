@@ -1,0 +1,12 @@
+name: repeats_star
+channels:
+  - bioconda
+  - conda-forge
+  - nodefaults
+dependencies:
+  - bioconda::star=2.7.11b
+  - bioconda::samtools
+  - bioconda::htslib
+  - bioconda::bedtools
+  - bioconda::gffread
+  - conda-forge::pigz

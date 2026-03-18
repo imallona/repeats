@@ -1,0 +1,11 @@
+name: repeats_bowtie2
+channels:
+  - bioconda
+  - conda-forge
+  - nodefaults
+dependencies:
+  - bioconda::bowtie2
+  - bioconda::samtools
+  - bioconda::subread
+  - bioconda::umi_tools
+  - conda-forge::pigz

@@ -1,0 +1,96 @@
+#!/usr/bin/env snakemake -s
+"""
+Evaluation rules: run evaluate.py for every aligner x multimapper combination
+and aggregate results into a single summary table.
+Only active when mode is simulation (ground truth required).
+Evaluation is always against the "repeats" feature set since that is what the
+simulation uses to generate ground truth.
+"""
+
+import os.path as op
+
+active_aligners = config.get('aligners', [])
+sim_technology = config.get('simulation', {}).get('technology', 'smartseq2')
+starsolo_modes = (config.get('aligner_params', {}).get('starsolo', {}).get('multimapper_modes', ['unique']))
+single_mode_aligners = [a for a in active_aligners if a != 'starsolo']
+
+evaluation_script = op.join(workflow.basedir, 'scripts', 'evaluate.py')
+counts_dir = op.join(config['base'], 'counts')
+eval_dir = op.join(config['base'], 'evaluation')
+
+ground_truth_path = op.join(config['base'], 'simulations', sim_technology, 'ground_truth.tsv')
+
+
+rule evaluate_starsolo:
+    conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
+    input:
+        ground_truth = ground_truth_path,
+        counts = op.join(counts_dir, 'starsolo_{multimappers}_repeats.tsv'),
+        benchmark = op.join(config['base'], 'benchmarks', f'starsolo_{sim_technology}_{{multimappers}}_repeats.txt')
+    output:
+        global_metrics = op.join(eval_dir, 'starsolo_{multimappers}_global_metrics.tsv'),
+        per_cell = op.join(eval_dir, 'starsolo_{multimappers}_per_cell_metrics.tsv'),
+        per_family = op.join(eval_dir, 'starsolo_{multimappers}_per_family_metrics.tsv')
+    params:
+        output_prefix = op.join(eval_dir, 'starsolo_{multimappers}')
+    log: op.join(config['base'], 'logs', 'evaluate_starsolo_{multimappers}.log')
+    shell:
+        """
+        python {evaluation_script} \
+            --ground-truth {input.ground_truth} \
+            --observed-counts {input.counts} \
+            --aligner starsolo \
+            --multimapper-mode {wildcards.multimappers} \
+            --benchmark {input.benchmark} \
+            --output-prefix {params.output_prefix} 2> {log}
+        """
+
+
+rule evaluate_single_mode_aligner:
+    conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
+    input:
+        ground_truth = ground_truth_path,
+        counts = op.join(counts_dir, '{aligner}_repeats.tsv')
+    output:
+        global_metrics = op.join(eval_dir, '{aligner}_global_metrics.tsv'),
+        per_cell = op.join(eval_dir, '{aligner}_per_cell_metrics.tsv'),
+        per_family = op.join(eval_dir, '{aligner}_per_family_metrics.tsv')
+    wildcard_constraints:
+        aligner = '|'.join(single_mode_aligners) if single_mode_aligners else 'NOMATCH'
+    params:
+        output_prefix = op.join(eval_dir, '{aligner}'),
+        benchmark = op.join(config['base'], 'benchmarks', '{aligner}_' + sim_technology + '_repeats.txt')
+    log: op.join(config['base'], 'logs', 'evaluate_{aligner}.log')
+    shell:
+        """
+        python {evaluation_script} \
+            --ground-truth {input.ground_truth} \
+            --observed-counts {input.counts} \
+            --aligner {wildcards.aligner} \
+            --multimapper-mode unique \
+            --benchmark {params.benchmark} \
+            --output-prefix {params.output_prefix} 2> {log}
+        """
+
+
+rule aggregate_global_metrics:
+    """Concatenate all per-aligner global metric TSVs into one summary file."""
+    input:
+        starsolo = expand(op.join(eval_dir, 'starsolo_{multimappers}_global_metrics.tsv'),
+                          multimappers=starsolo_modes),
+        others = expand(op.join(eval_dir, '{aligner}_global_metrics.tsv'),
+                        aligner=single_mode_aligners)
+    output:
+        summary = op.join(eval_dir, 'summary_global_metrics.tsv')
+    run:
+        import csv
+        all_rows = []
+        for path in list(input.starsolo) + list(input.others):
+            with open(path) as fh:
+                reader = csv.DictReader(fh, delimiter='\t')
+                all_rows.extend(list(reader))
+        if all_rows:
+            with open(output.summary, 'w', newline='') as fh:
+                writer = csv.DictWriter(fh, fieldnames=all_rows[0].keys(), delimiter='\t')
+                writer.writeheader()
+                writer.writerows(all_rows)

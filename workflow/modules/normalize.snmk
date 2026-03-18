@@ -1,0 +1,145 @@
+#!/usr/bin/env snakemake -s
+"""
+Convert each aligner's native output to the standard feature x cell count TSV.
+All downstream evaluation rules consume this common format.
+Output path: counts/{aligner}_{multimappers}_{feature_set}.tsv  (starsolo)
+             counts/{aligner}_{feature_set}.tsv                  (others)
+"""
+
+import os.path as op
+
+sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'smartseq2')
+active_aligners = config.get('aligners', [])
+sim_cell_ids = [f'cell_{i + 1:03d}' for i in range(
+    config.get('simulation', {}).get('n_cells', 20))]
+
+normalize_dir = op.join(config['base'], 'counts')
+
+
+if 'starsolo' in active_aligners:
+
+    starsolo_multimapper_modes = (
+        config.get('aligner_params', {}).get('starsolo', {}).get('multimapper_modes', ['unique'])
+    )
+
+    rule normalize_starsolo:
+        conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
+        input:
+            raw_matrix_dir = op.join(config['base'], 'starsolo', sim_technology,
+                                     '{multimappers}_{feature_set}', 'Solo.out', 'Gene', 'raw')
+        output:
+            counts_tsv = op.join(normalize_dir, 'starsolo_{multimappers}_{feature_set}.tsv')
+        log: op.join(config['base'], 'logs', 'normalize_starsolo_{multimappers}_{feature_set}.log')
+        shell:
+            """
+            python {workflow.basedir}/scripts/normalize_starsolo.py \
+                --raw-dir {input.raw_matrix_dir} \
+                --output {output.counts_tsv} 2> {log}
+            """
+
+
+if 'kallisto' in active_aligners and sim_technology == 'smartseq2':
+
+    rule normalize_kallisto_smartseq2:
+        conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
+        input:
+            abundances = lambda wc: expand(
+                op.join(config['base'], 'kallisto', '{feature_set}', 'smartseq2', '{cell_id}', 'abundance.tsv'),
+                feature_set=wc.feature_set,
+                cell_id=sim_cell_ids)
+        output:
+            counts_tsv = op.join(normalize_dir, 'kallisto_{feature_set}.tsv')
+        params:
+            cell_ids_arg = ' '.join(sim_cell_ids),
+            cell_dirs_arg = lambda wc: ' '.join(
+                op.join(config['base'], 'kallisto', wc.feature_set, 'smartseq2', cid)
+                for cid in sim_cell_ids)
+        log: op.join(config['base'], 'logs', 'normalize_kallisto_{feature_set}_smartseq2.log')
+        shell:
+            """
+            python {workflow.basedir}/scripts/normalize_kallisto_smartseq2.py \
+                --cell-ids {params.cell_ids_arg} \
+                --cell-dirs {params.cell_dirs_arg} \
+                --output {output.counts_tsv} 2> {log}
+            """
+
+
+if 'kallisto' in active_aligners and sim_technology == 'chromium':
+
+    rule normalize_kallisto_chromium:
+        conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
+        input:
+            mtx = op.join(config['base'], 'kallisto', '{feature_set}', 'chromium', 'counts.mtx'),
+            barcodes = op.join(config['base'], 'kallisto', '{feature_set}', 'chromium', 'counts.barcodes.txt'),
+            genes = op.join(config['base'], 'kallisto', '{feature_set}', 'chromium', 'counts.genes.txt')
+        output:
+            counts_tsv = op.join(normalize_dir, 'kallisto_{feature_set}.tsv')
+        log: op.join(config['base'], 'logs', 'normalize_kallisto_{feature_set}_chromium.log')
+        shell:
+            """
+            python {workflow.basedir}/scripts/normalize_kallisto_chromium.py \
+                --mtx {input.mtx} \
+                --barcodes {input.barcodes} \
+                --genes {input.genes} \
+                --output {output.counts_tsv} 2> {log}
+            """
+
+
+if 'alevin' in active_aligners and sim_technology == 'smartseq2':
+
+    rule normalize_alevin_smartseq2:
+        conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
+        input:
+            quant_sfs = lambda wc: expand(
+                op.join(config['base'], 'alevin', '{feature_set}', 'smartseq2', '{cell_id}', 'quant.sf'),
+                feature_set=wc.feature_set,
+                cell_id=sim_cell_ids)
+        output:
+            counts_tsv = op.join(normalize_dir, 'alevin_{feature_set}.tsv')
+        params:
+            cell_ids_arg = ' '.join(sim_cell_ids),
+            cell_dirs_arg = lambda wc: ' '.join(
+                op.join(config['base'], 'alevin', wc.feature_set, 'smartseq2', cid)
+                for cid in sim_cell_ids)
+        log: op.join(config['base'], 'logs', 'normalize_alevin_{feature_set}_smartseq2.log')
+        shell:
+            """
+            python {workflow.basedir}/scripts/normalize_alevin_smartseq2.py \
+                --cell-ids {params.cell_ids_arg} \
+                --cell-dirs {params.cell_dirs_arg} \
+                --output {output.counts_tsv} 2> {log}
+            """
+
+
+if 'alevin' in active_aligners and sim_technology == 'chromium':
+
+    rule normalize_alevin_chromium:
+        conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
+        input:
+            alevin_dir = op.join(config['base'], 'alevin', '{feature_set}', 'chromium', 'alevin')
+        output:
+            counts_tsv = op.join(normalize_dir, 'alevin_{feature_set}.tsv')
+        log: op.join(config['base'], 'logs', 'normalize_alevin_{feature_set}_chromium.log')
+        shell:
+            """
+            python {workflow.basedir}/scripts/normalize_alevin_chromium.py \
+                --alevin-dir {input.alevin_dir} \
+                --output {output.counts_tsv} 2> {log}
+            """
+
+
+if 'bowtie2' in active_aligners and sim_technology == 'smartseq2':
+
+    rule normalize_bowtie2_smartseq2:
+        input: op.join(config['base'], 'bowtie2', '{feature_set}', 'smartseq2', 'counts_merged.tsv')
+        output: op.join(normalize_dir, 'bowtie2_{feature_set}.tsv')
+        shell: "cp {input} {output}"
+
+
+if 'bowtie2' in active_aligners and sim_technology == 'chromium':
+
+    rule normalize_bowtie2_chromium:
+        input: op.join(config['base'], 'bowtie2', '{feature_set}', 'chromium', 'counts.tsv')
+        output: op.join(normalize_dir, 'bowtie2_{feature_set}.tsv')
+        wildcard_constraints: feature_set = '[a-z_]+'
+        shell: "cp {input} {output}"
