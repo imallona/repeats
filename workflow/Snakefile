@@ -6,11 +6,9 @@ Run with: snakemake --use-conda --cores N --configfile configs/simulation_smarts
 
 import os
 import os.path as op
-from snakemake.utils import validate
 
 configfile: "config.yaml"
 
-validate(config, schema="schemas/config.schema.yaml")
 
 include: "modules/download_references.snmk"
 include: "modules/reference.snmk"

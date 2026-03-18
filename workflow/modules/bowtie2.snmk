@@ -2,17 +2,28 @@
 """
 Bowtie2 alignment against the feature-set pseudo-genome, followed by featureCounts.
 
-Two independent chunking axes (both configurable, both default to 1 = no chunking):
-  featurecounts_cell_chunk_size    - SmartSeq2 only; cells per featureCounts job
-  featurecounts_n_feature_chunks   - both technologies; number of GTF pieces for featureCounts
+Two independent chunking axes are supported (both configured under aligner_params.bowtie2):
 
-Cell chunking reduces the number of BAM handles per job.
-Feature chunking reduces per-job memory when the annotation is large.
-The merge step reassembles the full feature x cell matrix from all chunks.
+  featurecounts_cell_chunk_size  (SmartSeq2 only, default 50)
+      Cells are batched into groups of this size before featureCounts is called.
+      Reduces per-job memory when there are many cells.
+
+  featurecounts_n_feature_chunks (both technologies, default 1)
+      The annotation GTF is split into this many pieces by gene_id.
+      Each piece is counted independently and results are merged afterwards.
+      Useful when the feature set is large and featureCounts RAM usage is a concern.
+
+Set both to 1 (the default) to run featureCounts in a single job with all cells and features.
+The merge step is a no-op in that case.
+
+Note: chunking has been implemented but is not yet exhaustively benchmarked.
+Defaults (no chunking) are recommended unless memory pressure requires it.
 """
 
 import os.path as op
 import math
+
+# Global config-derived helpers
 
 sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'smartseq2')
 bt2_cfg = config.get('aligner_params', {}).get('bowtie2', {})
@@ -22,7 +33,10 @@ feature_chunk_ids = list(range(n_feature_chunks))
 
 
 def bowtie2_index_prefix(wildcards):
-    return op.join(config['base'], 'references', f'bowtie2_{wildcards.feature_set}', wildcards.feature_set)
+    return op.join(
+        config['base'], 'references',
+        'bowtie2_' + wildcards.feature_set, wildcards.feature_set
+    )
 
 
 def gtf_for_feature_set(wildcards):
@@ -31,322 +45,352 @@ def gtf_for_feature_set(wildcards):
     return op.join(config['base'], 'tmp', 'repeats.gtf')
 
 
-def split_gtf_into_chunks(gtf_path, n_chunks, out_paths):
-    """Split a GTF into n_chunks files by gene_id, writing to out_paths."""
-    gene_ids = []
-    seen = set()
-    with open(gtf_path) as fh:
-        for line in fh:
-            if line.startswith('#'):
-                continue
-            parts = line.split('\t')
-            if len(parts) < 9:
-                continue
-            for attr in parts[8].split(';'):
-                attr = attr.strip()
-                if attr.startswith('gene_id'):
-                    gid = attr[len('gene_id'):].strip().strip('"')
-                    if gid not in seen:
-                        gene_ids.append(gid)
-                        seen.add(gid)
-
-    chunk_size = max(1, math.ceil(len(gene_ids) / n_chunks))
-    gene_id_to_chunk = {}
-    for idx, gid in enumerate(gene_ids):
-        gene_id_to_chunk[gid] = min(idx // chunk_size, n_chunks - 1)
-
-    handles = [open(p, 'w') for p in out_paths]
-    with open(gtf_path) as fh:
-        for line in fh:
-            if line.startswith('#'):
-                for h in handles:
-                    h.write(line)
-                continue
-            parts = line.split('\t')
-            if len(parts) < 9:
-                continue
-            gid = ''
-            for attr in parts[8].split(';'):
-                attr = attr.strip()
-                if attr.startswith('gene_id'):
-                    gid = attr[len('gene_id'):].strip().strip('"')
-                    break
-            chunk_idx = gene_id_to_chunk.get(gid, 0)
-            handles[chunk_idx].write(line)
-    for h in handles:
-        h.close()
-
-
+# SmartSeq2 helper variables (safe defaults for chromium so rules still parse)
 if sim_technology == 'smartseq2':
-
-    sim_cell_ids = [f'cell_{i + 1:03d}' for i in range(
-        config.get('simulation', {}).get('n_cells', 20))]
-    n_cell_chunks = max(1, math.ceil(len(sim_cell_ids) / cell_chunk_size))
-    cell_chunks = [sim_cell_ids[i * cell_chunk_size:(i + 1) * cell_chunk_size]
-                   for i in range(n_cell_chunks)]
-    cell_chunk_ids = list(range(n_cell_chunks))
-
-    rule bowtie2_align_smartseq2_cell:
-        conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
-        input:
-            index = lambda wc: op.join(config['base'], 'references',
-                                       f'bowtie2_{wc.feature_set}', f'{wc.feature_set}.1.bt2'),
-            fastq = op.join(config['base'], 'simulations', 'smartseq2', '{cell_id}.fastq.gz')
-                    if config['mode'] == 'simulation'
-                    else lambda wc: config['real_data']['samples'][wc.cell_id]['R1']
-        output:
-            bam = op.join(config['base'], 'bowtie2', '{feature_set}', 'smartseq2', '{cell_id}.bam')
-        params:
-            index_prefix = bowtie2_index_prefix,
-            extra_args = bt2_cfg.get('extra_args', '')
-        log: op.join(config['base'], 'logs', 'bowtie2_{feature_set}_smartseq2_{cell_id}.log')
-        benchmark: op.join(config['base'], 'benchmarks', 'bowtie2_{feature_set}_smartseq2_{cell_id}.txt')
-        threads: 4
-        shell:
-            """
-            bowtie2 -x {params.index_prefix} \
-                    -U {input.fastq} \
-                    --threads {threads} \
-                    {params.extra_args} 2> {log} | \
-            samtools sort -o {output.bam} -@ {threads}
-            samtools index {output.bam}
-            """
-
-    rule featurecounts_smartseq2_chunk:
-        """featureCounts on one cell chunk x one feature chunk."""
-        conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
-        input:
-            bams = lambda wc: expand(
-                op.join(config['base'], 'bowtie2', '{feature_set}', 'smartseq2', '{cell_id}.bam'),
-                feature_set=wc.feature_set,
-                cell_id=cell_chunks[int(wc.cell_chunk_id)]),
-            gtf = gtf_for_feature_set
-        output:
-            counts = temp(op.join(config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
-                                  'chunks', 'cell{cell_chunk_id}_feat{feature_chunk_id}.tsv'))
-        params:
-            tmp_counts = op.join(config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
-                                 'chunks', 'cell{cell_chunk_id}_feat{feature_chunk_id}.raw'),
-            tmp_gtf = op.join(config['base'], 'tmp',
-                              '{feature_set}_feat_chunk_{feature_chunk_id}.gtf')
-        log: op.join(config['base'], 'logs',
-                     'featurecounts_{feature_set}_cell{cell_chunk_id}_feat{feature_chunk_id}.log')
-        benchmark: op.join(config['base'], 'benchmarks',
-                           'featurecounts_{feature_set}_cell{cell_chunk_id}_feat{feature_chunk_id}.txt')
-        threads: 4
-        run:
-            gtf_paths = expand(
-                op.join(config['base'], 'tmp', '{feature_set}_feat_chunk_{fid}.gtf'),
-                feature_set=wildcards.feature_set,
-                fid=feature_chunk_ids)
-            if not all(op.exists(p) for p in gtf_paths):
-                split_gtf_into_chunks(input.gtf, n_feature_chunks, gtf_paths)
-            shell(
-                f"featureCounts "
-                f"  -T {{threads}} "
-                f"  -t exon "
-                f"  -g gene_id "
-                f"  -a {{params.tmp_gtf}} "
-                f"  -o {{params.tmp_counts}} "
-                f"  -M --fraction "
-                f"  {{input.bams}} 2> {{log}} && "
-                f"cut -f 1,7- {{params.tmp_counts}} | tail -n +2 > {{output.counts}}"
-            )
-
-    rule merge_featurecounts_smartseq2:
-        """Merge all cell x feature chunk count tables into the full feature x cell matrix."""
-        input:
-            chunks = expand(
-                op.join(config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
-                        'chunks', 'cell{cell_chunk_id}_feat{feature_chunk_id}.tsv'),
-                allow_missing=True,
-                cell_chunk_id=cell_chunk_ids,
-                feature_chunk_id=feature_chunk_ids)
-        output:
-            merged = op.join(config['base'], 'bowtie2', '{feature_set}', 'smartseq2', 'counts_merged.tsv')
-        run:
-            # Each chunk covers a subset of cells AND a subset of features.
-            # We group by cell_chunk_id to assemble the full feature set for each cell group,
-            # then merge cell groups horizontally.
-            import re
-
-            def parse_chunk_path(path):
-                m = re.search(r'cell(\d+)_feat(\d+)', path)
-                return int(m.group(1)), int(m.group(2))
-
-            def read_counts(path):
-                rows = {}
-                with open(path) as fh:
-                    header = fh.readline().rstrip('\n').split('\t')
-                    cells = header[1:]
-                    for line in fh:
-                        parts = line.rstrip('\n').split('\t')
-                        rows[parts[0]] = parts[1:]
-                return cells, rows
-
-            # Group chunks: cell_chunk_id -> {feature_chunk_id: (cells, rows)}
-            cell_groups = {}
-            for path in input.chunks:
-                cc, fc = parse_chunk_path(path)
-                cells, rows = read_counts(path)
-                cell_groups.setdefault(cc, {})[fc] = (cells, rows)
-
-            # Within each cell group, merge across feature chunks (vertically)
-            merged_groups = {}
-            for cc in sorted(cell_groups.keys()):
-                all_cells = cell_groups[cc][0][0]
-                all_rows = {}
-                for fc in sorted(cell_groups[cc].keys()):
-                    cells, rows = cell_groups[cc][fc]
-                    all_rows.update(rows)
-                merged_groups[cc] = (all_cells, all_rows)
-
-            # Across cell groups, collect all features and merge horizontally
-            all_features = list(dict.fromkeys(
-                feat for _, rows in merged_groups.values() for feat in rows))
-            all_cells = [cell for cells, _ in merged_groups.values() for cell in cells]
-
-            with open(output.merged, 'w') as out:
-                out.write('feature_id\t' + '\t'.join(all_cells) + '\n')
-                for feat in all_features:
-                    row_vals = []
-                    for cells, rows in merged_groups.values():
-                        feat_row = rows.get(feat, ['0'] * len(cells))
-                        row_vals.extend(feat_row)
-                    out.write(feat + '\t' + '\t'.join(row_vals) + '\n')
-
+    _ss2_cell_ids = [
+        f'cell_{i + 1:03d}'
+        for i in range(config.get('simulation', {}).get('n_cells', 20))
+    ]
+    _n_cell_chunks = max(1, math.ceil(len(_ss2_cell_ids) / cell_chunk_size))
+    _cell_chunks = [
+        _ss2_cell_ids[i * cell_chunk_size:(i + 1) * cell_chunk_size]
+        for i in range(_n_cell_chunks)
+    ]
+    _cell_chunk_ids = list(range(_n_cell_chunks))
 else:
+    _ss2_cell_ids = []
+    _cell_chunks = [[]]
+    _cell_chunk_ids = [0]
 
-    rule bowtie2_align_chromium_r2:
-        """Align R2 (cDNA) reads to the feature pseudo-genome."""
-        conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
-        input:
-            index = lambda wc: op.join(config['base'], 'references',
-                                       f'bowtie2_{wc.feature_set}', f'{wc.feature_set}.1.bt2'),
-            r2 = op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
-                 if config['mode'] == 'simulation'
-                 else lambda wc: config['real_data']['samples'][wc.sample]['R2']
-        output:
-            bam = op.join(config['base'], 'bowtie2', '{feature_set}', 'chromium', 'aligned.bam')
-        params:
-            index_prefix = bowtie2_index_prefix,
-            extra_args = bt2_cfg.get('extra_args', '')
-        log: op.join(config['base'], 'logs', 'bowtie2_{feature_set}_chromium.log')
-        benchmark: op.join(config['base'], 'benchmarks', 'bowtie2_{feature_set}_chromium.txt')
-        threads: config['resources']['max_threads']
-        shell:
-            """
-            bowtie2 -x {params.index_prefix} \
-                    -U {input.r2} \
-                    --threads {threads} \
-                    {params.extra_args} 2> {log} | \
-            samtools sort -o {output.bam} -@ {threads}
-            samtools index {output.bam}
-            """
 
-    rule tag_bam_with_barcodes_chromium:
-        """Attach CB and UMI tags from R1 to each read in the sorted BAM."""
-        conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
-        input:
-            bam = op.join(config['base'], 'bowtie2', '{feature_set}', 'chromium', 'aligned.bam'),
-            r1 = op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
-                 if config['mode'] == 'simulation'
-                 else lambda wc: config['real_data']['samples'][wc.sample]['R1']
-        output:
-            tagged_bam = op.join(config['base'], 'bowtie2', '{feature_set}', 'chromium', 'tagged.bam')
-        params:
-            cb_len = config.get('simulation', config.get('real_data', {})).get('cb_length', 16),
-            umi_len = config.get('simulation', config.get('real_data', {})).get('umi_length', 12)
-        log: op.join(config['base'], 'logs', 'tag_bam_{feature_set}_chromium.log')
-        benchmark: op.join(config['base'], 'benchmarks', 'tag_bam_{feature_set}_chromium.txt')
-        shell:
-            """
-            umi_tools extract \
-                --bc-pattern={'C' * params.cb_len + 'N' * params.umi_len} \
-                --stdin {input.r1} \
-                --read2-in {input.bam} \
-                --read2-out {output.tagged_bam} \
-                --log {log}
-            """
+def smartseq2_fastq(wc):
+    if config['mode'] == 'simulation':
+        return op.join(
+            config['base'], 'simulations', 'smartseq2', f'{wc.cell_id}.fastq.gz'
+        )
+    return config['real_data']['samples'][wc.cell_id]['R1']
 
-    rule umi_dedup_chromium:
-        """Deduplicate UMIs per cell per feature locus."""
-        conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
-        input: op.join(config['base'], 'bowtie2', '{feature_set}', 'chromium', 'tagged.bam')
-        output:
-            dedup_bam = op.join(config['base'], 'bowtie2', '{feature_set}', 'chromium', 'dedup.bam')
-        log: op.join(config['base'], 'logs', 'umi_dedup_{feature_set}_chromium.log')
-        benchmark: op.join(config['base'], 'benchmarks', 'umi_dedup_{feature_set}_chromium.txt')
-        shell:
-            """
-            umi_tools dedup \
-                --per-cell \
-                --stdin {input} \
-                --stdout {output.dedup_bam} \
-                --log {log}
-            """
 
-    rule featurecounts_chromium_feature_chunk:
-        """featureCounts on the full chromium BAM, one feature chunk at a time."""
-        conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
-        input:
-            bam = op.join(config['base'], 'bowtie2', '{feature_set}', 'chromium', 'dedup.bam'),
-            gtf = gtf_for_feature_set
-        output:
-            counts = temp(op.join(config['base'], 'bowtie2', '{feature_set}', 'chromium',
-                                  'chunks', 'feat{feature_chunk_id}.tsv'))
-        params:
-            tmp_counts = op.join(config['base'], 'bowtie2', '{feature_set}', 'chromium',
-                                 'chunks', 'feat{feature_chunk_id}.raw'),
-            tmp_gtf = op.join(config['base'], 'tmp',
-                              '{feature_set}_feat_chunk_{feature_chunk_id}.gtf')
-        log: op.join(config['base'], 'logs',
-                     'featurecounts_{feature_set}_chromium_feat{feature_chunk_id}.log')
-        benchmark: op.join(config['base'], 'benchmarks',
-                           'featurecounts_{feature_set}_chromium_feat{feature_chunk_id}.txt')
-        threads: config['resources']['max_threads']
-        run:
-            gtf_paths = expand(
-                op.join(config['base'], 'tmp', '{feature_set}_feat_chunk_{fid}.gtf'),
-                feature_set=wildcards.feature_set,
-                fid=feature_chunk_ids)
-            if not all(op.exists(p) for p in gtf_paths):
-                split_gtf_into_chunks(input.gtf, n_feature_chunks, gtf_paths)
-            shell(
-                f"featureCounts "
-                f"  -T {{threads}} "
-                f"  -t exon "
-                f"  -g gene_id "
-                f"  -a {{params.tmp_gtf}} "
-                f"  -o {{params.tmp_counts}} "
-                f"  -M --fraction "
-                f"  --byReadGroup "
-                f"  {{input.bam}} 2> {{log}} && "
-                f"cut -f 1,7- {{params.tmp_counts}} | tail -n +2 > {{output.counts}}"
+def chromium_r2(wc):
+    if config['mode'] == 'simulation':
+        return op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
+    return config['real_data']['samples'][wc.sample]['R2']
+
+
+def chromium_r1(wc):
+    if config['mode'] == 'simulation':
+        return op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
+    return config['real_data']['samples'][wc.sample]['R1']
+
+
+# barcode pattern for umi_tools (Chromium)
+_cb_len = config.get('simulation', config.get('real_data', {})).get('cb_length', 16)
+_umi_len = config.get('simulation', config.get('real_data', {})).get('umi_length', 12)
+_bc_pattern = 'C' * _cb_len + 'N' * _umi_len
+
+
+# Rules
+
+rule bowtie2_align_smartseq2_cell:
+    conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input:
+        index=lambda wc: op.join(
+            config['base'], 'references',
+            'bowtie2_' + wc.feature_set, wc.feature_set + '.1.bt2'
+        ),
+        fastq=smartseq2_fastq
+    output:
+        bam=op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'smartseq2', '{cell_id}.bam'
+        )
+    params:
+        index_prefix=bowtie2_index_prefix,
+        extra_args=bt2_cfg.get('extra_args', '')
+    log:
+        op.join(
+            config['base'], 'logs',
+            'bowtie2_{feature_set}_smartseq2_{cell_id}.log'
+        )
+    benchmark:
+        op.join(
+            config['base'], 'benchmarks',
+            'bowtie2_{feature_set}_smartseq2_{cell_id}.txt'
+        )
+    threads: 4
+    shell:
+        """
+        bowtie2 -x {params.index_prefix} -U {input.fastq} \
+            --threads {threads} {params.extra_args} 2> {log} \
+            | samtools sort -o {output.bam} -@ {threads}
+        samtools index {output.bam}
+        """
+
+
+rule split_gtf_for_featurecounts:
+    """Split the annotation GTF into N feature chunks for parallel featureCounts runs."""
+    input:
+        gtf=gtf_for_feature_set
+    output:
+        chunks=[
+            op.join(
+                config['base'], 'tmp',
+                f'{{feature_set}}_feat_chunk_{i}.gtf'
             )
+            for i in feature_chunk_ids
+        ]
+    params:
+        outdir=op.join(config['base'], 'tmp'),
+        prefix='{feature_set}_feat_chunk',
+        n_chunks=n_feature_chunks
+    log:
+        op.join(config['base'], 'logs', 'split_gtf_{feature_set}.log')
+    shell:
+        """
+        python {workflow.basedir}/scripts/split_gtf_chunks.py \
+            --gtf {input.gtf} --n-chunks {params.n_chunks} \
+            --outdir {params.outdir} --prefix {params.prefix} 2> {log}
+        """
 
-    rule merge_featurecounts_chromium:
-        """Concatenate feature-chunk count tables from the chromium run."""
-        input:
-            chunks = expand(
-                op.join(config['base'], 'bowtie2', '{feature_set}', 'chromium',
-                        'chunks', 'feat{feature_chunk_id}.tsv'),
-                allow_missing=True,
-                feature_chunk_id=feature_chunk_ids)
-        output:
-            counts = op.join(config['base'], 'bowtie2', '{feature_set}', 'chromium', 'counts.tsv')
-        run:
-            header = None
-            rows = {}
-            for path in input.chunks:
-                with open(path) as fh:
-                    h = fh.readline().rstrip('\n')
-                    if header is None:
-                        header = h
-                    for line in fh:
-                        parts = line.rstrip('\n').split('\t')
-                        rows[parts[0]] = parts[1:]
-            with open(output.counts, 'w') as out:
-                out.write(header + '\n')
-                for feat, vals in rows.items():
-                    out.write(feat + '\t' + '\t'.join(vals) + '\n')
+
+rule featurecounts_smartseq2_chunk:
+    """featureCounts on one cell chunk x one feature chunk (SmartSeq2)."""
+    conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input:
+        bams=lambda wc: expand(
+            op.join(
+                config['base'], 'bowtie2', '{feature_set}',
+                'smartseq2', '{cell_id}.bam'
+            ),
+            feature_set=wc.feature_set,
+            cell_id=_cell_chunks[int(wc.cell_chunk_id)]
+        ),
+        gtf_chunk=op.join(
+            config['base'], 'tmp',
+            '{feature_set}_feat_chunk_{feature_chunk_id}.gtf'
+        )
+    output:
+        counts=temp(
+            op.join(
+                config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
+                'chunks', 'cell{cell_chunk_id}_feat{feature_chunk_id}.tsv'
+            )
+        )
+    params:
+        tmp_counts=op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
+            'chunks', 'cell{cell_chunk_id}_feat{feature_chunk_id}.raw'
+        )
+    log:
+        op.join(
+            config['base'], 'logs',
+            'featurecounts_{feature_set}_cell{cell_chunk_id}_feat{feature_chunk_id}.log'
+        )
+    benchmark:
+        op.join(
+            config['base'], 'benchmarks',
+            'featurecounts_{feature_set}_cell{cell_chunk_id}_feat{feature_chunk_id}.txt'
+        )
+    threads: 4
+    shell:
+        """
+        featureCounts -T {threads} -t exon -g gene_id \
+            -a {input.gtf_chunk} -o {params.tmp_counts} \
+            -M --fraction {input.bams} 2> {log}
+        cut -f 1,7- {params.tmp_counts} | tail -n +2 > {output.counts}
+        """
+
+
+rule merge_featurecounts_smartseq2:
+    """Merge all cell x feature chunk count tables into the full feature x cell matrix."""
+    input:
+        chunks=expand(
+            op.join(
+                config['base'], 'bowtie2', '{{feature_set}}', 'smartseq2',
+                'chunks', 'cell{cell_chunk_id}_feat{feature_chunk_id}.tsv'
+            ),
+            cell_chunk_id=_cell_chunk_ids,
+            feature_chunk_id=feature_chunk_ids
+        ),
+        script=ancient(
+            op.join(workflow.basedir, 'scripts', 'merge_featurecounts.py')
+        )
+    output:
+        merged=op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
+            'counts_merged.tsv'
+        )
+    log:
+        op.join(
+            config['base'], 'logs',
+            'merge_featurecounts_{feature_set}_smartseq2.log'
+        )
+    shell:
+        """
+        python {input.script} --chunks {input.chunks} --output {output.merged} 2> {log}
+        """
+
+
+rule bowtie2_align_chromium_r2:
+    """Align R2 (cDNA) reads to the feature pseudo-genome (Chromium)."""
+    conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input:
+        index=lambda wc: op.join(
+            config['base'], 'references',
+            'bowtie2_' + wc.feature_set, wc.feature_set + '.1.bt2'
+        ),
+        r2=chromium_r2
+    output:
+        bam=op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'chromium', 'aligned.bam'
+        )
+    params:
+        index_prefix=bowtie2_index_prefix,
+        extra_args=bt2_cfg.get('extra_args', '')
+    log:
+        op.join(
+            config['base'], 'logs',
+            'bowtie2_{feature_set}_chromium.log'
+        )
+    benchmark:
+        op.join(
+            config['base'], 'benchmarks',
+            'bowtie2_{feature_set}_chromium.txt'
+        )
+    threads: config['resources']['max_threads']
+    shell:
+        """
+        bowtie2 -x {params.index_prefix} -U {input.r2} \
+            --threads {threads} {params.extra_args} 2> {log} \
+            | samtools sort -o {output.bam} -@ {threads}
+        samtools index {output.bam}
+        """
+
+
+rule tag_bam_with_barcodes_chromium:
+    """Attach CB and UMI tags from R1 to each read in the sorted BAM (Chromium)."""
+    conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input:
+        bam=op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'chromium', 'aligned.bam'
+        ),
+        r1=chromium_r1
+    output:
+        tagged_bam=op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'chromium', 'tagged.bam'
+        )
+    params:
+        bc_pattern=_bc_pattern
+    log:
+        op.join(
+            config['base'], 'logs',
+            'tag_bam_{feature_set}_chromium.log'
+        )
+    benchmark:
+        op.join(
+            config['base'], 'benchmarks',
+            'tag_bam_{feature_set}_chromium.txt'
+        )
+    shell:
+        """
+        umi_tools extract --bc-pattern={params.bc_pattern} \
+            --stdin {input.r1} --read2-in {input.bam} \
+            --read2-out {output.tagged_bam} --log {log}
+        """
+
+
+rule umi_dedup_chromium:
+    """Deduplicate UMIs per cell per feature locus (Chromium)."""
+    conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input:
+        op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'chromium', 'tagged.bam'
+        )
+    output:
+        dedup_bam=op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'chromium', 'dedup.bam'
+        )
+    log:
+        op.join(
+            config['base'], 'logs',
+            'umi_dedup_{feature_set}_chromium.log'
+        )
+    benchmark:
+        op.join(
+            config['base'], 'benchmarks',
+            'umi_dedup_{feature_set}_chromium.txt'
+        )
+    shell:
+        """
+        umi_tools dedup --per-cell --stdin {input} --stdout {output.dedup_bam} --log {log}
+        """
+
+
+rule featurecounts_chromium_chunk:
+    """featureCounts on the full chromium BAM, one feature chunk at a time."""
+    conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input:
+        bam=op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'chromium', 'dedup.bam'
+        ),
+        gtf_chunk=op.join(
+            config['base'], 'tmp',
+            '{feature_set}_feat_chunk_{feature_chunk_id}.gtf'
+        )
+    output:
+        counts=temp(
+            op.join(
+                config['base'], 'bowtie2', '{feature_set}', 'chromium',
+                'chunks', 'feat{feature_chunk_id}.tsv'
+            )
+        )
+    params:
+        tmp_counts=op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'chromium',
+            'chunks', 'feat{feature_chunk_id}.raw'
+        )
+    log:
+        op.join(
+            config['base'], 'logs',
+            'featurecounts_{feature_set}_chromium_feat{feature_chunk_id}.log'
+        )
+    benchmark:
+        op.join(
+            config['base'], 'benchmarks',
+            'featurecounts_{feature_set}_chromium_feat{feature_chunk_id}.txt'
+        )
+    threads: config['resources']['max_threads']
+    shell:
+        """
+        featureCounts -T {threads} -t exon -g gene_id \
+            -a {input.gtf_chunk} -o {params.tmp_counts} \
+            -M --fraction --byReadGroup {input.bam} 2> {log}
+        cut -f 1,7- {params.tmp_counts} | tail -n +2 > {output.counts}
+        """
+
+
+rule merge_featurecounts_chromium:
+    """Concatenate feature-chunk count tables from the chromium run."""
+    input:
+        chunks=expand(
+            op.join(
+                config['base'], 'bowtie2', '{{feature_set}}', 'chromium',
+                'chunks', 'feat{feature_chunk_id}.tsv'
+            ),
+            feature_chunk_id=feature_chunk_ids
+        ),
+        script=ancient(
+            op.join(workflow.basedir, 'scripts', 'merge_featurecounts.py')
+        )
+    output:
+        counts=op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'chromium', 'counts.tsv'
+        )
+    log:
+        op.join(
+            config['base'], 'logs',
+            'merge_featurecounts_{feature_set}_chromium.log'
+        )
+    shell:
+        """
+        python {input.script} --chunks {input.chunks} --output {output.counts} 2> {log}
+        """
