@@ -4,7 +4,7 @@ channels:
   - conda-forge
   - nodefaults
 dependencies:
-  - bioconda::star=2.7.11b
+  - bioconda::star>=2.7.10a
   - bioconda::samtools
   - bioconda::htslib
   - bioconda::bedtools

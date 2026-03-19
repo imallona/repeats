@@ -1,11 +1,15 @@
-base: "/home/imallona/repeats/sim_chromium"
+base: "/home/imallona/repeats/results/simulation_chromium"
 
 reference:
-  genome_fasta: "/home/imallona/repeats/refs/Homo_sapiens.GRCh38.dna.chromosome.1.fa.gz"
-  repeats_gtf: "/home/imallona/repeats/refs/GRCh38_Ensembl_rmsk_TE.gtf.gz"
-  genes_gtf: "/home/imallona/repeats/refs/Homo_sapiens.GRCh38.112.chr.gtf.gz"
-  chromosomes: ["1"]
+  assembly: hg38
+  ensembl_release: "112"
+  chromosomes: ["chr1"]
+  # Split repeats into genic/intergenic subsets using gene body overlap (bedtools)
   filter_genic: true
+  rmsk_source: ucsc_flatfile
+  genome_fasta: "/home/imallona/repeats/results/simulation_chromium/refs/GRCh38.dna.primary_assembly.fa.gz"
+  repeats_gtf: "/home/imallona/repeats/results/simulation_chromium/refs/hg38_rmsk_TE.gtf.gz"
+  genes_gtf: "/home/imallona/repeats/results/simulation_chromium/refs/GRCh38.112.genes.gtf.gz"
 
 mode: simulation
 
@@ -34,7 +38,7 @@ aligner_params:
     extra_args: ""
   bowtie2:
     extra_args: ""
-    featurecounts_chunk_size: 50
+    featurecounts_cell_chunk_size: 50
 
 resources:
   max_threads: 10

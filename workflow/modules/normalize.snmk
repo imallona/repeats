@@ -116,14 +116,17 @@ if 'alevin' in active_aligners and sim_technology == 'chromium':
     rule normalize_alevin_chromium:
         conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
         input:
-            alevin_dir = op.join(config['base'], 'alevin', '{feature_set}', 'chromium', 'alevin')
+            quants_mat = op.join(config['base'], 'alevin', '{feature_set}', 'chromium',
+                                 'alevin', 'quants_mat.gz')
         output:
             counts_tsv = op.join(normalize_dir, 'alevin_{feature_set}.tsv')
+        params:
+            alevin_dir = op.join(config['base'], 'alevin', '{feature_set}', 'chromium', 'alevin')
         log: op.join(config['base'], 'logs', 'normalize_alevin_{feature_set}_chromium.log')
         shell:
             """
             python {workflow.basedir}/scripts/normalize_alevin_chromium.py \
-                --alevin-dir {input.alevin_dir} \
+                --alevin-dir {params.alevin_dir} \
                 --output {output.counts_tsv} 2> {log}
             """
 

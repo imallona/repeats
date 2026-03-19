@@ -4,6 +4,7 @@ reference:
   assembly: hg38
   ensembl_release: "112"
   chromosomes: ["chr1"]
+  # Split repeats into genic/intergenic subsets using gene body overlap (bedtools)
   filter_genic: true
   rmsk_source: ucsc_flatfile
 

@@ -21,7 +21,7 @@ simulation_script = op.join(workflow.basedir, 'scripts', 'simulate_reads.py')
 
 
 rule simulate_smartseq2:
-    conda: op.join('envs', 'star.yaml')
+    conda: op.join('envs', 'evaluation.yaml')
     input:
         gtf = config['reference']['repeats_gtf'],
         fasta = config['reference']['genome_fasta']
@@ -62,7 +62,7 @@ rule simulate_smartseq2:
 
 
 rule simulate_chromium:
-    conda: op.join('envs', 'star.yaml')
+    conda: op.join('envs', 'evaluation.yaml')
     input:
         gtf = config['reference']['repeats_gtf'],
         fasta = config['reference']['genome_fasta']

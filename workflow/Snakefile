@@ -26,7 +26,7 @@ include: "modules/normalize.snmk"
 if config['mode'] == 'simulation':
     include: "modules/evaluation.snmk"
 
-for subdir in ['tmp', 'logs', 'benchmarks', 'references', 'counts', 'evaluation']:
+for subdir in ['tmp', 'logs', 'benchmarks', 'references', 'refs', 'counts', 'evaluation']:
     os.makedirs(op.join(config['base'], subdir), exist_ok=True)
 
 

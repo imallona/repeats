@@ -209,10 +209,26 @@ def simulate_chromium(fasta_path, cell_plan, read_length, barcode_length, umi_le
     chrom_gene_coords = build_chrom_gene_coords(cell_plan)
     needed_chroms = set(chrom_gene_coords.keys())
 
-    cell_barcodes = sorted(set(cell_plan.keys()))
+    cell_ids = sorted(set(cell_plan.keys()))
+    cell_id_to_barcode = {}
+    used_barcodes = set()
+    for cid in cell_ids:
+        bc = ''.join(rng.choices('ACGT', k=barcode_length))
+        while bc in used_barcodes:
+            bc = ''.join(rng.choices('ACGT', k=barcode_length))
+        used_barcodes.add(bc)
+        cell_id_to_barcode[cid] = bc
+
     barcodes_path = os.path.join(outdir, 'barcodes.txt')
     with open(barcodes_path, 'w') as fh:
-        fh.write('\n'.join(cell_barcodes) + '\n')
+        for cid in cell_ids:
+            fh.write(cell_id_to_barcode[cid] + '\n')
+
+    barcode_map_path = os.path.join(outdir, 'barcode_to_cell_id.tsv')
+    with open(barcode_map_path, 'w') as fh:
+        fh.write('barcode\tcell_id\n')
+        for cid in cell_ids:
+            fh.write(f'{cell_id_to_barcode[cid]}\t{cid}\n')
 
     r1_path = os.path.join(outdir, 'R1.fastq.gz')
     r2_path = os.path.join(outdir, 'R2.fastq.gz')
@@ -226,21 +242,22 @@ def simulate_chromium(fasta_path, cell_plan, read_length, barcode_length, umi_le
                 if repeat_seq is None:
                     continue
                 for cell_id, count, family_id, class_id in gene_to_cells[gene_id]:
+                    barcode = cell_id_to_barcode[cell_id]
                     used_umis = set()
                     for _ in range(count):
                         umi = ''.join(rng.choices('ACGT', k=umi_length))
                         while umi in used_umis:
                             umi = ''.join(rng.choices('ACGT', k=umi_length))
                         used_umis.add(umi)
-                        read_id = f'r{total_reads}_{cell_id[:6]}_{umi}_{safe_id(gene_id)}'
-                        r1_seq = cell_id + umi
+                        read_id = f'r{total_reads}_{barcode[:8]}_{umi}_{safe_id(gene_id)}'
+                        r1_seq = barcode + umi
                         r2_seq = sample_subseq(repeat_seq, read_length, rng)
                         r1f.write(f'@{read_id}\n{r1_seq}\n+\n{make_qual(len(r1_seq))}\n')
                         r2f.write(f'@{read_id}\n{r2_seq}\n+\n{make_qual(len(r2_seq))}\n')
                         total_reads += 1
-                    ground_truth[cell_id][gene_id] = (count, family_id, class_id)
+                    ground_truth[barcode][gene_id] = (count, family_id, class_id)
 
-    print(f'  {total_reads} read pairs across {len(cell_barcodes)} cells', file=sys.stderr)
+    print(f'  {total_reads} read pairs across {len(cell_ids)} cells', file=sys.stderr)
     return (r1_path, r2_path), ground_truth
 
 

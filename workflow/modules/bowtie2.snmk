@@ -196,7 +196,7 @@ rule featurecounts_smartseq2_chunk:
         featureCounts -T {threads} -t exon -g gene_id \
             -a {input.gtf_chunk} -o {params.tmp_counts} \
             -M --fraction {input.bams} 2> {log}
-        cut -f 1,7- {params.tmp_counts} | tail -n +2 > {output.counts}
+        grep -v '^#' {params.tmp_counts} | cut -f 1,7- > {output.counts}
         """
 
 
@@ -267,19 +267,23 @@ rule bowtie2_align_chromium_r2:
 
 
 rule tag_bam_with_barcodes_chromium:
-    """Attach CB and UMI tags from R1 to each read in the sorted BAM (Chromium)."""
+    """Attach CB and UB tags from R1 to each read in the sorted BAM (Chromium)."""
     conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
     input:
         bam=op.join(
             config['base'], 'bowtie2', '{feature_set}', 'chromium', 'aligned.bam'
         ),
-        r1=chromium_r1
+        r1=chromium_r1,
+        script=ancient(
+            op.join(workflow.basedir, 'scripts', 'tag_bam_chromium.py')
+        )
     output:
         tagged_bam=op.join(
             config['base'], 'bowtie2', '{feature_set}', 'chromium', 'tagged.bam'
         )
     params:
-        bc_pattern=_bc_pattern
+        cb_length=_cb_len,
+        umi_length=_umi_len
     log:
         op.join(
             config['base'], 'logs',
@@ -292,9 +296,11 @@ rule tag_bam_with_barcodes_chromium:
         )
     shell:
         """
-        umi_tools extract --bc-pattern={params.bc_pattern} \
-            --stdin {input.r1} --read2-in {input.bam} \
-            --read2-out {output.tagged_bam} --log {log}
+        python {input.script} \
+            --bam {input.bam} --r1 {input.r1} \
+            --output {output.tagged_bam} \
+            --cb-length {params.cb_length} \
+            --umi-length {params.umi_length} 2> {log}
         """
 
 
@@ -364,7 +370,7 @@ rule featurecounts_chromium_chunk:
         featureCounts -T {threads} -t exon -g gene_id \
             -a {input.gtf_chunk} -o {params.tmp_counts} \
             -M --fraction --byReadGroup {input.bam} 2> {log}
-        cut -f 1,7- {params.tmp_counts} | tail -n +2 > {output.counts}
+        grep -v '^#' {params.tmp_counts} | cut -f 1,7- > {output.counts}
         """
 
 

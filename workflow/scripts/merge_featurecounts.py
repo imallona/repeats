@@ -16,12 +16,18 @@ from collections import defaultdict
 def read_tsv(path):
     rows = {}
     with open(path) as fh:
-        hdr = fh.readline().rstrip('\n').split('\t')
+        hdr = None
         for line in fh:
-            parts = line.rstrip('\n').split('\t')
+            line = line.rstrip('\n')
+            if line.startswith('#'):
+                continue
+            if hdr is None:
+                hdr = line.split('\t')
+                continue
+            parts = line.split('\t')
             if parts:
                 rows[parts[0]] = parts[1:]
-    return hdr[1:], rows
+    return (hdr or [''])[1:], rows
 
 
 def parse_chunk_ids(path):

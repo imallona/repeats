@@ -107,7 +107,7 @@ else:
             max_ram_bytes = config['resources']['max_mem_mb'] * 1024 * 1024,
             cb_len = config.get('simulation', config.get('real_data', {})).get('cb_length', 16),
             umi_len = config.get('simulation', config.get('real_data', {})).get('umi_length', 12),
-            umi_start = lambda wc, params: params.cb_len + 1,
+            umi_start = config.get('simulation', config.get('real_data', {})).get('cb_length', 16) + 1,
             extra_args = config.get('aligner_params', {}).get('starsolo', {}).get('extra_args', '')
         log: op.join(config['base'], 'logs', 'starsolo_chromium_{multimappers}_{feature_set}.log')
         benchmark: op.join(config['base'], 'benchmarks', 'starsolo_chromium_{multimappers}_{feature_set}.txt')
