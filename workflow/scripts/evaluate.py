@@ -21,13 +21,13 @@ def load_ground_truth(gt_path, granularity='gene_id'):
     """
     Returns:
       truth: {cell_id: {feature_id: count}}
-      repeat_meta: {feature_id: (family_id, class_id)}  (may be partial for non-gene_id levels)
+      repeat_meta: {feature_id: (family_id, class_id)}
 
     granularity controls how ground truth counts are aggregated:
-      gene_id   - group by repeat_id (= gene_id), default behaviour
+      gene_id   - group by repeat_id (= gene_id)
       family_id - sum true_count by cell_id + family_id
       class_id  - sum true_count by cell_id + class_id
-      locus     - treated as gene_id (locus-level ground truth not available)
+      locus     - treated as gene_id
     """
     from collections import defaultdict as _dd
     raw = []
@@ -67,7 +67,6 @@ def load_count_matrix(tsv_path):
     Returns:
       observed: {cell_id: {repeat_id: count}}
       all_matrix_features: set of all feature IDs in the matrix (incl. zero-count rows)
-    Streams the file line by line to avoid loading the full dense matrix.
     """
     observed = defaultdict(dict)
     all_matrix_features = set()
@@ -121,7 +120,6 @@ def detection_metrics(truth_expressed_set, observed_expressed_set, all_features)
 
 
 def build_aligned_vectors(truth, observed, cells, features):
-    """Build paired truth/observed count vectors over all (cell, feature) combinations."""
     truth_vec = []
     obs_vec = []
     for cell_id in cells:
@@ -210,34 +208,32 @@ def main():
     ap.add_argument('--observed-counts', required=True,
                     help='Standard feature x cell TSV from a normalize_*.py script')
     ap.add_argument('--aligner', required=True)
-    ap.add_argument('--multimapper-mode', default='unique_reads')
+    ap.add_argument('--multimapper-mode', default='unique')
     ap.add_argument('--granularity', default='gene_id',
-                    choices=['locus', 'gene_id', 'family_id', 'class_id'],
-                    help='Granularity level at which to aggregate ground truth and observed counts')
+                    choices=['locus', 'gene_id', 'family_id', 'class_id'])
+    ap.add_argument('--feature-set', default='repeats',
+                    help='Feature set being evaluated (repeats, genic_repeats, '
+                         'intergenic_repeats). Used to filter ground truth to the '
+                         'feature_set\'s loci when --locus-map is provided.')
     ap.add_argument('--benchmark', default=None)
     ap.add_argument('--locus-map', default=None,
-                    help='4-col TSV (transcript_id, gene_id, family_id, class_id) '
-                         'listing ALL annotation features. Used to define the '
-                         'full feature universe for specificity computation.')
+                    help='4-col TSV (transcript_id, gene_id, family_id, class_id). '
+                         'Expands the feature universe for specificity and restricts '
+                         'ground truth to this feature_set\'s loci.')
     ap.add_argument('--output-prefix', required=True)
     args = ap.parse_args()
 
-    print(f'Loading ground truth from {args.ground_truth} at granularity={args.granularity}', file=sys.stderr)
+    print(f'Loading ground truth from {args.ground_truth} at granularity={args.granularity}',
+          file=sys.stderr)
     truth, repeat_meta = load_ground_truth(args.ground_truth, granularity=args.granularity)
 
     print(f'Loading observed counts from {args.observed_counts}', file=sys.stderr)
     observed, matrix_features = load_count_matrix(args.observed_counts)
 
-    all_cells = sorted(set(truth.keys()) | set(observed.keys()))
-    common_cells = sorted(set(truth.keys()) & set(observed.keys()))
-
-    # Build feature universe: include expressed features + full annotation
-    # so specificity (true negatives) is meaningful.
-    feature_universe = (
-        matrix_features |
-        {f for cell in truth for f in truth[cell]} |
-        {f for cell in observed for f in observed[cell]}
-    )
+    # Build feature universe from locus_map, and optionally filter truth to it.
+    # This ensures that for genic_repeats / intergenic_repeats, ground truth
+    # features outside the feature_set are not counted as false negatives.
+    locus_map_features = set()
     if args.locus_map and os.path.exists(args.locus_map):
         col = {'gene_id': 1, 'family_id': 2, 'class_id': 3, 'locus': 0}.get(
             args.granularity, 1)
@@ -245,16 +241,31 @@ def main():
             for line in fh:
                 parts = line.rstrip('\n').split('\t')
                 if len(parts) > col:
-                    feature_universe.add(parts[col])
-        print(f'  Feature universe expanded to {len(feature_universe)} '
-              f'(with locus-map)', file=sys.stderr)
+                    locus_map_features.add(parts[col])
+        print(f'  Locus map loaded: {len(locus_map_features)} features at '
+              f'{args.granularity} level', file=sys.stderr)
+        # Filter ground truth to this feature_set's loci
+        truth = {
+            cell: {f: c for f, c in feats.items() if f in locus_map_features}
+            for cell, feats in truth.items()
+        }
+
+    feature_universe = (
+        matrix_features |
+        {f for cell in truth for f in truth[cell]} |
+        {f for cell in observed for f in observed[cell]} |
+        locus_map_features
+    )
     all_features = sorted(feature_universe)
 
+    common_cells = sorted(set(truth.keys()) & set(observed.keys()))
     print(f'  {len(common_cells)} common cells, {len(all_features)} features', file=sys.stderr)
 
     global_metrics = compute_metrics_for_subset(truth, observed, common_cells, all_features)
     global_metrics['aligner'] = args.aligner
     global_metrics['multimapper_mode'] = args.multimapper_mode
+    global_metrics['feature_set'] = args.feature_set
+    global_metrics['granularity'] = args.granularity
 
     bench = load_benchmark(args.benchmark)
     global_metrics.update(bench)
@@ -265,10 +276,12 @@ def main():
     for row in per_cell_rows:
         row['aligner'] = args.aligner
         row['multimapper_mode'] = args.multimapper_mode
+        row['feature_set'] = args.feature_set
+        row['granularity'] = args.granularity
     write_tsv(per_cell_rows, args.output_prefix + '_per_cell_metrics.tsv',
               fallback_fields=['cell_id', 'pearson_r', 'spearman_r',
                                'n_truth_expressed', 'n_observed_expressed',
-                               'aligner', 'multimapper_mode'])
+                               'aligner', 'multimapper_mode', 'feature_set', 'granularity'])
 
     class_to_features = defaultdict(list)
     for feat in all_features:
@@ -284,10 +297,12 @@ def main():
         row['class_id'] = class_id
         row['aligner'] = args.aligner
         row['multimapper_mode'] = args.multimapper_mode
+        row['feature_set'] = args.feature_set
+        row['granularity'] = args.granularity
         per_family_rows.append(row)
     write_tsv(per_family_rows, args.output_prefix + '_per_family_metrics.tsv',
-              fallback_fields=['class_id', 'aligner', 'multimapper_mode',
-                               'pearson_r', 'spearman_r', 'n_cells',
+              fallback_fields=['class_id', 'aligner', 'multimapper_mode', 'feature_set',
+                               'granularity', 'pearson_r', 'spearman_r', 'n_cells',
                                'n_features', 'sensitivity', 'specificity'])
 
     print(f'Metrics written to {args.output_prefix}_*.tsv', file=sys.stderr)

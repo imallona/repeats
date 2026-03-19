@@ -11,14 +11,14 @@ configfile: "config.yaml"
 
 
 _chroms = config['reference'].get('chromosomes', [])
-# Tag added to reference directory names to reflect chromosome subset
-# e.g. chromosomes: [chr10] -> genome_tag = 'chr10', empty -> 'all'
 genome_tag = '_'.join(sorted(_chroms)) if _chroms else 'all'
+
+if 'indices_base' not in config:
+    config['indices_base'] = config['base']
 
 include: "modules/download_references.snmk"
 include: "modules/data_acquisition.snmk"
 include: "modules/reference.snmk"
-
 
 if config['mode'] == 'simulation':
     include: "modules/simulations.snmk"
@@ -32,29 +32,43 @@ include: "modules/normalize.snmk"
 if config['mode'] == 'simulation':
     include: "modules/evaluation.snmk"
 
-for subdir in ['tmp', 'logs', 'benchmarks', 'indices', 'refs', 'counts', 'evaluation']:
+for subdir in ['tmp', 'logs', 'benchmarks', 'counts', 'evaluation']:
     os.makedirs(op.join(config['base'], subdir), exist_ok=True)
+for subdir in ['indices', 'refs']:
+    os.makedirs(op.join(config['indices_base'], subdir), exist_ok=True)
 
 
 active_aligners = config.get('aligners', [])
 feature_sets = config.get('feature_sets', ['repeats'])
 sim_cfg = config.get('simulation', {})
 sim_technology = sim_cfg.get('technology', 'smartseq2')
-starsolo_modes = (config.get('aligner_params', {}).get('starsolo', {}).get('multimapper_modes', ['unique']))
-if sim_technology == 'smartseq2' and 'multimapping' in starsolo_modes:
-    print('Warning: STARsolo SmartSeq mode does not support EM multimappers. Removing multimapping from modes.')
-    starsolo_modes = [m for m in starsolo_modes if m != 'multimapping']
+
+starsolo_modes = (config.get('aligner_params', {}).get('starsolo', {})
+                  .get('multimapper_modes', ['unique']))
+bowtie2_modes = (config.get('aligner_params', {}).get('bowtie2', {})
+                 .get('multimapper_modes', ['unique']))
+
+# STARsolo soloType SmartSeq does not support EM multimappers (STAR manual limitation).
+# soloType CB_UMI_Simple (chromium) does support EM via --soloMultiMappers EM.
+if sim_technology == 'smartseq2' and 'multi' in starsolo_modes:
+    print('Warning: STARsolo soloType SmartSeq does not support EM multimappers '
+          '(STAR limitation; EM is only available for soloType CB_UMI_Simple). '
+          'Removing multi from starsolo_modes.')
+    starsolo_modes = [m for m in starsolo_modes if m != 'multi']
 
 sim_cell_ids = [f'cell_{i + 1:03d}' for i in range(sim_cfg.get('n_cells', 20))]
 
 eval_dir = op.join(config['base'], 'evaluation')
 counts_dir = op.join(config['base'], 'counts')
 
+granularities = config.get('granularities', ['family_id'])
+_repeat_fsets = [fs for fs in feature_sets
+                 if fs in ('repeats', 'genic_repeats', 'intergenic_repeats')]
+_eval_fsets = _repeat_fsets  # only repeat feature_sets have ground truth
 
-def genic_filter_outputs():
-    if not config['reference'].get('filter_genic', False):
-        return []
-    refs = op.join(config['base'], 'indices', genome_tag)
+
+def reference_outputs():
+    refs = op.join(config['indices_base'], 'indices', genome_tag)
     return [
         op.join(refs, 'genic_repeats.gtf'),
         op.join(refs, 'intergenic_repeats.gtf'),
@@ -78,33 +92,67 @@ def simulation_outputs():
     return outputs
 
 
-granularities = config.get('granularities', ['family_id'])
-
-
 def aligner_count_outputs():
     outputs = []
+
     if 'starsolo' in active_aligners:
-        outputs += expand(op.join(counts_dir, 'starsolo_{multimappers}_genes.tsv'),
-                          multimappers=starsolo_modes)
-        outputs += expand(op.join(counts_dir, 'starsolo_{multimappers}_repeats_{granularity}.tsv'),
-                          multimappers=starsolo_modes, granularity=granularities)
-    for aligner in ['alevin', 'kallisto', 'bowtie2']:
-        if aligner in active_aligners:
-            outputs += expand(op.join(counts_dir, f'{aligner}_{{feature_set}}_{{granularity}}.tsv'),
-                              feature_set=[fs for fs in feature_sets if fs != 'genes'],
-                              granularity=granularities)
+        if 'genes' in feature_sets:
+            outputs += expand(
+                op.join(counts_dir, 'starsolo_genes_gene_id_{multimapper_mode}.tsv'),
+                multimapper_mode=starsolo_modes)
+        outputs += expand(
+            op.join(counts_dir, 'starsolo_{feature_set}_{granularity}_{multimapper_mode}.tsv'),
+            feature_set=_repeat_fsets,
+            granularity=granularities,
+            multimapper_mode=starsolo_modes)
+
+    for aligner in ['kallisto', 'alevin']:
+        if aligner not in active_aligners:
+            continue
+        if 'genes' in feature_sets:
+            outputs.append(op.join(counts_dir, f'{aligner}_genes_gene_id_unique.tsv'))
+        outputs += expand(
+            op.join(counts_dir, f'{aligner}_{{feature_set}}_{{granularity}}_unique.tsv'),
+            feature_set=_repeat_fsets,
+            granularity=granularities)
+
+    if 'bowtie2' in active_aligners:
+        outputs += expand(
+            op.join(counts_dir, 'bowtie2_{feature_set}_{granularity}_{multimapper_mode}.tsv'),
+            feature_set=_repeat_fsets,
+            granularity=granularities,
+            multimapper_mode=bowtie2_modes)
+
     return outputs
 
 
 def evaluation_outputs():
     outputs = []
+
     if 'starsolo' in active_aligners:
-        outputs += expand(op.join(eval_dir, 'starsolo_{multimappers}_{granularity}_global_metrics.tsv'),
-                          multimappers=starsolo_modes, granularity=granularities)
-    for aligner in ['alevin', 'kallisto', 'bowtie2']:
+        outputs += expand(
+            op.join(eval_dir,
+                    'starsolo_{feature_set}_{granularity}_{multimapper_mode}_global_metrics.tsv'),
+            feature_set=_eval_fsets,
+            granularity=granularities,
+            multimapper_mode=starsolo_modes)
+
+    if 'bowtie2' in active_aligners:
+        outputs += expand(
+            op.join(eval_dir,
+                    'bowtie2_{feature_set}_{granularity}_{multimapper_mode}_global_metrics.tsv'),
+            feature_set=_eval_fsets,
+            granularity=granularities,
+            multimapper_mode=bowtie2_modes)
+
+    for aligner in ['kallisto', 'alevin']:
         if aligner in active_aligners:
-            outputs += expand(op.join(eval_dir, f'{aligner}_{{granularity}}_global_metrics.tsv'),
-                              granularity=granularities)
+            outputs += expand(
+                op.join(eval_dir,
+                        f'{aligner}_{{feature_set}}_{{granularity}}_unique_global_metrics.tsv'),
+                feature_set=_eval_fsets,
+                granularity=granularities)
+
     outputs.append(op.join(eval_dir, 'summary_global_metrics.tsv'))
     outputs.append(op.join(eval_dir, 'evaluation_report.html'))
     return outputs
@@ -112,7 +160,7 @@ def evaluation_outputs():
 
 rule all:
     input:
-        genic_filter_outputs(),
+        reference_outputs(),
         simulation_outputs() if config['mode'] == 'simulation' else [],
         aligner_count_outputs(),
         evaluation_outputs() if config['mode'] == 'simulation' else []

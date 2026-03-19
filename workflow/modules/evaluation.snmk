@@ -1,141 +1,163 @@
 #!/usr/bin/env snakemake -s
 """
-Evaluation rules: run evaluate.py for every aligner x granularity combination
-and aggregate results into a single summary table.
-Only active when mode is simulation (ground truth required).
-Evaluation is always against the "repeats" feature set since that is what the
-simulation uses to generate ground truth.
+Evaluation rules: compare aligner outputs against simulation ground truth.
+Evaluated combinations:
+  - All repeat feature_sets (repeats, genic_repeats, intergenic_repeats)
+  - All granularities (gene_id, family_id, class_id)
+  - All multimapper_modes applicable per aligner
+The genes feature_set is excluded from evaluation because the simulation
+generates reads from repeats only (no gene-level ground truth).
+The locus_map for each feature_set is passed to evaluate.py both to expand
+the feature universe (specificity) and to restrict ground truth to the
+feature_set's loci (correct FN calculation for genic/intergenic subsets).
 """
-
 import os.path as op
-
 active_aligners = config.get('aligners', [])
 sim_technology = config.get('simulation', {}).get('technology', 'smartseq2')
-starsolo_modes = (config.get('aligner_params', {}).get('starsolo', {}).get('multimapper_modes', ['unique']))
-granular_aligners = [a for a in active_aligners if a in ('alevin', 'kallisto', 'bowtie2')]
-single_mode_aligners = [a for a in active_aligners if a != 'starsolo']
+starsolo_modes = config.get('aligner_params', {}).get('starsolo', {}).get(
+    'multimapper_modes', ['unique'])
+if sim_technology == 'smartseq2' and 'multi' in starsolo_modes:
+    starsolo_modes = [m for m in starsolo_modes if m != 'multi']
+bowtie2_modes = config.get('aligner_params', {}).get('bowtie2', {}).get(
+    'multimapper_modes', ['unique'])
 granularities = config.get('granularities', ['family_id'])
-
 evaluation_script = op.join(workflow.basedir, 'scripts', 'evaluate.py')
 counts_dir = op.join(config['base'], 'counts')
 eval_dir = op.join(config['base'], 'evaluation')
-
-ground_truth_path = op.join(config['base'], 'simulations', sim_technology, 'ground_truth.tsv')
-locus_map_path = op.join(config['base'], 'indices', genome_tag, 'repeats_locus_map.tsv')
-
-
-
-
-rule evaluate_starsolo:
+ground_truth_path = op.join(config['base'], 'simulations', sim_technology,
+                            'ground_truth.tsv')
+_repeat_fsets = ['repeats', 'genic_repeats', 'intergenic_repeats']
+_eval_fsets = [fs for fs in _repeat_fsets
+               if fs in config.get('feature_sets', _repeat_fsets)]
+_pseudo_aligners = [a for a in active_aligners if a in ('alevin', 'kallisto')]
+_genome_aligners = [a for a in active_aligners if a in ('starsolo', 'bowtie2')]
+def eval_locus_map(wildcards):
+    return op.join(config['indices_base'], 'indices', genome_tag,
+                   f'{wildcards.feature_set}_locus_map.tsv')
+def eval_benchmark(wildcards):
+    aligner = wildcards.aligner
+    mm = wildcards.multimapper_mode
+    fs = wildcards.feature_set
+    if aligner == 'starsolo':
+        return op.join(config['base'], 'benchmarks',
+                       f'starsolo_{sim_technology}_{mm}_{fs}.txt')
+    if aligner == 'bowtie2':
+        return op.join(config['base'], 'benchmarks',
+                       f'count_bowtie2_{fs}_smartseq2_{wildcards.granularity}_{mm}.txt')
+    return op.join(config['base'], 'benchmarks',
+                   f'salmon_{fs}_quant_smartseq2_cell_001.txt'
+                   if aligner == 'alevin'
+                   else f'kallisto_{fs}_smartseq2_cell_001.txt')
+rule evaluate_combination:
+    """Evaluate one (aligner, feature_set, granularity, multimapper_mode) combination."""
     conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
     input:
         ground_truth = ground_truth_path,
-        counts = op.join(counts_dir, 'starsolo_{multimappers}_repeats_{granularity}.tsv'),
-        benchmark = op.join(config['base'], 'benchmarks',
-                            f'starsolo_{sim_technology}_{{multimappers}}_repeats.txt'),
-        locus_map = locus_map_path
+        counts = op.join(counts_dir,
+                         '{aligner}_{feature_set}_{granularity}_{multimapper_mode}.tsv'),
+        locus_map = eval_locus_map
     output:
-        global_metrics = op.join(eval_dir, 'starsolo_{multimappers}_{granularity}_global_metrics.tsv'),
-        per_cell = op.join(eval_dir, 'starsolo_{multimappers}_{granularity}_per_cell_metrics.tsv'),
-        per_family = op.join(eval_dir, 'starsolo_{multimappers}_{granularity}_per_family_metrics.tsv')
+        global_metrics = op.join(eval_dir,
+            '{aligner}_{feature_set}_{granularity}_{multimapper_mode}_global_metrics.tsv'),
+        per_cell = op.join(eval_dir,
+            '{aligner}_{feature_set}_{granularity}_{multimapper_mode}_per_cell_metrics.tsv'),
+        per_family = op.join(eval_dir,
+            '{aligner}_{feature_set}_{granularity}_{multimapper_mode}_per_family_metrics.tsv')
     wildcard_constraints:
-        multimappers = 'unique|multimapping',
-        granularity = 'gene_id|family_id|class_id'
+        aligner = 'starsolo|kallisto|alevin|bowtie2',
+        feature_set = 'repeats|genic_repeats|intergenic_repeats',
+        granularity = 'gene_id|family_id|class_id',
+        multimapper_mode = 'unique|multi'
     params:
-        output_prefix = op.join(eval_dir, 'starsolo_{multimappers}_{granularity}')
+        output_prefix = op.join(eval_dir,
+            '{aligner}_{feature_set}_{granularity}_{multimapper_mode}')
     log:
-        op.join(config['base'], 'logs', 'evaluate_starsolo_{multimappers}_{granularity}.log')
-    shell:
-        """
-        python {evaluation_script} \
-            --ground-truth {input.ground_truth} \
-            --observed-counts {input.counts} \
-            --aligner starsolo \
-            --multimapper-mode {wildcards.multimappers} \
-            --granularity {wildcards.granularity} \
-            --benchmark {input.benchmark} \
-            --locus-map {input.locus_map} \
-            --output-prefix {params.output_prefix} 2> {log}
-        """
-
-
-rule evaluate_single_mode_aligner:
-    conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
-    input:
-        ground_truth = ground_truth_path,
-        counts = op.join(counts_dir, '{aligner}_repeats_{granularity}.tsv'),
-        locus_map = locus_map_path
-    output:
-        global_metrics = op.join(eval_dir, '{aligner}_{granularity}_global_metrics.tsv'),
-        per_cell = op.join(eval_dir, '{aligner}_{granularity}_per_cell_metrics.tsv'),
-        per_family = op.join(eval_dir, '{aligner}_{granularity}_per_family_metrics.tsv')
-    wildcard_constraints:
-        aligner = '|'.join(granular_aligners) if granular_aligners else 'NOMATCH',
-        granularity = 'locus|gene_id|family_id|class_id'
-    params:
-        output_prefix = op.join(eval_dir, '{aligner}_{granularity}'),
-        benchmark = op.join(config['base'], 'benchmarks',
-                            '{aligner}_' + sim_technology + '_repeats.txt')
-    log:
-        op.join(config['base'], 'logs', 'evaluate_{aligner}_{granularity}.log')
+        op.join(config['base'], 'logs',
+                'evaluate_{aligner}_{feature_set}_{granularity}_{multimapper_mode}.log')
     shell:
         """
         python {evaluation_script} \
             --ground-truth {input.ground_truth} \
             --observed-counts {input.counts} \
             --aligner {wildcards.aligner} \
-            --multimapper-mode unique \
+            --multimapper-mode {wildcards.multimapper_mode} \
             --granularity {wildcards.granularity} \
+            --feature-set {wildcards.feature_set} \
             --locus-map {input.locus_map} \
-            --benchmark {params.benchmark} \
             --output-prefix {params.output_prefix} 2> {log}
         """
-
-
-
 rule aggregate_global_metrics:
     """Concatenate all per-aligner global metric TSVs into one summary file."""
     input:
-        starsolo = expand(op.join(eval_dir, 'starsolo_{multimappers}_{granularity}_global_metrics.tsv'),
-                          multimappers=starsolo_modes, granularity=granularities),
-
-        others = expand(op.join(eval_dir, '{aligner}_{granularity}_global_metrics.tsv'),
-                        aligner=granular_aligners,
-                        granularity=granularities)
+        files = (
+            (expand(
+                op.join(eval_dir,
+                        'starsolo_{feature_set}_{granularity}_{multimapper_mode}_global_metrics.tsv'),
+                feature_set=_eval_fsets,
+                granularity=granularities,
+                multimapper_mode=starsolo_modes)
+             if 'starsolo' in active_aligners else [])
+            +
+            (expand(
+                op.join(eval_dir,
+                        'bowtie2_{feature_set}_{granularity}_{multimapper_mode}_global_metrics.tsv'),
+                feature_set=_eval_fsets,
+                granularity=granularities,
+                multimapper_mode=bowtie2_modes)
+             if 'bowtie2' in active_aligners else [])
+            +
+            (expand(
+                op.join(eval_dir,
+                        '{aligner}_{feature_set}_{granularity}_unique_global_metrics.tsv'),
+                aligner=[a for a in _pseudo_aligners],
+                feature_set=_eval_fsets,
+                granularity=granularities)
+             if _pseudo_aligners else [])
+        )
     output:
         summary = op.join(eval_dir, 'summary_global_metrics.tsv')
     run:
         import csv
         all_rows = []
-        for path in list(input.starsolo) + list(input.others):
+        for path in list(input.files):
             with open(path) as fh:
                 reader = csv.DictReader(fh, delimiter='\t')
                 all_rows.extend(list(reader))
         if all_rows:
             with open(output.summary, 'w', newline='') as fh:
-                writer = csv.DictWriter(fh, fieldnames=all_rows[0].keys(), delimiter='\t')
+                writer = csv.DictWriter(fh, fieldnames=all_rows[0].keys(),
+                                        delimiter='\t')
                 writer.writeheader()
                 writer.writerows(all_rows)
-
-
 rule render_report:
-    """Render an HTML evaluation report summarising all metrics across aligners and granularities."""
+    """Render an HTML evaluation report summarising all metrics across aligners."""
     conda: op.join(workflow.basedir, 'envs', 'rmarkdown.yaml')
     input:
         summary = op.join(eval_dir, 'summary_global_metrics.tsv'),
         per_cell_files = (
-            expand(op.join(eval_dir, 'starsolo_{multimappers}_{granularity}_per_cell_metrics.tsv'),
-                   multimappers=starsolo_modes, granularity=granularities)
-
-            + expand(op.join(eval_dir, '{aligner}_{granularity}_per_cell_metrics.tsv'),
-                     aligner=granular_aligners, granularity=granularities)
-        ),
-        per_family_files = (
-            expand(op.join(eval_dir, 'starsolo_{multimappers}_{granularity}_per_family_metrics.tsv'),
-                   multimappers=starsolo_modes, granularity=granularities)
-
-            + expand(op.join(eval_dir, '{aligner}_{granularity}_per_family_metrics.tsv'),
-                     aligner=granular_aligners, granularity=granularities)
+            (expand(
+                op.join(eval_dir,
+                        'starsolo_{feature_set}_{granularity}_{multimapper_mode}_per_cell_metrics.tsv'),
+                feature_set=_eval_fsets,
+                granularity=granularities,
+                multimapper_mode=starsolo_modes)
+             if 'starsolo' in active_aligners else [])
+            +
+            (expand(
+                op.join(eval_dir,
+                        'bowtie2_{feature_set}_{granularity}_{multimapper_mode}_per_cell_metrics.tsv'),
+                feature_set=_eval_fsets,
+                granularity=granularities,
+                multimapper_mode=bowtie2_modes)
+             if 'bowtie2' in active_aligners else [])
+            +
+            (expand(
+                op.join(eval_dir,
+                        '{aligner}_{feature_set}_{granularity}_unique_per_cell_metrics.tsv'),
+                aligner=[a for a in _pseudo_aligners],
+                feature_set=_eval_fsets,
+                granularity=granularities)
+             if _pseudo_aligners else [])
         )
     output:
         report = op.join(eval_dir, 'evaluation_report.html')

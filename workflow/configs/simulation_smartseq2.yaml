@@ -1,16 +1,13 @@
-base: "/home/imallona/repeats/sim_smartseq2"
+base: "/home/imallona/repeats/results/simulation_smartseq2"
+indices_base: "/home/imallona/repeats/results/shared"
 
 reference:
   assembly: hg38
   ensembl_release: "112"
   chromosomes: ["chr10"]
-  # Split repeats into genic/intergenic subsets using gene body overlap (bedtools)
-  filter_genic: true
-  rmsk_source: ucsc_flatfile
-
-  genome_fasta: "/home/imallona/repeats/sim_smartseq2/refs/GRCh38.dna.primary_assembly.fa.gz"
-  repeats_gtf: "/home/imallona/repeats/sim_smartseq2/refs/hg38_rmsk_TE.gtf.gz"
-  genes_gtf: "/home/imallona/repeats/sim_smartseq2/refs/GRCh38.112.genes.gtf.gz"
+  genome_fasta: "/home/imallona/repeats/results/simulation_smartseq2/refs/GRCh38.dna.primary_assembly.fa.gz"
+  repeats_gtf: "/home/imallona/repeats/results/simulation_smartseq2/refs/hg38_rmsk_TE.gtf.gz"
+  genes_gtf: "/home/imallona/repeats/results/simulation_smartseq2/refs/GRCh38.112.genes.gtf.gz"
 
 mode: simulation
 
@@ -21,15 +18,22 @@ simulation:
   read_length: 90
   seed: 42
 
+# Feature sets to quantify against:
+#   genes              - Ensembl gene annotation
+#   repeats            - full RepeatMasker annotation
+#   genic_repeats      - TE loci overlapping at least one gene body
+#   intergenic_repeats - TE loci with no overlap to any gene body
+feature_sets:
+  - repeats
+  - genes
+  - genic_repeats
+  - intergenic_repeats
+
 aligners:
   - starsolo
   - kallisto
   - alevin
   - bowtie2
-
-feature_sets:
-  - repeats
-  - genes
 
 aligner_params:
   starsolo:
@@ -38,12 +42,15 @@ aligner_params:
   kallisto:
     extra_args: ""
   alevin:
-    extra_args: ""
+    extra_args: "--minAssignedFrags 1"
   bowtie2:
+    multimapper_modes: ["unique"]
     extra_args: ""
     featurecounts_cell_chunk_size: 20
-    featurecounts_n_feature_chunks: 1
 
+# Granularities to aggregate repeat counts to.
+# gene_id = repeat locus; family_id / class_id aggregate across loci.
+# For the genes feature_set, only gene_id is used.
 granularities:
   - gene_id
   - family_id

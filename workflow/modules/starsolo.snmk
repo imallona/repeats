@@ -3,144 +3,169 @@
 STARsolo alignment and quantification for SmartSeq2 and Chromium data.
 
 Wildcards:
-  {multimappers}  - "unique" (Unique) or "multimapping" (EM)
-  {feature_set}   - annotation to quantify against (e.g. "repeats", "genes")
+  {multimapper_mode} - "unique" (Unique) or "multi" (EM)
+  {feature_set}      - annotation to quantify against (genes, repeats,
+                       genic_repeats, intergenic_repeats)
 
-The annotation GTF passed to --sjdbGTFfile determines what "Gene" means in Solo.out.
-SmartSeq2 only supports "unique" (STARsolo SmartSeq mode has no EM multimapper support).
+SmartSeq2 does not support EM multimappers; "multi" mode is silently ignored
+by rule all for SmartSeq2 configs (not requested in output functions).
 """
 
 import os.path as op
 
-multimapping_mode_to_star_param = {
+multimapper_mode_to_star_param = {
     'unique': 'Unique',
-    'multimapping': 'EM'
+    'multi': 'EM'
 }
 
 sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'smartseq2')
 
+_ss2_manifest = (
+    op.join(config['base'], 'simulations', 'smartseq2', 'manifest.tsv')
+    if config['mode'] == 'simulation'
+    else config.get('real_data', {}).get('manifest', 'MISSING_MANIFEST')
+)
 
-def gtf_for_feature_set(wildcards):
-    if wildcards.feature_set == 'genes':
-        return rules.decompress_genes_gtf.output[0]
-    return rules.decompress_repeats_gtf.output[0]
+_chromium_r1 = (
+    op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
+    if config['mode'] == 'simulation'
+    else []
+)
+_chromium_r2 = (
+    op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
+    if config['mode'] == 'simulation'
+    else []
+)
+_chromium_barcodes = (
+    op.join(config['base'], 'simulations', 'chromium', 'barcodes.txt')
+    if config['mode'] == 'simulation'
+    else config.get('real_data', {}).get('barcode_whitelist', 'None')
+)
 
-
-if sim_technology == 'smartseq2':
-
-    rule starsolo_smartseq2:
-        wildcard_constraints:
-            multimappers = 'unique|multimapping',
-            feature_set = 'repeats|genes'
-        conda: op.join(workflow.basedir, 'envs', 'star.yaml')
-        input:
-            index = rules.star_genome_index.output.index,
-            gtf = gtf_for_feature_set,
-            manifest = op.join(config['base'], 'simulations', 'smartseq2', 'manifest.tsv')
-                       if config['mode'] == 'simulation'
-                       else config['real_data']['manifest']
-        output:
-            bam = op.join(config['base'], 'starsolo', 'smartseq2', '{multimappers}_{feature_set}',
-                          'Aligned.sortedByCoord.out.bam'),
-            raw_matrix_dir = directory(op.join(config['base'], 'starsolo', 'smartseq2',
-                                               '{multimappers}_{feature_set}', 'Solo.out', 'Gene', 'raw'))
-        params:
-            out_prefix = op.join(config['base'], 'starsolo', 'smartseq2', '{multimappers}_{feature_set}') + '/',
-            index_dir = op.join(config['base'], 'indices', genome_tag, 'star'),
-            tmp_dir = op.join(config['base'], 'tmp', 'starsolo_smartseq2_{multimappers}_{feature_set}'),
-            solo_multimappers = lambda wc: multimapping_mode_to_star_param[wc.multimappers],
-            max_ram_bytes = config['resources']['max_mem_mb'] * 1024 * 1024,
-            extra_args = config.get('aligner_params', {}).get('starsolo', {}).get('extra_args', '')
-        log: op.join(config['base'], 'logs', 'starsolo_smartseq2_{multimappers}_{feature_set}.log')
-        benchmark: op.join(config['base'], 'benchmarks', 'starsolo_smartseq2_{multimappers}_{feature_set}.txt')
-        threads: workflow.cores
-        shell:
-            """
-            rm -rf {params.tmp_dir} {params.out_prefix}/Solo.out
-            mkdir -p {params.tmp_dir} {params.out_prefix}
-
-            STAR --runThreadN {threads} \
-                 --runDirPerm All_RWX \
-                 --soloType SmartSeq \
-                 --genomeDir {params.index_dir} \
-                 --readFilesCommand pigz -d -c \
-                 --readFilesManifest {input.manifest} \
-                 --outFileNamePrefix {params.out_prefix} \
-                 --sjdbGTFfile {input.gtf} \
-                 --soloFeatures Gene \
-                 --soloCellFilter None \
-                 --soloCellReadStats None \
-                 --soloUMIdedup NoDedup \
-                 --soloMultiMappers {params.solo_multimappers} \
-                 --outSAMtype BAM SortedByCoordinate \
-                 --limitBAMsortRAM {params.max_ram_bytes} \
-                 {params.extra_args} 2> {log}
-
-            rm -rf {params.tmp_dir}
-            """
+_cb_len = config.get('simulation', config.get('real_data', {})).get('cb_length', 16)
+_umi_len = config.get('simulation', config.get('real_data', {})).get('umi_length', 12)
+_umi_start = _cb_len + 1
 
 
-else:
+rule starsolo_smartseq2:
+    wildcard_constraints:
+        multimapper_mode = 'unique|multi',
+        feature_set = 'repeats|genes|genic_repeats|intergenic_repeats'
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input:
+        index = rules.star_genome_index.output.index,
+        gtf = gtf_for_feature_set,
+        manifest = _ss2_manifest
+    output:
+        bam = op.join(config['base'], 'starsolo', 'smartseq2',
+                      '{multimapper_mode}_{feature_set}',
+                      'Aligned.sortedByCoord.out.bam'),
+        raw_matrix_dir = directory(op.join(config['base'], 'starsolo', 'smartseq2',
+                                           '{multimapper_mode}_{feature_set}',
+                                           'Solo.out', 'Gene', 'raw'))
+    params:
+        out_prefix = op.join(config['base'], 'starsolo', 'smartseq2',
+                             '{multimapper_mode}_{feature_set}') + '/',
+        index_dir = op.join(config['indices_base'], 'indices', genome_tag, 'star'),
+        tmp_dir = op.join(config['base'], 'tmp',
+                          'starsolo_smartseq2_{multimapper_mode}_{feature_set}'),
+        solo_multimappers = lambda wc: multimapper_mode_to_star_param[wc.multimapper_mode],
+        max_ram_bytes = config['resources']['max_mem_mb'] * 1024 * 1024,
+        extra_args = config.get('aligner_params', {}).get('starsolo', {}).get('extra_args', '')
+    log:
+        op.join(config['base'], 'logs',
+                'starsolo_smartseq2_{multimapper_mode}_{feature_set}.log')
+    benchmark:
+        op.join(config['base'], 'benchmarks',
+                'starsolo_smartseq2_{multimapper_mode}_{feature_set}.txt')
+    threads: workflow.cores
+    shell:
+        """
+        rm -rf {params.tmp_dir} {params.out_prefix}/Solo.out
+        mkdir -p {params.tmp_dir} {params.out_prefix}
 
-    rule starsolo_chromium:
-        wildcard_constraints:
-            multimappers = 'unique|multimapping',
-            feature_set = 'repeats|genes'
-        conda: op.join(workflow.basedir, 'envs', 'star.yaml')
-        input:
-            index = rules.star_genome_index.output.index,
-            gtf = gtf_for_feature_set,
-            r1 = op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
-                 if config['mode'] == 'simulation'
-                 else lambda wc: config['real_data']['samples'][wc.sample]['R1'],
-            r2 = op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
-                 if config['mode'] == 'simulation'
-                 else lambda wc: config['real_data']['samples'][wc.sample]['R2'],
-            barcodes = op.join(config['base'], 'simulations', 'chromium', 'barcodes.txt')
-                       if config['mode'] == 'simulation'
-                       else config['real_data'].get('barcode_whitelist', 'None')
-        output:
-            bam = op.join(config['base'], 'starsolo', 'chromium', '{multimappers}_{feature_set}',
-                          'Aligned.sortedByCoord.out.bam'),
-            raw_matrix_dir = directory(op.join(config['base'], 'starsolo', 'chromium',
-                                               '{multimappers}_{feature_set}', 'Solo.out', 'Gene', 'raw'))
-        params:
-            out_prefix = op.join(config['base'], 'starsolo', 'chromium', '{multimappers}_{feature_set}') + '/',
-            index_dir = op.join(config['base'], 'indices', genome_tag, 'star'),
-            tmp_dir = op.join(config['base'], 'tmp', 'starsolo_chromium_{multimappers}_{feature_set}'),
-            solo_multimappers = lambda wc: multimapping_mode_to_star_param[wc.multimappers],
-            max_ram_bytes = config['resources']['max_mem_mb'] * 1024 * 1024,
-            cb_len = config.get('simulation', config.get('real_data', {})).get('cb_length', 16),
-            umi_len = config.get('simulation', config.get('real_data', {})).get('umi_length', 12),
-            umi_start = config.get('simulation', config.get('real_data', {})).get('cb_length', 16) + 1,
-            extra_args = config.get('aligner_params', {}).get('starsolo', {}).get('extra_args', '')
-        log: op.join(config['base'], 'logs', 'starsolo_chromium_{multimappers}_{feature_set}.log')
-        benchmark: op.join(config['base'], 'benchmarks', 'starsolo_chromium_{multimappers}_{feature_set}.txt')
-        threads: workflow.cores
-        shell:
-            """
-            rm -rf {params.tmp_dir} {params.out_prefix}/Solo.out
-            mkdir -p {params.tmp_dir} {params.out_prefix}
+        STAR --runThreadN {threads} \
+             --runDirPerm All_RWX \
+             --soloType SmartSeq \
+             --genomeDir {params.index_dir} \
+             --readFilesCommand pigz -d -c \
+             --readFilesManifest {input.manifest} \
+             --outFileNamePrefix {params.out_prefix} \
+             --sjdbGTFfile {input.gtf} \
+             --soloFeatures Gene \
+             --soloCellFilter None \
+             --soloCellReadStats None \
+             --soloUMIdedup NoDedup \
+             --soloMultiMappers {params.solo_multimappers} \
+             --outSAMtype BAM SortedByCoordinate \
+             --limitBAMsortRAM {params.max_ram_bytes} \
+             {params.extra_args} 2> {log}
 
-            STAR --runThreadN {threads} \
-                 --runDirPerm All_RWX \
-                 --soloType CB_UMI_Simple \
-                 --genomeDir {params.index_dir} \
-                 --readFilesIn {input.r2} {input.r1} \
-                 --readFilesCommand pigz -d -c \
-                 --outFileNamePrefix {params.out_prefix} \
-                 --sjdbGTFfile {input.gtf} \
-                 --soloFeatures Gene \
-                 --soloCellFilter None \
-                 --soloCellReadStats None \
-                 --soloCBwhitelist {input.barcodes} \
-                 --soloCBstart 1 --soloCBlen {params.cb_len} \
-                 --soloUMIstart {params.umi_start} \
-                 --soloUMIlen {params.umi_len} \
-                 --soloMultiMappers {params.solo_multimappers} \
-                 --outSAMtype BAM SortedByCoordinate \
-                 --limitBAMsortRAM {params.max_ram_bytes} \
-                 {params.extra_args} 2> {log}
+        rm -rf {params.tmp_dir}
+        """
 
-            rm -rf {params.tmp_dir}
-            """
+
+rule starsolo_chromium:
+    wildcard_constraints:
+        multimapper_mode = 'unique|multi',
+        feature_set = 'repeats|genes|genic_repeats|intergenic_repeats'
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input:
+        index = rules.star_genome_index.output.index,
+        gtf = gtf_for_feature_set,
+        r1 = _chromium_r1,
+        r2 = _chromium_r2,
+        barcodes = _chromium_barcodes
+    output:
+        bam = op.join(config['base'], 'starsolo', 'chromium',
+                      '{multimapper_mode}_{feature_set}',
+                      'Aligned.sortedByCoord.out.bam'),
+        raw_matrix_dir = directory(op.join(config['base'], 'starsolo', 'chromium',
+                                           '{multimapper_mode}_{feature_set}',
+                                           'Solo.out', 'Gene', 'raw'))
+    params:
+        out_prefix = op.join(config['base'], 'starsolo', 'chromium',
+                             '{multimapper_mode}_{feature_set}') + '/',
+        index_dir = op.join(config['indices_base'], 'indices', genome_tag, 'star'),
+        tmp_dir = op.join(config['base'], 'tmp',
+                          'starsolo_chromium_{multimapper_mode}_{feature_set}'),
+        solo_multimappers = lambda wc: multimapper_mode_to_star_param[wc.multimapper_mode],
+        max_ram_bytes = config['resources']['max_mem_mb'] * 1024 * 1024,
+        cb_len = _cb_len,
+        umi_len = _umi_len,
+        umi_start = _umi_start,
+        extra_args = config.get('aligner_params', {}).get('starsolo', {}).get('extra_args', '')
+    log:
+        op.join(config['base'], 'logs',
+                'starsolo_chromium_{multimapper_mode}_{feature_set}.log')
+    benchmark:
+        op.join(config['base'], 'benchmarks',
+                'starsolo_chromium_{multimapper_mode}_{feature_set}.txt')
+    threads: workflow.cores
+    shell:
+        """
+        rm -rf {params.tmp_dir} {params.out_prefix}/Solo.out
+        mkdir -p {params.tmp_dir} {params.out_prefix}
+
+        STAR --runThreadN {threads} \
+             --runDirPerm All_RWX \
+             --soloType CB_UMI_Simple \
+             --genomeDir {params.index_dir} \
+             --readFilesIn {input.r2} {input.r1} \
+             --readFilesCommand pigz -d -c \
+             --outFileNamePrefix {params.out_prefix} \
+             --sjdbGTFfile {input.gtf} \
+             --soloFeatures Gene \
+             --soloCellFilter None \
+             --soloCellReadStats None \
+             --soloCBwhitelist {input.barcodes} \
+             --soloCBstart 1 --soloCBlen {params.cb_len} \
+             --soloUMIstart {params.umi_start} \
+             --soloUMIlen {params.umi_len} \
+             --soloMultiMappers {params.solo_multimappers} \
+             --outSAMtype BAM SortedByCoordinate \
+             --limitBAMsortRAM {params.max_ram_bytes} \
+             {params.extra_args} 2> {log}
+
+        rm -rf {params.tmp_dir}
+        """

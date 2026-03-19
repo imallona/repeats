@@ -1,10 +1,16 @@
 #!/usr/bin/env snakemake -s
 """
 Convert each aligner's native output to the standard feature x cell count TSV.
-All downstream evaluation rules consume this common format.
-Output path: counts/{aligner}_{multimappers}_{feature_set}_{granularity}.tsv  (starsolo repeats)
-             counts/{aligner}_{multimappers}_{feature_set}.tsv               (starsolo genes)
-             counts/{aligner}_{feature_set}_{granularity}.tsv                (others)
+
+Output naming convention (all aligners):
+  counts/{aligner}_{feature_set}_{granularity}_{multimapper_mode}.tsv
+
+For kallisto and alevin, multimapper_mode is always "unique".
+For starsolo and bowtie2, multimapper_mode is "unique" or "multi".
+For the genes feature_set, granularity is always "gene_id".
+
+Technology (smartseq2 vs chromium) is taken from config and used to select
+inputs at module load time — one rule per aligner handles both technologies.
 """
 
 import os.path as op
@@ -16,196 +22,233 @@ sim_cell_ids = [f'cell_{i + 1:03d}' for i in range(
 
 normalize_dir = op.join(config['base'], 'counts')
 
-
-if 'starsolo' in active_aligners:
-
-    starsolo_multimapper_modes = (
-        config.get('aligner_params', {}).get('starsolo', {}).get('multimapper_modes', ['unique'])
-    )
-
-    rule normalize_starsolo_genes:
-        conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
-        input:
-            raw_matrix_dir = op.join(config['base'], 'starsolo', sim_technology,
-                                     '{multimappers}_genes', 'Solo.out', 'Gene', 'raw')
-        output:
-            counts_tsv = op.join(normalize_dir, 'starsolo_{multimappers}_genes.tsv')
-        wildcard_constraints:
-            multimappers = 'unique|multimapping'
-        log:
-            op.join(config['base'], 'logs', 'normalize_starsolo_{multimappers}_genes.log')
-        shell:
-            """
-            python {workflow.basedir}/scripts/normalize_starsolo.py \
-                --raw-dir {input.raw_matrix_dir} \
-                --output {output.counts_tsv} 2> {log}
-            """
-
-    rule normalize_starsolo_repeats:
-        conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
-        input:
-            raw_matrix_dir = op.join(config['base'], 'starsolo', sim_technology,
-                                     '{multimappers}_repeats', 'Solo.out', 'Gene', 'raw'),
-            locus_map = op.join(config['base'], 'indices', genome_tag, 'repeats_locus_map.tsv')
-        output:
-            counts_tsv = op.join(normalize_dir, 'starsolo_{multimappers}_repeats_{granularity}.tsv')
-        wildcard_constraints:
-            multimappers = 'unique|multimapping',
-            granularity = 'gene_id|family_id|class_id'
-        log:
-            op.join(config['base'], 'logs',
-                    'normalize_starsolo_{multimappers}_repeats_{granularity}.log')
-        shell:
-            """
-            python {workflow.basedir}/scripts/normalize_starsolo.py \
-                --raw-dir {input.raw_matrix_dir} \
-                --locus-map {input.locus_map} \
-                --granularity {wildcards.granularity} \
-                --output {output.counts_tsv} 2> {log}
-            """
+_feat_constraint = 'genes|repeats|genic_repeats|intergenic_repeats'
+_repeat_fsets = 'repeats|genic_repeats|intergenic_repeats'
+_gran_constraint = 'gene_id|family_id|class_id'
+_mm_constraint = 'unique|multi'
 
 
-if 'kallisto' in active_aligners and sim_technology == 'smartseq2':
+def normalize_t2g(wildcards):
+    """t2g path for granularity-aware normalisation."""
+    if wildcards.feature_set == 'genes':
+        return op.join(config['indices_base'], 'indices', genome_tag, 'genes_t2g.tsv')
+    return op.join(config['indices_base'], 'indices', genome_tag,
+                   f'{wildcards.feature_set}_t2g_{wildcards.granularity}.tsv')
 
-    rule normalize_kallisto_smartseq2:
-        conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
-        input:
-            abundances = lambda wc: expand(
-                op.join(config['base'], 'kallisto', '{feature_set}', 'smartseq2', '{cell_id}', 'abundance.tsv'),
-                feature_set=wc.feature_set,
-                cell_id=sim_cell_ids),
-            t2g = lambda wc: op.join(
-                config['base'], 'indices', genome_tag,
-                'repeats_t2g_' + wc.granularity + '.tsv'
-            ) if wc.feature_set != 'genes' else op.join(
-                config['base'], 'indices', genome_tag, 'genes_t2g.tsv'
-            )
-        output:
-            counts_tsv = op.join(normalize_dir, 'kallisto_{feature_set}_{granularity}.tsv')
-        wildcard_constraints:
-            granularity = 'locus|gene_id|family_id|class_id',
-            feature_set = '[a-z_]+'
-        params:
-            cell_ids_arg = ' '.join(sim_cell_ids),
-            cell_dirs_arg = lambda wc: ' '.join(
-                op.join(config['base'], 'kallisto', wc.feature_set, 'smartseq2', cid)
-                for cid in sim_cell_ids)
-        log:
-            op.join(config['base'], 'logs',
-                    'normalize_kallisto_{feature_set}_{granularity}_smartseq2.log')
-        shell:
-            """
+
+def normalize_locus_map(wildcards):
+    """Locus map for STARsolo aggregation (empty list for genes feature_set)."""
+    if wildcards.feature_set == 'genes':
+        return []
+    return op.join(config['indices_base'], 'indices', genome_tag,
+                   f'{wildcards.feature_set}_locus_map.tsv')
+
+
+# ---------------------------------------------------------------------------
+# STARsolo normalisation (path already encodes sim_technology)
+# ---------------------------------------------------------------------------
+
+rule normalize_starsolo:
+    conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
+    input:
+        raw_matrix_dir = op.join(config['base'], 'starsolo', sim_technology,
+                                 '{multimapper_mode}_{feature_set}',
+                                 'Solo.out', 'Gene', 'raw'),
+        locus_map = normalize_locus_map
+    output:
+        counts_tsv = op.join(normalize_dir,
+                             'starsolo_{feature_set}_{granularity}_{multimapper_mode}.tsv')
+    wildcard_constraints:
+        multimapper_mode = _mm_constraint,
+        feature_set = _feat_constraint,
+        granularity = _gran_constraint
+    params:
+        locus_map_arg = lambda wc, input: (
+            f'--locus-map {input.locus_map}' if input.locus_map else '')
+    log:
+        op.join(config['base'], 'logs',
+                'normalize_starsolo_{feature_set}_{granularity}_{multimapper_mode}.log')
+    shell:
+        """
+        python {workflow.basedir}/scripts/normalize_starsolo.py \
+            --raw-dir {input.raw_matrix_dir} \
+            {params.locus_map_arg} \
+            --granularity {wildcards.granularity} \
+            --output {output.counts_tsv} 2> {log}
+        """
+
+
+# ---------------------------------------------------------------------------
+# Kallisto normalisation — one rule, branches on sim_technology via params
+# ---------------------------------------------------------------------------
+
+if sim_technology == 'smartseq2':
+    def _kallisto_norm_input(wc):
+        return expand(
+            op.join(config['base'], 'kallisto', '{feature_set}',
+                    'smartseq2', '{cell_id}', 'abundance.tsv'),
+            feature_set=wc.feature_set,
+            cell_id=sim_cell_ids)
+    _kallisto_norm_t2g = normalize_t2g
+    _kallisto_norm_cell_ids = ' '.join(sim_cell_ids)
+    _kallisto_norm_cell_dirs = lambda wc: ' '.join(
+        op.join(config['base'], 'kallisto', wc.feature_set, 'smartseq2', cid)
+        for cid in sim_cell_ids)
+    _kallisto_norm_mtx = lambda wc: ''
+    _kallisto_norm_barcodes = lambda wc: ''
+    _kallisto_norm_genes_file = lambda wc: ''
+else:
+    def _kallisto_norm_input(wc):
+        return [
+            op.join(config['base'], 'kallisto', wc.feature_set, 'chromium', 'counts.mtx'),
+            op.join(config['base'], 'kallisto', wc.feature_set, 'chromium',
+                    'counts.barcodes.txt'),
+            op.join(config['base'], 'kallisto', wc.feature_set, 'chromium', 'counts.genes.txt')
+        ]
+    _kallisto_norm_t2g = lambda wc: []
+    _kallisto_norm_cell_ids = ''
+    _kallisto_norm_cell_dirs = lambda wc: ''
+    _kallisto_norm_mtx = lambda wc: op.join(config['base'], 'kallisto',
+                                            wc.feature_set, 'chromium', 'counts.mtx')
+    _kallisto_norm_barcodes = lambda wc: op.join(config['base'], 'kallisto',
+                                                 wc.feature_set, 'chromium',
+                                                 'counts.barcodes.txt')
+    _kallisto_norm_genes_file = lambda wc: op.join(config['base'], 'kallisto',
+                                                   wc.feature_set, 'chromium',
+                                                   'counts.genes.txt')
+
+
+rule normalize_kallisto:
+    conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
+    input:
+        data = _kallisto_norm_input,
+        t2g = _kallisto_norm_t2g
+    output:
+        counts_tsv = op.join(normalize_dir,
+                             'kallisto_{feature_set}_{granularity}_unique.tsv')
+    wildcard_constraints:
+        granularity = _gran_constraint,
+        feature_set = _feat_constraint
+    params:
+        technology = sim_technology,
+        cell_ids = _kallisto_norm_cell_ids,
+        cell_dirs = _kallisto_norm_cell_dirs,
+        mtx = _kallisto_norm_mtx,
+        barcodes = _kallisto_norm_barcodes,
+        genes_file = _kallisto_norm_genes_file
+    log:
+        op.join(config['base'], 'logs',
+                'normalize_kallisto_{feature_set}_{granularity}.log')
+    shell:
+        """
+        if [ "{params.technology}" = "smartseq2" ]; then
             python {workflow.basedir}/scripts/normalize_kallisto_smartseq2_granular.py \
-                --cell-ids {params.cell_ids_arg} \
-                --cell-dirs {params.cell_dirs_arg} \
+                --cell-ids {params.cell_ids} \
+                --cell-dirs {params.cell_dirs} \
                 --t2g {input.t2g} \
                 --output {output.counts_tsv} 2> {log}
-            """
-
-
-if 'kallisto' in active_aligners and sim_technology == 'chromium':
-
-    rule normalize_kallisto_chromium:
-        conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
-        input:
-            mtx = op.join(config['base'], 'kallisto', '{feature_set}', 'chromium', 'counts.mtx'),
-            barcodes = op.join(config['base'], 'kallisto', '{feature_set}', 'chromium', 'counts.barcodes.txt'),
-            genes = op.join(config['base'], 'kallisto', '{feature_set}', 'chromium', 'counts.genes.txt')
-        output:
-            counts_tsv = op.join(normalize_dir, 'kallisto_{feature_set}.tsv')
-        log: op.join(config['base'], 'logs', 'normalize_kallisto_{feature_set}_chromium.log')
-        shell:
-            """
+        else
             python {workflow.basedir}/scripts/normalize_kallisto_chromium.py \
-                --mtx {input.mtx} \
-                --barcodes {input.barcodes} \
-                --genes {input.genes} \
+                --mtx {params.mtx} \
+                --barcodes {params.barcodes} \
+                --genes {params.genes_file} \
                 --output {output.counts_tsv} 2> {log}
-            """
+        fi
+        """
 
 
-if 'alevin' in active_aligners and sim_technology == 'smartseq2':
+# ---------------------------------------------------------------------------
+# Alevin normalisation — one rule, branches on sim_technology via params
+# ---------------------------------------------------------------------------
 
-    rule normalize_alevin_smartseq2:
-        conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
-        input:
-            quant_sfs = lambda wc: expand(
-                op.join(config['base'], 'alevin', '{feature_set}', 'smartseq2', '{cell_id}', 'quant.sf'),
-                feature_set=wc.feature_set,
-                cell_id=sim_cell_ids),
-            t2g = lambda wc: op.join(
-                config['base'], 'indices', genome_tag,
-                'repeats_t2g_' + wc.granularity + '.tsv'
-            ) if wc.feature_set != 'genes' else op.join(
-                config['base'], 'indices', genome_tag, 'genes_t2g.tsv'
-            )
-        output:
-            counts_tsv = op.join(normalize_dir, 'alevin_{feature_set}_{granularity}.tsv')
-        wildcard_constraints:
-            granularity = 'locus|gene_id|family_id|class_id',
-            feature_set = '[a-z_]+'
-        params:
-            cell_ids_arg = ' '.join(sim_cell_ids),
-            cell_dirs_arg = lambda wc: ' '.join(
-                op.join(config['base'], 'alevin', wc.feature_set, 'smartseq2', cid)
-                for cid in sim_cell_ids)
-        log:
-            op.join(config['base'], 'logs',
-                    'normalize_alevin_{feature_set}_{granularity}_smartseq2.log')
-        shell:
-            """
+if sim_technology == 'smartseq2':
+    def _alevin_norm_input(wc):
+        return expand(
+            op.join(config['base'], 'alevin', '{feature_set}',
+                    'smartseq2', '{cell_id}', 'quant.sf'),
+            feature_set=wc.feature_set,
+            cell_id=sim_cell_ids)
+    _alevin_norm_t2g = normalize_t2g
+    _alevin_norm_cell_ids = ' '.join(sim_cell_ids)
+    _alevin_norm_cell_dirs = lambda wc: ' '.join(
+        op.join(config['base'], 'alevin', wc.feature_set, 'smartseq2', cid)
+        for cid in sim_cell_ids)
+    _alevin_norm_alevin_dir = lambda wc: ''
+else:
+    def _alevin_norm_input(wc):
+        return [
+            op.join(config['base'], 'alevin', wc.feature_set, 'chromium',
+                    'alevin', 'quants_mat.gz')
+        ]
+    _alevin_norm_t2g = lambda wc: []
+    _alevin_norm_cell_ids = ''
+    _alevin_norm_cell_dirs = lambda wc: ''
+    _alevin_norm_alevin_dir = lambda wc: op.join(config['base'], 'alevin',
+                                                 wc.feature_set, 'chromium', 'alevin')
+
+
+rule normalize_alevin:
+    conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
+    input:
+        data = _alevin_norm_input,
+        t2g = _alevin_norm_t2g
+    output:
+        counts_tsv = op.join(normalize_dir,
+                             'alevin_{feature_set}_{granularity}_unique.tsv')
+    wildcard_constraints:
+        granularity = _gran_constraint,
+        feature_set = _feat_constraint
+    params:
+        technology = sim_technology,
+        cell_ids = _alevin_norm_cell_ids,
+        cell_dirs = _alevin_norm_cell_dirs,
+        alevin_dir = _alevin_norm_alevin_dir
+    log:
+        op.join(config['base'], 'logs',
+                'normalize_alevin_{feature_set}_{granularity}.log')
+    shell:
+        """
+        if [ "{params.technology}" = "smartseq2" ]; then
             python {workflow.basedir}/scripts/normalize_alevin_smartseq2.py \
-                --cell-ids {params.cell_ids_arg} \
-                --cell-dirs {params.cell_dirs_arg} \
+                --cell-ids {params.cell_ids} \
+                --cell-dirs {params.cell_dirs} \
                 --t2g {input.t2g} \
                 --output {output.counts_tsv} 2> {log}
-            """
-
-
-if 'alevin' in active_aligners and sim_technology == 'chromium':
-
-    rule normalize_alevin_chromium:
-        conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
-        input:
-            quants_mat = op.join(config['base'], 'alevin', '{feature_set}', 'chromium',
-                                 'alevin', 'quants_mat.gz')
-        output:
-            counts_tsv = op.join(normalize_dir, 'alevin_{feature_set}.tsv')
-        params:
-            alevin_dir = op.join(config['base'], 'alevin', '{feature_set}', 'chromium', 'alevin')
-        log: op.join(config['base'], 'logs', 'normalize_alevin_{feature_set}_chromium.log')
-        shell:
-            """
+        else
             python {workflow.basedir}/scripts/normalize_alevin_chromium.py \
                 --alevin-dir {params.alevin_dir} \
                 --output {output.counts_tsv} 2> {log}
-            """
+        fi
+        """
 
 
-if 'bowtie2' in active_aligners and sim_technology == 'smartseq2':
+# ---------------------------------------------------------------------------
+# Bowtie2 normalisation — one rule, branches on sim_technology via input path
+# ---------------------------------------------------------------------------
 
-    rule normalize_bowtie2_smartseq2:
-        input:
-            op.join(config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
-                    'counts_{granularity}.tsv')
-        output:
-            op.join(normalize_dir, 'bowtie2_{feature_set}_{granularity}.tsv')
-        wildcard_constraints:
-            granularity = 'locus|gene_id|family_id|class_id',
-            feature_set = '[a-z_]+'
-        log:
-            op.join(config['base'], 'logs',
-                    'normalize_bowtie2_{feature_set}_{granularity}_smartseq2.log')
-        shell:
-            """
-            cp {input} {output} 2> {log}
-            """
+if sim_technology == 'smartseq2':
+    _bowtie2_norm_input = lambda wc: op.join(
+        config['base'], 'bowtie2', wc.feature_set, 'smartseq2',
+        f'counts_{wc.granularity}_{wc.multimapper_mode}.tsv')
+else:
+    _bowtie2_norm_input = lambda wc: op.join(
+        config['base'], 'bowtie2', wc.feature_set, 'chromium',
+        f'counts_{wc.granularity}.tsv')
 
 
-if 'bowtie2' in active_aligners and sim_technology == 'chromium':
-
-    rule normalize_bowtie2_chromium:
-        input: op.join(config['base'], 'bowtie2', '{feature_set}', 'chromium', 'counts.tsv')
-        output: op.join(normalize_dir, 'bowtie2_{feature_set}.tsv')
-        wildcard_constraints: feature_set = '[a-z_]+'
-        shell: "cp {input} {output}"
+rule normalize_bowtie2:
+    input: _bowtie2_norm_input
+    output:
+        op.join(normalize_dir,
+                'bowtie2_{feature_set}_{granularity}_{multimapper_mode}.tsv')
+    wildcard_constraints:
+        granularity = _gran_constraint,
+        feature_set = _repeat_fsets,
+        multimapper_mode = _mm_constraint
+    log:
+        op.join(config['base'], 'logs',
+                'normalize_bowtie2_{feature_set}_{granularity}_{multimapper_mode}.log')
+    shell:
+        """
+        cp {input} {output} 2> {log}
+        """
