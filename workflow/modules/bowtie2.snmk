@@ -34,7 +34,7 @@ feature_chunk_ids = list(range(n_feature_chunks))
 
 def bowtie2_index_prefix(wildcards):
     return op.join(
-        config['base'], 'references', genome_tag,
+        config['base'], 'indices', genome_tag,
         'bowtie2_' + wildcards.feature_set, wildcards.feature_set
     )
 
@@ -95,7 +95,7 @@ rule bowtie2_align_smartseq2_cell:
     conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
     input:
         index=lambda wc: op.join(
-            config['base'], 'references', genome_tag,
+            config['base'], 'indices', genome_tag,
             'bowtie2_' + wc.feature_set, wc.feature_set + '.1.bt2'
         ),
         fastq=smartseq2_fastq
@@ -230,12 +230,67 @@ rule merge_featurecounts_smartseq2:
         """
 
 
+
+rule count_bowtie2_smartseq2:
+    """Count reads per repeat feature across all SmartSeq2 cells using pseudo-genome BAMs."""
+    conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input:
+        bams = lambda wc: expand(
+            op.join(
+                config['base'], 'bowtie2', '{feature_set}',
+                'smartseq2', '{cell_id}.bam'
+            ),
+            feature_set=wc.feature_set,
+            cell_id=_ss2_cell_ids
+        ),
+        locus_map = op.join(
+            config['base'], 'indices', genome_tag, 'repeats_locus_map.tsv'
+        ),
+        script = ancient(op.join(workflow.basedir, 'scripts', 'count_pseudo_genome.py'))
+    output:
+        counts = op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
+            'counts_{granularity}.tsv'
+        )
+    wildcard_constraints:
+        granularity = 'locus|gene_id|family_id|class_id',
+        feature_set = '[a-z_]+'
+    params:
+        cell_ids_arg = ' '.join(_ss2_cell_ids),
+        bams_arg = lambda wc: ' '.join(
+            op.join(
+                config['base'], 'bowtie2', wc.feature_set,
+                'smartseq2', cid + '.bam'
+            )
+            for cid in _ss2_cell_ids
+        )
+    log:
+        op.join(
+            config['base'], 'logs',
+            'count_bowtie2_{feature_set}_smartseq2_{granularity}.log'
+        )
+    benchmark:
+        op.join(
+            config['base'], 'benchmarks',
+            'count_bowtie2_{feature_set}_smartseq2_{granularity}.txt'
+        )
+    shell:
+        """
+        python {input.script} \
+            --bams {params.bams_arg} \
+            --cell-ids {params.cell_ids_arg} \
+            --locus-map {input.locus_map} \
+            --granularity {wildcards.granularity} \
+            --output {output.counts} 2> {log}
+        """
+
+
 rule bowtie2_align_chromium_r2:
     """Align R2 (cDNA) reads to the feature pseudo-genome (Chromium)."""
     conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
     input:
         index=lambda wc: op.join(
-            config['base'], 'references', genome_tag,
+            config['base'], 'indices', genome_tag,
             'bowtie2_' + wc.feature_set, wc.feature_set + '.1.bt2'
         ),
         r2=chromium_r2

@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """
-Merge per-cell salmon quant.sf files into the standard feature x cell TSV.
-Uses NumReads column from quant.sf.
-Supports optional --t2g to aggregate transcript-level counts to a higher granularity.
-Target IDs may have '::chrom:start-end(strand)' suffixes which are stripped before t2g lookup.
+Merge per-cell kallisto abundance.tsv files into a feature x cell TSV,
+aggregating transcript-level est_counts by a t2g mapping (for repeat granularity).
+
+The t2g TSV has two columns (no header): transcript_id, group_id.
+For granularity=locus, this is transcript_id -> transcript_id (identity).
+For granularity=gene_id/family_id/class_id, this maps to the higher-level group.
+
+Each abundance.tsv has columns: target_id, length, eff_length, est_counts, tpm.
+Only est_counts is used. Counts for all transcripts mapping to the same group are summed.
 """
 
 import argparse
@@ -26,30 +31,36 @@ def load_t2g(t2g_path):
     return mapping
 
 
-def read_quant_sf(sf_path, t2g):
+def read_abundance(tsv_path, t2g):
+    """
+    Read abundance.tsv, aggregate est_counts by group via t2g.
+    Returns dict: group_id -> aggregated_count.
+    """
     group_counts = defaultdict(float)
-    with open(sf_path) as fh:
-        next(fh)
+    with open(tsv_path) as fh:
+        next(fh)  # skip header
         for line in fh:
             parts = line.rstrip('\n').split('\t')
-            if len(parts) < 5:
+            if len(parts) < 4:
                 continue
             target_id = parts[0]
-            num_reads = float(parts[4])
-            if num_reads == 0:
+            est_counts = float(parts[3])
+            if est_counts == 0:
                 continue
             tid = target_id.split('::')[0]
             group = t2g.get(tid)
             if group is None:
                 continue
-            group_counts[group] += num_reads
+            group_counts[group] += est_counts
     return dict(group_counts)
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('--cell-dirs', nargs='+', required=True)
-    ap.add_argument('--cell-ids', nargs='+', required=True)
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('--cell-dirs', nargs='+', required=True,
+                    help='Directories containing abundance.tsv, one per cell')
+    ap.add_argument('--cell-ids', nargs='+', required=True,
+                    help='Cell IDs in the same order as --cell-dirs')
     ap.add_argument('--t2g', required=True,
                     help='Two-column TSV: transcript_id, group_id (no header)')
     ap.add_argument('--output', required=True)
@@ -58,15 +69,15 @@ def main():
     if len(args.cell_dirs) != len(args.cell_ids):
         sys.exit('Number of --cell-dirs and --cell-ids must match')
 
-    print('Loading t2g from {}'.format(args.t2g), file=sys.stderr)
+    print(f'Loading t2g from {args.t2g}', file=sys.stderr)
     t2g = load_t2g(args.t2g)
-    print('  {} transcript entries loaded'.format(len(t2g)), file=sys.stderr)
+    print(f'  {len(t2g)} transcript entries loaded', file=sys.stderr)
 
     cell_counts = {}
     all_features = set()
     for cell_id, cell_dir in zip(args.cell_ids, args.cell_dirs):
-        sf_path = os.path.join(cell_dir, 'quant.sf')
-        counts = read_quant_sf(sf_path, t2g)
+        abundance_path = os.path.join(cell_dir, 'abundance.tsv')
+        counts = read_abundance(abundance_path, t2g)
         cell_counts[cell_id] = counts
         all_features.update(counts.keys())
 
@@ -81,7 +92,7 @@ def main():
                 continue
             fh.write(feat + '\t' + '\t'.join(str(v) for v in row) + '\n')
 
-    print('{} expressed features across {} cells'.format(len(sorted_features), len(sorted_cells)),
+    print(f'{len(sorted_features)} expressed features across {len(sorted_cells)} cells',
           file=sys.stderr)
 
 

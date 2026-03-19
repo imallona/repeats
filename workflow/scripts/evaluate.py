@@ -17,24 +17,49 @@ from collections import defaultdict
 from scipy import stats
 
 
-def load_ground_truth(gt_path):
+def load_ground_truth(gt_path, granularity='gene_id'):
     """
     Returns:
-      truth: {cell_id: {repeat_id: count}}
-      repeat_meta: {repeat_id: (family_id, class_id)}
+      truth: {cell_id: {feature_id: count}}
+      repeat_meta: {feature_id: (family_id, class_id)}  (may be partial for non-gene_id levels)
+
+    granularity controls how ground truth counts are aggregated:
+      gene_id   - group by repeat_id (= gene_id), default behaviour
+      family_id - sum true_count by cell_id + family_id
+      class_id  - sum true_count by cell_id + class_id
+      locus     - treated as gene_id (locus-level ground truth not available)
     """
-    truth = defaultdict(dict)
-    repeat_meta = {}
+    from collections import defaultdict as _dd
+    raw = []
     with open(gt_path) as fh:
         reader = csv.DictReader(fh, delimiter='\t')
         cell_col = reader.fieldnames[0]
         for row in reader:
-            cell_id = row[cell_col]
-            repeat_id = row['repeat_id']
-            count = int(row['true_count'])
-            truth[cell_id][repeat_id] = count
-            repeat_meta[repeat_id] = (row['family_id'], row['class_id'])
-    return dict(truth), repeat_meta
+            raw.append({
+                'cell_id': row[cell_col],
+                'repeat_id': row['repeat_id'],
+                'family_id': row['family_id'],
+                'class_id': row['class_id'],
+                'true_count': int(row['true_count'])
+            })
+
+    if granularity in ('gene_id', 'locus'):
+        key_col = 'repeat_id'
+    elif granularity == 'family_id':
+        key_col = 'family_id'
+    elif granularity == 'class_id':
+        key_col = 'class_id'
+    else:
+        key_col = 'repeat_id'
+
+    truth = _dd(lambda: _dd(int))
+    repeat_meta = {}
+    for r in raw:
+        feat = r[key_col]
+        truth[r['cell_id']][feat] += r['true_count']
+        repeat_meta[feat] = (r['family_id'], r['class_id'])
+
+    return {c: dict(v) for c, v in truth.items()}, repeat_meta
 
 
 def load_count_matrix(tsv_path):
@@ -167,12 +192,12 @@ def load_benchmark(benchmark_path):
     }
 
 
-def write_tsv(rows, path):
-    if not rows:
-        return
+def write_tsv(rows, path, fallback_fields=None):
+    fields = rows[0].keys() if rows else (fallback_fields or [])
     with open(path, 'w', newline='') as fh:
-        writer = csv.DictWriter(fh, fieldnames=rows[0].keys(), delimiter='\t')
-        writer.writeheader()
+        writer = csv.DictWriter(fh, fieldnames=fields, delimiter='\t')
+        if fields:
+            writer.writeheader()
         writer.writerows(rows)
 
 
@@ -183,12 +208,15 @@ def main():
                     help='Standard feature x cell TSV from a normalize_*.py script')
     ap.add_argument('--aligner', required=True)
     ap.add_argument('--multimapper-mode', default='unique_reads')
+    ap.add_argument('--granularity', default='gene_id',
+                    choices=['locus', 'gene_id', 'family_id', 'class_id'],
+                    help='Granularity level at which to aggregate ground truth and observed counts')
     ap.add_argument('--benchmark', default=None)
     ap.add_argument('--output-prefix', required=True)
     args = ap.parse_args()
 
-    print(f'Loading ground truth from {args.ground_truth}', file=sys.stderr)
-    truth, repeat_meta = load_ground_truth(args.ground_truth)
+    print(f'Loading ground truth from {args.ground_truth} at granularity={args.granularity}', file=sys.stderr)
+    truth, repeat_meta = load_ground_truth(args.ground_truth, granularity=args.granularity)
 
     print(f'Loading observed counts from {args.observed_counts}', file=sys.stderr)
     observed = load_count_matrix(args.observed_counts)
@@ -215,7 +243,10 @@ def main():
     for row in per_cell_rows:
         row['aligner'] = args.aligner
         row['multimapper_mode'] = args.multimapper_mode
-    write_tsv(per_cell_rows, args.output_prefix + '_per_cell_metrics.tsv')
+    write_tsv(per_cell_rows, args.output_prefix + '_per_cell_metrics.tsv',
+              fallback_fields=['cell_id', 'pearson_r', 'spearman_r',
+                               'n_truth_expressed', 'n_observed_expressed',
+                               'aligner', 'multimapper_mode'])
 
     class_to_features = defaultdict(list)
     for feat in all_features:
@@ -232,7 +263,10 @@ def main():
         row['aligner'] = args.aligner
         row['multimapper_mode'] = args.multimapper_mode
         per_family_rows.append(row)
-    write_tsv(per_family_rows, args.output_prefix + '_per_family_metrics.tsv')
+    write_tsv(per_family_rows, args.output_prefix + '_per_family_metrics.tsv',
+              fallback_fields=['class_id', 'aligner', 'multimapper_mode',
+                               'pearson_r', 'spearman_r', 'n_cells',
+                               'n_features', 'sensitivity', 'specificity'])
 
     print(f'Metrics written to {args.output_prefix}_*.tsv', file=sys.stderr)
 

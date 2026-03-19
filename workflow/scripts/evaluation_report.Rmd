@@ -1,0 +1,224 @@
+---
+title: "Repeat Element Quantification — Evaluation Report"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    code_folding: hide
+params:
+  eval_dir: "."
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE,
+                      fig.width = 9, fig.height = 5)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(scales)
+library(patchwork)
+
+eval_dir <- params$eval_dir
+```
+
+```{r load-data}
+# ── global metrics ──────────────────────────────────────────────────────────
+summary_path <- file.path(eval_dir, "summary_global_metrics.tsv")
+global <- read_tsv(summary_path, show_col_types = FALSE)
+
+# Ensure numeric columns are numeric
+num_cols <- c("pearson_r", "spearman_r", "log1p_rmse",
+              "precision", "recall", "f1", "jaccard", "specificity",
+              "n_cells", "n_features",
+              "wall_time_s", "cpu_time_s", "max_rss_mb")
+for (col in num_cols) {
+  if (col %in% names(global)) {
+    global[[col]] <- suppressWarnings(as.numeric(global[[col]]))
+  }
+}
+
+# aligner label: combine aligner + multimapper_mode + granularity
+global <- global %>%
+  mutate(
+    granularity = if ("granularity" %in% names(.)) granularity else
+                  if ("multimapper_mode" %in% names(.)) multimapper_mode else "gene_id",
+    label = paste0(aligner, "\n(", granularity, ")")
+  )
+
+# ── per-cell metrics ─────────────────────────────────────────────────────────
+load_all_per_cell <- function() {
+  files <- list.files(eval_dir, pattern = "_per_cell_metrics\\.tsv$", full.names = TRUE)
+  if (length(files) == 0) return(NULL)
+  purrr::map_dfr(files, ~ {
+    df <- read_tsv(.x, show_col_types = FALSE)
+    # derive aligner/granularity from filename
+    base <- tools::file_path_sans_ext(basename(.x))
+    base <- sub("_per_cell_metrics$", "", base)
+    df$source <- base
+    df
+  })
+}
+
+per_cell <- tryCatch(load_all_per_cell(), error = function(e) NULL)
+
+# ── per-family metrics ────────────────────────────────────────────────────────
+load_all_per_family <- function() {
+  files <- list.files(eval_dir, pattern = "_per_family_metrics\\.tsv$", full.names = TRUE)
+  if (length(files) == 0) return(NULL)
+  purrr::map_dfr(files, ~ {
+    df <- read_tsv(.x, show_col_types = FALSE)
+    base <- tools::file_path_sans_ext(basename(.x))
+    base <- sub("_per_family_metrics$", "", base)
+    df$source <- base
+    df
+  })
+}
+
+per_family <- tryCatch(load_all_per_family(), error = function(e) NULL)
+```
+
+## Global accuracy metrics
+
+```{r global-accuracy, fig.height=6}
+acc_long <- global %>%
+  select(label, pearson_r, spearman_r, f1, precision, recall, jaccard, specificity) %>%
+  pivot_longer(-label, names_to = "metric", values_to = "value") %>%
+  filter(!is.na(value))
+
+ggplot(acc_long, aes(x = label, y = value, fill = metric)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~metric, scales = "free_y") +
+  scale_fill_brewer(palette = "Set2") +
+  labs(x = NULL, y = NULL, title = "Global accuracy metrics by aligner / granularity") +
+  theme_bw(base_size = 11) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.position = "none")
+```
+
+## Correlation metrics (Pearson & Spearman)
+
+```{r correlations}
+corr <- global %>%
+  select(label, pearson_r, spearman_r) %>%
+  pivot_longer(-label, names_to = "metric", values_to = "r") %>%
+  filter(!is.na(r))
+
+ggplot(corr, aes(x = label, y = r, color = metric, group = metric)) +
+  geom_point(size = 3) +
+  geom_line(aes(group = metric), linetype = "dashed") +
+  scale_color_manual(values = c(pearson_r = "#2c7bb6", spearman_r = "#d7191c")) +
+  ylim(0, 1) +
+  labs(x = NULL, y = "Correlation coefficient", color = NULL,
+       title = "Pearson and Spearman correlations") +
+  theme_bw(base_size = 11) +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+## Detection metrics (F1, Precision, Recall)
+
+```{r detection}
+det <- global %>%
+  select(label, precision, recall, f1) %>%
+  pivot_longer(-label, names_to = "metric", values_to = "value") %>%
+  filter(!is.na(value))
+
+ggplot(det, aes(x = recall, y = precision, color = label, size = f1)) +
+  geom_point(alpha = 0.85) +
+  scale_size_continuous(range = c(3, 8), name = "F1") +
+  scale_color_brewer(palette = "Dark2", name = "Aligner") +
+  xlim(0, 1) + ylim(0, 1) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dotted", color = "grey60") +
+  labs(title = "Precision vs Recall (point size = F1)", x = "Recall", y = "Precision") +
+  theme_bw(base_size = 11)
+```
+
+## log1p RMSE
+
+```{r rmse}
+if ("log1p_rmse" %in% names(global) && any(!is.na(global$log1p_rmse))) {
+  ggplot(global, aes(x = reorder(label, log1p_rmse), y = log1p_rmse, fill = label)) +
+    geom_col() +
+    scale_fill_brewer(palette = "Set3") +
+    labs(x = NULL, y = "log1p RMSE", title = "Count quantification error (lower = better)") +
+    theme_bw(base_size = 11) +
+    theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.position = "none")
+} else {
+  cat("log1p_rmse not available.\n")
+}
+```
+
+## Per-cell correlations
+
+```{r per-cell, fig.height=6}
+if (!is.null(per_cell) && nrow(per_cell) > 0) {
+  per_cell_long <- per_cell %>%
+    select(cell_id, source, pearson_r, spearman_r) %>%
+    mutate(across(c(pearson_r, spearman_r), ~ suppressWarnings(as.numeric(.)))) %>%
+    pivot_longer(c(pearson_r, spearman_r), names_to = "metric", values_to = "r") %>%
+    filter(!is.na(r))
+
+  ggplot(per_cell_long, aes(x = source, y = r, fill = source)) +
+    geom_violin(alpha = 0.7, draw_quantiles = c(0.25, 0.5, 0.75)) +
+    geom_jitter(width = 0.1, size = 1, alpha = 0.5) +
+    facet_wrap(~metric) +
+    scale_fill_brewer(palette = "Pastel1") +
+    labs(x = NULL, y = "Correlation", title = "Per-cell correlations") +
+    theme_bw(base_size = 11) +
+    theme(axis.text.x = element_text(angle = 35, hjust = 1), legend.position = "none")
+} else {
+  cat("No per-cell metrics found.\n")
+}
+```
+
+## Per-repeat-class metrics
+
+```{r per-family, fig.height=6}
+if (!is.null(per_family) && nrow(per_family) > 0 && "class_id" %in% names(per_family)) {
+  pf <- per_family %>%
+    mutate(across(c(pearson_r, spearman_r, f1), ~ suppressWarnings(as.numeric(.)))) %>%
+    filter(!is.na(class_id), class_id != "unknown")
+
+  p1 <- ggplot(pf, aes(x = class_id, y = f1, fill = source)) +
+    geom_col(position = "dodge") +
+    labs(x = "Repeat class", y = "F1", title = "F1 per repeat class") +
+    theme_bw(base_size = 10) +
+    theme(axis.text.x = element_text(angle = 40, hjust = 1))
+
+  p2 <- ggplot(pf, aes(x = class_id, y = pearson_r, fill = source)) +
+    geom_col(position = "dodge") +
+    labs(x = "Repeat class", y = "Pearson r", title = "Pearson r per repeat class") +
+    theme_bw(base_size = 10) +
+    theme(axis.text.x = element_text(angle = 40, hjust = 1))
+
+  p1 / p2
+} else {
+  cat("No per-family metrics with class_id found.\n")
+}
+```
+
+## Compute resources
+
+```{r resources}
+res_cols <- intersect(c("wall_time_s", "cpu_time_s", "max_rss_mb"), names(global))
+if (length(res_cols) > 0 && any(!is.na(global[res_cols]))) {
+  res <- global %>%
+    select(label, all_of(res_cols)) %>%
+    pivot_longer(-label, names_to = "resource", values_to = "value") %>%
+    filter(!is.na(value))
+
+  ggplot(res, aes(x = label, y = value, fill = label)) +
+    geom_col() +
+    facet_wrap(~resource, scales = "free_y") +
+    scale_fill_brewer(palette = "Set1") +
+    labs(x = NULL, y = NULL, title = "Compute resource usage") +
+    theme_bw(base_size = 11) +
+    theme(axis.text.x = element_text(angle = 30, hjust = 1), legend.position = "none")
+} else {
+  cat("Benchmark data not available.\n")
+}
+```
+
+---
+*Generated by [evaluation_report.Rmd](../workflow/scripts/evaluation_report.Rmd)*

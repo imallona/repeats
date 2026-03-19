@@ -314,7 +314,8 @@ def main():
     args = ap.parse_args()
 
     rng = random.Random(args.seed)
-    allowed_chroms = set(args.chromosomes) if args.chromosomes else None
+    # Strip chr prefix so config values like "chr10" match bare-number GTF/FASTA chromosome names
+    allowed_chroms = {c.lstrip("chr") if c.startswith("chr") else c for c in args.chromosomes} if args.chromosomes else None
 
     print(f'Parsing {args.gtf}', file=sys.stderr)
     intervals_by_chrom = parse_gtf_repeats_by_chrom(

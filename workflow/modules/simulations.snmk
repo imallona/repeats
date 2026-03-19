@@ -23,8 +23,8 @@ simulation_script = op.join(workflow.basedir, 'scripts', 'simulate_reads.py')
 rule simulate_smartseq2:
     conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
     input:
-        gtf = config['reference']['repeats_gtf'],
-        fasta = config['reference']['genome_fasta']
+        gtf = rules.decompress_repeats_gtf.output[0],
+        fasta = rules.decompress_genome.output[0]
     output:
         ground_truth = op.join(config['base'], 'simulations', 'smartseq2', 'ground_truth.tsv'),
         manifest = op.join(config['base'], 'simulations', 'smartseq2', 'manifest.tsv'),
@@ -64,8 +64,8 @@ rule simulate_smartseq2:
 rule simulate_chromium:
     conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
     input:
-        gtf = config['reference']['repeats_gtf'],
-        fasta = config['reference']['genome_fasta']
+        gtf = rules.decompress_repeats_gtf.output[0],
+        fasta = rules.decompress_genome.output[0]
     output:
         ground_truth = op.join(config['base'], 'simulations', 'chromium', 'ground_truth.tsv'),
         r1 = op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz'),

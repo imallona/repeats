@@ -32,7 +32,7 @@ include: "modules/normalize.snmk"
 if config['mode'] == 'simulation':
     include: "modules/evaluation.snmk"
 
-for subdir in ['tmp', 'logs', 'benchmarks', 'references', 'refs', 'counts', 'evaluation']:
+for subdir in ['tmp', 'logs', 'benchmarks', 'indices', 'refs', 'counts', 'evaluation']:
     os.makedirs(op.join(config['base'], subdir), exist_ok=True)
 
 
@@ -54,7 +54,7 @@ counts_dir = op.join(config['base'], 'counts')
 def genic_filter_outputs():
     if not config['reference'].get('filter_genic', False):
         return []
-    refs = op.join(config['base'], 'references', genome_tag)
+    refs = op.join(config['base'], 'indices', genome_tag)
     return [
         op.join(refs, 'genic_repeats.gtf'),
         op.join(refs, 'intergenic_repeats.gtf'),
@@ -78,27 +78,33 @@ def simulation_outputs():
     return outputs
 
 
+granularities = config.get('granularities', ['family_id'])
+
+
 def aligner_count_outputs():
     outputs = []
     if 'starsolo' in active_aligners:
         outputs += expand(op.join(counts_dir, 'starsolo_{multimappers}_{feature_set}.tsv'),
                           multimappers=starsolo_modes, feature_set=feature_sets)
-    for aligner in ['kallisto', 'alevin', 'bowtie2']:
+    for aligner in ['alevin', 'kallisto', 'bowtie2']:
         if aligner in active_aligners:
-            outputs += expand(op.join(counts_dir, f'{aligner}_{{feature_set}}.tsv'),
-                              feature_set=feature_sets)
+            outputs += expand(op.join(counts_dir, f'{aligner}_{{feature_set}}_{{granularity}}.tsv'),
+                              feature_set=[fs for fs in feature_sets if fs != 'genes'],
+                              granularity=granularities)
     return outputs
 
 
 def evaluation_outputs():
     outputs = []
     if 'starsolo' in active_aligners:
-        outputs += expand(op.join(eval_dir, 'starsolo_{multimappers}_global_metrics.tsv'),
+        outputs += expand(op.join(eval_dir, 'starsolo_{multimappers}_gene_id_global_metrics.tsv'),
                           multimappers=starsolo_modes)
-    for aligner in ['kallisto', 'alevin', 'bowtie2']:
+    for aligner in ['alevin', 'kallisto', 'bowtie2']:
         if aligner in active_aligners:
-            outputs.append(op.join(eval_dir, f'{aligner}_global_metrics.tsv'))
+            outputs += expand(op.join(eval_dir, f'{aligner}_{{granularity}}_global_metrics.tsv'),
+                              granularity=granularities)
     outputs.append(op.join(eval_dir, 'summary_global_metrics.tsv'))
+    outputs.append(op.join(eval_dir, 'evaluation_report.html'))
     return outputs
 
 

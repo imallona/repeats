@@ -10,27 +10,63 @@ Modules are conditionally included based on `config['mode']` and `config['aligne
 | `data_acquisition.snmk` | always | SRA download rules for real-data mode |
 | `simulations.snmk` | `mode: simulation` | Simulate SmartSeq2 per-cell FASTQs or Chromium R1/R2 from repeat loci |
 | `starsolo.snmk` | `starsolo` in aligners | STARsolo alignment (SmartSeq2 manifest or Chromium CB_UMI_Simple) |
-| `kallisto.snmk` | `kallisto` in aligners | Kallisto pseudoalignment (bulk per-cell for SS2, kallisto bus + bustools for Chromium) |
-| `alevin.snmk` | `alevin` in aligners | Salmon quant (bulk per-cell for SS2) or salmon alevin (Chromium, sketch mode for simulation) |
-| `bowtie2.snmk` | `bowtie2` in aligners | Bowtie2 alignment + featureCounts with optional cell/feature chunking |
+| `kallisto.snmk` | `kallisto` in aligners | Kallisto pseudoalignment (bulk per-cell for SS2, `kallisto bus` + bustools for Chromium) |
+| `alevin.snmk` | `alevin` in aligners | Salmon quant (bulk per-cell for SS2) or salmon alevin (Chromium) |
+| `bowtie2.snmk` | `bowtie2` in aligners | Bowtie2 alignment to repeat pseudo-genome + `samtools idxstats` counting |
 | `normalize.snmk` | always | Convert each aligner's native output to a common feature × cell TSV |
-| `evaluation.snmk` | `mode: simulation` | Compare normalized counts against simulation ground truth; produce metric tables |
+| `evaluation.snmk` | `mode: simulation` | Compare normalized counts against simulation ground truth; produce metric tables and HTML report |
 
 ## Chromosome subsetting and `genome_tag`
 
-All reference indices (STAR, Kallisto, Salmon, Bowtie2) are built under
-`{base}/references/{genome_tag}/` where `genome_tag` is derived from
-`config.reference.chromosomes`:
+All indices are built under `{base}/indices/{genome_tag}/` where `genome_tag` is derived from
+`config.reference.chromosomes` (the user-supplied value is used as-is for labelling):
 
-| Config value | `genome_tag` | path (index) |
+| config value (user-provided) | `genome_tag` | example path |
 |---|---|---|
-| *(empty)* | `all` | `references/all/star/` |
-| `["chr10"]` | `chr10` | `references/chr10/star/` |
-| `["chr10", "chrX"]` | `chr10_chrX` | `references/chr10_chrX/star/` |
+| *(empty)* | `all` | `indices/all/star/` |
+| `["chr10"]` | `chr10` | `indices/chr10/star/` |
+| `["chr10", "chrX"]` | `chr10_chrX` | `indices/chr10_chrX/star/` |
+
+Internally, all GTF and FASTA files use bare chromosome names without the `chr` prefix
+(Ensembl convention), regardless of the source annotation.  UCSC `chr`-prefixed files
+are stripped at the `decompress_*` rules.
+
+## Quantification granularity
+
+Bowtie2, Kallisto (SmartSeq2), and Alevin (SmartSeq2) all support multi-level aggregation
+of repeat counts via the `granularities` config key:
+
+```yaml
+granularities:
+  - locus      # individual repeat locus (transcript_id)
+  - gene_id    # repeat gene / family member
+  - family_id  # RepeatMasker family (e.g. L1HS, AluSz)
+  - class_id   # RepeatMasker class (e.g. LINE, SINE, LTR)
+```
+
+Default when not set: `[family_id]`.
+
+The aggregation is performed at the normalization step using a locus map
+(`indices/{genome_tag}/repeats_locus_map.tsv`) built from the repeats GTF by
+`reference.snmk::build_repeat_locus_map`.
+
+## Bowtie2 pseudo-genome approach
+
+Rather than aligning to the full genome and using featureCounts (which requires
+chromosome names in the BAM to match those in the annotation GTF),
+Bowtie2 is indexed against a **pseudo-genome FASTA** of extracted repeat sequences
+(`indices/{genome_tag}/repeats.fa`).  Each repeat locus becomes its own reference
+"chromosome" named `transcript_id::chrom:start-end(strand)`.
+
+Read counts per locus are obtained with `samtools idxstats` and aggregated by the
+`count_pseudo_genome.py` script.  This approach has two key advantages:
+
+1. Counting is exact per-locus without GTF/chromosome name reconciliation.
+2. Multi-granularity outputs (locus → family → class) are produced in a single pass.
 
 ## Adding a new aligner
 
 1. Create `modules/<aligner>.snmk` with rules gated on `sim_technology`.
-2. Add a normalization block in `normalize.snmk` producing `counts/<aligner>_{feature_set}.tsv`.
-3. The `evaluation.snmk` `evaluate_single_mode_aligner` rule will pick it up automatically
-   once the aligner name is added to `config['aligners']`.
+2. Add a normalization block in `normalize.snmk` producing `counts/<aligner>_{feature_set}[_{granularity}].tsv`.
+3. Add the aligner name to `granular_aligners` in `evaluation.snmk` if it supports granularity, or
+   add a dedicated `evaluate_<aligner>` rule otherwise.

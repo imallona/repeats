@@ -1,0 +1,17 @@
+name: rmarkdown
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - r-base >=4.3
+  - r-rmarkdown
+  - r-ggplot2
+  - r-dplyr
+  - r-tidyr
+  - r-readr
+  - r-knitr
+  - r-scales
+  - r-patchwork
+  - r-purrr
+  - pandoc

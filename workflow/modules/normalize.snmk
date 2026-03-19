@@ -46,20 +46,32 @@ if 'kallisto' in active_aligners and sim_technology == 'smartseq2':
             abundances = lambda wc: expand(
                 op.join(config['base'], 'kallisto', '{feature_set}', 'smartseq2', '{cell_id}', 'abundance.tsv'),
                 feature_set=wc.feature_set,
-                cell_id=sim_cell_ids)
+                cell_id=sim_cell_ids),
+            t2g = lambda wc: op.join(
+                config['base'], 'indices', genome_tag,
+                'repeats_t2g_' + wc.granularity + '.tsv'
+            ) if wc.feature_set != 'genes' else op.join(
+                config['base'], 'indices', genome_tag, 'genes_t2g.tsv'
+            )
         output:
-            counts_tsv = op.join(normalize_dir, 'kallisto_{feature_set}.tsv')
+            counts_tsv = op.join(normalize_dir, 'kallisto_{feature_set}_{granularity}.tsv')
+        wildcard_constraints:
+            granularity = 'locus|gene_id|family_id|class_id',
+            feature_set = '[a-z_]+'
         params:
             cell_ids_arg = ' '.join(sim_cell_ids),
             cell_dirs_arg = lambda wc: ' '.join(
                 op.join(config['base'], 'kallisto', wc.feature_set, 'smartseq2', cid)
                 for cid in sim_cell_ids)
-        log: op.join(config['base'], 'logs', 'normalize_kallisto_{feature_set}_smartseq2.log')
+        log:
+            op.join(config['base'], 'logs',
+                    'normalize_kallisto_{feature_set}_{granularity}_smartseq2.log')
         shell:
             """
-            python {workflow.basedir}/scripts/normalize_kallisto_smartseq2.py \
+            python {workflow.basedir}/scripts/normalize_kallisto_smartseq2_granular.py \
                 --cell-ids {params.cell_ids_arg} \
                 --cell-dirs {params.cell_dirs_arg} \
+                --t2g {input.t2g} \
                 --output {output.counts_tsv} 2> {log}
             """
 
@@ -93,20 +105,32 @@ if 'alevin' in active_aligners and sim_technology == 'smartseq2':
             quant_sfs = lambda wc: expand(
                 op.join(config['base'], 'alevin', '{feature_set}', 'smartseq2', '{cell_id}', 'quant.sf'),
                 feature_set=wc.feature_set,
-                cell_id=sim_cell_ids)
+                cell_id=sim_cell_ids),
+            t2g = lambda wc: op.join(
+                config['base'], 'indices', genome_tag,
+                'repeats_t2g_' + wc.granularity + '.tsv'
+            ) if wc.feature_set != 'genes' else op.join(
+                config['base'], 'indices', genome_tag, 'genes_t2g.tsv'
+            )
         output:
-            counts_tsv = op.join(normalize_dir, 'alevin_{feature_set}.tsv')
+            counts_tsv = op.join(normalize_dir, 'alevin_{feature_set}_{granularity}.tsv')
+        wildcard_constraints:
+            granularity = 'locus|gene_id|family_id|class_id',
+            feature_set = '[a-z_]+'
         params:
             cell_ids_arg = ' '.join(sim_cell_ids),
             cell_dirs_arg = lambda wc: ' '.join(
                 op.join(config['base'], 'alevin', wc.feature_set, 'smartseq2', cid)
                 for cid in sim_cell_ids)
-        log: op.join(config['base'], 'logs', 'normalize_alevin_{feature_set}_smartseq2.log')
+        log:
+            op.join(config['base'], 'logs',
+                    'normalize_alevin_{feature_set}_{granularity}_smartseq2.log')
         shell:
             """
             python {workflow.basedir}/scripts/normalize_alevin_smartseq2.py \
                 --cell-ids {params.cell_ids_arg} \
                 --cell-dirs {params.cell_dirs_arg} \
+                --t2g {input.t2g} \
                 --output {output.counts_tsv} 2> {log}
             """
 
@@ -134,9 +158,21 @@ if 'alevin' in active_aligners and sim_technology == 'chromium':
 if 'bowtie2' in active_aligners and sim_technology == 'smartseq2':
 
     rule normalize_bowtie2_smartseq2:
-        input: op.join(config['base'], 'bowtie2', '{feature_set}', 'smartseq2', 'counts_merged.tsv')
-        output: op.join(normalize_dir, 'bowtie2_{feature_set}.tsv')
-        shell: "cp {input} {output}"
+        input:
+            op.join(config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
+                    'counts_{granularity}.tsv')
+        output:
+            op.join(normalize_dir, 'bowtie2_{feature_set}_{granularity}.tsv')
+        wildcard_constraints:
+            granularity = 'locus|gene_id|family_id|class_id',
+            feature_set = '[a-z_]+'
+        log:
+            op.join(config['base'], 'logs',
+                    'normalize_bowtie2_{feature_set}_{granularity}_smartseq2.log')
+        shell:
+            """
+            cp {input} {output} 2> {log}
+            """
 
 
 if 'bowtie2' in active_aligners and sim_technology == 'chromium':

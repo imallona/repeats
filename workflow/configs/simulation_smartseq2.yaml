@@ -44,6 +44,11 @@ aligner_params:
     featurecounts_cell_chunk_size: 20
     featurecounts_n_feature_chunks: 1
 
+granularities:
+  - gene_id
+  - family_id
+  - class_id
+
 resources:
   max_threads: 10
   max_mem_mb: 20000
