@@ -79,7 +79,7 @@ else:
             extra_args = config.get('aligner_params', {}).get('alevin', {}).get('extra_args', '')
         log: op.join(config['base'], 'logs', 'salmon_{feature_set}_alevin_chromium.log')
         benchmark: op.join(config['base'], 'benchmarks', 'salmon_{feature_set}_alevin_chromium.txt')
-        threads: config['resources']['max_threads']
+        threads: workflow.cores
         shell:
             """
             salmon alevin \

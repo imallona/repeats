@@ -81,7 +81,7 @@ else:
             extra_args = config.get('aligner_params', {}).get('kallisto', {}).get('extra_args', '')
         log: op.join(config['base'], 'logs', 'kallisto_{feature_set}_bus_chromium.log')
         benchmark: op.join(config['base'], 'benchmarks', 'kallisto_{feature_set}_bus_chromium.txt')
-        threads: config['resources']['max_threads']
+        threads: workflow.cores
         shell:
             """
             kallisto bus \
@@ -99,7 +99,7 @@ else:
         output: op.join(config['base'], 'kallisto', '{feature_set}', 'chromium', 'output.sorted.bus')
         log: op.join(config['base'], 'logs', 'bustools_{feature_set}_sort.log')
         benchmark: op.join(config['base'], 'benchmarks', 'bustools_{feature_set}_sort.txt')
-        threads: config['resources']['max_threads']
+        threads: workflow.cores
         shell: "bustools sort --threads {threads} -o {output} {input} 2> {log}"
 
     rule bustools_count_chromium:

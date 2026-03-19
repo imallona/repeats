@@ -26,13 +26,12 @@ rule decompress_genome:
     output: temp(op.join(config['base'], 'tmp', 'genome.fa'))
     params:
         chroms = _chrom_list
-    threads: config['resources']['max_threads']
+    threads: workflow.cores
     shell:
         """
         pigz --decompress --keep --stdout --processes {threads} {input} \
-            | sed '/^>MT /s/^>MT />chrM /; /^>[0-9XY]/s/^>/>chr/' \
             | awk -v chroms="{params.chroms}" '
-                BEGIN {{n=split(chroms,c," "); for(i=1;i<=n;i++) if(c[i]!="") keep[c[i]]=1}}
+                BEGIN {{n=split(chroms,c," "); for(i=1;i<=n;i++) if(c[i]!="") {{ch=c[i]; sub(/^chr/,"",ch); keep[ch]=1}}}}
                 /^>/ {{name=substr($1,2); active=(length(keep)==0 || name in keep)}}
                 active' \
             > {output}
@@ -43,8 +42,8 @@ rule decompress_repeats_gtf:
     conda: op.join(workflow.basedir, 'envs', 'star.yaml')
     input: config['reference']['repeats_gtf']
     output: temp(op.join(config['base'], 'tmp', 'repeats.gtf'))
-    threads: config['resources']['max_threads']
-    shell: "pigz --decompress --keep --stdout --processes {threads} {input} > {output}"
+    threads: workflow.cores
+    shell: "pigz --decompress --keep --stdout --processes {threads} {input} | sed 's/^chr//' > {output}"
 
 
 rule decompress_genes_gtf:
@@ -53,12 +52,12 @@ rule decompress_genes_gtf:
     output: temp(op.join(config['base'], 'tmp', 'genes.gtf'))
     params:
         chroms = _chrom_list
-    threads: config['resources']['max_threads']
+    threads: workflow.cores
     shell:
         """
         pigz --decompress --keep --stdout --processes {threads} {input} \
             | awk -v chroms="{params.chroms}" '
-                BEGIN {{n=split(chroms,c," "); for(i=1;i<=n;i++) if(c[i]!="") keep[c[i]]=1}}
+                BEGIN {{n=split(chroms,c," "); for(i=1;i<=n;i++) if(c[i]!="") {{ch=c[i]; sub(/^chr/,"",ch); keep[ch]=1}}}}
                 /^#/ {{print; next}}
                 {{if(length(keep)==0 || ($1 in keep)) print}}' \
             > {output}
@@ -76,7 +75,7 @@ rule star_genome_index:
         index_dir = op.join(config['base'], 'references', genome_tag, 'star')
     log: op.join(config['base'], 'logs', 'star_index.log')
     benchmark: op.join(config['base'], 'benchmarks', 'star_index.txt')
-    threads: config['resources']['max_threads']
+    threads: workflow.cores
     shell:
         """
         STAR --runThreadN {threads} \
@@ -184,6 +183,7 @@ rule kallisto_index:
     wildcard_constraints: feature_set = '[a-z_]+'
     log: op.join(config['base'], 'logs', 'kallisto_{feature_set}_index.log')
     benchmark: op.join(config['base'], 'benchmarks', 'kallisto_{feature_set}_index.txt')
+    threads: workflow.cores
     shell: "kallisto index -i {output} {input} 2> {log}"
 
 
@@ -197,7 +197,7 @@ rule salmon_index:
     wildcard_constraints: feature_set = '[a-z_]+'
     log: op.join(config['base'], 'logs', 'salmon_{feature_set}_index.log')
     benchmark: op.join(config['base'], 'benchmarks', 'salmon_{feature_set}_index.txt')
-    threads: config['resources']['max_threads']
+    threads: workflow.cores
     shell: "salmon index -t {input} -i {params.index_dir} -p {threads} 2> {log}"
 
 
@@ -211,7 +211,7 @@ rule bowtie2_index:
     wildcard_constraints: feature_set = '[a-z_]+'
     log: op.join(config['base'], 'logs', 'bowtie2_{feature_set}_index.log')
     benchmark: op.join(config['base'], 'benchmarks', 'bowtie2_{feature_set}_index.txt')
-    threads: config['resources']['max_threads']
+    threads: workflow.cores
     shell: "bowtie2-build --threads {threads} {input} {params.index_prefix} 2> {log}"
 
 

@@ -50,7 +50,7 @@ if sim_technology == 'smartseq2':
             extra_args = config.get('aligner_params', {}).get('starsolo', {}).get('extra_args', '')
         log: op.join(config['base'], 'logs', 'starsolo_smartseq2_{multimappers}_{feature_set}.log')
         benchmark: op.join(config['base'], 'benchmarks', 'starsolo_smartseq2_{multimappers}_{feature_set}.txt')
-        threads: min(10, config['resources']['max_threads'])
+        threads: workflow.cores
         shell:
             """
             rm -rf {params.tmp_dir} {params.out_prefix}/Solo.out
@@ -71,7 +71,6 @@ if sim_technology == 'smartseq2':
                  --soloMultiMappers {params.solo_multimappers} \
                  --outSAMtype BAM SortedByCoordinate \
                  --limitBAMsortRAM {params.max_ram_bytes} \
-                 --outTmpDir {params.tmp_dir} \
                  {params.extra_args} 2> {log}
 
             rm -rf {params.tmp_dir}
@@ -111,7 +110,7 @@ else:
             extra_args = config.get('aligner_params', {}).get('starsolo', {}).get('extra_args', '')
         log: op.join(config['base'], 'logs', 'starsolo_chromium_{multimappers}_{feature_set}.log')
         benchmark: op.join(config['base'], 'benchmarks', 'starsolo_chromium_{multimappers}_{feature_set}.txt')
-        threads: min(10, config['resources']['max_threads'])
+        threads: workflow.cores
         shell:
             """
             rm -rf {params.tmp_dir} {params.out_prefix}/Solo.out
@@ -135,7 +134,6 @@ else:
                  --soloMultiMappers {params.solo_multimappers} \
                  --outSAMtype BAM SortedByCoordinate \
                  --limitBAMsortRAM {params.max_ram_bytes} \
-                 --outTmpDir {params.tmp_dir} \
                  {params.extra_args} 2> {log}
 
             rm -rf {params.tmp_dir}
