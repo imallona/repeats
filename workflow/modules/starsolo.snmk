@@ -29,6 +29,9 @@ def gtf_for_feature_set(wildcards):
 if sim_technology == 'smartseq2':
 
     rule starsolo_smartseq2:
+        wildcard_constraints:
+            multimappers = 'unique|multimapping',
+            feature_set = 'repeats|genes'
         conda: op.join(workflow.basedir, 'envs', 'star.yaml')
         input:
             index = rules.star_genome_index.output.index,
@@ -80,6 +83,9 @@ if sim_technology == 'smartseq2':
 else:
 
     rule starsolo_chromium:
+        wildcard_constraints:
+            multimappers = 'unique|multimapping',
+            feature_set = 'repeats|genes'
         conda: op.join(workflow.basedir, 'envs', 'star.yaml')
         input:
             index = rules.star_genome_index.output.index,

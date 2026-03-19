@@ -84,8 +84,10 @@ granularities = config.get('granularities', ['family_id'])
 def aligner_count_outputs():
     outputs = []
     if 'starsolo' in active_aligners:
-        outputs += expand(op.join(counts_dir, 'starsolo_{multimappers}_{feature_set}.tsv'),
-                          multimappers=starsolo_modes, feature_set=feature_sets)
+        outputs += expand(op.join(counts_dir, 'starsolo_{multimappers}_genes.tsv'),
+                          multimappers=starsolo_modes)
+        outputs += expand(op.join(counts_dir, 'starsolo_{multimappers}_repeats_{granularity}.tsv'),
+                          multimappers=starsolo_modes, granularity=granularities)
     for aligner in ['alevin', 'kallisto', 'bowtie2']:
         if aligner in active_aligners:
             outputs += expand(op.join(counts_dir, f'{aligner}_{{feature_set}}_{{granularity}}.tsv'),
@@ -97,8 +99,8 @@ def aligner_count_outputs():
 def evaluation_outputs():
     outputs = []
     if 'starsolo' in active_aligners:
-        outputs += expand(op.join(eval_dir, 'starsolo_{multimappers}_gene_id_global_metrics.tsv'),
-                          multimappers=starsolo_modes)
+        outputs += expand(op.join(eval_dir, 'starsolo_{multimappers}_{granularity}_global_metrics.tsv'),
+                          multimappers=starsolo_modes, granularity=granularities)
     for aligner in ['alevin', 'kallisto', 'bowtie2']:
         if aligner in active_aligners:
             outputs += expand(op.join(eval_dir, f'{aligner}_{{granularity}}_global_metrics.tsv'),

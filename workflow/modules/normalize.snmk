@@ -2,8 +2,9 @@
 """
 Convert each aligner's native output to the standard feature x cell count TSV.
 All downstream evaluation rules consume this common format.
-Output path: counts/{aligner}_{multimappers}_{feature_set}.tsv  (starsolo)
-             counts/{aligner}_{feature_set}.tsv                  (others)
+Output path: counts/{aligner}_{multimappers}_{feature_set}_{granularity}.tsv  (starsolo repeats)
+             counts/{aligner}_{multimappers}_{feature_set}.tsv               (starsolo genes)
+             counts/{aligner}_{feature_set}_{granularity}.tsv                (others)
 """
 
 import os.path as op
@@ -22,18 +23,44 @@ if 'starsolo' in active_aligners:
         config.get('aligner_params', {}).get('starsolo', {}).get('multimapper_modes', ['unique'])
     )
 
-    rule normalize_starsolo:
+    rule normalize_starsolo_genes:
         conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
         input:
             raw_matrix_dir = op.join(config['base'], 'starsolo', sim_technology,
-                                     '{multimappers}_{feature_set}', 'Solo.out', 'Gene', 'raw')
+                                     '{multimappers}_genes', 'Solo.out', 'Gene', 'raw')
         output:
-            counts_tsv = op.join(normalize_dir, 'starsolo_{multimappers}_{feature_set}.tsv')
-        log: op.join(config['base'], 'logs', 'normalize_starsolo_{multimappers}_{feature_set}.log')
+            counts_tsv = op.join(normalize_dir, 'starsolo_{multimappers}_genes.tsv')
+        wildcard_constraints:
+            multimappers = 'unique|multimapping'
+        log:
+            op.join(config['base'], 'logs', 'normalize_starsolo_{multimappers}_genes.log')
         shell:
             """
             python {workflow.basedir}/scripts/normalize_starsolo.py \
                 --raw-dir {input.raw_matrix_dir} \
+                --output {output.counts_tsv} 2> {log}
+            """
+
+    rule normalize_starsolo_repeats:
+        conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
+        input:
+            raw_matrix_dir = op.join(config['base'], 'starsolo', sim_technology,
+                                     '{multimappers}_repeats', 'Solo.out', 'Gene', 'raw'),
+            locus_map = op.join(config['base'], 'indices', genome_tag, 'repeats_locus_map.tsv')
+        output:
+            counts_tsv = op.join(normalize_dir, 'starsolo_{multimappers}_repeats_{granularity}.tsv')
+        wildcard_constraints:
+            multimappers = 'unique|multimapping',
+            granularity = 'gene_id|family_id|class_id'
+        log:
+            op.join(config['base'], 'logs',
+                    'normalize_starsolo_{multimappers}_repeats_{granularity}.log')
+        shell:
+            """
+            python {workflow.basedir}/scripts/normalize_starsolo.py \
+                --raw-dir {input.raw_matrix_dir} \
+                --locus-map {input.locus_map} \
+                --granularity {wildcards.granularity} \
                 --output {output.counts_tsv} 2> {log}
             """
 

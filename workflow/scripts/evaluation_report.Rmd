@@ -120,18 +120,20 @@ ggplot(corr, aes(x = label, y = r, color = metric, group = metric)) +
 
 ```{r detection}
 det <- global %>%
-  select(label, precision, recall, f1) %>%
-  pivot_longer(-label, names_to = "metric", values_to = "value") %>%
-  filter(!is.na(value))
+  filter(!is.na(recall), !is.na(precision))
 
-ggplot(det, aes(x = recall, y = precision, color = label, size = f1)) +
-  geom_point(alpha = 0.85) +
-  scale_size_continuous(range = c(3, 8), name = "F1") +
-  scale_color_brewer(palette = "Dark2", name = "Aligner") +
-  xlim(0, 1) + ylim(0, 1) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dotted", color = "grey60") +
-  labs(title = "Precision vs Recall (point size = F1)", x = "Recall", y = "Precision") +
-  theme_bw(base_size = 11)
+if (nrow(det) > 0) {
+  ggplot(det, aes(x = recall, y = precision, color = label, size = f1)) +
+    geom_point(alpha = 0.85) +
+    scale_size_continuous(range = c(3, 8), name = "F1") +
+    scale_color_brewer(palette = "Dark2", name = "Aligner") +
+    xlim(0, 1) + ylim(0, 1) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dotted", color = "grey60") +
+    labs(title = "Precision vs Recall (point size = F1)", x = "Recall", y = "Precision") +
+    theme_bw(base_size = 11)
+} else {
+  cat("No detection metrics available.\n")
+}
 ```
 
 ## log1p RMSE

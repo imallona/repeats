@@ -66,20 +66,23 @@ def load_count_matrix(tsv_path):
     """
     Returns:
       observed: {cell_id: {repeat_id: count}}
+      all_matrix_features: set of all feature IDs in the matrix (incl. zero-count rows)
     Streams the file line by line to avoid loading the full dense matrix.
     """
     observed = defaultdict(dict)
+    all_matrix_features = set()
     with open(tsv_path) as fh:
         header = fh.readline().rstrip('\n').split('\t')
         cell_ids = header[1:]
         for line in fh:
             parts = line.rstrip('\n').split('\t')
             repeat_id = parts[0]
+            all_matrix_features.add(repeat_id)
             for cell_idx, val in enumerate(parts[1:]):
                 count = float(val)
                 if count > 0:
                     observed[cell_ids[cell_idx]][repeat_id] = count
-    return dict(observed)
+    return dict(observed), all_matrix_features
 
 
 def pearson_r(x_vals, y_vals):
@@ -212,6 +215,10 @@ def main():
                     choices=['locus', 'gene_id', 'family_id', 'class_id'],
                     help='Granularity level at which to aggregate ground truth and observed counts')
     ap.add_argument('--benchmark', default=None)
+    ap.add_argument('--locus-map', default=None,
+                    help='4-col TSV (transcript_id, gene_id, family_id, class_id) '
+                         'listing ALL annotation features. Used to define the '
+                         'full feature universe for specificity computation.')
     ap.add_argument('--output-prefix', required=True)
     args = ap.parse_args()
 
@@ -219,14 +226,29 @@ def main():
     truth, repeat_meta = load_ground_truth(args.ground_truth, granularity=args.granularity)
 
     print(f'Loading observed counts from {args.observed_counts}', file=sys.stderr)
-    observed = load_count_matrix(args.observed_counts)
+    observed, matrix_features = load_count_matrix(args.observed_counts)
 
     all_cells = sorted(set(truth.keys()) | set(observed.keys()))
     common_cells = sorted(set(truth.keys()) & set(observed.keys()))
-    all_features = sorted(
+
+    # Build feature universe: include expressed features + full annotation
+    # so specificity (true negatives) is meaningful.
+    feature_universe = (
+        matrix_features |
         {f for cell in truth for f in truth[cell]} |
         {f for cell in observed for f in observed[cell]}
     )
+    if args.locus_map and os.path.exists(args.locus_map):
+        col = {'gene_id': 1, 'family_id': 2, 'class_id': 3, 'locus': 0}.get(
+            args.granularity, 1)
+        with open(args.locus_map) as fh:
+            for line in fh:
+                parts = line.rstrip('\n').split('\t')
+                if len(parts) > col:
+                    feature_universe.add(parts[col])
+        print(f'  Feature universe expanded to {len(feature_universe)} '
+              f'(with locus-map)', file=sys.stderr)
+    all_features = sorted(feature_universe)
 
     print(f'  {len(common_cells)} common cells, {len(all_features)} features', file=sys.stderr)
 

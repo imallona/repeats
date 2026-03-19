@@ -21,6 +21,7 @@ counts_dir = op.join(config['base'], 'counts')
 eval_dir = op.join(config['base'], 'evaluation')
 
 ground_truth_path = op.join(config['base'], 'simulations', sim_technology, 'ground_truth.tsv')
+locus_map_path = op.join(config['base'], 'indices', genome_tag, 'repeats_locus_map.tsv')
 
 
 
@@ -31,12 +32,14 @@ rule evaluate_starsolo:
         ground_truth = ground_truth_path,
         counts = op.join(counts_dir, 'starsolo_{multimappers}_repeats_{granularity}.tsv'),
         benchmark = op.join(config['base'], 'benchmarks',
-                            f'starsolo_{sim_technology}_{{multimappers}}_repeats.txt')
+                            f'starsolo_{sim_technology}_{{multimappers}}_repeats.txt'),
+        locus_map = locus_map_path
     output:
         global_metrics = op.join(eval_dir, 'starsolo_{multimappers}_{granularity}_global_metrics.tsv'),
         per_cell = op.join(eval_dir, 'starsolo_{multimappers}_{granularity}_per_cell_metrics.tsv'),
         per_family = op.join(eval_dir, 'starsolo_{multimappers}_{granularity}_per_family_metrics.tsv')
     wildcard_constraints:
+        multimappers = 'unique|multimapping',
         granularity = 'gene_id|family_id|class_id'
     params:
         output_prefix = op.join(eval_dir, 'starsolo_{multimappers}_{granularity}')
@@ -51,6 +54,7 @@ rule evaluate_starsolo:
             --multimapper-mode {wildcards.multimappers} \
             --granularity {wildcards.granularity} \
             --benchmark {input.benchmark} \
+            --locus-map {input.locus_map} \
             --output-prefix {params.output_prefix} 2> {log}
         """
 
@@ -59,7 +63,8 @@ rule evaluate_single_mode_aligner:
     conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
     input:
         ground_truth = ground_truth_path,
-        counts = op.join(counts_dir, '{aligner}_repeats_{granularity}.tsv')
+        counts = op.join(counts_dir, '{aligner}_repeats_{granularity}.tsv'),
+        locus_map = locus_map_path
     output:
         global_metrics = op.join(eval_dir, '{aligner}_{granularity}_global_metrics.tsv'),
         per_cell = op.join(eval_dir, '{aligner}_{granularity}_per_cell_metrics.tsv'),
@@ -81,6 +86,7 @@ rule evaluate_single_mode_aligner:
             --aligner {wildcards.aligner} \
             --multimapper-mode unique \
             --granularity {wildcards.granularity} \
+            --locus-map {input.locus_map} \
             --benchmark {params.benchmark} \
             --output-prefix {params.output_prefix} 2> {log}
         """
