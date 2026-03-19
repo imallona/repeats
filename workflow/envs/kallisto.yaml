@@ -2,8 +2,10 @@ name: repeats_kallisto
 channels:
   - bioconda
   - conda-forge
-  - nodefaults
 dependencies:
-  - bioconda::kallisto>=0.50
+  # =0.48: kallisto>=0.50 pulls in hdf5 which requires libcurl→libnghttp2→c-ares;
+  # that chain conflicts with other packages on this system's libmamba solver.
+  # 0.48 is the last pre-hdf5 release and fully supports kallisto bus.
+  - bioconda::kallisto=0.48
   - bioconda::bustools
   - conda-forge::pigz

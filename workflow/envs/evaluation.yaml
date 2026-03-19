@@ -2,8 +2,8 @@ name: repeats_evaluation
 channels:
   - conda-forge
   - bioconda
-  - nodefaults
 dependencies:
+  # Also used for simulation rules (simulate_reads.py needs only stdlib + no extra deps)
   - conda-forge::python>=3.10
   - conda-forge::pandas
   - conda-forge::scipy

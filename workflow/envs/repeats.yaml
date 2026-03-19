@@ -2,7 +2,6 @@ name: repeats
 channels:
   - conda-forge
   - bioconda
-  - nodefaults
 dependencies:
   - bioconda::htslib
   - bioconda::samtools

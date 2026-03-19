@@ -34,7 +34,7 @@ feature_chunk_ids = list(range(n_feature_chunks))
 
 def bowtie2_index_prefix(wildcards):
     return op.join(
-        config['base'], 'references',
+        config['base'], 'references', genome_tag,
         'bowtie2_' + wildcards.feature_set, wildcards.feature_set
     )
 
@@ -95,7 +95,7 @@ rule bowtie2_align_smartseq2_cell:
     conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
     input:
         index=lambda wc: op.join(
-            config['base'], 'references',
+            config['base'], 'references', genome_tag,
             'bowtie2_' + wc.feature_set, wc.feature_set + '.1.bt2'
         ),
         fastq=smartseq2_fastq
@@ -235,7 +235,7 @@ rule bowtie2_align_chromium_r2:
     conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
     input:
         index=lambda wc: op.join(
-            config['base'], 'references',
+            config['base'], 'references', genome_tag,
             'bowtie2_' + wc.feature_set, wc.feature_set + '.1.bt2'
         ),
         r2=chromium_r2

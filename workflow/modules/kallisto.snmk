@@ -18,7 +18,7 @@ if sim_technology == 'smartseq2':
     rule kallisto_quant_smartseq2_cell:
         conda: op.join(workflow.basedir, 'envs', 'kallisto.yaml')
         input:
-            index = lambda wc: op.join(config['base'], 'references', 'kallisto', f'{wc.feature_set}.idx'),
+            index = lambda wc: op.join(config['base'], 'references', genome_tag, 'kallisto', f'{wc.feature_set}.idx'),
             fastq = op.join(config['base'], 'simulations', 'smartseq2', '{cell_id}.fastq.gz')
                     if config['mode'] == 'simulation'
                     else lambda wc: config['real_data']['samples'][wc.cell_id]['R1']
@@ -64,7 +64,7 @@ else:
     rule kallisto_bus_chromium:
         conda: op.join(workflow.basedir, 'envs', 'kallisto.yaml')
         input:
-            index = lambda wc: op.join(config['base'], 'references', 'kallisto', f'{wc.feature_set}.idx'),
+            index = lambda wc: op.join(config['base'], 'references', genome_tag, 'kallisto', f'{wc.feature_set}.idx'),
             r1 = op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
                  if config['mode'] == 'simulation'
                  else lambda wc: config['real_data']['samples'][wc.sample]['R1'],

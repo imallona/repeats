@@ -29,7 +29,7 @@ def gtf_for_feature_set(wildcards):
 if sim_technology == 'smartseq2':
 
     rule starsolo_smartseq2:
-        conda: op.join('envs', 'star.yaml')
+        conda: op.join(workflow.basedir, 'envs', 'star.yaml')
         input:
             index = rules.star_genome_index.output.index,
             gtf = gtf_for_feature_set,
@@ -43,7 +43,7 @@ if sim_technology == 'smartseq2':
                                                '{multimappers}_{feature_set}', 'Solo.out', 'Gene', 'raw'))
         params:
             out_prefix = op.join(config['base'], 'starsolo', 'smartseq2', '{multimappers}_{feature_set}') + '/',
-            index_dir = op.join(config['base'], 'references', 'star'),
+            index_dir = op.join(config['base'], 'references', genome_tag, 'star'),
             tmp_dir = op.join(config['base'], 'tmp', 'starsolo_smartseq2_{multimappers}_{feature_set}'),
             solo_multimappers = lambda wc: multimapping_mode_to_star_param[wc.multimappers],
             max_ram_bytes = config['resources']['max_mem_mb'] * 1024 * 1024,
@@ -81,7 +81,7 @@ if sim_technology == 'smartseq2':
 else:
 
     rule starsolo_chromium:
-        conda: op.join('envs', 'star.yaml')
+        conda: op.join(workflow.basedir, 'envs', 'star.yaml')
         input:
             index = rules.star_genome_index.output.index,
             gtf = gtf_for_feature_set,
@@ -101,7 +101,7 @@ else:
                                                '{multimappers}_{feature_set}', 'Solo.out', 'Gene', 'raw'))
         params:
             out_prefix = op.join(config['base'], 'starsolo', 'chromium', '{multimappers}_{feature_set}') + '/',
-            index_dir = op.join(config['base'], 'references', 'star'),
+            index_dir = op.join(config['base'], 'references', genome_tag, 'star'),
             tmp_dir = op.join(config['base'], 'tmp', 'starsolo_chromium_{multimappers}_{feature_set}'),
             solo_multimappers = lambda wc: multimapping_mode_to_star_param[wc.multimappers],
             max_ram_bytes = config['resources']['max_mem_mb'] * 1024 * 1024,

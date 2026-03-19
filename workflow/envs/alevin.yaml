@@ -2,7 +2,8 @@ name: repeats_alevin
 channels:
   - bioconda
   - conda-forge
-  - nodefaults
 dependencies:
+  # >=1.10: alevin sketch mode (used for simulation chemistry) was introduced
+  # in salmon 1.10; lower versions lack --sketch/--barcodeLength/--umiLength flags
   - bioconda::salmon>=1.10
   - conda-forge::pigz

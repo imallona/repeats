@@ -10,14 +10,20 @@ import os.path as op
 configfile: "config.yaml"
 
 
+_chroms = config['reference'].get('chromosomes', [])
+# Tag added to reference directory names to reflect chromosome subset
+# e.g. chromosomes: [chr10] -> genome_tag = 'chr10', empty -> 'all'
+genome_tag = '_'.join(sorted(_chroms)) if _chroms else 'all'
+
 include: "modules/download_references.snmk"
+include: "modules/data_acquisition.snmk"
 include: "modules/reference.snmk"
-include: "data_acquisition.snmk"
+
 
 if config['mode'] == 'simulation':
-    include: "simulations.snmk"
+    include: "modules/simulations.snmk"
 
-include: "starsolo.snmk"
+include: "modules/starsolo.snmk"
 include: "modules/kallisto.snmk"
 include: "modules/alevin.snmk"
 include: "modules/bowtie2.snmk"
@@ -48,7 +54,7 @@ counts_dir = op.join(config['base'], 'counts')
 def genic_filter_outputs():
     if not config['reference'].get('filter_genic', False):
         return []
-    refs = op.join(config['base'], 'references')
+    refs = op.join(config['base'], 'references', genome_tag)
     return [
         op.join(refs, 'genic_repeats.gtf'),
         op.join(refs, 'intergenic_repeats.gtf'),

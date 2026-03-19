@@ -18,7 +18,7 @@ if sim_technology == 'smartseq2':
     rule salmon_quant_smartseq2_cell:
         conda: op.join(workflow.basedir, 'envs', 'alevin.yaml')
         input:
-            index_sentinel = lambda wc: op.join(config['base'], 'references', f'salmon_{wc.feature_set}', 'seq.bin'),
+            index_sentinel = lambda wc: op.join(config['base'], 'references', genome_tag, f'salmon_{wc.feature_set}', 'seq.bin'),
             fastq = op.join(config['base'], 'simulations', 'smartseq2', '{cell_id}.fastq.gz')
                     if config['mode'] == 'simulation'
                     else lambda wc: config['real_data']['samples'][wc.cell_id]['R1']
@@ -26,7 +26,7 @@ if sim_technology == 'smartseq2':
             quant_sf = op.join(config['base'], 'alevin', '{feature_set}', 'smartseq2', '{cell_id}', 'quant.sf')
         params:
             outdir = op.join(config['base'], 'alevin', '{feature_set}', 'smartseq2', '{cell_id}'),
-            index_dir = lambda wc: op.join(config['base'], 'references', f'salmon_{wc.feature_set}'),
+            index_dir = lambda wc: op.join(config['base'], 'references', genome_tag, f'salmon_{wc.feature_set}'),
             extra_args = config.get('aligner_params', {}).get('alevin', {}).get('extra_args', '')
         log: op.join(config['base'], 'logs', 'salmon_{feature_set}_quant_smartseq2_{cell_id}.log')
         benchmark: op.join(config['base'], 'benchmarks', 'salmon_{feature_set}_quant_smartseq2_{cell_id}.txt')
@@ -57,7 +57,7 @@ else:
     rule salmon_alevin_chromium:
         conda: op.join(workflow.basedir, 'envs', 'alevin.yaml')
         input:
-            index_sentinel = lambda wc: op.join(config['base'], 'references', f'salmon_{wc.feature_set}', 'seq.bin'),
+            index_sentinel = lambda wc: op.join(config['base'], 'references', genome_tag, f'salmon_{wc.feature_set}', 'seq.bin'),
             r1 = op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
                  if config['mode'] == 'simulation'
                  else lambda wc: config['real_data']['samples'][wc.sample]['R1'],
@@ -74,7 +74,7 @@ else:
                                   'alevin', 'quants_mat_cols.txt')
         params:
             outdir = op.join(config['base'], 'alevin', '{feature_set}', 'chromium'),
-            index_dir = lambda wc: op.join(config['base'], 'references', f'salmon_{wc.feature_set}'),
+            index_dir = lambda wc: op.join(config['base'], 'references', genome_tag, f'salmon_{wc.feature_set}'),
             chem_flag = _alevin_chem_flag,
             extra_args = config.get('aligner_params', {}).get('alevin', {}).get('extra_args', '')
         log: op.join(config['base'], 'logs', 'salmon_{feature_set}_alevin_chromium.log')

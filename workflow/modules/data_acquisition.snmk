@@ -7,7 +7,7 @@ import os.path as op
 
 
 rule download_sra_run:
-    conda: op.join('envs', 'sratools.yaml')
+    conda: op.join(workflow.basedir, 'envs', 'sratools.yaml')
     params:
         outdir = op.join(config['base'], 'data', 'colon_cancer_cell_lines')
     output:
