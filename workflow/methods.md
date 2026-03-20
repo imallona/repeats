@@ -116,6 +116,18 @@ Each aligner's native output is converted to a common feature x cell TSV by a
 per-aligner normalize_*.py script called from normalize.snmk.  All downstream
 evaluation rules consume this format.
 
+For 10x Chromium, the kallisto and alevin normalization scripts read a sparse MTX
+(cells x features) and transpose it to features x cells.  Granularity aggregation
+(summing locus counts into gene_id, family_id, or class_id groups) uses a sparse
+accumulator per group: only non-zero cell indices are stored as {cell_index: count}
+dicts instead of dense arrays of length n_cells.  This keeps memory proportional to
+the number of expressed (cell, feature) pairs rather than O(groups x cells), which
+matters at 10x cell counts.
+
+The bowtie2 Chromium counting script (count_pseudo_genome_chromium.py) streams the
+CB-tagged dedup BAM once via samtools view, accumulating (barcode, feature) counts
+in a sparse dict without any per-cell BAM splitting.
+
 ## evaluation
 
 `evaluate.py` compares the normalized count matrix against the simulation ground truth:

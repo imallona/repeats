@@ -77,7 +77,9 @@ def main():
     else:
         locus_to_group = None
 
-    group_counts = defaultdict(lambda: [0.0] * n_cells)
+    # sparse accumulator: {cell_index: count} per group avoids allocating
+    # a dense n_cells list for every feature group (saves O(groups x cells) memory).
+    group_counts = defaultdict(lambda: defaultdict(float))
 
     for feat_idx, locus in enumerate(feature_ids):
         row = mat.getrow(feat_idx)
@@ -86,19 +88,19 @@ def main():
         target = locus_to_group.get(locus) if locus_to_group is not None else locus
         if target is None:
             continue
-        values = row.toarray().flatten()
         dest = group_counts[target]
-        for ci, v in enumerate(values):
+        for ci, v in zip(row.indices, row.data):
             if v:
                 dest[ci] += v
 
     with open(args.output, 'w') as fh:
         fh.write('feature_id\t' + '\t'.join(cell_barcodes) + '\n')
         for feat_id in sorted(group_counts):
-            row = group_counts[feat_id]
-            if all(v == 0 for v in row):
+            cell_vals = group_counts[feat_id]
+            if not cell_vals:
                 continue
-            fh.write(feat_id + '\t' + '\t'.join(str(v) for v in row) + '\n')
+            vals = [str(cell_vals.get(ci, 0)) for ci in range(n_cells)]
+            fh.write(feat_id + '\t' + '\t'.join(vals) + '\n')
 
     print(f'{len(group_counts)} expressed features written', file=sys.stderr)
 

@@ -160,7 +160,7 @@ rule count_bowtie2_smartseq2:
             config['indices_base'], 'indices', genome_tag,
             f'{wc.feature_set}_locus_map.tsv'
         ),
-        script = ancient(op.join(workflow.basedir, 'scripts', 'count_pseudo_genome.py'))
+        script = ancient(op.join(workflow.basedir, 'scripts', 'count_pseudo_genome_chromium.py'))
     output:
         counts = op.join(
             config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
@@ -194,8 +194,8 @@ rule count_bowtie2_smartseq2:
         python {input.script} \
             --bams {params.bams_arg} \
             --cell-ids {params.cell_ids_arg} \
-            --locus-map {input.locus_map} \
-            --granularity {wildcards.granularity} \
+            --bam {input.bam} \
+            --locus-map {input.locus_map} \n            --granularity {wildcards.granularity} \
             --output {output.counts} 2> {log}
         """
 
@@ -425,7 +425,7 @@ rule count_bowtie2_chromium:
             config['indices_base'], 'indices', genome_tag,
             f'{wc.feature_set}_locus_map.tsv'
         ),
-        script = ancient(op.join(workflow.basedir, 'scripts', 'count_pseudo_genome.py'))
+        script = ancient(op.join(workflow.basedir, 'scripts', 'count_pseudo_genome_chromium.py'))
     output:
         counts = op.join(
             config['base'], 'bowtie2', '{feature_set}', 'chromium',
@@ -447,8 +447,7 @@ rule count_bowtie2_chromium:
     shell:
         """
         python {input.script} \
-            --bams {input.bam} \
-            --cell-ids chromium \
+            --bam {input.bam} \
             --locus-map {input.locus_map} \
             --granularity {wildcards.granularity} \
             --output {output.counts} 2> {log}

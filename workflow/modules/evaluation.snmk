@@ -68,7 +68,6 @@ rule evaluate_combination:
         counts = op.join(counts_dir,
                          '{aligner}_{feature_set}_{granularity}_{multimapper_mode}.tsv'),
         locus_map = eval_locus_map,
-        benchmark_file = eval_benchmark
     output:
         global_metrics = op.join(eval_dir,
             '{aligner}_{feature_set}_{granularity}_{multimapper_mode}_global_metrics.tsv'),
@@ -82,6 +81,7 @@ rule evaluate_combination:
         granularity = 'gene_id|family_id|class_id',
         multimapper_mode = 'unique|multi'
     params:
+        benchmark_file = eval_benchmark,
         output_prefix = op.join(eval_dir,
             '{aligner}_{feature_set}_{granularity}_{multimapper_mode}')
     log:
@@ -97,7 +97,7 @@ rule evaluate_combination:
             --granularity {wildcards.granularity} \
             --feature-set {wildcards.feature_set} \
             --locus-map {input.locus_map} \
-            --benchmark {input.benchmark_file} \
+            --benchmark {params.benchmark_file} \
             --output-prefix {params.output_prefix} 2> {log}
         """
 rule aggregate_global_metrics:

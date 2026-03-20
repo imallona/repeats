@@ -76,8 +76,10 @@ def main():
     else:
         locus_to_group = None  # identity: locus IS the target group
 
-    # Accumulate per-group counts (sparse, only non-zero loci)
-    group_counts = defaultdict(lambda: [0.0] * n_cells)
+    # Accumulate per-group counts (sparse: only store non-zero cell indices)
+    # sparse accumulator: {cell_index: count} per group avoids allocating
+    # a dense n_cells list for every feature group (saves O(groups x cells) memory).
+    group_counts = defaultdict(lambda: defaultdict(float))
     for feat_idx, locus_id in enumerate(loci):
         row = mat.getrow(feat_idx)
         if row.nnz == 0:
@@ -85,9 +87,8 @@ def main():
         target = locus_to_group.get(locus_id) if locus_to_group is not None else locus_id
         if target is None:
             continue
-        values = row.toarray().flatten()
         dest = group_counts[target]
-        for cell_idx, v in enumerate(values):
+        for cell_idx, v in zip(row.indices, row.data):
             if v:
                 dest[cell_idx] += v
 
@@ -95,10 +96,11 @@ def main():
     with open(args.output, 'w') as fh:
         fh.write('feature_id\t' + '\t'.join(barcodes) + '\n')
         for group in sorted_groups:
-            vals = group_counts[group]
-            if all(v == 0 for v in vals):
+            cell_vals = group_counts[group]
+            if not cell_vals:
                 continue
-            fh.write(group + '\t' + '\t'.join(str(int(v)) for v in vals) + '\n')
+            vals = [str(int(cell_vals.get(ci, 0))) for ci in range(n_cells)]
+            fh.write(group + '\t' + '\t'.join(vals) + '\n')
 
     print(f'{len(sorted_groups)} features written to {args.output}', file=sys.stderr)
 
