@@ -1,0 +1,13 @@
+name: repeats_bowtie2
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - bioconda::bowtie2
+  - bioconda::samtools
+  # subread provides featureCounts; no version pin needed, API is stable
+  - bioconda::subread
+  - bioconda::umi_tools
+  # pysam: used by tag_bam_chromium.py to add CB/UB tags by read-name matching
+  - bioconda::pysam
+  - conda-forge::pigz

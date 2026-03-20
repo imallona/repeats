@@ -1,93 +1,183 @@
-$schema: "http://json-schema.org/draft-06/schema#"
+$schema: "http://json-schema.org/draft-07/schema#"
+description: repeats-benchmark pipeline config
 type: object
-description: repeats in single-cells
+required:
+  - base
+  - reference
+  - mode
+  - aligners
+  - resources
+additionalProperties: false
 properties:
+
   base:
     type: string
-    description: base path for computation
-  run_name:
-    type: string
-  run_tech:
-    type:string
-  chemistry:
-    type: string
-  demux:
-    type: boolean
-    default: False
-  genome:
-    type: string
-  genome_short:
-    type: string
-  genome_url:
-    type: string
-  genes_gtf_url:
-    type: string
-  rep_gtf_url:
-    type: string
-  transcriptome_url:
-    type: string
-  cellranger_db_id:
-    type: string
-  cellranger_db_url:
-    type: string
-  dependencies:
-    type: object
-    properties:
-      gtf_parsing:
-         type: string
-      gtf_making:
-         type: string
-      featurecounts_parsing:
-         type: string  
-  software:
-    type: object
-    properties:
-      Rscript:
-        type: string
-      bowtie_build:
-        type: string
-      bowtie:
-        type: string
-      pigz:
-        type: string
-      star:
-        type: string
-      featurecounts:
-        type: string
-      cellranger:
-        type: string
-      fastq-dump:
-        type: string
-      vdb_validate:
-        type: string
-      prefetch:
-        type: string
-      fastqdump:
-        type: string
-      bedtools:
-        type: string
-      salmon:
-        type: string
-      gtf2bed:
-        type: string
-  params:
-    type: object
-    properties:
-      nthreads: 
-        type: integer
-      local_mem_gb:
-        type: integer
+    description: output root directory
 
-required:
-  - name
-  - run_tech
-  - genome
-  - genome_short
-  - genome_url
-  - genes_gtf_url
-  - transcriptome_url
-  - cellranger_db_id
-  - cellranger_db_url
-  - dependencies
-  - software
-  - params
+  reference:
+    type: object
+    required: [genome_fasta, repeats_gtf]
+    additionalProperties: false
+    properties:
+      genome_fasta:
+        type: string
+      repeats_gtf:
+        type: string
+      genes_gtf:
+        type: string
+      chromosomes:
+        type: array
+        items:
+          type: string
+        minItems: 1
+      filter_genic:
+        type: boolean
+        default: false
+      assembly:
+        type: string
+        default: hg38
+        description: UCSC assembly name, e.g. hg38, hg19, mm39, mm10, rn7, dm6, danRer11, ce11
+      ensembl_release:
+        type: string
+        default: "112"
+      rmsk_source:
+        type: string
+        enum: [ucsc_flatfile, ucsc_mysql]
+        default: ucsc_flatfile
+      urls:
+        type: object
+        additionalProperties: false
+        properties:
+          genome_fasta:
+            type: string
+          genes_gtf:
+            type: string
+          rmsk_flatfile:
+            type: string
+
+  mode:
+    type: string
+    enum: [simulation, real_data]
+
+  simulation:
+    type: object
+    additionalProperties: false
+    properties:
+      technology:
+        type: string
+        enum: [smartseq2, chromium]
+      n_cells:
+        type: integer
+        minimum: 2
+      n_expressed_per_cell:
+        type: integer
+        minimum: 1
+      read_length:
+        type: integer
+        minimum: 20
+      cb_length:
+        type: integer
+        default: 16
+      umi_length:
+        type: integer
+        default: 12
+      max_repeats_per_chrom:
+        type: integer
+        minimum: 100
+      seed:
+        type: integer
+        default: 42
+
+  real_data:
+    type: object
+    additionalProperties: false
+    properties:
+      technology:
+        type: string
+        enum: [smartseq2, chromium]
+      chemistry:
+        type: string
+        enum: [10xv2, 10xv3, smartseq2]
+      samples:
+        type: object
+        additionalProperties:
+          type: object
+          required: [R1]
+          properties:
+            R1:
+              type: string
+            R2:
+              type: string
+
+  feature_sets:
+    type: array
+    minItems: 1
+    items:
+      type: string
+      enum: [repeats, genes, genic_repeats, intergenic_repeats, repeat_harboring_genes]
+    default: [repeats]
+
+  aligners:
+    type: array
+    minItems: 1
+    items:
+      type: string
+      enum: [starsolo, kallisto, alevin, bowtie2]
+
+  aligner_params:
+    type: object
+    additionalProperties: false
+    properties:
+      starsolo:
+        type: object
+        additionalProperties: false
+        properties:
+          multimapper_modes:
+            type: array
+            items:
+              type: string
+              enum: [unique, multimapping]
+          extra_args:
+            type: string
+            default: ""
+      kallisto:
+        type: object
+        additionalProperties: false
+        properties:
+          extra_args:
+            type: string
+            default: ""
+      alevin:
+        type: object
+        additionalProperties: false
+        properties:
+          extra_args:
+            type: string
+            default: ""
+      bowtie2:
+        type: object
+        additionalProperties: false
+        properties:
+          extra_args:
+            type: string
+            default: ""
+          featurecounts_cell_chunk_size:
+            type: integer
+            minimum: 1
+            default: 50
+          featurecounts_n_feature_chunks:
+            type: integer
+            minimum: 1
+            default: 1
+
+  resources:
+    type: object
+    additionalProperties: false
+    required: [max_threads, max_mem_mb]
+    properties:
+      max_threads:
+        type: integer
+        minimum: 1
+      max_mem_mb:
+        type: integer
+        minimum: 1000

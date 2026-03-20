@@ -1,0 +1,59 @@
+base: "/home/imallona/repeats/results/simulation_chromium"
+indices_base: "/home/imallona/repeats/results/shared"
+
+reference:
+  assembly: hg38
+  ensembl_release: "112"
+  chromosomes: ["chr10"]
+  # Split repeats into genic/intergenic subsets using gene body overlap (bedtools)
+  filter_genic: true
+  rmsk_source: ucsc_flatfile
+  genome_fasta: "/home/imallona/repeats/results/simulation_chromium/refs/GRCh38.dna.primary_assembly.fa.gz"
+  repeats_gtf: "/home/imallona/repeats/results/simulation_chromium/refs/hg38_rmsk_TE.gtf.gz"
+  genes_gtf: "/home/imallona/repeats/results/simulation_chromium/refs/GRCh38.112.genes.gtf.gz"
+
+mode: simulation
+
+simulation:
+  technology: chromium
+  n_cells: 50
+  n_expressed_per_cell: 80
+  read_length: 90
+  cb_length: 16
+  umi_length: 12
+  seed: 42
+
+feature_sets:
+  - repeats
+  - genes
+  - genic_repeats
+  - intergenic_repeats
+
+granularities:
+  - locus
+  - gene_id
+  - family_id
+  - class_id
+
+aligners:
+  - starsolo
+  - kallisto
+  - alevin
+  - bowtie2
+
+aligner_params:
+  starsolo:
+    multimapper_modes: ["unique", "multi"]
+    extra_args: ""
+  kallisto:
+    extra_args: ""
+  alevin:
+    extra_args: ""
+  bowtie2:
+    multimapper_modes: ["unique", "multi"]
+    extra_args: ""
+    featurecounts_cell_chunk_size: 50
+
+resources:
+  max_threads: 10
+  max_mem_mb: 20000

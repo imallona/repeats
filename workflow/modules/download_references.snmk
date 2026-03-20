@@ -1,0 +1,158 @@
+#!/usr/bin/env snakemake -s
+"""
+Download reference files: genome FASTA, genes GTF, and RepeatMasker annotation.
+
+RepeatMasker annotation can be obtained two ways:
+  1. Direct download of rmsk.txt.gz from UCSC (default, no extra software needed).
+  2. MySQL query to the UCSC genome browser database, which allows per-chromosome
+     filtering without downloading the full table (~500 MB for hg38).
+
+Set reference.rmsk_source in config to "ucsc_flatfile" (default) or "ucsc_mysql".
+Assembly defaults to hg38 / GRCh38 Ensembl release 112.
+Override any URL via the reference.urls config block.
+"""
+
+import os.path as op
+
+ref_cfg = config.get('reference', {})
+urls_cfg = ref_cfg.get('urls', {})
+rmsk_source = ref_cfg.get('rmsk_source', 'ucsc_flatfile')
+assembly = ref_cfg.get('assembly', 'hg38')
+ensembl_release = ref_cfg.get('ensembl_release', '112')
+
+allowed_chroms = ref_cfg.get('chromosomes', [])
+chrom_filter_arg = '--chromosomes ' + ' '.join(allowed_chroms) if allowed_chroms else ''
+
+ucsc_genome_to_ensembl_species = {
+    'hg38': 'homo_sapiens',
+    'hg19': 'homo_sapiens',
+    'mm39': 'mus_musculus',
+    'mm10': 'mus_musculus',
+    'mm9':  'mus_musculus',
+    'rn7':  'rattus_norvegicus',
+    'rn6':  'rattus_norvegicus',
+    'dm6':  'drosophila_melanogaster',
+    'danRer11': 'danio_rerio',
+    'ce11': 'caenorhabditis_elegans',
+}
+ensembl_species = ucsc_genome_to_ensembl_species.get(assembly, 'homo_sapiens')
+
+ucsc_genome_to_ensembl_build = {
+    'hg38': 'GRCh38',
+    'hg19': 'GRCh37',
+    'mm39': 'GRCm39',
+    'mm10': 'GRCm38',
+    'mm9':  'NCBIM37',
+    'rn7':  'mRatBN7.2',
+    'rn6':  'Rnor_6.0',
+    'dm6':  'BDGP6',
+    'danRer11': 'GRCz11',
+    'ce11': 'WBcel235',
+}
+ensembl_build = ucsc_genome_to_ensembl_build.get(assembly, 'GRCh38')
+
+default_genome_fasta_url = (
+    f'https://ftp.ensembl.org/pub/release-{ensembl_release}/fasta/'
+    f'{ensembl_species}/dna/'
+    f'{ensembl_species.capitalize().replace("_", "_")}.{ensembl_build}.dna.primary_assembly.fa.gz'
+)
+
+default_genes_gtf_url = (
+    f'https://ftp.ensembl.org/pub/release-{ensembl_release}/gtf/'
+    f'{ensembl_species}/'
+    f'{ensembl_species.capitalize().replace("_", "_")}.{ensembl_build}.{ensembl_release}.chr.gtf.gz'
+)
+
+default_rmsk_flatfile_url = f'https://hgdownload.soe.ucsc.edu/goldenPath/{assembly}/database/rmsk.txt.gz'
+
+genome_fasta_url = urls_cfg.get('genome_fasta', default_genome_fasta_url)
+genes_gtf_url = urls_cfg.get('genes_gtf', default_genes_gtf_url)
+rmsk_flatfile_url = urls_cfg.get('rmsk_flatfile', default_rmsk_flatfile_url)
+
+refs_dir = op.join(config['base'], 'refs')
+build_rmsk_script = op.join(workflow.basedir, 'scripts', 'build_rmsk_gtf.py')
+
+
+rule download_genome_fasta:
+    output: op.join(refs_dir, f'{ensembl_build}.dna.primary_assembly.fa.gz')
+    params:
+        url = genome_fasta_url
+    log: op.join(config['base'], 'logs', 'download_genome_fasta.log')
+    shell: "curl --silent --show-error --location '{params.url}' -o {output} 2> {log}"
+
+
+rule download_genes_gtf:
+    output: op.join(refs_dir, f'{ensembl_build}.{ensembl_release}.genes.gtf.gz')
+    params:
+        url = genes_gtf_url
+    log: op.join(config['base'], 'logs', 'download_genes_gtf.log')
+    shell: "curl --silent --show-error --location '{params.url}' -o {output} 2> {log}"
+
+
+if rmsk_source == 'ucsc_flatfile':
+
+    rule download_rmsk_flatfile:
+        output: temp(op.join(refs_dir, f'{assembly}_rmsk_raw.txt.gz'))
+        params:
+            url = rmsk_flatfile_url
+        log: op.join(config['base'], 'logs', 'download_rmsk.log')
+        shell: "curl --silent --show-error --location '{params.url}' -o {output} 2> {log}"
+
+    rule build_repeats_gtf_from_flatfile:
+        input: rules.download_rmsk_flatfile.output
+        output: op.join(refs_dir, f'{assembly}_rmsk_TE.gtf.gz')
+        log: op.join(config['base'], 'logs', 'build_rmsk_gtf.log')
+        shell:
+            """
+            python {build_rmsk_script} \
+                --input {input} \
+                --output {output} \
+                {chrom_filter_arg} 2> {log}
+            """
+
+elif rmsk_source == 'ucsc_mysql':
+
+    ucsc_mysql_host = 'genome-mysql.soe.ucsc.edu'
+    ucsc_mysql_user = 'genome'
+
+    rule fetch_rmsk_via_mysql:
+        """
+        Query UCSC MySQL server for rmsk records.
+        Requires mysql client on PATH (add bioconda::mysql-client to star.yaml if missing).
+        Filters to allowed chromosomes in the query to avoid downloading the full table.
+        """
+        output: temp(op.join(refs_dir, f'{assembly}_rmsk_raw.txt.gz'))
+        params:
+            host = ucsc_mysql_host,
+            user = ucsc_mysql_user,
+            db = assembly,
+            chrom_clause = (
+                "WHERE genoName IN ('" + "','".join(allowed_chroms) + "')"
+                if allowed_chroms else ''
+            )
+        log: op.join(config['base'], 'logs', 'fetch_rmsk_mysql.log')
+        shell:
+            """
+            mysql --user={params.user} \
+                  --host={params.host} \
+                  --no-auto-rehash \
+                  -A \
+                  -e "SELECT bin, swScore, milliDiv, milliDel, milliIns, \
+                             genoName, genoStart, genoEnd, genoLeft, strand, \
+                             repName, repClass, repFamily, repStart, repEnd, repLeft, id \
+                      FROM rmsk {params.chrom_clause} \
+                      ORDER BY genoName, genoStart" \
+                  {params.db} 2> {log} | \
+            tail -n +2 | pigz -c > {output}
+            """
+
+    rule build_repeats_gtf_from_mysql:
+        input: rules.fetch_rmsk_via_mysql.output
+        output: op.join(refs_dir, f'{assembly}_rmsk_TE.gtf.gz')
+        log: op.join(config['base'], 'logs', 'build_rmsk_gtf.log')
+        shell:
+            """
+            python {build_rmsk_script} \
+                --input {input} \
+                --output {output} 2> {log}
+            """

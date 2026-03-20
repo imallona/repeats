@@ -1,0 +1,454 @@
+#!/usr/bin/env snakemake -s
+"""
+Bowtie2 alignment against the feature-set pseudo-genome, followed by counting.
+
+For repeat feature_sets (repeats, genic_repeats, intergenic_repeats):
+  Counting uses count_pseudo_genome.py (samtools idxstats per pseudo-genome BAM).
+  Unique mode: only NH==1 reads are counted (BAM pre-filtered per cell).
+  Multi mode:  all mapped reads counted.
+
+For genes feature_set, featureCounts is used on the aligned BAM directly.
+
+Wildcard {multimapper_mode}: "unique" or "multi".
+
+Two independent chunking axes are supported (aligner_params.bowtie2):
+  featurecounts_cell_chunk_size  (SmartSeq2 only, default 50)
+  featurecounts_n_feature_chunks (both technologies, default 1)
+"""
+
+import os.path as op
+import math
+
+sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'smartseq2')
+bt2_cfg = config.get('aligner_params', {}).get('bowtie2', {})
+cell_chunk_size = bt2_cfg.get('featurecounts_cell_chunk_size', 50)
+n_feature_chunks = bt2_cfg.get('featurecounts_n_feature_chunks', 1)
+feature_chunk_ids = list(range(n_feature_chunks))
+
+_repeat_fsets = 'repeats|genic_repeats|intergenic_repeats'
+_all_fsets = 'genes|repeats|genic_repeats|intergenic_repeats'
+
+
+def bowtie2_index_prefix(wildcards):
+    return op.join(
+        config['indices_base'], 'indices', genome_tag,
+        'bowtie2_' + wildcards.feature_set, wildcards.feature_set
+    )
+
+
+# SmartSeq2 helper variables
+
+if sim_technology == 'smartseq2':
+    _ss2_cell_ids = [
+        f'cell_{i + 1:03d}'
+        for i in range(config.get('simulation', {}).get('n_cells', 20))
+    ]
+    _n_cell_chunks = max(1, math.ceil(len(_ss2_cell_ids) / cell_chunk_size))
+    _cell_chunks = [
+        _ss2_cell_ids[i * cell_chunk_size:(i + 1) * cell_chunk_size]
+        for i in range(_n_cell_chunks)
+    ]
+    _cell_chunk_ids = list(range(_n_cell_chunks))
+else:
+    _ss2_cell_ids = []
+    _cell_chunks = [[]]
+    _cell_chunk_ids = [0]
+
+
+def smartseq2_fastq(wc):
+    if config['mode'] == 'simulation':
+        return op.join(
+            config['base'], 'simulations', 'smartseq2', f'{wc.cell_id}.fastq.gz'
+        )
+    return config['real_data']['samples'][wc.cell_id]['R1']
+
+
+def chromium_r2(wc):
+    if config['mode'] == 'simulation':
+        return op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
+    return config['real_data']['samples'][wc.sample]['R2']
+
+
+def chromium_r1(wc):
+    if config['mode'] == 'simulation':
+        return op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
+    return config['real_data']['samples'][wc.sample]['R1']
+
+
+_cb_len = config.get('simulation', config.get('real_data', {})).get('cb_length', 16)
+_umi_len = config.get('simulation', config.get('real_data', {})).get('umi_length', 12)
+_bc_pattern = 'C' * _cb_len + 'N' * _umi_len
+
+
+# SmartSeq2 alignment (one BAM per cell per feature_set)
+
+rule bowtie2_align_smartseq2_cell:
+    conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input:
+        index = lambda wc: op.join(
+            config['indices_base'], 'indices', genome_tag,
+            'bowtie2_' + wc.feature_set, wc.feature_set + '.1.bt2'
+        ),
+        fastq = smartseq2_fastq
+    output:
+        bam = op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'smartseq2', '{cell_id}.bam'
+        )
+    params:
+        index_prefix = bowtie2_index_prefix,
+        extra_args = bt2_cfg.get('extra_args', '')
+    log:
+        op.join(
+            config['base'], 'logs',
+            'bowtie2_{feature_set}_smartseq2_{cell_id}.log'
+        )
+    benchmark:
+        op.join(
+            config['base'], 'benchmarks',
+            'bowtie2_{feature_set}_smartseq2_{cell_id}.txt'
+        )
+    threads: 4
+    shell:
+        """
+        bowtie2 -x {params.index_prefix} -U {input.fastq} \
+            --threads {threads} {params.extra_args} 2> {log} \
+            | samtools sort -o {output.bam} -@ {threads}
+        samtools index {output.bam}
+        """
+
+
+rule filter_unique_bam_smartseq2:
+    """Filter a SmartSeq2 BAM to NH==1 reads only (unique mode)."""
+    conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input:
+        bam = op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'smartseq2', '{cell_id}.bam'
+        )
+    output:
+        bam = op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'smartseq2', '{cell_id}_unique.bam'
+        )
+    log:
+        op.join(
+            config['base'], 'logs',
+            'filter_unique_{feature_set}_smartseq2_{cell_id}.log'
+        )
+    threads: 4
+    shell:
+        """
+        samtools view -h -@ {threads} {input.bam} 2> {log} \
+            | awk 'substr($0,1,1)=="@" || $0 !~ /\tXS:i:/' \
+            | samtools view -bh -@ {threads} > {output.bam}
+        samtools index {output.bam}
+        """
+
+
+# Counting for repeat feature_sets (pseudo-genome idxstats approach)
+
+rule count_bowtie2_smartseq2:
+    """Count reads per repeat feature across all SmartSeq2 cells using pseudo-genome BAMs."""
+    conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input:
+        bams = lambda wc: [
+            op.join(
+                config['base'], 'bowtie2', wc.feature_set, 'smartseq2',
+                cid + ('_unique' if wc.multimapper_mode == 'unique' else '') + '.bam'
+            )
+            for cid in _ss2_cell_ids
+        ],
+        locus_map = lambda wc: op.join(
+            config['indices_base'], 'indices', genome_tag,
+            f'{wc.feature_set}_locus_map.tsv'
+        ),
+        script = ancient(op.join(workflow.basedir, 'scripts', 'count_pseudo_genome.py'))
+    output:
+        counts = op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
+            'counts_{granularity}_{multimapper_mode}.tsv'
+        )
+    wildcard_constraints:
+        granularity = 'locus|gene_id|family_id|class_id',
+        feature_set = _repeat_fsets,
+        multimapper_mode = 'unique|multi'
+    params:
+        cell_ids_arg = ' '.join(_ss2_cell_ids),
+        bams_arg = lambda wc: ' '.join(
+            op.join(
+                config['base'], 'bowtie2', wc.feature_set, 'smartseq2',
+                cid + ('_unique' if wc.multimapper_mode == 'unique' else '') + '.bam'
+            )
+            for cid in _ss2_cell_ids
+        )
+    log:
+        op.join(
+            config['base'], 'logs',
+            'count_bowtie2_{feature_set}_smartseq2_{granularity}_{multimapper_mode}.log'
+        )
+    benchmark:
+        op.join(
+            config['base'], 'benchmarks',
+            'count_bowtie2_{feature_set}_smartseq2_{granularity}_{multimapper_mode}.txt'
+        )
+    shell:
+        """
+        python {input.script} \
+            --bams {params.bams_arg} \
+            --cell-ids {params.cell_ids_arg} \
+            --locus-map {input.locus_map} \
+            --granularity {wildcards.granularity} \
+            --output {output.counts} 2> {log}
+        """
+
+
+# featureCounts path (for genes feature_set via pseudo-genome)
+
+rule split_gtf_for_featurecounts:
+    """Split the annotation GTF into N feature chunks for parallel featureCounts runs."""
+    input:
+        gtf = gtf_for_feature_set
+    output:
+        chunks = [
+            op.join(
+                config['base'], 'tmp',
+                f'{{feature_set}}_feat_chunk_{i}.gtf'
+            )
+            for i in feature_chunk_ids
+        ]
+    params:
+        outdir = op.join(config['base'], 'tmp'),
+        prefix = '{feature_set}_feat_chunk',
+        n_chunks = n_feature_chunks
+    log:
+        op.join(config['base'], 'logs', 'split_gtf_{feature_set}.log')
+    shell:
+        """
+        python {workflow.basedir}/scripts/split_gtf_chunks.py \
+            --gtf {input.gtf} --n-chunks {params.n_chunks} \
+            --outdir {params.outdir} --prefix {params.prefix} 2> {log}
+        """
+
+
+rule featurecounts_smartseq2_chunk:
+    """featureCounts on one cell chunk x one feature chunk (SmartSeq2)."""
+    conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input:
+        bams = lambda wc: expand(
+            op.join(
+                config['base'], 'bowtie2', '{feature_set}',
+                'smartseq2', '{cell_id}.bam'
+            ),
+            feature_set=wc.feature_set,
+            cell_id=_cell_chunks[int(wc.cell_chunk_id)]
+        ),
+        gtf_chunk = op.join(
+            config['base'], 'tmp',
+            '{feature_set}_feat_chunk_{feature_chunk_id}.gtf'
+        )
+    output:
+        counts = temp(
+            op.join(
+                config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
+                'chunks', 'cell{cell_chunk_id}_feat{feature_chunk_id}.tsv'
+            )
+        )
+    params:
+        tmp_counts = op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
+            'chunks', 'cell{cell_chunk_id}_feat{feature_chunk_id}.raw'
+        ),
+        multimapper_flag = lambda wc: '-M --fraction'
+    log:
+        op.join(
+            config['base'], 'logs',
+            'featurecounts_{feature_set}_cell{cell_chunk_id}_feat{feature_chunk_id}.log'
+        )
+    benchmark:
+        op.join(
+            config['base'], 'benchmarks',
+            'featurecounts_{feature_set}_cell{cell_chunk_id}_feat{feature_chunk_id}.txt'
+        )
+    threads: 4
+    shell:
+        """
+        featureCounts -T {threads} -t exon -g gene_id \
+            -a {input.gtf_chunk} -o {params.tmp_counts} \
+            {params.multimapper_flag} {input.bams} 2> {log}
+        grep -v '^#' {params.tmp_counts} | cut -f 1,7- > {output.counts}
+        """
+
+
+rule merge_featurecounts_smartseq2:
+    """Merge all cell x feature chunk count tables into the full feature x cell matrix."""
+    input:
+        chunks = expand(
+            op.join(
+                config['base'], 'bowtie2', '{{feature_set}}', 'smartseq2',
+                'chunks', 'cell{cell_chunk_id}_feat{feature_chunk_id}.tsv'
+            ),
+            cell_chunk_id=_cell_chunk_ids,
+            feature_chunk_id=feature_chunk_ids
+        ),
+        script = ancient(
+            op.join(workflow.basedir, 'scripts', 'merge_featurecounts.py')
+        )
+    output:
+        merged = op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
+            'counts_merged.tsv'
+        )
+    log:
+        op.join(
+            config['base'], 'logs',
+            'merge_featurecounts_{feature_set}_smartseq2.log'
+        )
+    shell:
+        """
+        python {input.script} --chunks {input.chunks} --output {output.merged} 2> {log}
+        """
+
+
+# Chromium rules
+
+rule bowtie2_align_chromium_r2:
+    """Align R2 (cDNA) reads to the feature pseudo-genome (Chromium)."""
+    conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input:
+        index = lambda wc: op.join(
+            config['indices_base'], 'indices', genome_tag,
+            'bowtie2_' + wc.feature_set, wc.feature_set + '.1.bt2'
+        ),
+        r2 = chromium_r2
+    output:
+        bam = op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'chromium', 'aligned.bam'
+        )
+    params:
+        index_prefix = bowtie2_index_prefix,
+        extra_args = bt2_cfg.get('extra_args', '')
+    log:
+        op.join(
+            config['base'], 'logs',
+            'bowtie2_{feature_set}_chromium.log'
+        )
+    benchmark:
+        op.join(
+            config['base'], 'benchmarks',
+            'bowtie2_{feature_set}_chromium.txt'
+        )
+    threads: workflow.cores
+    shell:
+        """
+        bowtie2 -x {params.index_prefix} -U {input.r2} \
+            --threads {threads} {params.extra_args} 2> {log} \
+            | samtools sort -o {output.bam} -@ {threads}
+        samtools index {output.bam}
+        """
+
+
+rule tag_bam_with_barcodes_chromium:
+    """Attach CB and UB tags from R1 to each read in the sorted BAM (Chromium)."""
+    conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input:
+        bam = op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'chromium', 'aligned.bam'
+        ),
+        r1 = chromium_r1,
+        script = ancient(
+            op.join(workflow.basedir, 'scripts', 'tag_bam_chromium.py')
+        )
+    output:
+        tagged_bam = op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'chromium', 'tagged.bam'
+        )
+    params:
+        cb_length = _cb_len,
+        umi_length = _umi_len
+    log:
+        op.join(
+            config['base'], 'logs',
+            'tag_bam_{feature_set}_chromium.log'
+        )
+    benchmark:
+        op.join(
+            config['base'], 'benchmarks',
+            'tag_bam_{feature_set}_chromium.txt'
+        )
+    shell:
+        """
+        python {input.script} \
+            --bam {input.bam} --r1 {input.r1} \
+            --output {output.tagged_bam} \
+            --cb-length {params.cb_length} \
+            --umi-length {params.umi_length} 2> {log}
+        """
+
+
+rule umi_dedup_chromium:
+    """Deduplicate UMIs per cell per feature locus (Chromium)."""
+    conda: op.join(workflow.basedir, 'envs', 'umi_tools.yaml')
+    input:
+        op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'chromium', 'tagged.bam'
+        )
+    output:
+        dedup_bam = op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'chromium', 'dedup.bam'
+        )
+    log:
+        op.join(
+            config['base'], 'logs',
+            'umi_dedup_{feature_set}_chromium.log'
+        )
+    benchmark:
+        op.join(
+            config['base'], 'benchmarks',
+            'umi_dedup_{feature_set}_chromium.txt'
+        )
+    threads: workflow.cores
+    shell:
+        """
+        samtools view -h -@ {threads} {input} \
+            | umi_tools dedup --per-cell --extract-umi-method tag --umi-tag UB --cell-tag CB --stdin - --stdout - --in-sam --log {log} \
+            | samtools view -bS -@ {threads} - > {output.dedup_bam}
+        samtools index {output.dedup_bam}
+        """
+
+
+rule count_bowtie2_chromium:
+    """Count reads per repeat feature in Chromium dedup BAM."""
+    conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input:
+        bam = op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'chromium', 'dedup.bam'
+        ),
+        locus_map = lambda wc: op.join(
+            config['indices_base'], 'indices', genome_tag,
+            f'{wc.feature_set}_locus_map.tsv'
+        ),
+        script = ancient(op.join(workflow.basedir, 'scripts', 'count_pseudo_genome_chromium.py'))
+    output:
+        counts = op.join(
+            config['base'], 'bowtie2', '{feature_set}', 'chromium',
+            'counts_{granularity}.tsv'
+        )
+    wildcard_constraints:
+        granularity = 'locus|gene_id|family_id|class_id',
+        feature_set = _repeat_fsets
+    log:
+        op.join(
+            config['base'], 'logs',
+            'count_bowtie2_{feature_set}_chromium_{granularity}.log'
+        )
+    benchmark:
+        op.join(
+            config['base'], 'benchmarks',
+            'count_bowtie2_{feature_set}_chromium_{granularity}.txt'
+        )
+    shell:
+        """
+        python {input.script} \
+            --bam {input.bam} \
+            --locus-map {input.locus_map} \
+            --granularity {wildcards.granularity} \
+            --output {output.counts} 2> {log}
+        """

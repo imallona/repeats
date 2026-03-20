@@ -1,0 +1,105 @@
+#!/usr/bin/env snakemake -s
+"""
+Simulation rules for SmartSeq2 and Chromium modes.
+Calls simulate_reads.py which streams FASTA chromosome by chromosome.
+Output FASTQs and ground_truth.tsv (with repeat family and class columns) land under
+  {base}/simulations/{technology}/
+"""
+
+import os.path as op
+
+
+sim_cfg = config.get('simulation', {})
+sim_technology = sim_cfg.get('technology', 'smartseq2')
+sim_n_cells = sim_cfg.get('n_cells', 20)
+sim_seed = sim_cfg.get('seed', 42)
+sim_chromosomes = config['reference'].get('chromosomes', [])
+
+sim_cell_ids = [f'cell_{i + 1:03d}' for i in range(sim_n_cells)]
+
+simulation_script = op.join(workflow.basedir, 'scripts', 'simulate_reads.py')
+
+
+rule simulate_smartseq2:
+    conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
+    input:
+        gtf = rules.decompress_repeats_gtf.output[0],
+        fasta = rules.decompress_genome.output[0]
+    output:
+        ground_truth = op.join(config['base'], 'simulations', 'smartseq2', 'ground_truth.tsv'),
+        manifest = op.join(config['base'], 'simulations', 'smartseq2', 'manifest.tsv'),
+        repeat_fasta = op.join(config['base'], 'simulations', 'smartseq2', 'simulated_repeats.fa'),
+        cell_fastqs = expand(
+            op.join(config['base'], 'simulations', 'smartseq2', '{cell_id}.fastq.gz'),
+            cell_id=sim_cell_ids)
+    params:
+        outdir = op.join(config['base'], 'simulations', 'smartseq2'),
+        n_cells = sim_n_cells,
+        n_expressed = sim_cfg.get('n_expressed_per_cell', 100),
+        read_length = sim_cfg.get('read_length', 90),
+        seed = sim_seed,
+        chrom_args = '--chromosomes ' + ' '.join(sim_chromosomes) if sim_chromosomes else '',
+        max_per_chrom_arg = (
+            f'--max-repeats-per-chrom {sim_cfg["max_repeats_per_chrom"]}'
+            if sim_cfg.get('max_repeats_per_chrom') else ''
+        )
+    log: op.join(config['base'], 'logs', 'simulate_smartseq2.log')
+    benchmark: op.join(config['base'], 'benchmarks', 'simulate_smartseq2.txt')
+    shell:
+        """
+        python {simulation_script} \
+            --mode smartseq2 \
+            --gtf {input.gtf} \
+            --fasta {input.fasta} \
+            --outdir {params.outdir} \
+            --n-cells {params.n_cells} \
+            --n-expressed {params.n_expressed} \
+            --read-length {params.read_length} \
+            --seed {params.seed} \
+            {params.chrom_args} \
+            {params.max_per_chrom_arg} 2> {log}
+        """
+
+
+rule simulate_chromium:
+    conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
+    input:
+        gtf = rules.decompress_repeats_gtf.output[0],
+        fasta = rules.decompress_genome.output[0]
+    output:
+        ground_truth = op.join(config['base'], 'simulations', 'chromium', 'ground_truth.tsv'),
+        r1 = op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz'),
+        r2 = op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz'),
+        barcodes = op.join(config['base'], 'simulations', 'chromium', 'barcodes.txt'),
+        repeat_fasta = op.join(config['base'], 'simulations', 'chromium', 'simulated_repeats.fa')
+    params:
+        outdir = op.join(config['base'], 'simulations', 'chromium'),
+        n_cells = sim_n_cells,
+        n_expressed = sim_cfg.get('n_expressed_per_cell', 100),
+        read_length = sim_cfg.get('read_length', 90),
+        cb_length = sim_cfg.get('cb_length', 16),
+        umi_length = sim_cfg.get('umi_length', 12),
+        seed = sim_seed,
+        chrom_args = '--chromosomes ' + ' '.join(sim_chromosomes) if sim_chromosomes else '',
+        max_per_chrom_arg = (
+            f'--max-repeats-per-chrom {sim_cfg["max_repeats_per_chrom"]}'
+            if sim_cfg.get('max_repeats_per_chrom') else ''
+        )
+    log: op.join(config['base'], 'logs', 'simulate_chromium.log')
+    benchmark: op.join(config['base'], 'benchmarks', 'simulate_chromium.txt')
+    shell:
+        """
+        python {simulation_script} \
+            --mode chromium \
+            --gtf {input.gtf} \
+            --fasta {input.fasta} \
+            --outdir {params.outdir} \
+            --n-cells {params.n_cells} \
+            --n-expressed {params.n_expressed} \
+            --read-length {params.read_length} \
+            --cb-length {params.cb_length} \
+            --umi-length {params.umi_length} \
+            --seed {params.seed} \
+            {params.chrom_args} \
+            {params.max_per_chrom_arg} 2> {log}
+        """

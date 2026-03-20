@@ -1,0 +1,13 @@
+name: repeats_star
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  # >=2.7.10a: star=2.7.11b has an unsatisfiable htslib/libdeflate chain on
+  # some solver states; lower bound allows the solver to pick a compatible build
+  - bioconda::star>=2.7.10a
+  - bioconda::samtools
+  - bioconda::htslib
+  - bioconda::bedtools
+  - bioconda::gffread
+  - conda-forge::pigz

@@ -1,0 +1,409 @@
+#!/usr/bin/env snakemake -s
+"""
+Reference building: genome index for STAR, repeat FASTA, gene transcript FASTA,
+and per-aligner indices parameterized by {feature_set}.
+
+feature_set values (4 total):
+  genes              - Ensembl gene annotation
+  repeats            - full RepeatMasker annotation
+  genic_repeats      - TE loci overlapping at least one gene body
+  intergenic_repeats - TE loci with no overlap to any gene body
+
+For repeat feature_sets the following are built per feature_set:
+  {feature_set}.fa              - extracted repeat sequences (pseudo-genome FASTA)
+  {feature_set}_locus_map.tsv   - 4-col TSV: transcript_id, gene_id, family_id, class_id
+  {feature_set}_t2g_{gran}.tsv  - 2-col TSV: transcript_id -> group (SmartSeq2 normalisation)
+  {feature_set}_t2g_full_locus.tsv - FASTA-header IDs -> locus (for alevin chromium --tgMap)
+"""
+
+import os.path as op
+
+
+_chrom_list = ' '.join(sorted(config['reference'].get('chromosomes', [])))
+
+_repeat_feature_sets = ['repeats', 'genic_repeats', 'intergenic_repeats']
+
+
+def gtf_for_repeat_feature_set(wildcards):
+    """GTF path for a repeat-only feature_set wildcard."""
+    if wildcards.feature_set == 'repeats':
+        return rules.decompress_repeats_gtf.output[0]
+    return op.join(config['indices_base'], 'indices', genome_tag,
+                   f'{wildcards.feature_set}.gtf')
+
+
+def gtf_for_feature_set(wildcards):
+    """GTF path for any feature_set wildcard (all 4 values)."""
+    if wildcards.feature_set == 'genes':
+        return rules.decompress_genes_gtf.output[0]
+    if wildcards.feature_set == 'repeats':
+        return rules.decompress_repeats_gtf.output[0]
+    return op.join(config['indices_base'], 'indices', genome_tag,
+                   f'{wildcards.feature_set}.gtf')
+
+
+def sequences_fasta(wildcards):
+    """FASTA path for pseudo-aligner indexing given a feature_set wildcard."""
+    if wildcards.feature_set == 'genes':
+        return op.join(config['indices_base'], 'indices', genome_tag, 'genes.fa')
+    return op.join(config['indices_base'], 'indices', genome_tag,
+                   f'{wildcards.feature_set}.fa')
+
+
+def t2g_path(wildcards):
+    """t2g path for alevin chromium --tgMap.
+    Returns genes_t2g for genes, or locus-level full-header t2g for repeat feature_sets
+    (full FASTA header IDs; granularity aggregation happens during normalisation).
+    """
+    if wildcards.feature_set == 'genes':
+        return op.join(config['indices_base'], 'indices', genome_tag, 'genes_t2g.tsv')
+    return op.join(config['indices_base'], 'indices', genome_tag,
+                   f'{wildcards.feature_set}_t2g_full_locus.tsv')
+
+
+# Genome and annotation decompression
+
+rule decompress_genome:
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input: config['reference']['genome_fasta']
+    output: temp(op.join(config['base'], 'tmp', 'genome.fa'))
+    params:
+        chroms = _chrom_list
+    threads: workflow.cores
+    shell:
+        """
+        pigz --decompress --keep --stdout --processes {threads} {input} \
+            | awk -v chroms="{params.chroms}" '
+                BEGIN {{n=split(chroms,c," "); for(i=1;i<=n;i++) if(c[i]!="") {{ch=c[i]; sub(/^chr/,"",ch); keep[ch]=1}}}}
+                /^>/ {{name=substr($1,2); active=(length(keep)==0 || name in keep)}}
+                active' \
+            > {output}
+        """
+
+
+rule decompress_repeats_gtf:
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input: config['reference']['repeats_gtf']
+    output: temp(op.join(config['base'], 'tmp', 'repeats.gtf'))
+    threads: workflow.cores
+    shell: "pigz --decompress --keep --stdout --processes {threads} {input} | sed 's/^chr//' > {output}"
+
+
+rule decompress_genes_gtf:
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input: config['reference']['genes_gtf']
+    output: temp(op.join(config['base'], 'tmp', 'genes.gtf'))
+    params:
+        chroms = _chrom_list
+    threads: workflow.cores
+    shell:
+        """
+        pigz --decompress --keep --stdout --processes {threads} {input} \
+            | awk -v chroms="{params.chroms}" '
+                BEGIN {{n=split(chroms,c," "); for(i=1;i<=n;i++) if(c[i]!="") {{ch=c[i]; sub(/^chr/,"",ch); keep[ch]=1}}}}
+                /^#/ {{print; next}}
+                {{if(length(keep)==0 || ($1 in keep)) print}}' \
+            > {output}
+        """
+
+
+# STAR genome index (built once against the full genome)
+
+rule star_genome_index:
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input:
+        genome = rules.decompress_genome.output,
+        repeats_gtf = rules.decompress_repeats_gtf.output
+    output:
+        index = op.join(config['indices_base'], 'indices', genome_tag, 'star', 'SAindex')
+    params:
+        index_dir = op.join(config['indices_base'], 'indices', genome_tag, 'star')
+    log:
+        op.join(config['base'], 'logs', 'star_index.log')
+    benchmark:
+        op.join(config['base'], 'benchmarks', 'star_index.txt')
+    threads: workflow.cores
+    shell:
+        """
+        STAR --runThreadN {threads} \
+             --runMode genomeGenerate \
+             --genomeDir {params.index_dir} \
+             --genomeFastaFiles {input.genome} \
+             --sjdbGTFfile {input.repeats_gtf} &> {log}
+        """
+
+
+# Genic / intergenic / repeat-harboring gene subsets (always built)
+
+rule find_genic_repeats:
+    """Repeats overlapping at least one gene body."""
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input:
+        repeats_gtf = rules.decompress_repeats_gtf.output,
+        genes_gtf = rules.decompress_genes_gtf.output
+    output:
+        op.join(config['indices_base'], 'indices', genome_tag, 'genic_repeats.gtf')
+    log:
+        op.join(config['base'], 'logs', 'genic_repeats.log')
+    shell:
+        """
+        bedtools intersect -a {input.repeats_gtf} -b {input.genes_gtf} \
+            -u -s > {output} 2> {log}
+        """
+
+
+rule find_intergenic_repeats:
+    """Repeats with no overlap to any gene body."""
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input:
+        repeats_gtf = rules.decompress_repeats_gtf.output,
+        genes_gtf = rules.decompress_genes_gtf.output
+    output:
+        op.join(config['indices_base'], 'indices', genome_tag, 'intergenic_repeats.gtf')
+    log:
+        op.join(config['base'], 'logs', 'intergenic_repeats.log')
+    shell:
+        """
+        bedtools intersect -a {input.repeats_gtf} -b {input.genes_gtf} \
+            -v > {output} 2> {log}
+        """
+
+
+rule find_repeat_harboring_genes:
+    """Genes overlapping at least one repeat element."""
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input:
+        genes_gtf = rules.decompress_genes_gtf.output,
+        repeats_gtf = rules.decompress_repeats_gtf.output
+    output:
+        op.join(config['indices_base'], 'indices', genome_tag, 'repeat_harboring_genes.gtf')
+    log:
+        op.join(config['base'], 'logs', 'repeat_harboring_genes.log')
+    shell:
+        """
+        bedtools intersect -a {input.genes_gtf} -b {input.repeats_gtf} \
+            -u > {output} 2> {log}
+        """
+
+
+# Feature-set FASTA extraction (for pseudo-aligner indexing)
+
+rule extract_feature_set_fasta:
+    """Extract repeat-feature sequences from the genome as a FASTA."""
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input:
+        genome = rules.decompress_genome.output,
+        gtf = gtf_for_repeat_feature_set
+    output:
+        fasta = op.join(config['indices_base'], 'indices', genome_tag, '{feature_set}.fa'),
+        bed = temp(op.join(config['base'], 'tmp', '{feature_set}.bed'))
+    wildcard_constraints:
+        feature_set = 'repeats|genic_repeats|intergenic_repeats'
+    log:
+        op.join(config['base'], 'logs', 'extract_{feature_set}_fasta.log')
+    benchmark:
+        op.join(config['base'], 'benchmarks', 'extract_{feature_set}_fasta.txt')
+    shell:
+        """
+        awk -F'\t' 'OFS="\t" {{
+            if ($0 ~ /^#/) next
+            name = ""
+            n = split($9, attrs, ";")
+            for (i=1; i<=n; i++) {{
+                gsub(/^ +| +$/, "", attrs[i])
+                if (attrs[i] ~ /^transcript_id/) {{
+                    gsub(/transcript_id |"/, "", attrs[i])
+                    name = attrs[i]
+                }}
+            }}
+            if (name == "") name = $1"_"($4-1)"_"$5
+            print $1, $4-1, $5, name, ".", $7
+        }}' {input.gtf} | sort -k1,1 -k2,2n | uniq > {output.bed} 2> {log}
+
+        bedtools getfasta -fi {input.genome} \
+            -bed {output.bed} \
+            -s -name -fo {output.fasta} 2>> {log}
+        """
+
+
+rule extract_gene_transcripts:
+    """Extract spliced transcript sequences from the genes GTF for pseudo-aligner indexing."""
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input:
+        genome = rules.decompress_genome.output,
+        genes_gtf = rules.decompress_genes_gtf.output
+    output:
+        transcripts_fasta = op.join(config['indices_base'], 'indices', genome_tag, 'genes.fa')
+    log:
+        op.join(config['base'], 'logs', 'extract_gene_transcripts.log')
+    benchmark:
+        op.join(config['base'], 'benchmarks', 'extract_gene_transcripts.txt')
+    shell:
+        "gffread {input.genes_gtf} -g {input.genome} -w {output.transcripts_fasta} 2> {log}"
+
+
+# Locus map (4-col TSV) per repeat feature_set
+
+rule build_locus_map:
+    """Build TSV: transcript_id, gene_id, family_id, class_id from a repeat feature_set GTF."""
+    input:
+        gtf = gtf_for_repeat_feature_set
+    output:
+        locus_map = op.join(config['indices_base'], 'indices', genome_tag,
+                            '{feature_set}_locus_map.tsv')
+    wildcard_constraints:
+        feature_set = 'repeats|genic_repeats|intergenic_repeats'
+    log:
+        op.join(config['base'], 'logs', 'build_{feature_set}_locus_map.log')
+    benchmark:
+        op.join(config['base'], 'benchmarks', 'build_{feature_set}_locus_map.txt')
+    shell:
+        """
+        python {workflow.basedir}/scripts/parse_gtf_t2g.py             --gtf {input.gtf}             --output {output.locus_map}             --feature exon             --values gene_id family_id class_id 2> {log}
+        """
+
+
+# t2g: bare transcript_id -> group (for SmartSeq2 normalisation)
+
+rule build_t2g:
+    """Two-column TSV: transcript_id -> group at the requested granularity."""
+    input:
+        locus_map = op.join(config['indices_base'], 'indices', genome_tag,
+                            '{feature_set}_locus_map.tsv')
+    output:
+        t2g = op.join(config['indices_base'], 'indices', genome_tag,
+                      '{feature_set}_t2g_{granularity}.tsv')
+    wildcard_constraints:
+        feature_set = 'repeats|genic_repeats|intergenic_repeats',
+        granularity = 'locus|gene_id|family_id|class_id'
+    log:
+        op.join(config['base'], 'logs', 'build_{feature_set}_t2g_{granularity}.log')
+    benchmark:
+        op.join(config['base'], 'benchmarks', 'build_{feature_set}_t2g_{granularity}.txt')
+    shell:
+        """
+        if [ "{wildcards.granularity}" = "locus" ]; then
+            awk -F'\t' 'OFS="\t" {{print $1, $1}}' {input.locus_map} > {output.t2g} 2> {log}
+        elif [ "{wildcards.granularity}" = "gene_id" ]; then
+            awk -F'\t' 'OFS="\t" {{print $1, $2}}' {input.locus_map} > {output.t2g} 2> {log}
+        elif [ "{wildcards.granularity}" = "family_id" ]; then
+            awk -F'\t' 'OFS="\t" {{print $1, $3}}' {input.locus_map} > {output.t2g} 2> {log}
+        elif [ "{wildcards.granularity}" = "class_id" ]; then
+            awk -F'\t' 'OFS="\t" {{print $1, $4}}' {input.locus_map} > {output.t2g} 2> {log}
+        fi
+        """
+
+
+# t2g_full: FASTA-header IDs -> group (for alevin chromium --tgMap)
+
+rule build_t2g_full:
+    """Two-column TSV: full FASTA header (transcript_id::chrom:start-end(strand)) -> group.
+    granularity=locus maps each FASTA header to its bare transcript_id.
+    This is the canonical input for salmon alevin --tgMap (chromium mode).
+    """
+    input:
+        locus_map = op.join(config['indices_base'], 'indices', genome_tag,
+                            '{feature_set}_locus_map.tsv'),
+        fasta = op.join(config['indices_base'], 'indices', genome_tag, '{feature_set}.fa')
+    output:
+        t2g = op.join(config['indices_base'], 'indices', genome_tag,
+                      '{feature_set}_t2g_full_{granularity}.tsv')
+    wildcard_constraints:
+        feature_set = 'repeats|genic_repeats|intergenic_repeats',
+        granularity = 'locus|gene_id|family_id|class_id'
+    log:
+        op.join(config['base'], 'logs', 'build_{feature_set}_t2g_full_{granularity}.log')
+    shell:
+        """
+        python -c "
+import sys
+col = {{'locus': 0, 'gene_id': 1, 'family_id': 2, 'class_id': 3}}['{wildcards.granularity}']
+lm = {{}}
+with open('{input.locus_map}') as fh:
+    for line in fh:
+        parts = line.rstrip().split(chr(9))
+        if col == 0:
+            lm[parts[0]] = parts[0]
+        elif len(parts) > col:
+            lm[parts[0]] = parts[col]
+with open('{input.fasta}') as fa, open('{output.t2g}', 'w') as out:
+    for line in fa:
+        if line.startswith('>'):
+            full_id = line[1:].split()[0]
+            bare = full_id.split('::')[0]
+            grp = lm.get(bare, bare)
+            out.write(full_id + chr(9) + grp + chr(10))
+" 2> {log}
+        """
+
+
+# Gene t2g (for genes feature_set)
+
+rule build_gene_t2g:
+    """Two-column TSV: transcript_id -> gene_id from the genes GTF."""
+    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    input: rules.decompress_genes_gtf.output
+    output: op.join(config['indices_base'], 'indices', genome_tag, 'genes_t2g.tsv')
+    log:
+        op.join(config['base'], 'logs', 'build_gene_t2g.log')
+    benchmark:
+        op.join(config['base'], 'benchmarks', 'build_gene_t2g.txt')
+    shell:
+        """
+        python {workflow.basedir}/scripts/parse_gtf_t2g.py             --gtf {input}             --output {output}             --values gene_id 2> {log}
+        """
+
+
+# Aligner index rules
+
+rule kallisto_index:
+    conda: op.join(workflow.basedir, 'envs', 'kallisto.yaml')
+    input: sequences_fasta
+    output:
+        op.join(config['indices_base'], 'indices', genome_tag, 'kallisto', '{feature_set}.idx')
+    wildcard_constraints:
+        feature_set = 'genes|repeats|genic_repeats|intergenic_repeats'
+    log:
+        op.join(config['base'], 'logs', 'kallisto_{feature_set}_index.log')
+    benchmark:
+        op.join(config['base'], 'benchmarks', 'kallisto_{feature_set}_index.txt')
+    threads: workflow.cores
+    shell: "kallisto index -i {output} {input} 2> {log}"
+
+
+rule salmon_index:
+    conda: op.join(workflow.basedir, 'envs', 'alevin.yaml')
+    input: sequences_fasta
+    output:
+        index = op.join(config['indices_base'], 'indices', genome_tag,
+                        'salmon_{feature_set}', 'seq.bin')
+    params:
+        index_dir = op.join(config['indices_base'], 'indices', genome_tag,
+                            'salmon_{feature_set}')
+    wildcard_constraints:
+        feature_set = 'genes|repeats|genic_repeats|intergenic_repeats'
+    log:
+        op.join(config['base'], 'logs', 'salmon_{feature_set}_index.log')
+    benchmark:
+        op.join(config['base'], 'benchmarks', 'salmon_{feature_set}_index.txt')
+    threads: workflow.cores
+    shell: "salmon index -t {input} -i {params.index_dir} -p {threads} 2> {log}"
+
+
+rule bowtie2_index:
+    conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input: sequences_fasta
+    output:
+        index = op.join(config['indices_base'], 'indices', genome_tag,
+                        'bowtie2_{feature_set}', '{feature_set}.1.bt2')
+    params:
+        index_prefix = op.join(config['indices_base'], 'indices', genome_tag,
+                               'bowtie2_{feature_set}', '{feature_set}')
+    wildcard_constraints:
+        feature_set = 'genes|repeats|genic_repeats|intergenic_repeats'
+    log:
+        op.join(config['base'], 'logs', 'bowtie2_{feature_set}_index.log')
+    benchmark:
+        op.join(config['base'], 'benchmarks', 'bowtie2_{feature_set}_index.txt')
+    threads: workflow.cores
+    shell: "bowtie2-build --threads {threads} {input} {params.index_prefix} 2> {log}"

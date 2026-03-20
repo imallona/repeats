@@ -1,0 +1,31 @@
+#!/usr/bin/env snakemake -s
+"""
+Download raw sequencing data from SRA.
+"""
+
+import os.path as op
+
+
+rule download_sra_run:
+    conda: op.join(workflow.basedir, 'envs', 'sratools.yaml')
+    params:
+        outdir = op.join(config['base'], 'data', 'colon_cancer_cell_lines')
+    output:
+        r1 = op.join(config['base'], 'data', 'colon_cancer_cell_lines', '{srr}_1.fastq.gz'),
+        r2 = op.join(config['base'], 'data', 'colon_cancer_cell_lines', '{srr}_2.fastq.gz')
+    log:
+        prefetch = op.join(config['base'], 'logs', '{srr}_prefetch.log'),
+        validate = op.join(config['base'], 'logs', '{srr}_validate.log'),
+        dump = op.join(config['base'], 'logs', '{srr}_fastqdump.log')
+    threads: 4
+    shell:
+        """
+        mkdir -p {params.outdir}
+        cd {params.outdir}
+
+        prefetch {wildcards.srr} --output-file {wildcards.srr}.sra &> {log.prefetch}
+        vdb-validate {wildcards.srr}.sra &> {log.validate}
+        fastq-dump --gzip --split-files {wildcards.srr}.sra &> {log.dump}
+
+        rm {wildcards.srr}.sra
+        """
