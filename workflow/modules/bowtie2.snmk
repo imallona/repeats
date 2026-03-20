@@ -133,11 +133,12 @@ rule filter_unique_bam_smartseq2:
             config['base'], 'logs',
             'filter_unique_{feature_set}_smartseq2_{cell_id}.log'
         )
+    threads: 4
     shell:
         """
-        samtools view -h {input.bam} 2> {log} \
+        samtools view -h -@ {threads} {input.bam} 2> {log} \
             | awk 'substr($0,1,1)=="@" || $0 !~ /\tXS:i:/' \
-            | samtools view -bh > {output.bam}
+            | samtools view -bh -@ {threads} > {output.bam}
         samtools index {output.bam}
         """
 
@@ -403,11 +404,12 @@ rule umi_dedup_chromium:
             config['base'], 'benchmarks',
             'umi_dedup_{feature_set}_chromium.txt'
         )
+    threads: workflow.cores
     shell:
         """
-        samtools view -h {input} \
+        samtools view -h -@ {threads} {input} \
             | umi_tools dedup --per-cell --stdin - --stdout - --in-sam --log {log} \
-            | samtools view -bS - > {output.dedup_bam}
+            | samtools view -bS -@ {threads} - > {output.dedup_bam}
         samtools index {output.dedup_bam}
         """
 

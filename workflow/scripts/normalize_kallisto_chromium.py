@@ -38,7 +38,7 @@ def load_locus_to_group(locus_map_path, granularity):
             parts = line.rstrip('\n').split('\t')
             if len(parts) <= target_col:
                 continue
-            locus = parts[1]      # gene_id column = locus id used in counts.genes.txt
+            locus = parts[0]      # locus_id (col 0) as used in bustools counts.genes.txt
             target = parts[target_col]
             if locus and target:
                 mapping[locus] = target
@@ -69,7 +69,7 @@ def main():
     print(f'{n_features} loci, {n_cells} cells', file=sys.stderr)
 
     # Build locus -> target mapping
-    if args.locus_map and args.granularity != 'gene_id':
+    if args.locus_map:
         locus_to_group = load_locus_to_group(args.locus_map, args.granularity)
         print(f'Aggregating to {args.granularity} ({len(locus_to_group)} loci mapped)',
               file=sys.stderr)

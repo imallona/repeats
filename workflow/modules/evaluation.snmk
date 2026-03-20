@@ -38,16 +38,28 @@ def eval_benchmark(wildcards):
     aligner = wildcards.aligner
     mm = wildcards.multimapper_mode
     fs = wildcards.feature_set
+    gran = wildcards.granularity
     if aligner == 'starsolo':
         return op.join(config['base'], 'benchmarks',
                        f'starsolo_{sim_technology}_{mm}_{fs}.txt')
     if aligner == 'bowtie2':
+        if sim_technology == 'smartseq2':
+            return op.join(config['base'], 'benchmarks',
+                           f'count_bowtie2_{fs}_smartseq2_{gran}_{mm}.txt')
         return op.join(config['base'], 'benchmarks',
-                       f'count_bowtie2_{fs}_smartseq2_{wildcards.granularity}_{mm}.txt')
+                       f'count_bowtie2_{fs}_chromium_{gran}.txt')
+    if aligner == 'alevin':
+        if sim_technology == 'smartseq2':
+            return op.join(config['base'], 'benchmarks',
+                           f'salmon_{fs}_quant_smartseq2_cell_001.txt')
+        return op.join(config['base'], 'benchmarks',
+                       f'salmon_{fs}_alevin_chromium.txt')
+    # kallisto
+    if sim_technology == 'smartseq2':
+        return op.join(config['base'], 'benchmarks',
+                       f'kallisto_{fs}_smartseq2_cell_001.txt')
     return op.join(config['base'], 'benchmarks',
-                   f'salmon_{fs}_quant_smartseq2_cell_001.txt'
-                   if aligner == 'alevin'
-                   else f'kallisto_{fs}_smartseq2_cell_001.txt')
+                   f'kallisto_{fs}_bus_chromium.txt')
 rule evaluate_combination:
     """Evaluate one (aligner, feature_set, granularity, multimapper_mode) combination."""
     conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
@@ -55,7 +67,8 @@ rule evaluate_combination:
         ground_truth = ground_truth_path,
         counts = op.join(counts_dir,
                          '{aligner}_{feature_set}_{granularity}_{multimapper_mode}.tsv'),
-        locus_map = eval_locus_map
+        locus_map = eval_locus_map,
+        benchmark_file = eval_benchmark
     output:
         global_metrics = op.join(eval_dir,
             '{aligner}_{feature_set}_{granularity}_{multimapper_mode}_global_metrics.tsv'),
@@ -84,6 +97,7 @@ rule evaluate_combination:
             --granularity {wildcards.granularity} \
             --feature-set {wildcards.feature_set} \
             --locus-map {input.locus_map} \
+            --benchmark {input.benchmark_file} \
             --output-prefix {params.output_prefix} 2> {log}
         """
 rule aggregate_global_metrics:
