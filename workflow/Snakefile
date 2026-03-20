@@ -94,17 +94,27 @@ def simulation_outputs():
 
 def aligner_count_outputs():
     outputs = []
+    # locus granularity requires a BAM-based counting rule for starsolo;
+    # all other aligners handle locus via updated wildcard constraints.
+    _non_locus_grans = [g for g in granularities if g != 'locus']
+    _has_locus = 'locus' in granularities
 
     if 'starsolo' in active_aligners:
         if 'genes' in feature_sets:
             outputs += expand(
                 op.join(counts_dir, 'starsolo_genes_gene_id_{multimapper_mode}.tsv'),
                 multimapper_mode=starsolo_modes)
-        outputs += expand(
-            op.join(counts_dir, 'starsolo_{feature_set}_{granularity}_{multimapper_mode}.tsv'),
-            feature_set=_repeat_fsets,
-            granularity=granularities,
-            multimapper_mode=starsolo_modes)
+        if _non_locus_grans:
+            outputs += expand(
+                op.join(counts_dir, 'starsolo_{feature_set}_{granularity}_{multimapper_mode}.tsv'),
+                feature_set=_repeat_fsets,
+                granularity=_non_locus_grans,
+                multimapper_mode=starsolo_modes)
+        if _has_locus:
+            outputs += expand(
+                op.join(counts_dir, 'starsolo_{feature_set}_locus_{multimapper_mode}.tsv'),
+                feature_set=_repeat_fsets,
+                multimapper_mode=starsolo_modes)
 
     for aligner in ['kallisto', 'alevin']:
         if aligner not in active_aligners:

@@ -14,7 +14,7 @@ params:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE,
-                      fig.width = 12, fig.height = 6)
+                      fig.width = 12, fig.height = 12)
 library(ggplot2)
 library(dplyr)
 library(tidyr)
@@ -57,7 +57,7 @@ global <- global %>%
   mutate(
     aligner_mode = paste0(aligner, " (", multimapper_mode, ")"),
     gran_label   = factor(granularity,
-                          levels = c("gene_id", "family_id", "class_id"))
+                          levels = c("locus", "gene_id", "family_id", "class_id"))
   )
 
 # -- per-cell metrics --
@@ -102,7 +102,7 @@ All metrics compare the aligner count matrix against the simulation ground truth
 Rows = aligner (+ multimapper mode), columns = metric. Each bar is a
 feature_set x granularity combination.
 
-```{r global-accuracy, fig.height=10, fig.width=14}
+```{r global-accuracy, fig.height=14, fig.width=18}
 acc_metrics <- c("pearson_r", "spearman_r", "f1",
                  "precision", "recall", "jaccard", "specificity")
 
@@ -231,7 +231,7 @@ if (!is.null(per_cell) && nrow(per_cell) > 0) {
   per_cell_num <- per_cell_num %>%
     mutate(aligner_mode = paste0(aligner, " (", multimapper_mode, ")"),
            gran_label = factor(granularity,
-                               levels = c("gene_id", "family_id", "class_id")))
+                               levels = c("locus", "gene_id", "family_id", "class_id")))
 
   pc_long <- per_cell_num %>%
     pivot_longer(c(pearson_r, spearman_r), names_to = "metric", values_to = "r") %>%
@@ -260,12 +260,12 @@ if (!is.null(per_cell) && nrow(per_cell) > 0) {
 
 ## per-repeat-class metrics
 
-```{r per-family, fig.height=9, fig.width=14}
+```{r per-family, fig.height=14, fig.width=10}
 if (!is.null(per_family) && nrow(per_family) > 0 && "class_id" %in% names(per_family)) {
   pf <- per_family %>%
     filter(!is.na(class_id), class_id != "unknown") %>%
     mutate(gran_label = factor(granularity,
-                               levels = c("gene_id", "family_id", "class_id")))
+                               levels = c("locus", "gene_id", "family_id", "class_id")))
 
   n_al4 <- length(unique(pf$aligner_mode))
   pal_pf <- make_palette(n_al4)
@@ -307,7 +307,7 @@ if (!is.null(per_family) && nrow(per_family) > 0 && "class_id" %in% names(per_fa
 
 ## compute resources
 
-```{r resources, fig.height=5}
+```{r resources, fig.height=10, fig.width=14}
 res_cols <- intersect(c("wall_time_s", "cpu_time_s", "max_rss_mb", "io_in_mb", "io_out_mb"), names(global))
 if (length(res_cols) > 0 && any(!is.na(global[res_cols]))) {
   n_al5 <- length(unique(global$aligner_mode))

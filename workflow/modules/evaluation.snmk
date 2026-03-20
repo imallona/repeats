@@ -78,7 +78,7 @@ rule evaluate_combination:
     wildcard_constraints:
         aligner = 'starsolo|kallisto|alevin|bowtie2',
         feature_set = 'repeats|genic_repeats|intergenic_repeats',
-        granularity = 'gene_id|family_id|class_id',
+        granularity = 'locus|gene_id|family_id|class_id',
         multimapper_mode = 'unique|multi'
     params:
         benchmark_file = eval_benchmark,

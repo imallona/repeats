@@ -27,7 +27,7 @@ def load_locus_to_group(locus_map_path, granularity):
 
     locus_map columns (no header): transcript_id, gene_id, family_id, class_id.
     """
-    col_idx = {'gene_id': 1, 'family_id': 2, 'class_id': 3}
+    col_idx = {'locus': 0, 'gene_id': 1, 'family_id': 2, 'class_id': 3}
     if granularity not in col_idx:
         sys.exit(f'Unknown granularity: {granularity}')
     target_col = col_idx[granularity]
@@ -52,7 +52,7 @@ def main():
     ap.add_argument('--locus-map', default=None,
                     help='4-col locus map TSV for granularity aggregation (repeats only)')
     ap.add_argument('--granularity', default='gene_id',
-                    choices=['gene_id', 'family_id', 'class_id'],
+                    choices=['locus', 'gene_id', 'family_id', 'class_id'],
                     help='Aggregation granularity (default: gene_id)')
     args = ap.parse_args()
 

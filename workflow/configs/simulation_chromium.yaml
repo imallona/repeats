@@ -30,6 +30,7 @@ feature_sets:
   - intergenic_repeats
 
 granularities:
+  - locus
   - gene_id
   - family_id
   - class_id

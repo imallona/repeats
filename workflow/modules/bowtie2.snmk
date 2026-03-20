@@ -160,7 +160,7 @@ rule count_bowtie2_smartseq2:
             config['indices_base'], 'indices', genome_tag,
             f'{wc.feature_set}_locus_map.tsv'
         ),
-        script = ancient(op.join(workflow.basedir, 'scripts', 'count_pseudo_genome_chromium.py'))
+        script = ancient(op.join(workflow.basedir, 'scripts', 'count_pseudo_genome.py'))
     output:
         counts = op.join(
             config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
@@ -194,8 +194,8 @@ rule count_bowtie2_smartseq2:
         python {input.script} \
             --bams {params.bams_arg} \
             --cell-ids {params.cell_ids_arg} \
-            --bam {input.bam} \
-            --locus-map {input.locus_map} \n            --granularity {wildcards.granularity} \
+            --locus-map {input.locus_map} \
+            --granularity {wildcards.granularity} \
             --output {output.counts} 2> {log}
         """
 
@@ -408,7 +408,7 @@ rule umi_dedup_chromium:
     shell:
         """
         samtools view -h -@ {threads} {input} \
-            | umi_tools dedup --per-cell --stdin - --stdout - --in-sam --log {log} \
+            | umi_tools dedup --per-cell --extract-umi-method tag --umi-tag UB --cell-tag CB --stdin - --stdout - --in-sam --log {log} \
             | samtools view -bS -@ {threads} - > {output.dedup_bam}
         samtools index {output.dedup_bam}
         """

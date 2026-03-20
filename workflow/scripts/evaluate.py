@@ -24,10 +24,10 @@ def load_ground_truth(gt_path, granularity='gene_id'):
       repeat_meta: {feature_id: (family_id, class_id)}
 
     granularity controls how ground truth counts are aggregated:
-      gene_id   - group by repeat_id (= gene_id)
+      locus     - use locus_id (finest level: individual repeat instance)
+      gene_id   - group by repeat_id (= gene_id; sums across loci of same gene)
       family_id - sum true_count by cell_id + family_id
       class_id  - sum true_count by cell_id + class_id
-      locus     - treated as gene_id
     """
     from collections import defaultdict as _dd
     raw = []
@@ -37,13 +37,16 @@ def load_ground_truth(gt_path, granularity='gene_id'):
         for row in reader:
             raw.append({
                 'cell_id': row[cell_col],
-                'repeat_id': row['repeat_id'],
+                'locus_id': row.get('locus_id', row.get('repeat_id', '')),
+                'repeat_id': row.get('repeat_id', row.get('locus_id', '')),
                 'family_id': row['family_id'],
                 'class_id': row['class_id'],
                 'true_count': int(row['true_count'])
             })
 
-    if granularity in ('gene_id', 'locus'):
+    if granularity == 'locus':
+        key_col = 'locus_id'
+    elif granularity == 'gene_id':
         key_col = 'repeat_id'
     elif granularity == 'family_id':
         key_col = 'family_id'
@@ -235,7 +238,7 @@ def main():
     # features outside the feature_set are not counted as false negatives.
     locus_map_features = set()
     if args.locus_map and os.path.exists(args.locus_map):
-        col = {'gene_id': 1, 'family_id': 2, 'class_id': 3, 'locus': 0}.get(
+        col = {'locus': 0, 'gene_id': 1, 'family_id': 2, 'class_id': 3}.get(
             args.granularity, 1)
         with open(args.locus_map) as fh:
             for line in fh:

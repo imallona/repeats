@@ -54,6 +54,7 @@ aligner_params:
 # gene_id = repeat locus; family_id / class_id aggregate across loci.
 # For the genes feature_set, only gene_id is used.
 granularities:
+  - locus
   - gene_id
   - family_id
   - class_id

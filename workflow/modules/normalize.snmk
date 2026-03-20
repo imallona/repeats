@@ -25,6 +25,7 @@ normalize_dir = op.join(config['base'], 'counts')
 _feat_constraint = 'genes|repeats|genic_repeats|intergenic_repeats'
 _repeat_fsets = 'repeats|genic_repeats|intergenic_repeats'
 _gran_constraint = 'gene_id|family_id|class_id'
+_locus_gran_constraint = 'locus|gene_id|family_id|class_id'
 _mm_constraint = 'unique|multi'
 
 
@@ -130,7 +131,7 @@ rule normalize_kallisto:
         counts_tsv = op.join(normalize_dir,
                              'kallisto_{feature_set}_{granularity}_unique.tsv')
     wildcard_constraints:
-        granularity = _gran_constraint,
+        granularity = _locus_gran_constraint,
         feature_set = _feat_constraint
     params:
         technology = sim_technology,
@@ -205,7 +206,7 @@ rule normalize_alevin:
         counts_tsv = op.join(normalize_dir,
                              'alevin_{feature_set}_{granularity}_unique.tsv')
     wildcard_constraints:
-        granularity = _gran_constraint,
+        granularity = _locus_gran_constraint,
         feature_set = _feat_constraint
     params:
         technology = sim_technology,
@@ -254,7 +255,7 @@ rule normalize_bowtie2:
         op.join(normalize_dir,
                 'bowtie2_{feature_set}_{granularity}_{multimapper_mode}.tsv')
     wildcard_constraints:
-        granularity = _gran_constraint,
+        granularity = _locus_gran_constraint,
         feature_set = _repeat_fsets,
         multimapper_mode = _mm_constraint
     log:
@@ -263,4 +264,41 @@ rule normalize_bowtie2:
     shell:
         """
         cp {input} {output} 2> {log}
+        """
+
+
+# ---------------------------------------------------------------------------
+# STARsolo locus-level counting via BAM coordinate overlap
+# ---------------------------------------------------------------------------
+
+rule normalize_starsolo_locus:
+    """Count reads per locus from STARsolo BAM using locus_map interval overlap."""
+    conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input:
+        bam = op.join(config['base'], 'starsolo', sim_technology,
+                      '{multimapper_mode}_{feature_set}',
+                      'Aligned.sortedByCoord.out.bam'),
+        fasta = lambda wc: op.join(config['indices_base'], 'indices', genome_tag,
+                                   f'{wc.feature_set}.fa')
+    output:
+        counts_tsv = op.join(normalize_dir,
+                             'starsolo_{feature_set}_locus_{multimapper_mode}.tsv')
+    wildcard_constraints:
+        multimapper_mode = _mm_constraint,
+        feature_set = _repeat_fsets
+    threads: workflow.cores
+    params:
+        mode = sim_technology
+    log:
+        op.join(config['base'], 'logs',
+                'normalize_starsolo_locus_{feature_set}_{multimapper_mode}.log')
+    shell:
+        """
+        python {workflow.basedir}/scripts/count_starsolo_locus.py \
+            --bam {input.bam} \
+            --fasta {input.fasta} \
+            --mode {params.mode} \
+            --multimapper-mode {wildcards.multimapper_mode} \
+            --threads {threads} \
+            --output {output.counts_tsv} 2> {log}
         """
