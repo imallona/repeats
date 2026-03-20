@@ -5,6 +5,8 @@ reference:
   assembly: hg38
   ensembl_release: "112"
   chromosomes: ["chr10"]
+  filter_genic: true
+  rmsk_source: ucsc_flatfile
   genome_fasta: "/home/imallona/repeats/results/simulation_smartseq2/refs/GRCh38.dna.primary_assembly.fa.gz"
   repeats_gtf: "/home/imallona/repeats/results/simulation_smartseq2/refs/hg38_rmsk_TE.gtf.gz"
   genes_gtf: "/home/imallona/repeats/results/simulation_smartseq2/refs/GRCh38.112.genes.gtf.gz"
@@ -44,7 +46,7 @@ aligner_params:
   alevin:
     extra_args: "--minAssignedFrags 1"
   bowtie2:
-    multimapper_modes: ["unique"]
+    multimapper_modes: ["unique", "multi"]
     extra_args: ""
     featurecounts_cell_chunk_size: 20
 

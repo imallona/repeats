@@ -97,6 +97,7 @@ if sim_technology == 'smartseq2':
     _kallisto_norm_mtx = lambda wc: ''
     _kallisto_norm_barcodes = lambda wc: ''
     _kallisto_norm_genes_file = lambda wc: ''
+    _kallisto_norm_locus_map = lambda wc: []
 else:
     def _kallisto_norm_input(wc):
         return [
@@ -116,13 +117,15 @@ else:
     _kallisto_norm_genes_file = lambda wc: op.join(config['base'], 'kallisto',
                                                    wc.feature_set, 'chromium',
                                                    'counts.genes.txt')
+    _kallisto_norm_locus_map = normalize_locus_map
 
 
 rule normalize_kallisto:
     conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
     input:
         data = _kallisto_norm_input,
-        t2g = _kallisto_norm_t2g
+        t2g = _kallisto_norm_t2g,
+        locus_map = _kallisto_norm_locus_map
     output:
         counts_tsv = op.join(normalize_dir,
                              'kallisto_{feature_set}_{granularity}_unique.tsv')
@@ -135,7 +138,8 @@ rule normalize_kallisto:
         cell_dirs = _kallisto_norm_cell_dirs,
         mtx = _kallisto_norm_mtx,
         barcodes = _kallisto_norm_barcodes,
-        genes_file = _kallisto_norm_genes_file
+        genes_file = _kallisto_norm_genes_file,
+        locus_map_arg = lambda wc, input: f'--locus-map {input.locus_map}' if input.locus_map else ''
     log:
         op.join(config['base'], 'logs',
                 'normalize_kallisto_{feature_set}_{granularity}.log')
@@ -152,6 +156,8 @@ rule normalize_kallisto:
                 --mtx {params.mtx} \
                 --barcodes {params.barcodes} \
                 --genes {params.genes_file} \
+                {params.locus_map_arg} \
+                --granularity {wildcards.granularity} \
                 --output {output.counts_tsv} 2> {log}
         fi
         """
@@ -174,24 +180,27 @@ if sim_technology == 'smartseq2':
         op.join(config['base'], 'alevin', wc.feature_set, 'smartseq2', cid)
         for cid in sim_cell_ids)
     _alevin_norm_alevin_dir = lambda wc: ''
+    _alevin_norm_locus_map = lambda wc: []
 else:
     def _alevin_norm_input(wc):
         return [
             op.join(config['base'], 'alevin', wc.feature_set, 'chromium',
-                    'alevin', 'quants_mat.gz')
+                    'alevin', 'quants_mat.mtx.gz')
         ]
     _alevin_norm_t2g = lambda wc: []
     _alevin_norm_cell_ids = ''
     _alevin_norm_cell_dirs = lambda wc: ''
     _alevin_norm_alevin_dir = lambda wc: op.join(config['base'], 'alevin',
                                                  wc.feature_set, 'chromium', 'alevin')
+    _alevin_norm_locus_map = normalize_locus_map
 
 
 rule normalize_alevin:
     conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')
     input:
         data = _alevin_norm_input,
-        t2g = _alevin_norm_t2g
+        t2g = _alevin_norm_t2g,
+        locus_map = _alevin_norm_locus_map
     output:
         counts_tsv = op.join(normalize_dir,
                              'alevin_{feature_set}_{granularity}_unique.tsv')
@@ -202,7 +211,8 @@ rule normalize_alevin:
         technology = sim_technology,
         cell_ids = _alevin_norm_cell_ids,
         cell_dirs = _alevin_norm_cell_dirs,
-        alevin_dir = _alevin_norm_alevin_dir
+        alevin_dir = _alevin_norm_alevin_dir,
+        locus_map_arg = lambda wc, input: f'--locus-map {input.locus_map}' if input.locus_map else ''
     log:
         op.join(config['base'], 'logs',
                 'normalize_alevin_{feature_set}_{granularity}.log')
@@ -217,6 +227,8 @@ rule normalize_alevin:
         else
             python {workflow.basedir}/scripts/normalize_alevin_chromium.py \
                 --alevin-dir {params.alevin_dir} \
+                {params.locus_map_arg} \
+                --granularity {wildcards.granularity} \
                 --output {output.counts_tsv} 2> {log}
         fi
         """

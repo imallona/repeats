@@ -32,8 +32,9 @@ _chromium_r2 = (
 
 _kb_cb_len = config.get('simulation', config.get('real_data', {})).get('cb_length', 16)
 _kb_umi_len = config.get('simulation', config.get('real_data', {})).get('umi_length', 12)
+# Kallisto bus geometry: BC on R1[0:cb], UMI on R1[cb:cb+umi], cDNA on R2
 _kb_tech_flag = (
-    f'-x {_kb_cb_len},{_kb_umi_len}'
+    f'-x 0,0,{_kb_cb_len}:0,{_kb_cb_len},{_kb_cb_len + _kb_umi_len}:1,0,0'
     if config['mode'] == 'simulation'
     else '-x ' + config.get('real_data', {}).get('chemistry', '10xv3')
 )

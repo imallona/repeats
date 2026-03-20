@@ -1,4 +1,5 @@
 base: "/home/imallona/repeats/results/simulation_chromium"
+indices_base: "/home/imallona/repeats/results/shared"
 
 reference:
   assembly: hg38
