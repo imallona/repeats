@@ -1,0 +1,51 @@
+# Config for the negative-control test workflow.
+# Reuses the same reference files as simulation_smartseq2.yaml but:
+#   - simulation uses the GENE GTF (not repeat GTF) via Snakefile_test rules
+#   - only STARsolo is run (fastest aligner for the check)
+#   - only a small number of cells (5) to keep runtime low
+#   - testing.negative_control_max_recall sets the recall threshold
+
+base: "/home/imallona/repeats/results/test_negative_control"
+indices_base: "/home/imallona/repeats/results/shared"
+
+reference:
+  assembly: hg38
+  ensembl_release: "112"
+  chromosomes: ["chr10"]
+  filter_genic: true
+  rmsk_source: ucsc_flatfile
+  genome_fasta: "/home/imallona/repeats/results/simulation_smartseq2/refs/GRCh38.dna.primary_assembly.fa.gz"
+  repeats_gtf:  "/home/imallona/repeats/results/simulation_smartseq2/refs/hg38_rmsk_TE.gtf.gz"
+  genes_gtf:    "/home/imallona/repeats/results/simulation_smartseq2/refs/GRCh38.112.genes.gtf.gz"
+
+mode: simulation
+
+simulation:
+  technology: smartseq2
+  n_cells: 5
+  n_expressed_per_cell: 20
+  read_length: 90
+  seed: 99
+
+feature_sets:
+  - repeats
+
+aligners:
+  - starsolo
+
+aligner_params:
+  starsolo:
+    multimapper_modes: ["unique"]
+    extra_args: ""
+
+granularities:
+  - gene_id
+
+resources:
+  max_threads: 4
+  max_mem_mb: 8000
+
+# Testing thresholds
+testing:
+  # Gene-body reads should not map to repeats with more than 10% recall
+  negative_control_max_recall: 0.10

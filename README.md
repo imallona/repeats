@@ -1,4 +1,4 @@
-# Repeat element quantification in bulk and single cells
+# Repetitive element quantification in bulk and single-cell RNA-seq
 
 ## Status
 
@@ -85,6 +85,12 @@ Bowtie2 Chromium counting streams the CB-tagged BAM once and accumulates
 per-(barcode, locus) counts directly, without splitting into per-cell BAM files.
 
 See workflow/methods.md for full details.
+
+## Testing
+
+Unit tests, integration tests, and Snakemake dry-run tests are in the
+`test/` directory. See [test/README.md](test/README.md) for details on
+design, coverage, and how to run the tests.
 
 ## Contact
 

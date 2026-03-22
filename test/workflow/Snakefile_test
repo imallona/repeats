@@ -1,0 +1,191 @@
+#!/usr/bin/env snakemake -s
+"""
+Test workflow for the repeats pipeline.
+
+Reuses all production snmk modules and adds two test-specific rule sets.
+
+Dry-run validation:
+  Triggered by CI via snakemake --dry-run. Verifies the DAG can be built
+  from any config without running any actual rules.
+
+Negative control (simulate_from_genes + check_negative_control_recall):
+  Simulates reads from gene body regions using simulate_reads.py with the
+  Ensembl gene GTF instead of the repeat GTF. The ground truth is therefore
+  over gene features, not repeat elements. When the repeat quantification
+  pipeline is run on these gene reads, recall should be near zero because
+  the reads do not originate from repeat elements. This tests whether the
+  pipeline can distinguish repeat signal from genic signal.
+
+Usage (run from the workflow/ directory):
+
+  Dry-run:
+    snakemake -s ../test/workflow/Snakefile_test \
+        --configfile ../test/workflow/configs/test_negative_control.yaml \
+        --dry-run -p
+
+  Full negative control run (requires --use-conda):
+    snakemake -s ../test/workflow/Snakefile_test \
+        --configfile ../test/workflow/configs/test_negative_control.yaml \
+        --use-conda --cores 4
+"""
+
+import os
+import os.path as op
+
+configfile: "config.yaml"
+
+if 'indices_base' not in config:
+    config['indices_base'] = config['base']
+
+# Replicate all globals that the production modules expect to find in scope.
+# These mirror the definitions in workflow/Snakefile.
+_chroms = config['reference'].get('chromosomes', [])
+genome_tag = '_'.join(sorted(_chroms)) if _chroms else 'all'
+active_aligners = config.get('aligners', [])
+feature_sets = config.get('feature_sets', ['repeats'])
+sim_cfg = config.get('simulation', {})
+sim_technology = sim_cfg.get('technology', 'smartseq2')
+starsolo_modes = (config.get('aligner_params', {}).get('starsolo', {})
+                  .get('multimapper_modes', ['unique']))
+bowtie2_modes = (config.get('aligner_params', {}).get('bowtie2', {})
+                 .get('multimapper_modes', ['unique']))
+if sim_technology == 'smartseq2' and 'multi' in starsolo_modes:
+    starsolo_modes = [m for m in starsolo_modes if m != 'multi']
+sim_cell_ids = [f'cell_{i + 1:03d}' for i in range(sim_cfg.get('n_cells', 20))]
+eval_dir = op.join(config['base'], 'evaluation')
+counts_dir = op.join(config['base'], 'counts')
+granularities = config.get('granularities', ['family_id'])
+_repeat_fsets = [fs for fs in feature_sets
+                 if fs in ('repeats', 'genic_repeats', 'intergenic_repeats')]
+_eval_fsets = _repeat_fsets
+
+# workflow.basedir is the directory of this Snakefile (test/workflow/).
+# Production modules live two levels up in workflow/modules/.
+_prod = op.join(workflow.basedir, '..', '..', 'workflow')
+
+# Include all production modules so the DAG is complete and dry-runs cover
+# the same rule set as the main Snakefile.
+include: op.join(_prod, 'modules', 'download_references.snmk')
+include: op.join(_prod, 'modules', 'data_acquisition.snmk')
+include: op.join(_prod, 'modules', 'reference.snmk')
+include: op.join(_prod, 'modules', 'starsolo.snmk')
+include: op.join(_prod, 'modules', 'kallisto.snmk')
+include: op.join(_prod, 'modules', 'alevin.snmk')
+include: op.join(_prod, 'modules', 'bowtie2.snmk')
+include: op.join(_prod, 'modules', 'normalize.snmk')
+
+neg_ctrl_dir = op.join(config['base'], 'negative_control', sim_technology)
+
+for subdir in ['tmp', 'logs', 'benchmarks', 'counts', 'evaluation',
+               'negative_control']:
+    os.makedirs(op.join(config['base'], subdir), exist_ok=True)
+for subdir in ['indices', 'refs']:
+    os.makedirs(op.join(config['indices_base'], subdir), exist_ok=True)
+
+# Conda environment for the two test-specific rules.
+# Declared explicitly in test/workflow/envs/test_evaluation.yaml so
+# dependencies (scipy, pandas, numpy) are versioned alongside this file.
+TEST_ENV = op.join(workflow.basedir, 'envs', 'test_evaluation.yaml')
+
+
+rule simulate_from_genes:
+    """
+    Negative control: simulate scRNA-seq reads from gene body regions.
+
+    Passes the Ensembl gene GTF to simulate_reads.py instead of the repeat
+    GTF. The resulting reads come from unique, non-repetitive transcribed
+    regions. Running the repeat quantification pipeline on these reads should
+    give recall near zero.
+    """
+    conda: TEST_ENV
+    input:
+        gtf   = config['reference']['genes_gtf'],
+        fasta = config['reference']['genome_fasta'],
+    output:
+        ground_truth = op.join(neg_ctrl_dir, 'ground_truth.tsv'),
+        manifest     = op.join(neg_ctrl_dir, 'manifest.tsv'),
+    params:
+        script  = op.join(_prod, 'scripts', 'simulate_reads.py'),
+        outdir  = neg_ctrl_dir,
+        n_cells = sim_cfg.get('n_cells', 5),
+        n_expr  = sim_cfg.get('n_expressed_per_cell', 20),
+        rl      = sim_cfg.get('read_length', 90),
+        chroms  = ' '.join(config['reference'].get('chromosomes', [])),
+        seed    = sim_cfg.get('seed', 99),
+    log:
+        op.join(config['base'], 'logs', 'simulate_from_genes.log')
+    shell:
+        """
+        python {params.script} \
+            --mode smartseq2 \
+            --gtf {input.gtf} \
+            --fasta {input.fasta} \
+            --outdir {params.outdir} \
+            --n-cells {params.n_cells} \
+            --n-expressed {params.n_expr} \
+            --read-length {params.rl} \
+            --chromosomes {params.chroms} \
+            --seed {params.seed} \
+        2> {log}
+        """
+
+
+rule check_negative_control_recall:
+    """
+    Assert that the repeat pipeline reports low recall for gene-body reads.
+
+    Runs evaluate.py with the gene-body ground truth against the repeat
+    quantification output. Recall must stay below the threshold set in
+    testing.negative_control_max_recall (default 0.10). Gene reads should
+    not be falsely attributed to repeat elements.
+    """
+    conda: TEST_ENV
+    input:
+        ground_truth  = op.join(neg_ctrl_dir, 'ground_truth.tsv'),
+        repeat_counts = op.join(
+            config['base'], 'counts',
+            'starsolo_repeats_gene_id_unique.tsv'),
+        locus_map     = op.join(
+            config['indices_base'], 'indices', genome_tag,
+            'repeats_locus_map.tsv'),
+    output:
+        result = op.join(config['base'], 'evaluation',
+                         'negative_control_check.txt'),
+    params:
+        script     = op.join(_prod, 'scripts', 'evaluate.py'),
+        prefix     = op.join(config['base'], 'evaluation', 'negative_control'),
+        max_recall = config.get('testing', {}).get('negative_control_max_recall', 0.10),
+    log:
+        op.join(config['base'], 'logs', 'check_negative_control.log')
+    shell:
+        """
+        python {params.script} \
+            --ground-truth {input.ground_truth} \
+            --observed-counts {input.repeat_counts} \
+            --aligner starsolo \
+            --multimapper-mode unique \
+            --granularity gene_id \
+            --feature-set repeats \
+            --locus-map {input.locus_map} \
+            --output-prefix {params.prefix} \
+        2> {log}
+
+        python3 - <<'PY'
+import csv, sys
+with open('{params.prefix}_global_metrics.tsv') as fh:
+    m = next(csv.DictReader(fh, delimiter='\\t'))
+recall = float(m.get('recall', 1.0))
+threshold = {params.max_recall}
+if recall > threshold:
+    print(f'FAIL: negative_control recall={{recall:.4f}} > threshold={{threshold}}',
+          file=sys.stderr)
+    sys.exit(1)
+print(f'PASS: negative_control recall={{recall:.4f}} <= threshold={{threshold}}')
+PY
+        echo "recall check passed" > {output.result}
+        """
+
+
+rule all:
+    input:
+        op.join(neg_ctrl_dir, 'ground_truth.tsv'),
