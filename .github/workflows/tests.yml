@@ -58,7 +58,7 @@ jobs:
           snakemake \
             --configfile configs/simulation_smartseq2.yaml \
             --dry-run \
-            --quiet
+            --quiet --cores 2
 
       - name: Dry-run main Snakefile with Chromium config
         shell: bash -el {0}
@@ -67,7 +67,7 @@ jobs:
           snakemake \
             --configfile configs/simulation_chromium.yaml \
             --dry-run \
-            --quiet
+            --quiet --cores 2
 
       - name: Dry-run test Snakefile with negative control config
         shell: bash -el {0}
@@ -77,7 +77,7 @@ jobs:
             -s ../test/workflow/Snakefile_test \
             --configfile ../test/workflow/configs/test_negative_control.yaml \
             --dry-run \
-            --quiet
+            --quiet --cores 2
 
       - name: Run workflow dry-run pytest tests
         shell: bash -el {0}
@@ -115,5 +115,5 @@ jobs:
             -s ../test/workflow/Snakefile_test \
             --configfile ../test/workflow/configs/test_negative_control.yaml \
             --use-conda \
-            --cores 4 \
+            --cores 2 \
             --conda-frontend mamba

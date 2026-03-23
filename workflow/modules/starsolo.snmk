@@ -97,7 +97,7 @@ rule starsolo_smartseq2:
              --soloCellReadStats None \
              --soloUMIdedup NoDedup \
              --soloMultiMappers {params.solo_multimappers} \
-             --outSAMattributes NH HI AS NM CB UB \
+             --outSAMattributes NH HI AS NM \
              --outSAMtype BAM SortedByCoordinate \
              --limitBAMsortRAM {params.max_ram_bytes} \
              {params.extra_args} 2> {log}
