@@ -27,11 +27,11 @@ def read_lines(path):
         return [line.rstrip('\n') for line in fh]
 
 
-def load_starsolo_raw(raw_dir):
+def load_starsolo_raw(raw_dir, mtx_name='matrix.mtx'):
     barcodes = read_lines(os.path.join(raw_dir, 'barcodes.tsv'))
     feature_lines = read_lines(os.path.join(raw_dir, 'features.tsv'))
     feature_ids = [line.split('\t')[0] for line in feature_lines]
-    mat = scipy.io.mmread(os.path.join(raw_dir, 'matrix.mtx')).tocsc()
+    mat = scipy.io.mmread(os.path.join(raw_dir, mtx_name)).tocsc()
     return barcodes, feature_ids, mat
 
 
@@ -94,11 +94,16 @@ def main():
     ap.add_argument('--output', required=True, help='Output TSV path')
     ap.add_argument('--locus-map', default=None,
                     help='TSV: transcript_id, gene_id, family_id, class_id (no header)')
+    ap.add_argument('--multimapper-mode', default='unique',
+                    choices=['unique', 'multi'])
     ap.add_argument('--granularity', default='gene_id',
                     choices=['gene_id', 'family_id', 'class_id'])
     args = ap.parse_args()
 
-    barcodes, feature_ids, mat = load_starsolo_raw(args.raw_dir)
+    em_mtx = os.path.join(args.raw_dir, 'UniqueAndMult-EM.mtx')
+    mtx_name = 'UniqueAndMult-EM.mtx' if args.multimapper_mode == 'multi' and os.path.exists(em_mtx) else 'matrix.mtx'
+    print('Using matrix: {}'.format(mtx_name), file=sys.stderr)
+    barcodes, feature_ids, mat = load_starsolo_raw(args.raw_dir, mtx_name)
     print('{} features, {} barcodes'.format(len(feature_ids), len(barcodes)), file=sys.stderr)
 
     gene_to_group = None
