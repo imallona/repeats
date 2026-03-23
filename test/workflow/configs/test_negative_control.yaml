@@ -14,9 +14,9 @@ reference:
   chromosomes: ["chr10"]
   filter_genic: true
   rmsk_source: ucsc_flatfile
-  genome_fasta: "../results/simulation_smartseq2/refs/GRCh38.dna.primary_assembly.fa.gz"
-  repeats_gtf:  "../results/simulation_smartseq2/refs/hg38_rmsk_TE.gtf.gz"
-  genes_gtf:    "../results/simulation_smartseq2/refs/GRCh38.112.genes.gtf.gz"
+  genome_fasta: "../results/test_negative_control/refs/GRCh38.dna.primary_assembly.fa.gz"
+  repeats_gtf:  "../results/test_negative_control/refs/hg38_rmsk_TE.gtf.gz"
+  genes_gtf:    "../results/test_negative_control/refs/GRCh38.112.genes.gtf.gz"
 
 mode: simulation
 
