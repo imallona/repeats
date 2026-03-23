@@ -1,0 +1,164 @@
+#!/usr/bin/env snakemake -s
+"""
+Bulk RNA-seq reanalysis of GSE126543 (SRA study SRP185789, BioProject PRJNA522290).
+
+The dataset is from Liu...Li TDP-43 nuclear RNA-seq
+
+https://pmc.ncbi.nlm.nih.gov/articles/PMC6508629/
+
+It contains 16 paired-end RNA-seq runs from NeuN-positive neuronal nuclei
+isolated from human frontal cortex (FTD/ALS post-mortem tissue). Samples were
+sorted by TDP-43 nuclear presence across 7 donors, giving one TDP-43-positive
+and one TDP-43-negative run per donor. Two additional unsorted runs from donors
+S3 and S4 are also included. See configs/gse126543_sample_metadata.tsv for the
+full sample table.
+
+Each SRR is downloaded from SRA as paired-end FASTQs. Plain STAR aligns each
+sample independently (no STARsolo). featureCounts, kallisto quant, and salmon
+quant then quantify each sample against the gene and repeat annotations.
+Per-sample outputs are aggregated into feature x sample count matrices.
+The bulk_paired module (modules/bulk_paired.snmk) handles all alignment,
+counting, and aggregation steps.
+
+Run from the workflow/ directory with
+    snakemake -s Snakefile_gse126543 \\
+        --configfile configs/gse126543_bulk.yaml \\
+        --use-conda --cores 16
+"""
+
+import os
+import os.path as op
+
+configfile: "configs/gse126543_bulk.yaml"
+
+if "indices_base" not in config:
+    config["indices_base"] = config["base"]
+
+_chroms = config["reference"].get("chromosomes", [])
+genome_tag = "_".join(sorted(_chroms)) if _chroms else "all"
+
+# Sample registry: dataset.samples maps sample_id -> srr_accession
+_cell_to_srr = config.get("dataset", {}).get("samples", {})
+if not _cell_to_srr:
+    raise ValueError("dataset.samples is required and cannot be empty.")
+
+
+def sample_ids():
+    return sorted(_cell_to_srr.keys())
+
+
+def raw_r1(sample_id):
+    return op.join(config["base"], "data", "gse126543", "raw",
+                   f"{sample_id}_1.fastq.gz")
+
+
+def raw_r2(sample_id):
+    return op.join(config["base"], "data", "gse126543", "raw",
+                   f"{sample_id}_2.fastq.gz")
+
+
+# Populate real_data.samples with R1/R2 paths so bulk_paired.snmk can
+# resolve FASTQ inputs without knowing the download rule layout.
+config.setdefault("real_data", {})
+config["real_data"]["samples"] = {
+    sid: {"R1": raw_r1(sid), "R2": raw_r2(sid)}
+    for sid in _cell_to_srr
+}
+
+include: "modules/download_references.snmk"
+include: "modules/reference.snmk"
+include: "modules/bulk_paired.snmk"
+
+for subdir in ["tmp", "logs", "benchmarks", "counts", "metadata"]:
+    os.makedirs(op.join(config["base"], subdir), exist_ok=True)
+for subdir in ["indices", "refs"]:
+    os.makedirs(op.join(config["indices_base"], subdir), exist_ok=True)
+
+active_aligners   = config.get("aligners", [])
+feature_sets      = config.get("feature_sets", ["repeats"])
+granularities     = config.get("granularities", ["family_id"])
+counts_dir        = op.join(config["base"], "counts")
+
+_repeat_fsets    = [fs for fs in feature_sets
+                    if fs in ("repeats", "genic_repeats", "intergenic_repeats")]
+_non_locus_grans = [g for g in granularities if g != "locus"]
+_has_locus       = "locus" in granularities
+
+
+def reference_outputs():
+    refs = op.join(config["indices_base"], "indices", genome_tag)
+    return [
+        op.join(refs, "genic_repeats.gtf"),
+        op.join(refs, "intergenic_repeats.gtf"),
+        op.join(refs, "repeat_harboring_genes.gtf"),
+    ]
+
+
+def aligner_count_outputs():
+    outputs = []
+    for aligner in ("star", "kallisto", "salmon"):
+        if aligner not in active_aligners:
+            continue
+        if "genes" in feature_sets:
+            outputs.append(
+                op.join(counts_dir, f"{aligner}_genes_gene_id_unique.tsv")
+            )
+        if _non_locus_grans:
+            outputs += expand(
+                op.join(counts_dir,
+                        f"{aligner}_{{feature_set}}_{{granularity}}_unique.tsv"),
+                feature_set=_repeat_fsets,
+                granularity=_non_locus_grans,
+            )
+        if _has_locus:
+            outputs += expand(
+                op.join(counts_dir,
+                        f"{aligner}_{{feature_set}}_locus_unique.tsv"),
+                feature_set=_repeat_fsets,
+            )
+    return outputs
+
+
+# Download: one paired-end SRR per sample
+
+rule download_sra_gse126543:
+    conda:
+        op.join(workflow.basedir, "envs", "sratools.yaml")
+    output:
+        r1 = op.join(config["base"], "data", "gse126543", "raw",
+                     "{sample_id}_1.fastq.gz"),
+        r2 = op.join(config["base"], "data", "gse126543", "raw",
+                     "{sample_id}_2.fastq.gz"),
+    params:
+        srr    = lambda wc: _cell_to_srr[wc.sample_id],
+        outdir = op.join(config["base"], "data", "gse126543", "raw"),
+    log:
+        prefetch = op.join(config["base"], "logs",
+                           "gse126543_{sample_id}_prefetch.log"),
+        validate = op.join(config["base"], "logs",
+                           "gse126543_{sample_id}_validate.log"),
+        dump     = op.join(config["base"], "logs",
+                           "gse126543_{sample_id}_fastqdump.log"),
+    threads: 4
+    shell:
+        """
+        mkdir -p {params.outdir}
+        prefetch {params.srr} --output-file {params.outdir}/{params.srr}.sra \
+            &> {log.prefetch}
+        vdb-validate {params.outdir}/{params.srr}.sra &> {log.validate}
+        fastq-dump --gzip --split-files \
+            --outdir {params.outdir} \
+            {params.outdir}/{params.srr}.sra &> {log.dump}
+        mv -f {params.outdir}/{params.srr}_1.fastq.gz {output.r1}
+        mv -f {params.outdir}/{params.srr}_2.fastq.gz {output.r2}
+        rm -f {params.outdir}/{params.srr}.sra
+        """
+
+
+rule all:
+    default_target: True
+    input:
+        reference_outputs(),
+        [raw_r1(sid) for sid in sample_ids()],
+        [raw_r2(sid) for sid in sample_ids()],
+        aligner_count_outputs(),
