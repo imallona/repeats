@@ -66,7 +66,7 @@ def t2g_path(wildcards):
 rule decompress_genome:
     conda: op.join(workflow.basedir, 'envs', 'star.yaml')
     input: config['reference']['genome_fasta']
-    output: temp(op.join(config['base'], 'tmp', 'genome.fa'))
+    output: op.join(config['indices_base'], 'tmp', 'genome.fa')
     params:
         chroms = _chrom_list
     threads: workflow.cores
@@ -84,7 +84,7 @@ rule decompress_genome:
 rule decompress_repeats_gtf:
     conda: op.join(workflow.basedir, 'envs', 'star.yaml')
     input: config['reference']['repeats_gtf']
-    output: temp(op.join(config['base'], 'tmp', 'repeats.gtf'))
+    output: op.join(config['indices_base'], 'tmp', 'repeats.gtf')
     threads: workflow.cores
     shell: "pigz --decompress --keep --stdout --processes {threads} {input} | sed 's/^chr//' > {output}"
 
@@ -92,7 +92,7 @@ rule decompress_repeats_gtf:
 rule decompress_genes_gtf:
     conda: op.join(workflow.basedir, 'envs', 'star.yaml')
     input: config['reference']['genes_gtf']
-    output: temp(op.join(config['base'], 'tmp', 'genes.gtf'))
+    output: op.join(config['indices_base'], 'tmp', 'genes.gtf')
     params:
         chroms = _chrom_list
     threads: workflow.cores
@@ -196,7 +196,7 @@ rule extract_feature_set_fasta:
         gtf = gtf_for_repeat_feature_set
     output:
         fasta = op.join(config['indices_base'], 'indices', genome_tag, '{feature_set}.fa'),
-        bed = temp(op.join(config['base'], 'tmp', '{feature_set}.bed'))
+        bed = temp(op.join(config['indices_base'], 'tmp', '{feature_set}.bed'))
     wildcard_constraints:
         feature_set = 'repeats|genic_repeats|intergenic_repeats'
     log:

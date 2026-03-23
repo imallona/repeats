@@ -8,9 +8,9 @@ reference:
   # Split repeats into genic/intergenic subsets using gene body overlap (bedtools)
   filter_genic: true
   rmsk_source: ucsc_flatfile
-  genome_fasta: "../results/simulation_chromium/refs/GRCh38.dna.primary_assembly.fa.gz"
-  repeats_gtf: "../results/simulation_chromium/refs/hg38_rmsk_TE.gtf.gz"
-  genes_gtf: "../results/simulation_chromium/refs/GRCh38.112.genes.gtf.gz"
+  genome_fasta: "../results/shared/refs/GRCh38.dna.primary_assembly.fa.gz"
+  repeats_gtf: "../results/shared/refs/hg38_rmsk_TE.gtf.gz"
+  genes_gtf: "../results/shared/refs/GRCh38.112.genes.gtf.gz"
 
 mode: simulation
 

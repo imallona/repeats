@@ -180,7 +180,8 @@ rule render_report:
         report = op.join(eval_dir, 'evaluation_report.html')
     params:
         mutation_rate = sim_mutation_rate,
-        eval_dir = eval_dir,
+        eval_dir = op.abspath(eval_dir),
+        abs_report = op.abspath(op.join(eval_dir, 'evaluation_report.html')),
         rmd = op.join(workflow.basedir, 'scripts', 'evaluation_report.Rmd')
     log:
         op.join(config['base'], 'logs', 'render_report.log')
@@ -188,7 +189,8 @@ rule render_report:
         """
         Rscript -e "rmarkdown::render(
             '{params.rmd}',
-            output_file = '{output.report}',
+            output_file = '{params.abs_report}',
+            knit_root_dir = getwd(),
             params = list(eval_dir = '{params.eval_dir}')
         )" 2> {log}
         """

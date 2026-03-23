@@ -1,15 +1,16 @@
 SHELL   := /bin/bash
+.DEFAULT_GOAL := all
 CORES   ?= 10
 WF      := workflow
 RESULTS := results
 
 CONDA_RUN := source ~/miniconda3/etc/profile.d/conda.sh && conda activate snakemake &&
-SM        := cd $(WF) && $(CONDA_RUN) snakemake --use-conda --cores $(CORES)
+SM        := cd $(WF) && $(CONDA_RUN) snakemake --use-conda --cores $(CORES) --rerun-triggers mtime
 RSCRIPT   := cd $(WF) && $(CONDA_RUN) Rscript
 
 # noise sweep eval dirs (relative to workflow/, comma-separated for the Rmd param)
-NOISE_EDIRS_SS2 := ../$(RESULTS)/simulation_smartseq2_noise_0pct/evaluation,../$(RESULTS)/simulation_smartseq2_noise_1pct/evaluation,../$(RESULTS)/simulation_smartseq2_noise_5pct/evaluation,../$(RESULTS)/simulation_smartseq2_noise_10pct/evaluation
-NOISE_EDIRS_CHR := ../$(RESULTS)/simulation_chromium_noise_0pct/evaluation,../$(RESULTS)/simulation_chromium_noise_1pct/evaluation,../$(RESULTS)/simulation_chromium_noise_5pct/evaluation,../$(RESULTS)/simulation_chromium_noise_10pct/evaluation
+NOISE_EDIRS_SS2 := $(CURDIR)/$(RESULTS)/simulation_smartseq2_noise_0pct/evaluation,$(CURDIR)/$(RESULTS)/simulation_smartseq2_noise_1pct/evaluation,$(CURDIR)/$(RESULTS)/simulation_smartseq2_noise_5pct/evaluation,$(CURDIR)/$(RESULTS)/simulation_smartseq2_noise_10pct/evaluation
+NOISE_EDIRS_CHR := $(CURDIR)/$(RESULTS)/simulation_chromium_noise_0pct/evaluation,$(CURDIR)/$(RESULTS)/simulation_chromium_noise_1pct/evaluation,$(CURDIR)/$(RESULTS)/simulation_chromium_noise_5pct/evaluation,$(CURDIR)/$(RESULTS)/simulation_chromium_noise_10pct/evaluation
 
 # output HTML files (relative to project root)
 NOISE_REPORT_SS2 := $(RESULTS)/noise_sweep_smartseq2.html
@@ -78,14 +79,14 @@ noise_chromium: noise_chromium_0pct noise_chromium_1pct noise_chromium_5pct nois
 
 $(NOISE_REPORT_SS2):
 	mkdir -p $(RESULTS)
-	$(RSCRIPT) -e "rmarkdown::render('scripts/noise_sweep_report.Rmd', \
-	    output_file = '../$(NOISE_REPORT_SS2)', \
+	$(RSCRIPT) -e "rmarkdown::render('scripts/noise_sweep_report.Rmd', knit_root_dir = getwd(), \
+	    output_file = '$(CURDIR)/$(NOISE_REPORT_SS2)', \
 	    params = list(eval_dirs = '$(NOISE_EDIRS_SS2)'))"
 
 $(NOISE_REPORT_CHR):
 	mkdir -p $(RESULTS)
-	$(RSCRIPT) -e "rmarkdown::render('scripts/noise_sweep_report.Rmd', \
-	    output_file = '../$(NOISE_REPORT_CHR)', \
+	$(RSCRIPT) -e "rmarkdown::render('scripts/noise_sweep_report.Rmd', knit_root_dir = getwd(), \
+	    output_file = '$(CURDIR)/$(NOISE_REPORT_CHR)', \
 	    params = list(eval_dirs = '$(NOISE_EDIRS_CHR)'))"
 
 report_noise_smartseq2: $(NOISE_REPORT_SS2)
