@@ -1,0 +1,23 @@
+[run]
+source = workflow/scripts
+
+# Scripts requiring subprocess calls to samtools/BAM files or real aligner
+# output matrices cannot be meaningfully unit-tested without bioinformatics
+# infrastructure. Omit them so the coverage threshold applies only to
+# logic that can be exercised with synthetic data.
+omit =
+    workflow/scripts/count_pseudo_genome.py
+    workflow/scripts/count_pseudo_genome_chromium.py
+    workflow/scripts/normalize_starsolo.py
+    workflow/scripts/normalize_alevin_chromium.py
+    workflow/scripts/normalize_alevin_smartseq2.py
+    workflow/scripts/normalize_kallisto_chromium.py
+    workflow/scripts/normalize_kallisto_smartseq2_granular.py
+    workflow/scripts/merge_featurecounts.py
+    workflow/scripts/tag_bam_chromium.py
+    workflow/scripts/split_gtf_chunks.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:

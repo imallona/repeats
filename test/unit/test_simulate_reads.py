@@ -297,3 +297,136 @@ def test_parse_gtf_repeats_by_chrom_allowed_chroms(tmp_path):
     intervals = sr.parse_gtf_repeats_by_chrom(str(gtf), allowed_chroms={'chr1'})
     assert 'chr1' in intervals
     assert 'chr2' not in intervals
+
+
+# ---------------------------------------------------------------------------
+# parse_gtf_repeats_by_chrom – additional branch coverage
+# ---------------------------------------------------------------------------
+
+def test_parse_gtf_repeats_by_chrom_skips_comment_lines(tmp_path):
+    gtf_content = (
+        '# this is a header comment\n'
+        'chr1\trmsk\texon\t101\t500\t.\t+\t.\t'
+        'gene_id "AluSz6"; transcript_id "AluSz6_dup1"; '
+        'family_id "Alu"; class_id "SINE";\n'
+    )
+    gtf = tmp_path / 'repeats.gtf'
+    gtf.write_text(gtf_content)
+    intervals = sr.parse_gtf_repeats_by_chrom(str(gtf))
+    assert 'chr1' in intervals
+    assert len(intervals['chr1']) == 1
+
+
+def test_parse_gtf_repeats_by_chrom_skips_short_lines(tmp_path):
+    gtf_content = (
+        'too\tfew\tfields\n'
+        'chr1\trmsk\texon\t101\t500\t.\t+\t.\t'
+        'gene_id "AluSz6"; transcript_id "AluSz6_dup1"; '
+        'family_id "Alu"; class_id "SINE";\n'
+    )
+    gtf = tmp_path / 'repeats.gtf'
+    gtf.write_text(gtf_content)
+    intervals = sr.parse_gtf_repeats_by_chrom(str(gtf))
+    assert len(intervals['chr1']) == 1
+
+
+def test_parse_gtf_repeats_by_chrom_max_per_chrom_truncates(tmp_path):
+    lines = ''
+    for i in range(5):
+        start = 101 + i * 300
+        end   = start + 300
+        lines += (
+            f'chr1\trmsk\texon\t{start}\t{end}\t.\t+\t.\t'
+            f'gene_id "R{i}"; transcript_id "R{i}_dup1"; '
+            f'family_id "Alu"; class_id "SINE";\n'
+        )
+    gtf = tmp_path / 'repeats.gtf'
+    gtf.write_text(lines)
+    intervals = sr.parse_gtf_repeats_by_chrom(str(gtf), max_per_chrom=2)
+    assert len(intervals['chr1']) == 2
+
+
+def test_parse_gtf_repeats_by_chrom_max_per_chrom_no_truncation(tmp_path):
+    # max_per_chrom larger than count -> no sampling
+    gtf_content = (
+        'chr1\trmsk\texon\t101\t500\t.\t+\t.\t'
+        'gene_id "A"; transcript_id "A_dup1"; family_id "Alu"; class_id "SINE";\n'
+    )
+    gtf = tmp_path / 'repeats.gtf'
+    gtf.write_text(gtf_content)
+    intervals = sr.parse_gtf_repeats_by_chrom(str(gtf), max_per_chrom=10)
+    assert len(intervals['chr1']) == 1
+
+
+# ---------------------------------------------------------------------------
+# stream_fasta_by_chrom
+# ---------------------------------------------------------------------------
+
+def test_stream_fasta_by_chrom_plain(tmp_path):
+    fa = tmp_path / 'test.fa'
+    fa.write_text('>chr1\nACGTACGT\n>chr2\nTTTTGGGG\n>chr3\nAAAAAAAA\n')
+    result = dict(sr.stream_fasta_by_chrom(str(fa), {'chr1', 'chr3'}))
+    assert result['chr1'] == 'ACGTACGT'
+    assert result['chr3'] == 'AAAAAAAA'
+    assert 'chr2' not in result
+
+
+def test_stream_fasta_by_chrom_multiline_seq(tmp_path):
+    fa = tmp_path / 'test.fa'
+    fa.write_text('>chr1\nACGT\nACGT\n')
+    result = dict(sr.stream_fasta_by_chrom(str(fa), {'chr1'}))
+    assert result['chr1'] == 'ACGTACGT'
+
+
+def test_stream_fasta_by_chrom_gzip(tmp_path):
+    fa_gz = tmp_path / 'test.fa.gz'
+    import gzip as _gz
+    with _gz.open(str(fa_gz), 'wt') as f:
+        f.write('>chr1\nACGTACGT\n')
+    result = dict(sr.stream_fasta_by_chrom(str(fa_gz), {'chr1'}))
+    assert result['chr1'] == 'ACGTACGT'
+
+
+def test_stream_fasta_by_chrom_skips_unwanted(tmp_path):
+    fa = tmp_path / 'test.fa'
+    fa.write_text('>chr1\nAAAA\n>chr99\nCCCC\n')
+    result = dict(sr.stream_fasta_by_chrom(str(fa), {'chr1'}))
+    assert 'chr99' not in result
+
+
+# ---------------------------------------------------------------------------
+# make_qual and safe_id
+# ---------------------------------------------------------------------------
+
+def test_make_qual_default_char():
+    assert sr.make_qual(5) == 'FFFFF'
+    assert len(sr.make_qual(90)) == 90
+
+
+def test_make_qual_custom_char():
+    assert sr.make_qual(3, 'I') == 'III'
+
+
+def test_safe_id_replaces_spaces_and_slashes():
+    assert sr.safe_id('LINE/SINE foo') == 'LINE_SINE_foo'
+
+
+def test_safe_id_no_change():
+    assert sr.safe_id('AluSz6_dup1') == 'AluSz6_dup1'
+
+
+# ---------------------------------------------------------------------------
+# build_chrom_locus_coords
+# ---------------------------------------------------------------------------
+
+def test_build_chrom_locus_coords_basic():
+    plan = {
+        'c1': {'locus_A': (3, 'gA', 'fA', 'cA', 'chr1', 100, 200, '+')},
+        'c2': {'locus_A': (2, 'gA', 'fA', 'cA', 'chr1', 100, 200, '+'),
+               'locus_B': (5, 'gB', 'fB', 'cB', 'chr2', 500, 700, '-')},
+    }
+    result = sr.build_chrom_locus_coords(plan)
+    assert 'chr1' in result
+    assert result['chr1']['locus_A'] == (100, 200, '+', 'gA')
+    assert 'chr2' in result
+    assert result['chr2']['locus_B'] == (500, 700, '-', 'gB')

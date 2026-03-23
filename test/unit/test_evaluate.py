@@ -366,3 +366,203 @@ def test_compute_metrics_returns_all_expected_keys():
     for key in ('pearson_r', 'spearman_r', 'log1p_rmse',
                 'precision', 'recall', 'f1', 'jaccard', 'specificity'):
         assert key in m, f"Missing key: {key}"
+
+
+# ---------------------------------------------------------------------------
+# compute_per_cell_metrics
+# ---------------------------------------------------------------------------
+
+def test_compute_per_cell_metrics_basic():
+    truth = {'c1': {'A': 5, 'B': 3}, 'c2': {'A': 1}}
+    obs   = {'c1': {'A': 4},          'c2': {'A': 1, 'B': 2}}
+    rows  = ev.compute_per_cell_metrics(truth, obs, ['c1', 'c2'], ['A', 'B'])
+    assert len(rows) == 2
+    assert rows[0]['cell_id'] == 'c1'
+    assert rows[0]['n_truth_expressed'] == 2
+    assert rows[1]['n_observed_expressed'] == 2
+
+
+def test_compute_per_cell_metrics_empty_cell():
+    truth = {'c1': {}}
+    obs   = {}
+    rows  = ev.compute_per_cell_metrics(truth, obs, ['c1'], ['A'])
+    assert rows[0]['n_truth_expressed'] == 0
+    assert rows[0]['n_observed_expressed'] == 0
+
+
+def test_compute_per_cell_metrics_returns_all_keys():
+    truth = {'c1': {'A': 3, 'B': 1, 'C': 2}}
+    obs   = {'c1': {'A': 3, 'B': 1, 'C': 2}}
+    rows  = ev.compute_per_cell_metrics(truth, obs, ['c1'], ['A', 'B', 'C'])
+    assert 'pearson_r' in rows[0]
+    assert 'spearman_r' in rows[0]
+    assert rows[0]['pearson_r'] == pytest.approx(1.0, abs=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# load_benchmark
+# ---------------------------------------------------------------------------
+
+def test_load_benchmark_existing_file(tmp_path):
+    bench = tmp_path / 'bench.txt'
+    bench.write_text('s\tcpu_time\tmax_rss\tio_in\tio_out\n'
+                     '12.3\t11.2\t500.0\t100.0\t200.0\n')
+    result = ev.load_benchmark(str(bench))
+    assert result['wall_time_s'] == '12.3'
+    assert result['max_rss_mb'] == '500.0'
+    assert result['io_in_mb'] == '100.0'
+
+
+def test_load_benchmark_missing_path():
+    result = ev.load_benchmark('/nonexistent/path.txt')
+    assert result == {}
+
+
+def test_load_benchmark_none():
+    assert ev.load_benchmark(None) == {}
+
+
+# ---------------------------------------------------------------------------
+# write_tsv
+# ---------------------------------------------------------------------------
+
+def test_write_tsv_basic(tmp_path):
+    rows = [{'a': 1, 'b': 2}, {'a': 3, 'b': 4}]
+    out  = tmp_path / 'out.tsv'
+    ev.write_tsv(rows, str(out))
+    with open(out) as fh:
+        lines = fh.readlines()
+    assert lines[0].strip() == 'a\tb'
+    assert lines[1].strip() == '1\t2'
+    assert lines[2].strip() == '3\t4'
+
+
+def test_write_tsv_empty_with_fallback_fields(tmp_path):
+    out = tmp_path / 'out.tsv'
+    ev.write_tsv([], str(out), fallback_fields=['x', 'y'])
+    with open(out) as fh:
+        content = fh.read()
+    assert 'x\ty' in content
+
+
+# ---------------------------------------------------------------------------
+# load_ground_truth default granularity fallback
+# ---------------------------------------------------------------------------
+
+def test_load_ground_truth_unknown_granularity_falls_back(tmp_path):
+    p = make_ground_truth(tmp_path, GT_ROWS)
+    truth, _ = ev.load_ground_truth(str(p), granularity='unknown_gran')
+    # falls back to repeat_id key (same as gene_id)
+    assert 'AluSz6' in truth['c1']
+
+
+# ---------------------------------------------------------------------------
+# main() end-to-end integration tests
+# ---------------------------------------------------------------------------
+
+def _write_gt(path):
+    path.write_text(
+        'cell_id\tlocus_id\trepeat_id\tfamily_id\tclass_id\ttrue_count\n'
+        'c1\tAluSz6_dup1\tAluSz6\tAlu\tSINE\t5\n'
+        'c1\tL1PA2_dup1\tL1PA2\tL1\tLINE\t3\n'
+        'c2\tAluSz6_dup1\tAluSz6\tAlu\tSINE\t2\n'
+    )
+
+
+def _write_counts(path):
+    path.write_text(
+        'feature_id\tc1\tc2\n'
+        'AluSz6\t4\t2\n'
+        'L1PA2\t3\t0\n'
+    )
+
+
+def test_evaluate_main_creates_output_files(tmp_path, monkeypatch):
+    import sys
+    gt     = tmp_path / 'gt.tsv'
+    counts = tmp_path / 'counts.tsv'
+    _write_gt(gt)
+    _write_counts(counts)
+    prefix = str(tmp_path / 'out')
+    monkeypatch.setattr(sys, 'argv', [
+        'evaluate.py',
+        '--ground-truth', str(gt),
+        '--observed-counts', str(counts),
+        '--aligner', 'test_aligner',
+        '--output-prefix', prefix,
+    ])
+    ev.main()
+    assert os.path.exists(prefix + '_global_metrics.tsv')
+    assert os.path.exists(prefix + '_per_cell_metrics.tsv')
+    assert os.path.exists(prefix + '_per_family_metrics.tsv')
+
+
+def test_evaluate_main_global_metrics_content(tmp_path, monkeypatch):
+    import sys
+    gt     = tmp_path / 'gt.tsv'
+    counts = tmp_path / 'counts.tsv'
+    _write_gt(gt)
+    _write_counts(counts)
+    prefix = str(tmp_path / 'out')
+    monkeypatch.setattr(sys, 'argv', [
+        'evaluate.py',
+        '--ground-truth', str(gt),
+        '--observed-counts', str(counts),
+        '--aligner', 'starsolo',
+        '--multimapper-mode', 'unique',
+        '--granularity', 'gene_id',
+        '--feature-set', 'repeats',
+        '--output-prefix', prefix,
+    ])
+    ev.main()
+    import csv as _csv
+    with open(prefix + '_global_metrics.tsv') as fh:
+        rows = list(_csv.DictReader(fh, delimiter='\t'))
+    assert len(rows) == 1
+    assert rows[0]['aligner'] == 'starsolo'
+    assert rows[0]['granularity'] == 'gene_id'
+
+
+def test_evaluate_main_with_locus_map(tmp_path, monkeypatch):
+    import sys
+    gt     = tmp_path / 'gt.tsv'
+    counts = tmp_path / 'counts.tsv'
+    lm     = tmp_path / 'locus_map.tsv'
+    _write_gt(gt)
+    _write_counts(counts)
+    lm.write_text('AluSz6_dup1\tAluSz6\tAlu\tSINE\nL1PA2_dup1\tL1PA2\tL1\tLINE\n')
+    prefix = str(tmp_path / 'out')
+    monkeypatch.setattr(sys, 'argv', [
+        'evaluate.py',
+        '--ground-truth', str(gt),
+        '--observed-counts', str(counts),
+        '--aligner', 'alevin',
+        '--locus-map', str(lm),
+        '--output-prefix', prefix,
+    ])
+    ev.main()
+    assert os.path.exists(prefix + '_global_metrics.tsv')
+
+
+def test_evaluate_main_with_benchmark(tmp_path, monkeypatch):
+    import sys
+    gt     = tmp_path / 'gt.tsv'
+    counts = tmp_path / 'counts.tsv'
+    bench  = tmp_path / 'bench.txt'
+    _write_gt(gt)
+    _write_counts(counts)
+    bench.write_text('s\tcpu_time\tmax_rss\tio_in\tio_out\n5.0\t4.5\t300.0\t50.0\t80.0\n')
+    prefix = str(tmp_path / 'out')
+    monkeypatch.setattr(sys, 'argv', [
+        'evaluate.py',
+        '--ground-truth', str(gt),
+        '--observed-counts', str(counts),
+        '--aligner', 'kallisto',
+        '--benchmark', str(bench),
+        '--output-prefix', prefix,
+    ])
+    ev.main()
+    import csv as _csv
+    with open(prefix + '_global_metrics.tsv') as fh:
+        rows = list(_csv.DictReader(fh, delimiter='\t'))
+    assert rows[0]['wall_time_s'] == '5.0'

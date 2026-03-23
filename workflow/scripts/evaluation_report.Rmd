@@ -13,7 +13,7 @@ params:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE,
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
                       fig.width = 12, fig.height = 12)
 library(ggplot2)
 library(dplyr)
@@ -315,7 +315,7 @@ if (!is.null(per_family) && nrow(per_family) > 0 && "class_id" %in% names(per_fa
 
 ## compute resources
 
-```{r resources, fig.height=14, fig.width=18}
+```{r resources, fig.height=10, fig.width=14}
 res_cols <- intersect(c("wall_time_s", "cpu_time_s", "max_rss_mb", "io_in_mb", "io_out_mb"), names(global))
 if (length(res_cols) > 0 && any(!is.na(global[res_cols]))) {
   n_al5 <- length(unique(global$aligner_mode))
