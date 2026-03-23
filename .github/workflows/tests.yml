@@ -49,6 +49,9 @@ jobs:
             -c conda-forge
             python=3.11
             snakemake>=8
+            pytest
+            pytest-cov
+            scipy
           init-shell: bash
 
       - name: Dry-run main Snakefile with SmartSeq2 config

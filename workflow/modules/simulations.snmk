@@ -38,6 +38,7 @@ rule simulate_smartseq2:
         n_expressed = sim_cfg.get('n_expressed_per_cell', 100),
         read_length = sim_cfg.get('read_length', 90),
         seed = sim_seed,
+        mutation_rate = sim_cfg.get('mutation_rate', 0.001),
         chrom_args = '--chromosomes ' + ' '.join(sim_chromosomes) if sim_chromosomes else '',
         max_per_chrom_arg = (
             f'--max-repeats-per-chrom {sim_cfg["max_repeats_per_chrom"]}'
@@ -57,7 +58,8 @@ rule simulate_smartseq2:
             --read-length {params.read_length} \
             --seed {params.seed} \
             {params.chrom_args} \
-            {params.max_per_chrom_arg} 2> {log}
+            {params.max_per_chrom_arg} \
+            --mutation-rate {params.mutation_rate} 2> {log}
         """
 
 
@@ -80,6 +82,7 @@ rule simulate_chromium:
         cb_length = sim_cfg.get('cb_length', 16),
         umi_length = sim_cfg.get('umi_length', 12),
         seed = sim_seed,
+        mutation_rate = sim_cfg.get('mutation_rate', 0.001),
         chrom_args = '--chromosomes ' + ' '.join(sim_chromosomes) if sim_chromosomes else '',
         max_per_chrom_arg = (
             f'--max-repeats-per-chrom {sim_cfg["max_repeats_per_chrom"]}'
@@ -101,5 +104,6 @@ rule simulate_chromium:
             --umi-length {params.umi_length} \
             --seed {params.seed} \
             {params.chrom_args} \
-            {params.max_per_chrom_arg} 2> {log}
+            {params.max_per_chrom_arg} \
+            --mutation-rate {params.mutation_rate} 2> {log}
         """

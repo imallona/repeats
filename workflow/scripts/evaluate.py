@@ -228,6 +228,8 @@ def main():
                     help='4-col TSV (transcript_id, gene_id, family_id, class_id). '
                          'Expands the feature universe for specificity and restricts '
                          'ground truth to this feature_set\'s loci.')
+    ap.add_argument('--mutation-rate', type=float, default=0.0,
+                    help='Mutation rate used in the simulation (for output labelling)')
     ap.add_argument('--output-prefix', required=True)
     args = ap.parse_args()
 
@@ -277,6 +279,7 @@ def main():
     global_metrics['multimapper_mode'] = args.multimapper_mode
     global_metrics['feature_set'] = args.feature_set
     global_metrics['granularity'] = args.granularity
+    global_metrics['mutation_rate'] = args.mutation_rate
 
     bench = load_benchmark(args.benchmark)
     global_metrics.update(bench)
@@ -289,6 +292,7 @@ def main():
         row['multimapper_mode'] = args.multimapper_mode
         row['feature_set'] = args.feature_set
         row['granularity'] = args.granularity
+        row['mutation_rate'] = args.mutation_rate
     write_tsv(per_cell_rows, args.output_prefix + '_per_cell_metrics.tsv',
               fallback_fields=['cell_id', 'pearson_r', 'spearman_r',
                                'n_truth_expressed', 'n_observed_expressed',
@@ -310,6 +314,7 @@ def main():
         row['multimapper_mode'] = args.multimapper_mode
         row['feature_set'] = args.feature_set
         row['granularity'] = args.granularity
+        row['mutation_rate'] = args.mutation_rate
         per_family_rows.append(row)
     write_tsv(per_family_rows, args.output_prefix + '_per_family_metrics.tsv',
               fallback_fields=['class_id', 'aligner', 'multimapper_mode', 'feature_set',

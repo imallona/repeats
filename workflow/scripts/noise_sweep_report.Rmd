@@ -1,0 +1,303 @@
+---
+title: "repeat element quantification - noise sweep report"
+author: "Izaskun Mallona"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    code_folding: hide
+params:
+  eval_dirs: "."
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 14, fig.height = 10)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(scales)
+library(patchwork)
+
+make_palette <- function(n) {
+  if (n <= 8)  return(RColorBrewer::brewer.pal(max(3, n), "Dark2")[seq_len(n)])
+  colorRampPalette(RColorBrewer::brewer.pal(8, "Dark2"))(n)
+}
+
+eval_dirs <- strsplit(params$eval_dirs, ",")[[1]]
+eval_dirs <- trimws(eval_dirs)
+```
+
+```{r load-data}
+load_metrics_from_dirs <- function(dirs, filename) {
+  purrr::map_dfr(dirs, function(d) {
+    p <- file.path(d, filename)
+    if (!file.exists(p)) return(NULL)
+    read_tsv(p, show_col_types = FALSE)
+  })
+}
+
+load_pattern_from_dirs <- function(dirs, pattern) {
+  purrr::map_dfr(dirs, function(d) {
+    files <- list.files(d, pattern = pattern, full.names = TRUE)
+    if (length(files) == 0) return(NULL)
+    purrr::map_dfr(files, ~ read_tsv(.x, show_col_types = FALSE))
+  })
+}
+
+global <- load_metrics_from_dirs(eval_dirs, "summary_global_metrics.tsv")
+
+num_cols <- c("pearson_r", "spearman_r", "log1p_rmse",
+              "precision", "recall", "f1", "jaccard", "specificity",
+              "n_cells", "n_features", "mutation_rate",
+              "wall_time_s", "cpu_time_s", "max_rss_mb", "io_in_mb", "io_out_mb")
+for (col in num_cols) {
+  if (col %in% names(global))
+    global[[col]] <- suppressWarnings(as.numeric(global[[col]]))
+}
+
+if (!"granularity" %in% names(global))   global$granularity   <- "gene_id"
+if (!"feature_set" %in% names(global))   global$feature_set   <- "repeats"
+if (!"multimapper_mode" %in% names(global)) global$multimapper_mode <- "unique"
+if (!"mutation_rate" %in% names(global)) global$mutation_rate <- NA_real_
+
+global <- global %>%
+  mutate(
+    aligner_mode  = paste0(aligner, " (", multimapper_mode, ")"),
+    gran_label    = factor(granularity,
+                           levels = c("locus", "gene_id", "family_id", "class_id")),
+    noise_label   = paste0(mutation_rate * 100, "%")
+  )
+
+per_cell   <- tryCatch(load_pattern_from_dirs(eval_dirs, "_per_cell_metrics\\.tsv$"),
+                       error = function(e) NULL)
+per_family <- tryCatch(load_pattern_from_dirs(eval_dirs, "_per_family_metrics\\.tsv$"),
+                       error = function(e) NULL)
+
+for (col in c("pearson_r", "spearman_r", "mutation_rate")) {
+  if (!is.null(per_cell) && col %in% names(per_cell))
+    per_cell[[col]] <- suppressWarnings(as.numeric(per_cell[[col]]))
+  if (!is.null(per_family) && col %in% names(per_family))
+    per_family[[col]] <- suppressWarnings(as.numeric(per_family[[col]]))
+}
+
+if (!is.null(per_family) && nrow(per_family) > 0) {
+  for (col in c("f1", "precision", "recall", "jaccard", "specificity")) {
+    if (col %in% names(per_family))
+      per_family[[col]] <- suppressWarnings(as.numeric(per_family[[col]]))
+  }
+  if (!"multimapper_mode" %in% names(per_family)) per_family$multimapper_mode <- "unique"
+  per_family <- per_family %>%
+    mutate(aligner_mode = paste0(aligner, " (", multimapper_mode, ")"))
+}
+```
+
+---
+
+This report combines evaluation results across multiple noise levels (simulated nucleotide
+substitution rates). Each `eval_dirs` entry corresponds to one pipeline run with a distinct
+`mutation_rate` in the simulation config. The `mutation_rate` column in the metrics TSVs
+identifies each run.
+
+Noise levels found in the data: `r sort(unique(global$mutation_rate))`
+
+---
+
+## metric degradation by noise level
+
+How each aligner's accuracy changes as the per-base mutation rate increases.
+x-axis = mutation rate, y-axis = metric value, colour = aligner (+ multimapper mode).
+
+```{r degradation-main, fig.height=20, fig.width=14}
+acc_metrics <- c("pearson_r", "spearman_r", "f1", "precision", "recall",
+                 "jaccard", "specificity")
+
+deg <- global %>%
+  filter(!is.na(mutation_rate)) %>%
+  select(aligner_mode, feature_set, gran_label, mutation_rate, all_of(acc_metrics)) %>%
+  pivot_longer(all_of(acc_metrics), names_to = "metric", values_to = "value") %>%
+  filter(!is.na(value)) %>%
+  mutate(metric = factor(metric, levels = acc_metrics))
+
+n_al <- length(unique(deg$aligner_mode))
+pal  <- make_palette(n_al)
+
+ggplot(deg, aes(x = mutation_rate, y = value,
+                colour = aligner_mode, group = aligner_mode)) +
+  geom_point(size = 2.5, alpha = 0.85) +
+  geom_line(linewidth = 0.6) +
+  facet_grid(metric ~ feature_set + gran_label, scales = "free_y") +
+  scale_colour_manual(values = pal, name = "aligner (mode)") +
+  scale_x_continuous(labels = percent_format(accuracy = 0.1)) +
+  labs(x = "mutation rate", y = NULL,
+       title = "metric degradation with increasing noise",
+       subtitle = "rows = metric; columns = feature_set x granularity; x = mutation rate") +
+  theme_bw(base_size = 9) +
+  theme(axis.text.x  = element_text(angle = 40, hjust = 1, size = 7),
+        strip.text   = element_text(size = 7),
+        legend.position = "bottom",
+        legend.text  = element_text(size = 8))
+```
+
+## pearson r and F1 — noise overview
+
+Summary view focusing on the two most interpretable metrics.
+
+```{r overview-two-metrics, fig.height=10, fig.width=14}
+ov <- global %>%
+  filter(!is.na(mutation_rate)) %>%
+  select(aligner_mode, feature_set, gran_label, mutation_rate, pearson_r, f1) %>%
+  pivot_longer(c(pearson_r, f1), names_to = "metric", values_to = "value") %>%
+  filter(!is.na(value))
+
+n_al2 <- length(unique(ov$aligner_mode))
+pal2  <- make_palette(n_al2)
+
+ggplot(ov, aes(x = mutation_rate, y = value,
+               colour = aligner_mode, group = aligner_mode)) +
+  geom_point(size = 3, alpha = 0.85) +
+  geom_line(linewidth = 0.8) +
+  facet_grid(metric ~ feature_set, scales = "free_y") +
+  scale_colour_manual(values = pal2, name = "aligner (mode)") +
+  scale_x_continuous(labels = percent_format(accuracy = 0.1)) +
+  ylim(0, 1) +
+  labs(x = "mutation rate", y = NULL,
+       title = "Pearson r and F1 across noise levels",
+       subtitle = "rows = metric, columns = feature_set; lines connect same aligner across mutation rates") +
+  theme_bw(base_size = 11) +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1),
+        legend.position = "bottom")
+```
+
+## global accuracy metrics per noise level
+
+Full metric grid from the standard report, faceted by mutation rate.
+
+```{r global-faceted, fig.height=22, fig.width=16}
+full_metrics <- c("pearson_r", "spearman_r", "f1", "precision", "recall",
+                  "jaccard", "specificity", "log1p_rmse")
+
+full_long <- global %>%
+  filter(!is.na(mutation_rate)) %>%
+  select(aligner_mode, feature_set, gran_label, mutation_rate, noise_label,
+         all_of(full_metrics)) %>%
+  pivot_longer(all_of(full_metrics), names_to = "metric", values_to = "value") %>%
+  filter(!is.na(value)) %>%
+  mutate(metric = factor(metric, levels = full_metrics))
+
+n_al3 <- length(unique(full_long$aligner_mode))
+pal3  <- make_palette(n_al3)
+
+ggplot(full_long, aes(x = gran_label, y = value,
+                      colour = aligner_mode, group = aligner_mode)) +
+  geom_point(size = 2, alpha = 0.8) +
+  geom_line(linetype = "dashed", linewidth = 0.5) +
+  facet_grid(metric ~ noise_label + feature_set, scales = "free_y") +
+  scale_colour_manual(values = pal3, name = "aligner (mode)") +
+  labs(x = "granularity", y = NULL,
+       title = "global accuracy metrics",
+       subtitle = "rows = metric; columns = mutation rate x feature_set; x = granularity") +
+  theme_bw(base_size = 8) +
+  theme(aspect.ratio = 1,
+        axis.text.x  = element_text(angle = 40, hjust = 1, size = 7),
+        strip.text   = element_text(size = 6),
+        legend.position = "bottom",
+        legend.text  = element_text(size = 7))
+```
+
+## per-cell correlations by noise level
+
+```{r per-cell-noise, fig.height=10, fig.width=14}
+if (!is.null(per_cell) && nrow(per_cell) > 0 && "mutation_rate" %in% names(per_cell)) {
+  pc <- per_cell %>%
+    mutate(across(c(pearson_r, spearman_r), ~ suppressWarnings(as.numeric(.)))) %>%
+    filter(!is.na(aligner), !is.na(mutation_rate))
+
+  if (!"multimapper_mode" %in% names(pc)) pc$multimapper_mode <- "unique"
+  if (!"feature_set" %in% names(pc))      pc$feature_set      <- "repeats"
+
+  pc <- pc %>%
+    mutate(aligner_mode = paste0(aligner, " (", multimapper_mode, ")"),
+           gran_label   = factor(granularity,
+                                 levels = c("locus", "gene_id", "family_id", "class_id")),
+           noise_label  = paste0(mutation_rate * 100, "%"))
+
+  pc_long <- pc %>%
+    pivot_longer(c(pearson_r, spearman_r), names_to = "metric", values_to = "r") %>%
+    filter(!is.na(r))
+
+  n_al4 <- length(unique(pc_long$aligner_mode))
+  pal4  <- make_palette(n_al4)
+
+  ggplot(pc_long, aes(x = aligner_mode, y = r, fill = aligner_mode)) +
+    geom_violin(alpha = 0.7, draw_quantiles = c(0.25, 0.5, 0.75)) +
+    geom_jitter(width = 0.1, size = 0.5, alpha = 0.4) +
+    facet_grid(metric + gran_label ~ noise_label + feature_set) +
+    scale_fill_manual(values = pal4) +
+    labs(x = NULL, y = "correlation",
+         title = "per-cell correlations by noise level",
+         subtitle = "rows = metric x granularity; columns = mutation rate x feature_set") +
+    theme_bw(base_size = 8) +
+    theme(axis.text.x  = element_text(angle = 45, hjust = 1, size = 6),
+          legend.position = "none",
+          strip.text   = element_text(size = 6))
+} else {
+  cat("No per-cell metrics with mutation_rate column found.\n")
+}
+```
+
+## per-repeat-class F1 by noise level
+
+```{r per-family-noise, fig.height=14, fig.width=14}
+if (!is.null(per_family) && nrow(per_family) > 0 &&
+    "class_id" %in% names(per_family) && "mutation_rate" %in% names(per_family)) {
+
+  pf <- per_family %>%
+    filter(!is.na(class_id), class_id != "unknown", !is.na(mutation_rate)) %>%
+    mutate(gran_label  = factor(granularity,
+                                levels = c("locus", "gene_id", "family_id", "class_id")),
+           noise_label = paste0(mutation_rate * 100, "%"))
+
+  n_al5 <- length(unique(pf$aligner_mode))
+  pal5  <- make_palette(n_al5)
+
+  p_f1 <- ggplot(pf, aes(x = class_id, y = f1,
+                          colour = aligner_mode, group = aligner_mode)) +
+    geom_line(linewidth = 0.4, linetype = "dashed") +
+    geom_point(size = 1.5, alpha = 0.85) +
+    facet_grid(gran_label ~ noise_label + feature_set) +
+    scale_y_sqrt() +
+    scale_colour_manual(values = pal5, name = "Aligner (mode)") +
+    labs(x = "repeat class", y = "F1",
+         title = "F1 per repeat class by noise level",
+         subtitle = "rows = granularity; columns = mutation rate x feature_set") +
+    theme_bw(base_size = 8) +
+    theme(axis.text.x  = element_text(angle = 40, hjust = 1, size = 7),
+          legend.position = "bottom",
+          legend.text  = element_text(size = 7),
+          strip.text   = element_text(size = 6))
+
+  p_r <- ggplot(pf, aes(x = class_id, y = pearson_r,
+                         colour = aligner_mode, group = aligner_mode)) +
+    geom_line(linewidth = 0.4, linetype = "dashed") +
+    geom_point(size = 1.5, alpha = 0.85) +
+    facet_grid(gran_label ~ noise_label + feature_set) +
+    scale_y_sqrt() +
+    scale_colour_manual(values = pal5, name = "Aligner (mode)") +
+    labs(x = "repeat class", y = "pearson r") +
+    theme_bw(base_size = 8) +
+    theme(axis.text.x  = element_text(angle = 40, hjust = 1, size = 7),
+          legend.position = "none",
+          strip.text   = element_text(size = 6))
+
+  p_f1 / p_r
+} else {
+  cat("No per-family metrics with class_id and mutation_rate found.\n")
+}
+```
+
+---
+*Generated by [noise_sweep_report.Rmd](../workflow/scripts/noise_sweep_report.Rmd)*
