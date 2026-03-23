@@ -16,8 +16,8 @@ mode: simulation
 
 simulation:
   technology: chromium
-  n_cells: 50
-  n_expressed_per_cell: 80
+  n_cells: 500
+  n_expressed_per_cell: 1000
   read_length: 90
   cb_length: 16
   umi_length: 12

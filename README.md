@@ -46,30 +46,64 @@ Exact package pins (platform-locked explicit exports) are in `workflow/envs/expl
 
 ## Running
 
+### Via Makefile (recommended)
+
+A `Makefile` at the project root orchestrates all configs and renders reports.
+
+```
+# Run everything (all simulations + noise sweep + reports)
+make
+
+# Individual targets
+make simulation_smartseq2      # SmartSeq2 base simulation
+make simulation_chromium       # Chromium base simulation
+make noise_smartseq2           # SmartSeq2 noise sweep (0%, 1%, 5%, 10% mutation rate)
+make noise_chromium            # Chromium noise sweep
+make report_noise_smartseq2    # Render SmartSeq2 noise sweep HTML report
+make report_noise_chromium     # Render Chromium noise sweep HTML report
+make help                      # List all targets
+```
+
+Tune parallelism with `make CORES=20`. The Makefile activates the `snakemake` conda
+environment automatically.
+
+### Manually
+
 ```
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate snakemake
 cd workflow
-snakemake --configfile configs/simulation_smartseq2.yaml --use-conda --cores 10
-snakemake --configfile configs/simulation_chromium.yaml  --use-conda --cores 10
+snakemake --configfile configs/simulation_smartseq2.yaml --use-conda --cores 10 --rerun-triggers mtime
+snakemake --configfile configs/simulation_chromium.yaml  --use-conda --cores 10 --rerun-triggers mtime
 ```
 
-The report is written to `{base}/evaluation/evaluation_report.html` as defined in
-the config file.
+The per-run evaluation report is written to `{base}/evaluation/evaluation_report.html`.
 
 ## Configuration
 
-Two reference configs are provided under `workflow/configs/`:
+Simulation configs are under `workflow/configs/`:
 
-| File | Technology | Cells | Chr subset |
-|---|---|---|---|
-| `simulation_smartseq2.yaml` | SmartSeq2 | 20 | chr10 |
-| `simulation_chromium.yaml`  | 10x Chromium | 50 | chr10 |
+| File | Technology | Cells | Expressed loci/cell | Mutation rate |
+|---|---|---|---|---|
+| `simulation_smartseq2.yaml` | SmartSeq2 | 500 | 1000 | 0.1% |
+| `simulation_chromium.yaml`  | 10x Chromium | 500 | 1000 | 0.1% |
+| `simulation_smartseq2_noise_0pct.yaml` | SmartSeq2 | 500 | 1000 | 0% |
+| `simulation_smartseq2_noise_1pct.yaml` | SmartSeq2 | 500 | 1000 | 1% |
+| `simulation_smartseq2_noise_5pct.yaml` | SmartSeq2 | 500 | 1000 | 5% |
+| `simulation_smartseq2_noise_10pct.yaml` | SmartSeq2 | 500 | 1000 | 10% |
+| `simulation_chromium_noise_0pct.yaml` | 10x Chromium | 500 | 1000 | 0% |
+| `simulation_chromium_noise_1pct.yaml` | 10x Chromium | 500 | 1000 | 1% |
+| `simulation_chromium_noise_5pct.yaml` | 10x Chromium | 500 | 1000 | 5% |
+| `simulation_chromium_noise_10pct.yaml` | 10x Chromium | 500 | 1000 | 10% |
+
+Unused real-data configs have been moved to `workflow/configs/old/`.
 
 Key parameters:
 
-- `base`: output directory for all results.
-- `indices_base`: directory for shared aligner indices (can be shared across runs).
+- `base`: run-specific output directory.
+- `indices_base`: shared directory for aligner indices and decompressed references.
+  All noise-sweep configs share the same `indices_base` so indices are built once.
+- `simulation.mutation_rate`: per-base substitution rate applied to simulated reads.
 - `feature_sets`: which repeat subsets to quantify (`repeats`, `genic_repeats`, `intergenic_repeats`).
 - `granularities`: aggregation levels (`gene_id`, `family_id`, `class_id`).
 - `aligner_params.{aligner}.multimapper_modes`: `unique` (best hit only) or `multi` (EM/all-alignments).

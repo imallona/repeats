@@ -61,6 +61,7 @@ jobs:
           snakemake \
             --configfile configs/simulation_smartseq2.yaml \
             --dry-run \
+            --rerun-triggers mtime \
             --quiet --cores 2
 
       - name: Dry-run main Snakefile with Chromium config
@@ -70,6 +71,7 @@ jobs:
           snakemake \
             --configfile configs/simulation_chromium.yaml \
             --dry-run \
+            --rerun-triggers mtime \
             --quiet --cores 2
 
       - name: Dry-run test Snakefile with negative control config
@@ -80,6 +82,7 @@ jobs:
             -s ../test/workflow/Snakefile_test \
             --configfile ../test/workflow/configs/test_negative_control.yaml \
             --dry-run \
+            --rerun-triggers mtime \
             --quiet --cores 2
 
       - name: Run workflow dry-run pytest tests
