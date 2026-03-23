@@ -97,6 +97,7 @@ rule starsolo_smartseq2:
              --soloCellReadStats None \
              --soloUMIdedup NoDedup \
              --soloMultiMappers {params.solo_multimappers} \
+             --outSAMattributes NH HI AS NM CB UB \
              --outSAMtype BAM SortedByCoordinate \
              --limitBAMsortRAM {params.max_ram_bytes} \
              {params.extra_args} 2> {log}
@@ -163,6 +164,7 @@ rule starsolo_chromium:
              --soloUMIstart {params.umi_start} \
              --soloUMIlen {params.umi_len} \
              --soloMultiMappers {params.solo_multimappers} \
+             --outSAMattributes NH HI AS NM CB UB \
              --outSAMtype BAM SortedByCoordinate \
              --limitBAMsortRAM {params.max_ram_bytes} \
              {params.extra_args} 2> {log}

@@ -143,9 +143,8 @@ if (nrow(det) > 0) {
   pal_pr <- make_palette(n_lab)
 
   ggplot(det, aes(x = recall, y = precision,
-                  colour = aligner_mode, shape = feature_set, size = f1)) +
+                  colour = aligner_mode, shape = feature_set)) +
     geom_point(alpha = 0.85) +
-    scale_size_continuous(range = c(2, 7), name = "F1") +
     scale_colour_manual(values = pal_pr, name = "Aligner (mode)") +
     scale_shape_manual(values = c(16, 17, 15, 3, 7, 8)[seq_len(
                          length(unique(det$feature_set)))],
@@ -153,7 +152,7 @@ if (nrow(det) > 0) {
     facet_wrap(~gran_label, nrow = 1) +
     xlim(0, 1) + ylim(0, 1) +
     geom_abline(slope = 1, intercept = 0, linetype = "dotted", colour = "grey60") +
-    labs(title = "precision vs recall (size = F1)",
+    labs(title = "precision vs recall",
          subtitle = "facets = granularity",
          x = "Recall", y = "Precision") +
     theme_bw(base_size = 11) +
