@@ -1,0 +1,9 @@
+name: repeats_test_evaluation
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - conda-forge::python>=3.10
+  - conda-forge::scipy
+  - conda-forge::pandas
+  - conda-forge::numpy

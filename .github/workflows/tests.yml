@@ -1,0 +1,125 @@
+name: Tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [master, dev]
+
+jobs:
+  # Unit and integration tests. Needs Python and scipy
+  unit-and-integration:
+    name: Unit and integration tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install pytest pytest-cov scipy
+
+      - name: Run unit and integration tests
+        run: |
+          pytest test/unit/ test/integration/ \
+            -v \
+            --tb=short \
+            --cov=workflow/scripts \
+            --cov-report=term-missing \
+            --cov-fail-under=70
+
+  # Snakemake dry-run. Installs snakemake via micromamba but does not run any rules.
+  snakemake-dryrun:
+    name: Snakemake dry-run
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up micromamba
+        uses: mamba-org/setup-micromamba@v1
+        with:
+          micromamba-version: latest
+          environment-name: snakemake
+          create-args: >-
+            -c bioconda
+            -c conda-forge
+            python=3.11
+            snakemake>=8
+            pytest
+            pytest-cov
+            scipy
+          init-shell: bash
+
+      - name: Dry-run main Snakefile with SmartSeq2 config
+        shell: bash -el {0}
+        working-directory: workflow
+        run: |
+          snakemake \
+            --configfile configs/simulation_smartseq2.yaml \
+            --dry-run \
+            --rerun-triggers mtime \
+            --quiet --cores 2
+
+      - name: Dry-run main Snakefile with Chromium config
+        shell: bash -el {0}
+        working-directory: workflow
+        run: |
+          snakemake \
+            --configfile configs/simulation_chromium.yaml \
+            --dry-run \
+            --rerun-triggers mtime \
+            --quiet --cores 2
+
+      - name: Dry-run test Snakefile with negative control config
+        shell: bash -el {0}
+        working-directory: workflow
+        run: |
+          snakemake \
+            -s ../test/workflow/Snakefile_test \
+            --configfile ../test/workflow/configs/test_negative_control.yaml \
+            --dry-run \
+            --rerun-triggers mtime \
+            --quiet --cores 2
+
+      - name: Run workflow dry-run pytest tests
+        shell: bash -el {0}
+        run: |
+          pytest test/workflow/test_snakemake_dryrun.py \
+            -v --tb=short -m workflow
+
+  # Full negative control run. Requires reference data on the runner and an env.
+  # triggered manually
+  negative-control-run:
+    name: Negative control full run
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up micromamba
+        uses: mamba-org/setup-micromamba@v1
+        with:
+          micromamba-version: latest
+          environment-name: snakemake
+          create-args: >-
+            -c bioconda
+            -c conda-forge
+            python=3.11
+            snakemake>=8
+          init-shell: bash
+
+      - name: Run negative control workflow
+        shell: bash -el {0}
+        working-directory: workflow
+        run: |
+          snakemake \
+            -s ../test/workflow/Snakefile_test \
+            --configfile ../test/workflow/configs/test_negative_control.yaml \
+            --use-conda \
+            --cores 2 \
+            --conda-frontend mamba

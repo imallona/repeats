@@ -21,6 +21,7 @@ if sim_technology == 'smartseq2' and 'multi' in starsolo_modes:
 bowtie2_modes = config.get('aligner_params', {}).get('bowtie2', {}).get(
     'multimapper_modes', ['unique'])
 granularities = config.get('granularities', ['family_id'])
+sim_mutation_rate = config.get('simulation', {}).get('mutation_rate', 0.0)
 evaluation_script = op.join(workflow.basedir, 'scripts', 'evaluate.py')
 counts_dir = op.join(config['base'], 'counts')
 eval_dir = op.join(config['base'], 'evaluation')
@@ -81,6 +82,7 @@ rule evaluate_combination:
         granularity = 'locus|gene_id|family_id|class_id',
         multimapper_mode = 'unique|multi'
     params:
+        mutation_rate = sim_mutation_rate,
         benchmark_file = eval_benchmark,
         output_prefix = op.join(eval_dir,
             '{aligner}_{feature_set}_{granularity}_{multimapper_mode}')
@@ -98,7 +100,8 @@ rule evaluate_combination:
             --feature-set {wildcards.feature_set} \
             --locus-map {input.locus_map} \
             --benchmark {params.benchmark_file} \
-            --output-prefix {params.output_prefix} 2> {log}
+            --output-prefix {params.output_prefix} \
+            --mutation-rate {params.mutation_rate} 2> {log}
         """
 rule aggregate_global_metrics:
     """Concatenate all per-aligner global metric TSVs into one summary file."""
@@ -176,7 +179,9 @@ rule render_report:
     output:
         report = op.join(eval_dir, 'evaluation_report.html')
     params:
-        eval_dir = eval_dir,
+        mutation_rate = sim_mutation_rate,
+        eval_dir = op.abspath(eval_dir),
+        abs_report = op.abspath(op.join(eval_dir, 'evaluation_report.html')),
         rmd = op.join(workflow.basedir, 'scripts', 'evaluation_report.Rmd')
     log:
         op.join(config['base'], 'logs', 'render_report.log')
@@ -184,7 +189,8 @@ rule render_report:
         """
         Rscript -e "rmarkdown::render(
             '{params.rmd}',
-            output_file = '{output.report}',
+            output_file = '{params.abs_report}',
+            knit_root_dir = getwd(),
             params = list(eval_dir = '{params.eval_dir}')
         )" 2> {log}
         """

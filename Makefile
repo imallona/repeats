@@ -1,0 +1,124 @@
+SHELL   := /bin/bash
+.DEFAULT_GOAL := all
+CORES   ?= 10
+WF      := workflow
+RESULTS := results
+
+CONDA_RUN := source ~/miniconda3/etc/profile.d/conda.sh && conda activate snakemake &&
+SM        := cd $(WF) && $(CONDA_RUN) snakemake --use-conda --cores $(CORES) --rerun-triggers mtime
+RSCRIPT   := cd $(WF) && $(CONDA_RUN) Rscript
+
+# noise sweep eval dirs (relative to workflow/, comma-separated for the Rmd param)
+NOISE_EDIRS_SS2 := $(CURDIR)/$(RESULTS)/simulation_smartseq2_noise_0pct/evaluation,$(CURDIR)/$(RESULTS)/simulation_smartseq2_noise_1pct/evaluation,$(CURDIR)/$(RESULTS)/simulation_smartseq2_noise_5pct/evaluation,$(CURDIR)/$(RESULTS)/simulation_smartseq2_noise_10pct/evaluation
+NOISE_EDIRS_CHR := $(CURDIR)/$(RESULTS)/simulation_chromium_noise_0pct/evaluation,$(CURDIR)/$(RESULTS)/simulation_chromium_noise_1pct/evaluation,$(CURDIR)/$(RESULTS)/simulation_chromium_noise_5pct/evaluation,$(CURDIR)/$(RESULTS)/simulation_chromium_noise_10pct/evaluation
+
+# output HTML files (relative to project root)
+NOISE_REPORT_SS2 := $(RESULTS)/noise_sweep_smartseq2.html
+NOISE_REPORT_CHR := $(RESULTS)/noise_sweep_chromium.html
+
+.PHONY: all \
+        simulation_smartseq2 simulation_chromium \
+        noise_smartseq2 noise_smartseq2_0pct noise_smartseq2_1pct noise_smartseq2_5pct noise_smartseq2_10pct \
+        noise_chromium noise_chromium_0pct noise_chromium_1pct noise_chromium_5pct noise_chromium_10pct \
+        report_noise_smartseq2 report_noise_chromium reports_noise \
+        help
+
+# -----------------------------------------------------------------------
+# base simulations
+# -----------------------------------------------------------------------
+
+simulation_smartseq2:
+	$(SM) --configfile configs/simulation_smartseq2.yaml
+
+simulation_chromium:
+	$(SM) --configfile configs/simulation_chromium.yaml
+
+# -----------------------------------------------------------------------
+# noise sweep — SmartSeq2
+# note: genome refs are reused from the base simulation_smartseq2 run;
+#       alignment indices are shared via results/shared/ (never rebuilt)
+# -----------------------------------------------------------------------
+
+noise_smartseq2_0pct:
+	$(SM) --configfile configs/simulation_smartseq2_noise_0pct.yaml
+
+noise_smartseq2_1pct:
+	$(SM) --configfile configs/simulation_smartseq2_noise_1pct.yaml
+
+noise_smartseq2_5pct:
+	$(SM) --configfile configs/simulation_smartseq2_noise_5pct.yaml
+
+noise_smartseq2_10pct:
+	$(SM) --configfile configs/simulation_smartseq2_noise_10pct.yaml
+
+noise_smartseq2: noise_smartseq2_0pct noise_smartseq2_1pct noise_smartseq2_5pct noise_smartseq2_10pct
+
+# -----------------------------------------------------------------------
+# noise sweep — Chromium
+# -----------------------------------------------------------------------
+
+noise_chromium_0pct:
+	$(SM) --configfile configs/simulation_chromium_noise_0pct.yaml
+
+noise_chromium_1pct:
+	$(SM) --configfile configs/simulation_chromium_noise_1pct.yaml
+
+noise_chromium_5pct:
+	$(SM) --configfile configs/simulation_chromium_noise_5pct.yaml
+
+noise_chromium_10pct:
+	$(SM) --configfile configs/simulation_chromium_noise_10pct.yaml
+
+noise_chromium: noise_chromium_0pct noise_chromium_1pct noise_chromium_5pct noise_chromium_10pct
+
+# -----------------------------------------------------------------------
+# noise sweep reports
+# file targets: only (re)rendered when the HTML does not yet exist;
+# use  make -B report_noise_smartseq2  to force a re-render
+# -----------------------------------------------------------------------
+
+$(NOISE_REPORT_SS2):
+	mkdir -p $(RESULTS)
+	$(RSCRIPT) -e "rmarkdown::render('scripts/noise_sweep_report.Rmd', knit_root_dir = getwd(), \
+	    output_file = '$(CURDIR)/$(NOISE_REPORT_SS2)', \
+	    params = list(eval_dirs = '$(NOISE_EDIRS_SS2)'))"
+
+$(NOISE_REPORT_CHR):
+	mkdir -p $(RESULTS)
+	$(RSCRIPT) -e "rmarkdown::render('scripts/noise_sweep_report.Rmd', knit_root_dir = getwd(), \
+	    output_file = '$(CURDIR)/$(NOISE_REPORT_CHR)', \
+	    params = list(eval_dirs = '$(NOISE_EDIRS_CHR)'))"
+
+report_noise_smartseq2: $(NOISE_REPORT_SS2)
+report_noise_chromium:  $(NOISE_REPORT_CHR)
+reports_noise: report_noise_smartseq2 report_noise_chromium
+
+# -----------------------------------------------------------------------
+# all
+# -----------------------------------------------------------------------
+
+all: simulation_smartseq2 simulation_chromium noise_smartseq2 noise_chromium reports_noise
+
+# -----------------------------------------------------------------------
+# help
+# -----------------------------------------------------------------------
+
+help:
+	@echo "Usage: make [target] [CORES=N]   (default CORES=$(CORES))"
+	@echo ""
+	@echo "Base simulation runs:"
+	@echo "  simulation_smartseq2             SmartSeq2 base run (mutation_rate 0.1%)"
+	@echo "  simulation_chromium              Chromium base run  (mutation_rate 0.1%)"
+	@echo ""
+	@echo "Noise sweep runs (base simulation must have been run first):"
+	@echo "  noise_smartseq2                  all 4 noise levels for SmartSeq2"
+	@echo "  noise_smartseq2_{0,1,5,10}pct   individual SmartSeq2 noise level"
+	@echo "  noise_chromium                   all 4 noise levels for Chromium"
+	@echo "  noise_chromium_{0,1,5,10}pct    individual Chromium noise level"
+	@echo ""
+	@echo "Reports (file targets; use -B to force re-render):"
+	@echo "  report_noise_smartseq2           $(NOISE_REPORT_SS2)"
+	@echo "  report_noise_chromium            $(NOISE_REPORT_CHR)"
+	@echo "  reports_noise                    both noise sweep reports"
+	@echo ""
+	@echo "  all                              run everything in sequence"

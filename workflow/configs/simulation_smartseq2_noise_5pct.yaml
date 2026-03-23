@@ -1,4 +1,4 @@
-base: "../results/simulation_smartseq2"
+base: "../results/simulation_smartseq2_noise_5pct"
 indices_base: "../results/shared"
 
 reference:
@@ -19,13 +19,8 @@ simulation:
   n_expressed_per_cell: 1000
   read_length: 90
   seed: 42
-  mutation_rate: 0.001
+  mutation_rate: 0.05
 
-# Feature sets to quantify against:
-#   genes              - Ensembl gene annotation
-#   repeats            - full RepeatMasker annotation
-#   genic_repeats      - TE loci overlapping at least one gene body
-#   intergenic_repeats - TE loci with no overlap to any gene body
 feature_sets:
   - repeats
   - genes
@@ -51,9 +46,6 @@ aligner_params:
     extra_args: ""
     featurecounts_cell_chunk_size: 20
 
-# Granularities to aggregate repeat counts to.
-# gene_id = repeat locus; family_id / class_id aggregate across loci.
-# For the genes feature_set, only gene_id is used.
 granularities:
   - locus
   - gene_id

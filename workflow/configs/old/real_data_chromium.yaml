@@ -1,0 +1,38 @@
+base: "~/repeats/real_chromium"
+
+reference:
+  genome_fasta: "~/repeats/refs/Homo_sapiens.GRCh38.dna.chromosome.1.fa.gz"
+  repeats_gtf: "~/repeats/refs/GRCh38_Ensembl_rmsk_TE.gtf.gz"
+  genes_gtf: "~/repeats/refs/Homo_sapiens.GRCh38.112.chr.gtf.gz"
+  filter_genic: true
+
+mode: real_data
+
+real_data:
+  technology: chromium
+  chemistry: 10xv3
+  samples:
+    hct116_wt:
+      R1: "~/repeats/data/colon_cancer_cell_lines/SRR10974767_1.fastq.gz"
+      R2: "~/repeats/data/colon_cancer_cell_lines/SRR10974767_2.fastq.gz"
+    hct116_dko:
+      R1: "~/repeats/data/colon_cancer_cell_lines/SRR10974769_1.fastq.gz"
+      R2: "~/repeats/data/colon_cancer_cell_lines/SRR10974769_2.fastq.gz"
+
+aligners:
+  - starsolo
+  - kallisto
+  - alevin
+
+aligner_params:
+  starsolo:
+    multimapper_modes: ["unique", "multimapping"]
+    extra_args: ""
+  kallisto:
+    extra_args: ""
+  alevin:
+    extra_args: ""
+
+resources:
+  max_threads: 10
+  max_mem_mb: 40000

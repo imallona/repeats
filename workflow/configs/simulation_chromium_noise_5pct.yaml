@@ -1,4 +1,4 @@
-base: "../results/simulation_smartseq2"
+base: "../results/simulation_chromium_noise_5pct"
 indices_base: "../results/shared"
 
 reference:
@@ -14,23 +14,26 @@ reference:
 mode: simulation
 
 simulation:
-  technology: smartseq2
+  technology: chromium
   n_cells: 500
   n_expressed_per_cell: 1000
   read_length: 90
+  cb_length: 16
+  umi_length: 12
   seed: 42
-  mutation_rate: 0.001
+  mutation_rate: 0.05
 
-# Feature sets to quantify against:
-#   genes              - Ensembl gene annotation
-#   repeats            - full RepeatMasker annotation
-#   genic_repeats      - TE loci overlapping at least one gene body
-#   intergenic_repeats - TE loci with no overlap to any gene body
 feature_sets:
   - repeats
   - genes
   - genic_repeats
   - intergenic_repeats
+
+granularities:
+  - locus
+  - gene_id
+  - family_id
+  - class_id
 
 aligners:
   - starsolo
@@ -40,25 +43,16 @@ aligners:
 
 aligner_params:
   starsolo:
-    multimapper_modes: ["unique"]
+    multimapper_modes: ["unique", "multi"]
     extra_args: ""
   kallisto:
     extra_args: ""
   alevin:
-    extra_args: "--minAssignedFrags 1"
+    extra_args: ""
   bowtie2:
     multimapper_modes: ["unique", "multi"]
     extra_args: ""
-    featurecounts_cell_chunk_size: 20
-
-# Granularities to aggregate repeat counts to.
-# gene_id = repeat locus; family_id / class_id aggregate across loci.
-# For the genes feature_set, only gene_id is used.
-granularities:
-  - locus
-  - gene_id
-  - family_id
-  - class_id
+    featurecounts_cell_chunk_size: 50
 
 resources:
   max_threads: 10

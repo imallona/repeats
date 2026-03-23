@@ -1,5 +1,5 @@
-base: "/home/imallona/repeats/results/simulation_chromium"
-indices_base: "/home/imallona/repeats/results/shared"
+base: "../results/simulation_chromium"
+indices_base: "../results/shared"
 
 reference:
   assembly: hg38
@@ -8,20 +8,21 @@ reference:
   # Split repeats into genic/intergenic subsets using gene body overlap (bedtools)
   filter_genic: true
   rmsk_source: ucsc_flatfile
-  genome_fasta: "/home/imallona/repeats/results/simulation_chromium/refs/GRCh38.dna.primary_assembly.fa.gz"
-  repeats_gtf: "/home/imallona/repeats/results/simulation_chromium/refs/hg38_rmsk_TE.gtf.gz"
-  genes_gtf: "/home/imallona/repeats/results/simulation_chromium/refs/GRCh38.112.genes.gtf.gz"
+  genome_fasta: "../results/shared/refs/GRCh38.dna.primary_assembly.fa.gz"
+  repeats_gtf: "../results/shared/refs/hg38_rmsk_TE.gtf.gz"
+  genes_gtf: "../results/shared/refs/GRCh38.112.genes.gtf.gz"
 
 mode: simulation
 
 simulation:
   technology: chromium
-  n_cells: 50
-  n_expressed_per_cell: 80
+  n_cells: 500
+  n_expressed_per_cell: 1000
   read_length: 90
   cb_length: 16
   umi_length: 12
   seed: 42
+  mutation_rate: 0.001
 
 feature_sets:
   - repeats

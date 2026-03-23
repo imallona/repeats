@@ -111,14 +111,14 @@ def reverse_complement(seq):
     return seq.translate(table)[::-1]
 
 
-def sample_subseq(seq, read_length, rng):
+def sample_subseq(seq, read_length, rng, mutation_rate=0.001):
     if len(seq) <= read_length:
         return (seq + 'N' * read_length)[:read_length]
     offset = rng.randint(0, len(seq) - read_length)
     read = seq[offset:offset + read_length]
     bases = list(read)
     for i in range(len(bases)):
-        if rng.random() < 0.001:
+        if rng.random() < mutation_rate:
             bases[i] = rng.choice('ACGT')
     return ''.join(bases)
 
@@ -178,7 +178,7 @@ def build_chrom_locus_coords(cell_plan):
     return chrom_loci
 
 
-def simulate_smartseq2(fasta_path, cell_plan, read_length, outdir, rng):
+def simulate_smartseq2(fasta_path, cell_plan, read_length, outdir, rng, mutation_rate=0.001):
     os.makedirs(outdir, exist_ok=True)
     locus_to_cells = build_locus_to_cells(cell_plan)
     chrom_locus_coords = build_chrom_locus_coords(cell_plan)
@@ -200,7 +200,7 @@ def simulate_smartseq2(fasta_path, cell_plan, read_length, outdir, rng):
                     fq = cell_handles[cell_id]
                     read_idx = cell_read_counts[cell_id]
                     for i in range(count):
-                        read = sample_subseq(repeat_seq, read_length, rng)
+                        read = sample_subseq(repeat_seq, read_length, rng, mutation_rate)
                         fq.write(f'@{cell_id}_r{read_idx + i}_{safe_id(locus_id)}\n'
                                  f'{read}\n+\n{make_qual(len(read))}\n')
                     cell_read_counts[cell_id] += count
@@ -215,7 +215,7 @@ def simulate_smartseq2(fasta_path, cell_plan, read_length, outdir, rng):
     return cell_fastq_paths, ground_truth
 
 
-def simulate_chromium(fasta_path, cell_plan, read_length, barcode_length, umi_length, outdir, rng):
+def simulate_chromium(fasta_path, cell_plan, read_length, barcode_length, umi_length, outdir, rng, mutation_rate=0.001):
     os.makedirs(outdir, exist_ok=True)
     locus_to_cells = build_locus_to_cells(cell_plan)
     chrom_locus_coords = build_chrom_locus_coords(cell_plan)
@@ -263,7 +263,7 @@ def simulate_chromium(fasta_path, cell_plan, read_length, barcode_length, umi_le
                         used_umis.add(umi)
                         read_id = f'r{total_reads}_{barcode[:8]}_{umi}_{safe_id(locus_id)}'
                         r1_seq = barcode + umi
-                        r2_seq = sample_subseq(repeat_seq, read_length, rng)
+                        r2_seq = sample_subseq(repeat_seq, read_length, rng, mutation_rate)
                         r1f.write(f'@{read_id}\n{r1_seq}\n+\n{make_qual(len(r1_seq))}\n')
                         r2f.write(f'@{read_id}\n{r2_seq}\n+\n{make_qual(len(r2_seq))}\n')
                         total_reads += 1
@@ -323,6 +323,8 @@ def main():
     ap.add_argument('--max-repeats-per-chrom', type=int, default=None,
                     help='Cap intervals per chromosome to limit memory use on full genomes')
     ap.add_argument('--seed', type=int, default=42)
+    ap.add_argument('--mutation-rate', type=float, default=0.001,
+                    help='Per-base substitution probability for simulated reads (default 0.001)')
     args = ap.parse_args()
 
     rng = random.Random(args.seed)
@@ -353,7 +355,7 @@ def main():
     if args.mode == 'smartseq2':
         print(f'Simulating SmartSeq2 reads (streaming FASTA by chrom)', file=sys.stderr)
         cell_fastq_paths, ground_truth = simulate_smartseq2(
-            args.fasta, cell_plan, args.read_length, args.outdir, rng)
+            args.fasta, cell_plan, args.read_length, args.outdir, rng, mutation_rate=args.mutation_rate)
         write_ground_truth(ground_truth, ground_truth_path, cell_column='cell_id')
         manifest_path = os.path.join(args.outdir, 'manifest.tsv')
         write_smartseq2_manifest(cell_fastq_paths, manifest_path)
@@ -363,7 +365,7 @@ def main():
         print(f'Simulating Chromium reads (streaming FASTA by chrom)', file=sys.stderr)
         (r1, r2), ground_truth = simulate_chromium(
             args.fasta, cell_plan, args.read_length,
-            args.cb_length, args.umi_length, args.outdir, rng)
+            args.cb_length, args.umi_length, args.outdir, rng, mutation_rate=args.mutation_rate)
         write_ground_truth(ground_truth, ground_truth_path, cell_column='cell_barcode')
         print(f'R1: {r1}', file=sys.stderr)
         print(f'R2: {r2}', file=sys.stderr)

@@ -13,7 +13,7 @@ params:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE,
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
                       fig.width = 12, fig.height = 12)
 library(ggplot2)
 library(dplyr)
@@ -99,10 +99,10 @@ All metrics compare the aligner count matrix against the simulation ground truth
 - **Specificity**: fraction of truly unexpressed (feature, cell) pairs correctly assigned zero by the aligner.
 
 
-Rows = aligner (+ multimapper mode), columns = metric. Each bar is a
-feature_set x granularity combination.
+Rows = metric, columns = feature_set. Each point is one aligner at one granularity;
+x-axis = granularity, colour = aligner (+ multimapper mode).
 
-```{r global-accuracy, fig.height=14, fig.width=18}
+```{r global-accuracy, fig.height=18, fig.width=14}
 acc_metrics <- c("pearson_r", "spearman_r", "f1",
                  "precision", "recall", "jaccard", "specificity")
 
@@ -110,25 +110,23 @@ acc_long <- global %>%
   select(aligner_mode, feature_set, gran_label, all_of(acc_metrics)) %>%
   pivot_longer(all_of(acc_metrics), names_to = "metric", values_to = "value") %>%
   filter(!is.na(value)) %>%
-  mutate(
-    metric = factor(metric, levels = acc_metrics),
-    fs_gran = paste0(feature_set, "\n", gran_label)
-  )
+  mutate(metric = factor(metric, levels = acc_metrics))
 
-n_fg <- length(unique(acc_long$fs_gran))
-pal  <- make_palette(n_fg)
+n_al <- length(unique(acc_long$aligner_mode))
+pal  <- make_palette(n_al)
 
-ggplot(acc_long, aes(x = fs_gran, y = value, fill = fs_gran)) +
-  geom_col(position = "dodge", width = 0.8) +
-  facet_grid(aligner_mode ~ metric, scales = "free_x") +
-  scale_fill_manual(values = pal, name = "feature_set / granularity") +
-  scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.5, 1)) +
-  labs(x = NULL, y = NULL,
+ggplot(acc_long, aes(x = gran_label, y = value,
+                     colour = aligner_mode, group = aligner_mode)) +
+  geom_point(size = 2.5, alpha = 0.85) +
+  geom_line(linetype = "dashed", linewidth = 0.5) +
+  facet_grid(metric ~ feature_set, scales = "free_y") +
+  scale_colour_manual(values = pal, name = "aligner (mode)") +
+  labs(x = "granularity", y = NULL,
        title = "global accuracy metrics",
-       subtitle = "rows = aligner, columns = metric") +
+       subtitle = "rows = metric, columns = feature_set; x = granularity; colour = aligner") +
   theme_bw(base_size = 10) +
   theme(aspect.ratio = 1,
-        axis.text.x  = element_text(angle = 40, hjust = 1, size = 7),
+        axis.text.x  = element_text(angle = 40, hjust = 1, size = 8),
         strip.text.y = element_text(size = 8),
         strip.text.x = element_text(size = 8),
         legend.position = "bottom",
@@ -145,9 +143,8 @@ if (nrow(det) > 0) {
   pal_pr <- make_palette(n_lab)
 
   ggplot(det, aes(x = recall, y = precision,
-                  colour = aligner_mode, shape = feature_set, size = f1)) +
+                  colour = aligner_mode, shape = feature_set)) +
     geom_point(alpha = 0.85) +
-    scale_size_continuous(range = c(2, 7), name = "F1") +
     scale_colour_manual(values = pal_pr, name = "Aligner (mode)") +
     scale_shape_manual(values = c(16, 17, 15, 3, 7, 8)[seq_len(
                          length(unique(det$feature_set)))],
@@ -155,7 +152,7 @@ if (nrow(det) > 0) {
     facet_wrap(~gran_label, nrow = 1) +
     xlim(0, 1) + ylim(0, 1) +
     geom_abline(slope = 1, intercept = 0, linetype = "dotted", colour = "grey60") +
-    labs(title = "precision vs recall (size = F1)",
+    labs(title = "precision vs recall",
          subtitle = "facets = granularity",
          x = "Recall", y = "Precision") +
     theme_bw(base_size = 11) +
@@ -193,6 +190,15 @@ ggplot(corr, aes(x = gran_label, y = r,
 ```
 
 ## log1p RMSE
+
+log1p RMSE is computed over all (feature, cell) pairs in the feature universe.
+At locus level there are thousands of features, most with zero counts in both
+truth and observed; the dominance of (0, 0) pairs suppresses the average squared
+error so RMSE looks low. At class_id level there are only ~10-20 features, each
+accumulating large aggregated counts, so per-entry log1p differences are larger
+and RMSE rises. The gradient locus < gene_id < family_id < class_id is therefore
+expected and not a mistake - lower locus RMSE reflects sparsity, not better
+quantification accuracy.
 
 ```{r rmse, fig.height=5}
 if ("log1p_rmse" %in% names(global) && any(!is.na(global$log1p_rmse))) {
@@ -275,6 +281,7 @@ if (!is.null(per_family) && nrow(per_family) > 0 && "class_id" %in% names(per_fa
     geom_line(linewidth = 0.5, linetype = "dashed") +
     geom_point(size = 2, alpha = 0.85) +
     facet_grid(gran_label ~ feature_set) +
+    scale_y_sqrt() +
     scale_colour_manual(values = pal_pf, name = "Aligner (mode)") +
     labs(x = "repeat class", y = "F1",
          title = "F1 per repeat class",
@@ -290,6 +297,7 @@ if (!is.null(per_family) && nrow(per_family) > 0 && "class_id" %in% names(per_fa
     geom_line(linewidth = 0.5, linetype = "dashed") +
     geom_point(size = 2, alpha = 0.85) +
     facet_grid(gran_label ~ feature_set) +
+    scale_y_sqrt() +
     scale_colour_manual(values = pal_pf, name = "Aligner (mode)") +
     labs(x = "repeat class", y = "pearson r",
          title = "Pearson r per repeat class") +
@@ -322,7 +330,7 @@ if (length(res_cols) > 0 && any(!is.na(global[res_cols]))) {
                    colour = aligner_mode, group = aligner_mode)) +
     geom_line(linetype = "dashed", linewidth = 0.6) +
     geom_point(size = 2) +
-    facet_grid(resource ~ feature_set, scales = "free_y") +
+    facet_grid(feature_set ~ resource, scales = "free_y") +
     scale_colour_manual(values = pal_res, name = "Aligner (mode)") +
     labs(x = "granularity", y = NULL, title = "compute resource usage") +
     theme_bw(base_size = 10) +

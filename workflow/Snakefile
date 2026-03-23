@@ -16,6 +16,8 @@ genome_tag = '_'.join(sorted(_chroms)) if _chroms else 'all'
 if 'indices_base' not in config:
     config['indices_base'] = config['base']
 
+
+
 include: "modules/download_references.snmk"
 include: "modules/data_acquisition.snmk"
 include: "modules/reference.snmk"

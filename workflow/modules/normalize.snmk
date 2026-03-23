@@ -74,6 +74,7 @@ rule normalize_starsolo:
         python {workflow.basedir}/scripts/normalize_starsolo.py \
             --raw-dir {input.raw_matrix_dir} \
             {params.locus_map_arg} \
+            --multimapper-mode {wildcards.multimapper_mode} \
             --granularity {wildcards.granularity} \
             --output {output.counts_tsv} 2> {log}
         """

@@ -17,7 +17,7 @@ from collections import defaultdict
 from scipy import stats
 
 
-def load_ground_truth(gt_path, granularity='gene_id'):
+def load_ground_truth(gt_path, granularity='gene_id', valid_locus_ids=None):
     """
     Returns:
       truth: {cell_id: {feature_id: count}}
@@ -58,6 +58,11 @@ def load_ground_truth(gt_path, granularity='gene_id'):
     truth = _dd(lambda: _dd(int))
     repeat_meta = {}
     for r in raw:
+        # Filter at locus level before aggregating so cross-partition
+        # gene_ids (e.g. AluSz6 in both genic and intergenic) do not
+        # inflate truth counts for a subset evaluation.
+        if valid_locus_ids is not None and r['locus_id'] not in valid_locus_ids:
+            continue
         feat = r[key_col]
         truth[r['cell_id']][feat] += r['true_count']
         repeat_meta[feat] = (r['family_id'], r['class_id'])
@@ -223,35 +228,40 @@ def main():
                     help='4-col TSV (transcript_id, gene_id, family_id, class_id). '
                          'Expands the feature universe for specificity and restricts '
                          'ground truth to this feature_set\'s loci.')
+    ap.add_argument('--mutation-rate', type=float, default=0.0,
+                    help='Mutation rate used in the simulation (for output labelling)')
     ap.add_argument('--output-prefix', required=True)
     args = ap.parse_args()
 
-    print(f'Loading ground truth from {args.ground_truth} at granularity={args.granularity}',
-          file=sys.stderr)
-    truth, repeat_meta = load_ground_truth(args.ground_truth, granularity=args.granularity)
-
-    print(f'Loading observed counts from {args.observed_counts}', file=sys.stderr)
-    observed, matrix_features = load_count_matrix(args.observed_counts)
-
-    # Build feature universe from locus_map, and optionally filter truth to it.
-    # This ensures that for genic_repeats / intergenic_repeats, ground truth
-    # features outside the feature_set are not counted as false negatives.
+    # Load locus map FIRST so truth is filtered at locus level before aggregation.
+    # Without this, at gene_id granularity a gene_id such as AluSz6 that has copies
+    # in both genic and intergenic regions carries intergenic counts into a
+    # genic_repeats evaluation (and vice-versa), inflating truth vs observed.
     locus_map_features = set()
+    valid_locus_ids = None
     if args.locus_map and os.path.exists(args.locus_map):
+        valid_locus_ids = set()
         col = {'locus': 0, 'gene_id': 1, 'family_id': 2, 'class_id': 3}.get(
             args.granularity, 1)
         with open(args.locus_map) as fh:
             for line in fh:
                 parts = line.rstrip('\n').split('\t')
+                if not parts or not parts[0]:
+                    continue
+                valid_locus_ids.add(parts[0])  # column 0 is always transcript_id
                 if len(parts) > col:
                     locus_map_features.add(parts[col])
-        print(f'  Locus map loaded: {len(locus_map_features)} features at '
-              f'{args.granularity} level', file=sys.stderr)
-        # Filter ground truth to this feature_set's loci
-        truth = {
-            cell: {f: c for f, c in feats.items() if f in locus_map_features}
-            for cell, feats in truth.items()
-        }
+        print(f'  Locus map loaded: {len(valid_locus_ids)} loci / '
+              f'{len(locus_map_features)} features at {args.granularity} level',
+              file=sys.stderr)
+
+    print(f'Loading ground truth from {args.ground_truth} at granularity={args.granularity}',
+          file=sys.stderr)
+    truth, repeat_meta = load_ground_truth(
+        args.ground_truth, granularity=args.granularity, valid_locus_ids=valid_locus_ids)
+
+    print(f'Loading observed counts from {args.observed_counts}', file=sys.stderr)
+    observed, matrix_features = load_count_matrix(args.observed_counts)
 
     feature_universe = (
         matrix_features |
@@ -269,6 +279,7 @@ def main():
     global_metrics['multimapper_mode'] = args.multimapper_mode
     global_metrics['feature_set'] = args.feature_set
     global_metrics['granularity'] = args.granularity
+    global_metrics['mutation_rate'] = args.mutation_rate
 
     bench = load_benchmark(args.benchmark)
     global_metrics.update(bench)
@@ -281,6 +292,7 @@ def main():
         row['multimapper_mode'] = args.multimapper_mode
         row['feature_set'] = args.feature_set
         row['granularity'] = args.granularity
+        row['mutation_rate'] = args.mutation_rate
     write_tsv(per_cell_rows, args.output_prefix + '_per_cell_metrics.tsv',
               fallback_fields=['cell_id', 'pearson_r', 'spearman_r',
                                'n_truth_expressed', 'n_observed_expressed',
@@ -302,6 +314,7 @@ def main():
         row['multimapper_mode'] = args.multimapper_mode
         row['feature_set'] = args.feature_set
         row['granularity'] = args.granularity
+        row['mutation_rate'] = args.mutation_rate
         per_family_rows.append(row)
     write_tsv(per_family_rows, args.output_prefix + '_per_family_metrics.tsv',
               fallback_fields=['class_id', 'aligner', 'multimapper_mode', 'feature_set',

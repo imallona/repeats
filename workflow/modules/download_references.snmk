@@ -69,7 +69,7 @@ genome_fasta_url = urls_cfg.get('genome_fasta', default_genome_fasta_url)
 genes_gtf_url = urls_cfg.get('genes_gtf', default_genes_gtf_url)
 rmsk_flatfile_url = urls_cfg.get('rmsk_flatfile', default_rmsk_flatfile_url)
 
-refs_dir = op.join(config['base'], 'refs')
+refs_dir = op.join(config.get('indices_base', config['base']), 'refs')
 build_rmsk_script = op.join(workflow.basedir, 'scripts', 'build_rmsk_gtf.py')
 
 
