@@ -40,7 +40,7 @@ aligners:
 
 aligner_params:
   starsolo:
-    multimapper_modes: ["unique"]
+    multimapper_modes: ["unique", "multi"]
     extra_args: ""
   kallisto:
     extra_args: ""
