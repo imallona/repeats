@@ -2,8 +2,6 @@ name: Tests
 
 on:
   workflow_dispatch:
-  push:
-    branches: [master, dev]
   pull_request:
     branches: [master, dev]
 
@@ -50,7 +48,7 @@ jobs:
             -c bioconda
             -c conda-forge
             python=3.11
-            "snakemake>=8"
+            snakemake>=8
           init-shell: bash
 
       - name: Dry-run main Snakefile with SmartSeq2 config
@@ -106,7 +104,7 @@ jobs:
             -c bioconda
             -c conda-forge
             python=3.11
-            "snakemake>=8"
+            snakemake>=8
           init-shell: bash
 
       - name: Run negative control workflow
