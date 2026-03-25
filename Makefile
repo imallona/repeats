@@ -1,6 +1,6 @@
 SHELL   := /bin/bash
 .DEFAULT_GOAL := all
-CORES   ?= 10
+CORES   ?= 8
 WF      := workflow
 RESULTS := results
 

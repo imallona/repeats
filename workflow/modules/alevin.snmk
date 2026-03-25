@@ -31,6 +31,11 @@ _chromium_r2 = (
     if config['mode'] == 'simulation'
     else []
 )
+_chromium_barcodes = (
+    op.join(config['base'], 'simulations', 'chromium', 'barcodes.txt')
+    if config['mode'] == 'simulation'
+    else []
+)
 
 _alevin_cb_len = config.get('simulation', config.get('real_data', {})).get('cb_length', 16)
 _alevin_umi_len = config.get('simulation', config.get('real_data', {})).get('umi_length', 12)
@@ -40,12 +45,10 @@ if config['mode'] == 'simulation':
     _alevin_chem_flag = _chem_map_sim.get(
         (_alevin_cb_len, _alevin_umi_len),
         f'--end 5 --barcodeLength {_alevin_cb_len} --umiLength {_alevin_umi_len}')
-    _alevin_force_cells = config.get('simulation', {}).get('n_cells', 0)
 else:
     _chem_map = {'10xv2': '--chromiumV1', '10xv3': '--chromiumV3'}
     _alevin_chem_flag = _chem_map.get(
         config.get('real_data', {}).get('chemistry', '10xv3'), '--chromiumV3')
-    _alevin_force_cells = 0
 
 
 rule salmon_quant_smartseq2_cell:
@@ -90,7 +93,8 @@ rule salmon_alevin_chromium:
                                             f'salmon_{wc.feature_set}', 'seq.bin'),
         r1 = _chromium_r1,
         r2 = _chromium_r2,
-        t2g = lambda wc: t2g_path(wc)
+        t2g = lambda wc: t2g_path(wc),
+        barcodes = _chromium_barcodes
     output:
         quants_mat = op.join(config['base'], 'alevin', '{feature_set}', 'chromium',
                              'alevin', 'quants_mat.gz'),
@@ -107,7 +111,7 @@ rule salmon_alevin_chromium:
         index_dir = lambda wc: op.join(config['indices_base'], 'indices', genome_tag,
                                        f'salmon_{wc.feature_set}'),
         chem_flag = _alevin_chem_flag,
-        force_cells_arg = f'--forceCells {_alevin_force_cells}' if _alevin_force_cells else '',
+        whitelist_arg = lambda wc, input: f'--whitelist {input.barcodes}' if input.barcodes else '',
         extra_args = config.get('aligner_params', {}).get('alevin', {}).get('extra_args', '')
     log:
         op.join(config['base'], 'logs', 'salmon_{feature_set}_alevin_chromium.log')
@@ -121,7 +125,7 @@ rule salmon_alevin_chromium:
             --index {params.index_dir} \
             -1 {input.r1} -2 {input.r2} \
             {params.chem_flag} \
-            {params.force_cells_arg} \
+            {params.whitelist_arg} \
             --tgMap {input.t2g} \
             --threads {threads} \
             --output {params.outdir} \
