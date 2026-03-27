@@ -14,20 +14,20 @@ params:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
-                      fig.width = 12, fig.height = 12)
+                      fig.width = 7, fig.height = 5)
 library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(readr)
 library(scales)
 library(patchwork)
+source(file.path(dirname(knitr::current_input(full.names = TRUE)), "ggtheme.R"))
 
 eval_dir <- params$eval_dir
 
-# consistent colour palette that scales to many categories
 make_palette <- function(n) {
-  if (n <= 8)  return(RColorBrewer::brewer.pal(max(3, n), "Dark2")[seq_len(n)])
-  colorRampPalette(RColorBrewer::brewer.pal(8, "Dark2"))(n)
+  if (n <= 8)  return(cbbPalette[seq_len(n)])
+  colorRampPalette(cbbPalette)(n)
 }
 ```
 
@@ -102,7 +102,7 @@ All metrics compare the aligner count matrix against the simulation ground truth
 Rows = metric, columns = feature_set. Each point is one aligner at one granularity;
 x-axis = granularity, colour = aligner (+ multimapper mode).
 
-```{r global-accuracy, fig.height=18, fig.width=14}
+```{r global-accuracy, fig.height=13, fig.width=5}
 acc_metrics <- c("pearson_r", "spearman_r", "f1",
                  "precision", "recall", "jaccard", "specificity")
 
@@ -124,9 +124,8 @@ ggplot(acc_long, aes(x = gran_label, y = value,
   labs(x = "granularity", y = NULL,
        title = "global accuracy metrics",
        subtitle = "rows = metric, columns = feature_set; x = granularity; colour = aligner") +
-  theme_bw(base_size = 10) +
-  theme(aspect.ratio = 1,
-        axis.text.x  = element_text(angle = 40, hjust = 1, size = 8),
+  theme_ng() +
+  theme(axis.text.x  = element_text(angle = 40, hjust = 1, size = 8),
         strip.text.y = element_text(size = 8),
         strip.text.x = element_text(size = 8),
         legend.position = "bottom",
@@ -135,7 +134,7 @@ ggplot(acc_long, aes(x = gran_label, y = value,
 
 ## precision-recall
 
-```{r pr-plot, fig.height=6, fig.width=10}
+```{r pr-plot, fig.height=4, fig.width=8}
 det <- global %>% filter(!is.na(recall), !is.na(precision))
 
 if (nrow(det) > 0) {
@@ -155,8 +154,7 @@ if (nrow(det) > 0) {
     labs(title = "precision vs recall",
          subtitle = "facets = granularity",
          x = "Recall", y = "Precision") +
-    theme_bw(base_size = 11) +
-    theme(aspect.ratio = 1) +
+    theme_ng() +
     guides(colour = guide_legend(override.aes = list(size = 4)))
 } else {
   cat("No detection metrics available.\n")
@@ -184,9 +182,8 @@ ggplot(corr, aes(x = gran_label, y = r,
   labs(x = "granularity", y = "correlation coefficient",
        title = "Pearson and Spearman correlations",
        subtitle = "rows = metric, columns = feature_set") +
-  theme_bw(base_size = 11) +
-  theme(aspect.ratio = 1,
-        axis.text.x = element_text(angle = 25, hjust = 1))
+  theme_ng() +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1))
 ```
 
 ## log1p RMSE
@@ -213,9 +210,8 @@ if ("log1p_rmse" %in% names(global) && any(!is.na(global$log1p_rmse))) {
     scale_colour_manual(values = pal_rmse, name = "Aligner (mode)") +
     labs(x = "granularity", y = "log1p RMSE",
          title = "Count quantification error (lower = better)") +
-    theme_bw(base_size = 11) +
-    theme(aspect.ratio = 1,
-          axis.text.x = element_text(angle = 25, hjust = 1))
+    theme_ng() +
+    theme(axis.text.x = element_text(angle = 25, hjust = 1))
 } else {
   cat("log1p_rmse not available.\n")
 }
@@ -223,7 +219,7 @@ if ("log1p_rmse" %in% names(global) && any(!is.na(global$log1p_rmse))) {
 
 ## per-cell correlations
 
-```{r per-cell, fig.height=7, fig.width=12}
+```{r per-cell, fig.height=8, fig.width=12}
 if (!is.null(per_cell) && nrow(per_cell) > 0) {
   per_cell_num <- per_cell %>%
     mutate(across(c(pearson_r, spearman_r), ~ suppressWarnings(as.numeric(.)))) %>%
@@ -254,9 +250,8 @@ if (!is.null(per_cell) && nrow(per_cell) > 0) {
     labs(x = NULL, y = "correlation",
          title = "Per-cell correlations",
          subtitle = "rows = metric, columns = feature_set x granularity") +
-    theme_bw(base_size = 9) +
-    theme(aspect.ratio = 1,
-          axis.text.x  = element_text(angle = 40, hjust = 1, size = 7),
+    theme_ng() +
+    theme(axis.text.x  = element_text(angle = 40, hjust = 1, size = 7),
           legend.position = "none",
           strip.text = element_text(size = 7))
 } else {
@@ -286,9 +281,8 @@ if (!is.null(per_family) && nrow(per_family) > 0 && "class_id" %in% names(per_fa
     labs(x = "repeat class", y = "F1",
          title = "F1 per repeat class",
          subtitle = "rows = granularity, columns = feature_set") +
-    theme_bw(base_size = 9) +
-    theme(aspect.ratio = 1,
-          axis.text.x = element_text(angle = 40, hjust = 1, size = 7),
+    theme_ng() +
+    theme(axis.text.x = element_text(angle = 40, hjust = 1, size = 7),
           legend.position = "bottom",
           legend.text = element_text(size = 8))
 
@@ -301,9 +295,8 @@ if (!is.null(per_family) && nrow(per_family) > 0 && "class_id" %in% names(per_fa
     scale_colour_manual(values = pal_pf, name = "Aligner (mode)") +
     labs(x = "repeat class", y = "pearson r",
          title = "Pearson r per repeat class") +
-    theme_bw(base_size = 9) +
-    theme(aspect.ratio = 1,
-          axis.text.x = element_text(angle = 40, hjust = 1, size = 7),
+    theme_ng() +
+    theme(axis.text.x = element_text(angle = 40, hjust = 1, size = 7),
           legend.position = "none",
           strip.text = element_text(size = 7))
 
@@ -315,7 +308,7 @@ if (!is.null(per_family) && nrow(per_family) > 0 && "class_id" %in% names(per_fa
 
 ## compute resources
 
-```{r resources, fig.height=10, fig.width=14}
+```{r resources, fig.height=5, fig.width=10}
 res_cols <- intersect(c("wall_time_s", "cpu_time_s", "max_rss_mb", "io_in_mb", "io_out_mb"), names(global))
 if (length(res_cols) > 0 && any(!is.na(global[res_cols]))) {
   n_al5 <- length(unique(global$aligner_mode))
@@ -333,9 +326,8 @@ if (length(res_cols) > 0 && any(!is.na(global[res_cols]))) {
     facet_grid(feature_set ~ resource, scales = "free_y") +
     scale_colour_manual(values = pal_res, name = "Aligner (mode)") +
     labs(x = "granularity", y = NULL, title = "compute resource usage") +
-    theme_bw(base_size = 10) +
-    theme(aspect.ratio = 1,
-          axis.text.x = element_text(angle = 25, hjust = 1))
+    theme_ng() +
+    theme(axis.text.x = element_text(angle = 25, hjust = 1))
 } else {
   cat("Benchmark data not available.\n")
 }

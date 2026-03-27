@@ -1,0 +1,17 @@
+sample_id	srr	gsm	donor	tdp43_nuclear	neun	note
+tdp43pos_s1	SRR8571937	GSM3603263	S1	yes	positive	NeuN+/TDP-43+ sorted neurons
+tdp43neg_s1	SRR8571938	GSM3603264	S1	no	positive	NeuN+/TDP-43- sorted neurons
+tdp43pos_s2	SRR8571939	GSM3603265	S2	yes	positive	NeuN+/TDP-43+ sorted neurons
+tdp43neg_s2	SRR8571940	GSM3603266	S2	no	positive	NeuN+/TDP-43- sorted neurons
+tdp43pos_s3	SRR8571941	GSM3603267	S3	yes	positive	NeuN+/TDP-43+ sorted neurons
+tdp43neg_s3	SRR8571942	GSM3603268	S3	no	positive	NeuN+/TDP-43- sorted neurons
+unsorted_s3	SRR8571943	GSM3603269	S3	unknown	positive	NeuN+ unsorted (mixed TDP-43)
+tdp43pos_s4	SRR8571944	GSM3603270	S4	yes	positive	NeuN+/TDP-43+ sorted neurons
+tdp43neg_s4	SRR8571945	GSM3603271	S4	no	positive	NeuN+/TDP-43- sorted neurons
+unsorted_s4	SRR8571946	GSM3603272	S4	unknown	positive	NeuN+ unsorted (mixed TDP-43)
+tdp43pos_s5	SRR8571947	GSM3603273	S5	yes	positive	NeuN+/TDP-43+ sorted neurons
+tdp43neg_s5	SRR8571948	GSM3603274	S5	no	positive	NeuN+/TDP-43- sorted neurons
+tdp43pos_s6	SRR8571949	GSM3603275	S6	yes	positive	NeuN+/TDP-43+ sorted neurons
+tdp43neg_s6	SRR8571950	GSM3603276	S6	no	positive	NeuN+/TDP-43- sorted neurons
+tdp43pos_s7	SRR8571951	GSM3603277	S7	yes	positive	NeuN+/TDP-43+ sorted neurons
+tdp43neg_s7	SRR8571952	GSM3603278	S7	no	positive	NeuN+/TDP-43- sorted neurons

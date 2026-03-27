@@ -22,7 +22,7 @@ The pipeline:
 5. Produces an HTML evaluation report with accuracy, precision/recall, and compute
    resource plots.
 
-For method details see [workflow/methods.md](workflow/methods.md).
+For method details see [docs/methods.md](docs/methods.md).
 Workflow diagrams (mermaid, renders on GitHub) are in [docs/diagrams.md](docs/diagrams.md).
 
 ## Requirements
@@ -118,7 +118,7 @@ pairs rather than O(features x cells).
 Bowtie2 Chromium counting streams the CB-tagged BAM once and accumulates
 per-(barcode, locus) counts directly, without splitting into per-cell BAM files.
 
-See workflow/methods.md for full details.
+See [docs/methods.md](docs/methods.md) for full details.
 
 ## Testing
 

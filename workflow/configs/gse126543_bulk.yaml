@@ -1,0 +1,73 @@
+base: "../results/gse126543_bulk"
+indices_base: "../results/shared"
+
+mode: real_data
+
+reference:
+  assembly: hg38
+  ensembl_release: "112"
+  chromosomes: []  # empty = whole genome
+  filter_genic: true
+  rmsk_source: ucsc_flatfile
+  genome_fasta: "../results/shared/refs/GRCh38.dna.primary_assembly.fa.gz"
+  repeats_gtf: "../results/shared/refs/hg38_rmsk_TE.gtf.gz"
+  genes_gtf: "../results/shared/refs/GRCh38.112.genes.gtf.gz"
+
+real_data:
+  technology: smartseq2
+
+# GSE126543 (SRP185789). NeuN-positive neuronal nuclei from human frontal
+# cortex, FTD/ALS post-mortem tissue. Samples sorted by TDP-43 nuclear status
+# across 7 donors (S1 to S7) plus 2 unsorted controls (S3, S4).
+# Paper: https://pmc.ncbi.nlm.nih.gov/articles/PMC6508629/
+dataset:
+  sra_study: SRP185789
+  samples:
+    # NeuN+/TDP-43 nuclear positive (TDP-43 retained in nucleus)
+    tdp43pos_s1: SRR8571937
+    tdp43pos_s2: SRR8571939
+    tdp43pos_s3: SRR8571941
+    tdp43pos_s4: SRR8571944
+    tdp43pos_s5: SRR8571947
+    tdp43pos_s6: SRR8571949
+    tdp43pos_s7: SRR8571951
+    # NeuN+/TDP-43 nuclear negative (TDP-43 lost from nucleus)
+    tdp43neg_s1: SRR8571938
+    tdp43neg_s2: SRR8571940
+    tdp43neg_s3: SRR8571942
+    tdp43neg_s4: SRR8571945
+    tdp43neg_s5: SRR8571948
+    tdp43neg_s6: SRR8571950
+    tdp43neg_s7: SRR8571952
+    # Unsorted NeuN+ (mixed TDP-43 status)
+    unsorted_s3: SRR8571943
+    unsorted_s4: SRR8571946
+
+feature_sets:
+  - repeats
+  - genes
+  - genic_repeats
+  - intergenic_repeats
+
+aligners:
+  - star
+  - kallisto
+  - salmon
+
+aligner_params:
+  star:
+    extra_args: ""
+  kallisto:
+    extra_args: ""
+  salmon:
+    extra_args: ""
+
+granularities:
+  - locus
+  - gene_id
+  - family_id
+  - class_id
+
+resources:
+  max_threads: 10
+  max_mem_mb: 60000

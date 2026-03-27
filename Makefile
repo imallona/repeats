@@ -1,12 +1,12 @@
 SHELL   := /bin/bash
 .DEFAULT_GOAL := all
-CORES   ?= 10
+CORES   ?= 8
 WF      := workflow
 RESULTS := results
 
 CONDA_RUN := source ~/miniconda3/etc/profile.d/conda.sh && conda activate snakemake &&
 SM        := cd $(WF) && $(CONDA_RUN) snakemake --use-conda --cores $(CORES) --rerun-triggers mtime
-RSCRIPT   := cd $(WF) && $(CONDA_RUN) Rscript
+SM_REPORT := cd $(WF) && $(CONDA_RUN) snakemake -s Snakefile_noise_report --use-conda --cores 1
 
 # noise sweep eval dirs (relative to workflow/, comma-separated for the Rmd param)
 NOISE_EDIRS_SS2 := $(CURDIR)/$(RESULTS)/simulation_smartseq2_noise_0pct/evaluation,$(CURDIR)/$(RESULTS)/simulation_smartseq2_noise_1pct/evaluation,$(CURDIR)/$(RESULTS)/simulation_smartseq2_noise_5pct/evaluation,$(CURDIR)/$(RESULTS)/simulation_smartseq2_noise_10pct/evaluation
@@ -79,15 +79,11 @@ noise_chromium: noise_chromium_0pct noise_chromium_1pct noise_chromium_5pct nois
 
 $(NOISE_REPORT_SS2):
 	mkdir -p $(RESULTS)
-	$(RSCRIPT) -e "rmarkdown::render('scripts/noise_sweep_report.Rmd', knit_root_dir = getwd(), \
-	    output_file = '$(CURDIR)/$(NOISE_REPORT_SS2)', \
-	    params = list(eval_dirs = '$(NOISE_EDIRS_SS2)'))"
+	$(SM_REPORT) --config eval_dirs='$(NOISE_EDIRS_SS2)' output_file='$(CURDIR)/$(NOISE_REPORT_SS2)'
 
 $(NOISE_REPORT_CHR):
 	mkdir -p $(RESULTS)
-	$(RSCRIPT) -e "rmarkdown::render('scripts/noise_sweep_report.Rmd', knit_root_dir = getwd(), \
-	    output_file = '$(CURDIR)/$(NOISE_REPORT_CHR)', \
-	    params = list(eval_dirs = '$(NOISE_EDIRS_CHR)'))"
+	$(SM_REPORT) --config eval_dirs='$(NOISE_EDIRS_CHR)' output_file='$(CURDIR)/$(NOISE_REPORT_CHR)'
 
 report_noise_smartseq2: $(NOISE_REPORT_SS2)
 report_noise_chromium:  $(NOISE_REPORT_CHR)

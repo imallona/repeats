@@ -1,0 +1,40 @@
+"""
+Standalone Snakefile for rendering the noise sweep HTML report.
+
+Usage (from workflow/):
+    snakemake -s Snakefile_noise_report --use-conda --cores 1 \
+        --config \
+            eval_dirs="dir1,dir2,dir3,dir4" \
+            output_file="/abs/path/to/report.html"
+
+Both parameters are required.
+"""
+
+import os.path as op
+
+_eval_dirs   = config['eval_dirs']
+_output_file = config['output_file']
+_rmd         = op.join(workflow.basedir, 'scripts', 'noise_sweep_report.Rmd')
+
+rule render_noise_sweep_report:
+    input:
+        rmd = _rmd
+    output:
+        html = _output_file
+    params:
+        eval_dirs   = _eval_dirs,
+        output_file = _output_file,
+        rmd         = _rmd
+    conda:
+        op.join(workflow.basedir, 'envs', 'rmarkdown.yaml')
+    log:
+        op.join(op.dirname(_output_file), 'noise_sweep_report.log')
+    shell:
+        """
+        Rscript -e "rmarkdown::render(
+            '{params.rmd}',
+            output_file = '{params.output_file}',
+            knit_root_dir = getwd(),
+            params = list(eval_dirs = '{params.eval_dirs}')
+        )" 2> {log}
+        """
