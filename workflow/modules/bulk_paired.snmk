@@ -265,7 +265,7 @@ rule salmon_quant_bulk:
         op.join(workflow.basedir, 'envs', 'alevin.yaml')
     input:
         index_sentinel = lambda wc: op.join(config['indices_base'], 'indices', genome_tag,
-                                            f'salmon_{wc.feature_set}', 'seq.bin'),
+                                            f'salmon_{wc.feature_set}', 'sshash.bin'),
         r1 = _bulk_r1,
         r2 = _bulk_r2,
     output:

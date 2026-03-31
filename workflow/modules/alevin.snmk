@@ -55,7 +55,7 @@ rule salmon_quant_smartseq2_cell:
     conda: op.join(workflow.basedir, 'envs', 'alevin.yaml')
     input:
         index_sentinel = lambda wc: op.join(config['indices_base'], 'indices', genome_tag,
-                                            f'salmon_{wc.feature_set}', 'seq.bin'),
+                                            f'salmon_{wc.feature_set}', 'sshash.bin'),
         fastq = _ss2_fastq
     output:
         quant_sf = op.join(config['base'], 'alevin', '{feature_set}',
@@ -90,7 +90,7 @@ rule salmon_alevin_chromium:
     conda: op.join(workflow.basedir, 'envs', 'alevin.yaml')
     input:
         index_sentinel = lambda wc: op.join(config['indices_base'], 'indices', genome_tag,
-                                            f'salmon_{wc.feature_set}', 'seq.bin'),
+                                            f'salmon_{wc.feature_set}', 'sshash.bin'),
         r1 = _chromium_r1,
         r2 = _chromium_r2,
         t2g = lambda wc: t2g_path(wc),
