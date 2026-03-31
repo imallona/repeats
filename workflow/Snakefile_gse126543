@@ -143,15 +143,15 @@ rule download_sra_gse126543:
     shell:
         """
         mkdir -p {params.outdir}
-        prefetch {params.srr} --output-file {params.outdir}/{params.srr}.sra \
+        prefetch {params.srr} --output-directory {params.outdir} \
             &> {log.prefetch}
-        vdb-validate {params.outdir}/{params.srr}.sra &> {log.validate}
+        vdb-validate {params.outdir}/{params.srr}/{params.srr}.sra &> {log.validate}
         fastq-dump --gzip --split-files \
             --outdir {params.outdir} \
-            {params.outdir}/{params.srr}.sra &> {log.dump}
+            {params.outdir}/{params.srr}/{params.srr}.sra &> {log.dump}
         mv -f {params.outdir}/{params.srr}_1.fastq.gz {output.r1}
         mv -f {params.outdir}/{params.srr}_2.fastq.gz {output.r2}
-        rm -f {params.outdir}/{params.srr}.sra
+        rm -rf {params.outdir}/{params.srr}
         """
 
 
