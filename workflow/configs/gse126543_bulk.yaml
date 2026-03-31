@@ -63,10 +63,8 @@ aligner_params:
     extra_args: ""
 
 granularities:
-  - locus
   - gene_id
   - family_id
-  - class_id
 
 resources:
   max_threads: 10
