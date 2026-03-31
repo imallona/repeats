@@ -98,6 +98,19 @@ Simulation configs are under `workflow/configs/`:
 
 Unused real-data configs have been moved to `workflow/configs/old/`.
 
+### Bulk RNA-seq reanalysis
+
+Two publicly available bulk RNA-seq datasets are reanalysed for repeat element quantification:
+
+| GSE | Description | Design | Snakefile | Config |
+|---|---|---|---|---|
+| GSE126543 | NeuN+ neuronal nuclei, human frontal cortex (FTD/ALS), TDP-43 nuclear positive vs negative, 7 donors | paired by donor | Snakefile_gse126543 | configs/gse126543_bulk.yaml |
+| GSE230647 | iPSC-derived neural cultures, TDP-43 OE (HA-TDP43 DOX on vs off, n=4) and KD (TDP-43 shRNA vs NT shRNA, n=4) | two independent experiments | Snakefile_gse230647 | configs/gse230647_bulk.yaml |
+
+Both pipelines download paired-end FASTQs from SRA, align with STAR, kallisto, and salmon,
+quantify repeats at gene_id and family_id granularities, and render an edgeR differential
+expression report.
+
 Key parameters:
 
 - `base`: run-specific output directory.

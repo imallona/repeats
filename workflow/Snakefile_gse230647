@@ -1,17 +1,15 @@
 #!/usr/bin/env snakemake -s
 """
-Bulk RNA-seq reanalysis of GSE126543 (SRA study SRP185789, BioProject PRJNA522290).
+Bulk RNA-seq reanalysis of GSE230647 (SRA study SRP434658, BioProject PRJNA962064).
 
-The dataset is from Liu...Li TDP-43 nuclear RNA-seq
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE230647
 
-https://pmc.ncbi.nlm.nih.gov/articles/PMC6508629/
+It contains 16 paired-end bulk RNA-seq samples across two experiments:
+  - TDP-43 overexpression: doxycycline-inducible HA-TDP43 (DOX on, n=4) vs
+    DOX off control (n=4).
+  - TDP-43 knockdown: TDP-43 shRNA (n=4) vs non-targeting shRNA control (n=4).
 
-It contains 16 paired-end RNA-seq runs from NeuN-positive neuronal nuclei
-isolated from human frontal cortex (FTD/ALS post-mortem tissue). Samples were
-sorted by TDP-43 nuclear presence across 7 donors, giving one TDP-43-positive
-and one TDP-43-negative run per donor. Two additional unsorted runs from donors
-S3 and S4 are also included. See configs/gse126543_sample_metadata.tsv for the
-full sample table.
+See configs/gse230647_bulk.yaml for the full sample table.
 
 Each SRR is downloaded from SRA as paired-end FASTQs. Plain STAR aligns each
 sample independently (no STARsolo). featureCounts, kallisto quant, and salmon
@@ -21,15 +19,15 @@ The bulk_paired module (modules/bulk_paired.snmk) handles all alignment,
 counting, and aggregation steps.
 
 Run from the workflow/ directory with
-    snakemake -s Snakefile_gse126543 \\
-        --configfile configs/gse126543_bulk.yaml \\
+    snakemake -s Snakefile_gse230647 \\
+        --configfile configs/gse230647_bulk.yaml \\
         --use-conda --cores 16
 """
 
 import os
 import os.path as op
 
-configfile: "configs/gse126543_bulk.yaml"
+configfile: "configs/gse230647_bulk.yaml"
 
 if "indices_base" not in config:
     config["indices_base"] = config["base"]
@@ -37,7 +35,6 @@ if "indices_base" not in config:
 _chroms = config["reference"].get("chromosomes", [])
 genome_tag = "_".join(sorted(_chroms)) if _chroms else "all"
 
-# Sample registry: dataset.samples maps sample_id -> srr_accession
 _sample_to_srr = config.get("dataset", {}).get("samples", {})
 if not _sample_to_srr:
     raise ValueError("dataset.samples is required and cannot be empty.")
@@ -48,17 +45,15 @@ def sample_ids():
 
 
 def raw_r1(sample_id):
-    return op.join(config["base"], "data", "gse126543", "raw",
+    return op.join(config["base"], "data", "gse230647", "raw",
                    f"{sample_id}_1.fastq.gz")
 
 
 def raw_r2(sample_id):
-    return op.join(config["base"], "data", "gse126543", "raw",
+    return op.join(config["base"], "data", "gse230647", "raw",
                    f"{sample_id}_2.fastq.gz")
 
 
-# Populate real_data.samples with R1/R2 paths so bulk_paired.snmk can
-# resolve FASTQ inputs without knowing the download rule layout.
 config.setdefault("real_data", {})
 config["real_data"]["samples"] = {
     sid: {"R1": raw_r1(sid), "R2": raw_r2(sid)}
@@ -119,25 +114,25 @@ def aligner_count_outputs():
     return outputs
 
 
-report_html = op.join(config["base"], "gse126543_bulk_report.html")
+report_html = op.join(config["base"], "gse230647_bulk_report.html")
 report_outdir = op.join(config["base"], "report_rds")
 
 
-rule render_report_gse126543:
+rule render_report_gse230647:
     conda:
         op.join(workflow.basedir, "envs", "edger.yaml")
     input:
         counts = aligner_count_outputs(),
-        rmd = op.join(workflow.basedir, "scripts", "gse126543_bulk_report.Rmd"),
+        rmd = op.join(workflow.basedir, "scripts", "gse230647_bulk_report.Rmd"),
     output:
         html = report_html,
     params:
         counts_dir = op.abspath(counts_dir),
         report_outdir = op.abspath(report_outdir),
         abs_html = op.abspath(report_html),
-        rmd = op.join(workflow.basedir, "scripts", "gse126543_bulk_report.Rmd"),
+        rmd = op.join(workflow.basedir, "scripts", "gse230647_bulk_report.Rmd"),
     log:
-        op.join(config["base"], "logs", "gse126543_render_report.log"),
+        op.join(config["base"], "logs", "gse230647_render_report.log"),
     shell:
         """
         mkdir -p {params.report_outdir}
@@ -151,24 +146,24 @@ rule render_report_gse126543:
         """
 
 
-rule download_sra_gse126543:
+rule download_sra_gse230647:
     conda:
         op.join(workflow.basedir, "envs", "sratools.yaml")
     output:
-        r1 = op.join(config["base"], "data", "gse126543", "raw",
+        r1 = op.join(config["base"], "data", "gse230647", "raw",
                      "{sample_id}_1.fastq.gz"),
-        r2 = op.join(config["base"], "data", "gse126543", "raw",
+        r2 = op.join(config["base"], "data", "gse230647", "raw",
                      "{sample_id}_2.fastq.gz"),
     params:
         srr = lambda wc: _sample_to_srr[wc.sample_id],
-        outdir = op.join(config["base"], "data", "gse126543", "raw"),
+        outdir = op.join(config["base"], "data", "gse230647", "raw"),
     log:
         prefetch = op.join(config["base"], "logs",
-                           "gse126543_{sample_id}_prefetch.log"),
+                           "gse230647_{sample_id}_prefetch.log"),
         validate = op.join(config["base"], "logs",
-                           "gse126543_{sample_id}_validate.log"),
+                           "gse230647_{sample_id}_validate.log"),
         dump = op.join(config["base"], "logs",
-                       "gse126543_{sample_id}_fastqdump.log"),
+                       "gse230647_{sample_id}_fastqdump.log"),
     threads: 4
     shell:
         """
