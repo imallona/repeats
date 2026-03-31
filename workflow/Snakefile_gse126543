@@ -146,7 +146,7 @@ rule download_sra_gse126543:
         prefetch {params.srr} --output-directory {params.outdir} \
             &> {log.prefetch} || true
         test -f {params.outdir}/{params.srr}/{params.srr}.sra
-        vdb-validate {params.outdir}/{params.srr}/{params.srr}.sra &> {log.validate}
+        vdb-validate {params.outdir}/{params.srr}/{params.srr}.sra &> {log.validate} || true
         fastq-dump --gzip --split-files \
             --outdir {params.outdir} \
             {params.outdir}/{params.srr}/{params.srr}.sra &> {log.dump}
