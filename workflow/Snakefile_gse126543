@@ -163,26 +163,21 @@ rule download_sra_gse126543:
         srr = lambda wc: _sample_to_srr[wc.sample_id],
         outdir = op.join(config["base"], "data", "gse126543", "raw"),
     log:
-        prefetch = op.join(config["base"], "logs",
-                           "gse126543_{sample_id}_prefetch.log"),
-        validate = op.join(config["base"], "logs",
-                           "gse126543_{sample_id}_validate.log"),
         dump = op.join(config["base"], "logs",
-                       "gse126543_{sample_id}_fastqdump.log"),
+                       "gse126543_{sample_id}_fasterqdump.log"),
     threads: 4
     shell:
         """
         mkdir -p {params.outdir}
-        prefetch {params.srr} --output-directory {params.outdir} \
-            &> {log.prefetch} || true
-        test -f {params.outdir}/{params.srr}/{params.srr}.sra
-        vdb-validate {params.outdir}/{params.srr}/{params.srr}.sra &> {log.validate} || true
-        fastq-dump --gzip --split-files \
+        fasterq-dump {params.srr} \
+            --split-files \
+            --threads {threads} \
             --outdir {params.outdir} \
-            {params.outdir}/{params.srr}/{params.srr}.sra &> {log.dump}
+            &> {log.dump}
+        gzip {params.outdir}/{params.srr}_1.fastq
+        gzip {params.outdir}/{params.srr}_2.fastq
         mv -f {params.outdir}/{params.srr}_1.fastq.gz {output.r1}
         mv -f {params.outdir}/{params.srr}_2.fastq.gz {output.r2}
-        rm -rf {params.outdir}/{params.srr}
         """
 
 
