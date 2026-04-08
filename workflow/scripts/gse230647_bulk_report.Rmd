@@ -152,7 +152,7 @@ save_rds(oe_results, "gse230647_oe_edger")
 cat("OE edgeR fits completed:", length(oe_results), "\n")
 ```
 
-```{r oe-pca, fig.width=ng_fig_size(3, 1)$w, fig.height=ng_fig_size(3, 1)$h}
+```{r oe-pca, fig.width=10, fig.height=10}
 pca_plots = list()
 for (al in aligners) {
   for (fs in feature_sets) {
@@ -182,7 +182,7 @@ if (length(pca_plots) > 0) wrap_plots(pca_plots, ncol = 3)
 save_rds(pca_plots, "gse230647_oe_pca_plots")
 ```
 
-```{r oe-volcano, fig.width=ng_fig_size(3, 1)$w, fig.height=ng_fig_size(3, 1)$h}
+```{r oe-volcano, fig.width=10, fig.height=10}
 for (gr in granularities) {
   vol_plots = list()
   for (al in aligners) {
@@ -205,7 +205,7 @@ for (gr in granularities) {
 }
 ```
 
-```{r oe-ma, fig.width=ng_fig_size(3, 1)$w, fig.height=ng_fig_size(3, 1)$h}
+```{r oe-ma, fig.width=10, fig.height=10}
 for (gr in granularities) {
   ma_plots = list()
   for (al in aligners) {
@@ -271,7 +271,7 @@ for (al in aligners) {
 }
 ```
 
-```{r oe-counts, fig.width=ng_fig_size(3, 2)$w, fig.height=ng_fig_size(3, 2)$h}
+```{r oe-counts, fig.width=10, fig.height=10}
 plot_cpm = function(y, feature, title) {
   if (!feature %in% rownames(y$counts)) return(invisible(NULL))
   lcpm = cpm(y, log = TRUE)
@@ -328,7 +328,7 @@ save_rds(kd_results, "gse230647_kd_edger")
 cat("KD edgeR fits completed:", length(kd_results), "\n")
 ```
 
-```{r kd-pca, fig.width=ng_fig_size(3, 1)$w, fig.height=ng_fig_size(3, 1)$h}
+```{r kd-pca, fig.width=10, fig.height=10}
 pca_plots = list()
 for (al in aligners) {
   for (fs in feature_sets) {
@@ -358,7 +358,7 @@ if (length(pca_plots) > 0) wrap_plots(pca_plots, ncol = 3)
 save_rds(pca_plots, "gse230647_kd_pca_plots")
 ```
 
-```{r kd-volcano, fig.width=ng_fig_size(3, 1)$w, fig.height=ng_fig_size(3, 1)$h}
+```{r kd-volcano, fig.width=10, fig.height=10}
 for (gr in granularities) {
   vol_plots = list()
   for (al in aligners) {
@@ -381,7 +381,7 @@ for (gr in granularities) {
 }
 ```
 
-```{r kd-ma, fig.width=ng_fig_size(3, 1)$w, fig.height=ng_fig_size(3, 1)$h}
+```{r kd-ma, fig.width=10, fig.height=10}
 for (gr in granularities) {
   ma_plots = list()
   for (al in aligners) {
@@ -421,7 +421,7 @@ for (al in aligners) {
 }
 ```
 
-```{r kd-heatmap, fig.width=ng_fig_size(2, 1, panel_mm = 60)$w, fig.height=ng_fig_size(2, 1, panel_mm = 60)$h}
+```{r kd-heatmap, fig.width=10, fig.height=10}
 for (al in aligners) {
   for (fs in feature_sets) {
     for (gr in granularities) {
@@ -447,7 +447,7 @@ for (al in aligners) {
 }
 ```
 
-```{r kd-counts, fig.width=ng_fig_size(3, 2)$w, fig.height=ng_fig_size(3, 2)$h}
+```{r kd-counts, fig.width=10, fig.height=10}
 for (al in aligners) {
   for (fs in feature_sets) {
     for (gr in granularities) {
