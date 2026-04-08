@@ -23,7 +23,7 @@ library(tidyr)
 library(readr)
 library(patchwork)
 library(pheatmap)
-source(file.path(dirname(knitr::current_input(full.names = TRUE)), "ggtheme.R"))
+source(file.path("scripts", "ggtheme.R"))
 
 counts_dir = params$counts_dir
 report_outdir = params$report_outdir
@@ -146,7 +146,7 @@ save_rds(de_results, "gse126543_de_edger")
 cat("DE edgeR fits completed:", length(de_results), "\n")
 ```
 
-```{r pca, fig.width=ng_fig_size(3, 1)$w, fig.height=ng_fig_size(3, 1)$h}
+```{r pca, fig.width=10, fig.height=10}
 pca_plots = list()
 for (al in aligners) {
   for (fs in feature_sets) {
