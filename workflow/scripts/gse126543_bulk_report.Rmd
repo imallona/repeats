@@ -181,7 +181,7 @@ if (length(pca_plots) > 0) wrap_plots(pca_plots, ncol = 3)
 save_rds(pca_plots, "gse126543_pca_plots")
 ```
 
-```{r volcano, fig.width=ng_fig_size(3, 1)$w, fig.height=ng_fig_size(3, 1)$h}
+```{r volcano, fig.width=10, fig.height=10}
 for (gr in granularities) {
   vol_plots = list()
   for (al in aligners) {
@@ -204,7 +204,7 @@ for (gr in granularities) {
 }
 ```
 
-```{r ma, fig.width=ng_fig_size(3, 1)$w, fig.height=ng_fig_size(3, 1)$h}
+```{r ma, fig.width=10, fig.height=10}
 for (gr in granularities) {
   ma_plots = list()
   for (al in aligners) {
@@ -244,7 +244,7 @@ for (al in aligners) {
 }
 ```
 
-```{r heatmap, fig.width=ng_fig_size(2, 1, panel_mm = 60)$w, fig.height=ng_fig_size(2, 1, panel_mm = 60)$h}
+```{r heatmap, fig.width=10, fig.height=10}
 for (al in aligners) {
   for (fs in feature_sets) {
     for (gr in granularities) {
@@ -274,7 +274,7 @@ for (al in aligners) {
 }
 ```
 
-```{r normalized-counts, fig.width=ng_fig_size(3, 2)$w, fig.height=ng_fig_size(3, 2)$h}
+```{r normalized-counts, fig.width=10, fig.height=10, results =  'asis'}
 plot_cpm = function(y, feature, meta, title) {
   if (!feature %in% rownames(y$counts)) return(invisible(NULL))
   lcpm = cpm(y, log = TRUE)
@@ -303,7 +303,7 @@ for (al in aligners) {
       plots = Filter(Negate(is.null),
                      lapply(top6, function(f) plot_cpm(fit$y, f, main_meta, f)))
       if (length(plots) > 0) {
-        cat("\nTop 6 normalized counts -", al, fs, gr, "\n")
+        cat("\n## Top 6 normalized counts -", al, fs, gr, "\n")
         print(wrap_plots(plots, ncol = 3))
       }
     }
