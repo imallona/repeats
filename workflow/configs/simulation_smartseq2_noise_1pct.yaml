@@ -15,8 +15,8 @@ mode: simulation
 
 simulation:
   technology: smartseq2
-  n_cells: 500
-  n_expressed_per_cell: 1000
+  n_cells: 100
+  n_expressed_per_cell: 500
   read_length: 90
   seed: 42
   mutation_rate: 0.01
@@ -35,7 +35,7 @@ aligners:
 
 aligner_params:
   starsolo:
-    multimapper_modes: ["unique"]
+    multimapper_modes: ["unique", "multi"]
     extra_args: ""
   kallisto:
     extra_args: ""

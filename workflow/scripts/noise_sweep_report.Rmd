@@ -14,17 +14,18 @@ params:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
-                      fig.width = 14, fig.height = 10)
+                      fig.width = 7, fig.height = 5)
 library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(readr)
 library(scales)
 library(patchwork)
+source(file.path(dirname(knitr::current_input(full.names = TRUE)), "ggtheme.R"))
 
 make_palette <- function(n) {
-  if (n <= 8)  return(RColorBrewer::brewer.pal(max(3, n), "Dark2")[seq_len(n)])
-  colorRampPalette(RColorBrewer::brewer.pal(8, "Dark2"))(n)
+  if (n <= 8)  return(cbbPalette[seq_len(n)])
+  colorRampPalette(cbbPalette)(n)
 }
 
 eval_dirs <- strsplit(params$eval_dirs, ",")[[1]]
@@ -111,7 +112,7 @@ Noise levels found in the data: `r sort(unique(global$mutation_rate))`
 How each aligner's accuracy changes as the per-base mutation rate increases.
 x-axis = mutation rate, y-axis = metric value, colour = aligner (+ multimapper mode).
 
-```{r degradation-main, fig.height=20, fig.width=14}
+```{r degradation-main, fig.height=15, fig.width=12}
 acc_metrics <- c("pearson_r", "spearman_r", "f1", "precision", "recall",
                  "jaccard", "specificity")
 
@@ -135,7 +136,7 @@ ggplot(deg, aes(x = mutation_rate, y = value,
   labs(x = "mutation rate", y = NULL,
        title = "metric degradation with increasing noise",
        subtitle = "rows = metric; columns = feature_set x granularity; x = mutation rate") +
-  theme_bw(base_size = 9) +
+  theme_ng() +
   theme(axis.text.x  = element_text(angle = 40, hjust = 1, size = 7),
         strip.text   = element_text(size = 7),
         legend.position = "bottom",
@@ -146,7 +147,7 @@ ggplot(deg, aes(x = mutation_rate, y = value,
 
 Summary view focusing on the two most interpretable metrics.
 
-```{r overview-two-metrics, fig.height=10, fig.width=14}
+```{r overview-two-metrics, fig.height=5, fig.width=7}
 ov <- global %>%
   filter(!is.na(mutation_rate)) %>%
   select(aligner_mode, feature_set, gran_label, mutation_rate, pearson_r, f1) %>%
@@ -167,7 +168,7 @@ ggplot(ov, aes(x = mutation_rate, y = value,
   labs(x = "mutation rate", y = NULL,
        title = "Pearson r and F1 across noise levels",
        subtitle = "rows = metric, columns = feature_set; lines connect same aligner across mutation rates") +
-  theme_bw(base_size = 11) +
+  theme_ng() +
   theme(axis.text.x = element_text(angle = 25, hjust = 1),
         legend.position = "bottom")
 ```
@@ -176,7 +177,7 @@ ggplot(ov, aes(x = mutation_rate, y = value,
 
 Full metric grid from the standard report, faceted by mutation rate.
 
-```{r global-faceted, fig.height=22, fig.width=16}
+```{r global-faceted, fig.height=18, fig.width=14}
 full_metrics <- c("pearson_r", "spearman_r", "f1", "precision", "recall",
                   "jaccard", "specificity", "log1p_rmse")
 
@@ -200,9 +201,8 @@ ggplot(full_long, aes(x = gran_label, y = value,
   labs(x = "granularity", y = NULL,
        title = "global accuracy metrics",
        subtitle = "rows = metric; columns = mutation rate x feature_set; x = granularity") +
-  theme_bw(base_size = 8) +
-  theme(aspect.ratio = 1,
-        axis.text.x  = element_text(angle = 40, hjust = 1, size = 7),
+  theme_ng() +
+  theme(axis.text.x  = element_text(angle = 40, hjust = 1, size = 7),
         strip.text   = element_text(size = 6),
         legend.position = "bottom",
         legend.text  = element_text(size = 7))
@@ -240,7 +240,7 @@ if (!is.null(per_cell) && nrow(per_cell) > 0 && "mutation_rate" %in% names(per_c
     labs(x = NULL, y = "correlation",
          title = "per-cell correlations by noise level",
          subtitle = "rows = metric x granularity; columns = mutation rate x feature_set") +
-    theme_bw(base_size = 8) +
+    theme_ng() +
     theme(axis.text.x  = element_text(angle = 45, hjust = 1, size = 6),
           legend.position = "none",
           strip.text   = element_text(size = 6))
@@ -274,7 +274,7 @@ if (!is.null(per_family) && nrow(per_family) > 0 &&
     labs(x = "repeat class", y = "F1",
          title = "F1 per repeat class by noise level",
          subtitle = "rows = granularity; columns = mutation rate x feature_set") +
-    theme_bw(base_size = 8) +
+    theme_ng() +
     theme(axis.text.x  = element_text(angle = 40, hjust = 1, size = 7),
           legend.position = "bottom",
           legend.text  = element_text(size = 7),
@@ -288,7 +288,7 @@ if (!is.null(per_family) && nrow(per_family) > 0 &&
     scale_y_sqrt() +
     scale_colour_manual(values = pal5, name = "Aligner (mode)") +
     labs(x = "repeat class", y = "pearson r") +
-    theme_bw(base_size = 8) +
+    theme_ng() +
     theme(axis.text.x  = element_text(angle = 40, hjust = 1, size = 7),
           legend.position = "none",
           strip.text   = element_text(size = 6))

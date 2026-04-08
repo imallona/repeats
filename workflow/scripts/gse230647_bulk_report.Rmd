@@ -1,0 +1,473 @@
+---
+title: "GSE230647 bulk RNA-seq repeat quantification"
+author: "Izaskun Mallona"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    code_folding: hide
+params:
+  counts_dir: "."
+  report_outdir: "."
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(edgeR)
+library(ggplot2)
+library(ggrepel)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(patchwork)
+library(pheatmap)
+source(file.path("scripts", "ggtheme.R"))
+
+counts_dir = params$counts_dir
+report_outdir = params$report_outdir
+
+aligners = c("star", "kallisto", "salmon")
+granularities = c("gene_id", "family_id")
+feature_sets = c("repeats", "genic_repeats", "intergenic_repeats")
+
+oe_samples = c(paste0("tdp43_oe_r", 1:4), paste0("oe_ctrl_r", 1:4))
+kd_samples = c(paste0("tdp43_kd_r", 1:4), paste0("nt_kd_ctrl_r", 1:4))
+
+oe_meta = data.frame(
+  sample = oe_samples,
+  condition = rep(c("tdp43_oe", "oe_ctrl"), each = 4),
+  replicate = rep(1:4, 2),
+  row.names = oe_samples,
+  stringsAsFactors = FALSE
+)
+
+kd_meta = data.frame(
+  sample = kd_samples,
+  condition = rep(c("tdp43_kd", "nt_kd_ctrl"), each = 4),
+  replicate = rep(1:4, 2),
+  row.names = kd_samples,
+  stringsAsFactors = FALSE
+)
+
+save_rds = function(obj, name) {
+  path = file.path(report_outdir, paste0(name, ".rds"))
+  saveRDS(obj, path)
+  invisible(path)
+}
+```
+
+## About this report
+
+```{r provenance}
+git_commit = tryCatch(
+  system("git rev-parse --short HEAD", intern = TRUE),
+  error = function(e) "unknown"
+)
+cat("GEO accession: GSE230647\n")
+cat("SRA study: SRP434658\n")
+cat("Rendered:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n")
+cat("Git commit:", git_commit, "\n")
+cat("counts_dir:", counts_dir, "\n")
+cat("report_outdir:", report_outdir, "\n")
+```
+
+GSE230647 (SRP434658): iPSC-derived neural cultures with TDP-43 perturbations.
+Two experiments:
+
+- overexpression (OE): doxycycline-inducible HA-TDP43 on (tdp43_oe, n=4) vs DOX off control (oe_ctrl, n=4)
+- knockdown (KD): TDP-43 shRNA (tdp43_kd, n=4) vs non-targeting shRNA control (nt_kd_ctrl, n=4)
+
+Quantification by STAR, kallisto, and salmon at gene_id and family_id granularities
+for three repeat feature sets: repeats, genic_repeats, and intergenic_repeats.
+Differential expression tested with edgeR QLF (quasi-likelihood F-test).
+
+## Load counts
+
+```{r load-counts}
+load_counts = function(aligner, feature_set, granularity) {
+  path = file.path(counts_dir,
+                   paste0(aligner, "_", feature_set, "_", granularity, "_unique.tsv"))
+  if (!file.exists(path)) return(NULL)
+  mat = read_tsv(path, show_col_types = FALSE)
+  feat_col = colnames(mat)[1]
+  feat_ids = mat[[feat_col]]
+  mat = as.matrix(mat[, -1, drop = FALSE])
+  rownames(mat) = feat_ids
+  storage.mode(mat) = "integer"
+  mat
+}
+
+counts_cache = list()
+for (al in aligners) {
+  for (fs in feature_sets) {
+    for (gr in granularities) {
+      key = paste(al, fs, gr, sep = "_")
+      counts_cache[[key]] = load_counts(al, fs, gr)
+    }
+  }
+}
+cat("Available count matrices:", sum(!sapply(counts_cache, is.null)), "\n")
+save_rds(counts_cache, "gse230647_counts_cache")
+```
+
+```{r edger-function}
+run_edger = function(counts, meta, treat_level, ref_level) {
+  samples = intersect(meta$sample, colnames(counts))
+  if (length(samples) < 4) return(NULL)
+  mat = counts[, samples, drop = FALSE]
+  cond = factor(meta[samples, "condition"], levels = c(ref_level, treat_level))
+  y = DGEList(counts = mat, group = cond)
+  keep = filterByExpr(y)
+  y = y[keep, , keep.lib.sizes = FALSE]
+  y = normLibSizes(y)
+  design = model.matrix(~cond)
+  y = estimateDisp(y, design)
+  fit = glmQLFit(y, design)
+  qlf = glmQLFTest(fit, coef = 2)
+  list(y = y, fit = fit, qlf = qlf,
+       tt = topTags(qlf, n = Inf, sort.by = "PValue")$table)
+}
+```
+
+## Overexpression experiment
+
+TDP-43-HA ON (tdp43_oe) vs DOX off control (oe_ctrl).
+
+```{r oe-edger}
+oe_results = list()
+for (al in aligners) {
+  for (fs in feature_sets) {
+    for (gr in granularities) {
+      key = paste(al, fs, gr, sep = "_")
+      mat = counts_cache[[key]]
+      if (is.null(mat)) next
+      res = run_edger(mat, oe_meta, treat_level = "tdp43_oe", ref_level = "oe_ctrl")
+      if (!is.null(res)) oe_results[[key]] = res
+    }
+  }
+}
+save_rds(oe_results, "gse230647_oe_edger")
+cat("OE edgeR fits completed:", length(oe_results), "\n")
+```
+
+```{r oe-pca, fig.width=10, fig.height=10}
+pca_plots = list()
+for (al in aligners) {
+  for (fs in feature_sets) {
+    key = paste(al, fs, "gene_id", sep = "_")
+    fit = oe_results[[key]]
+    if (is.null(fit)) next
+    lcpm = cpm(fit$y, log = TRUE)
+    pca = prcomp(t(lcpm), scale. = FALSE)
+    pct = round(100 * pca$sdev^2 / sum(pca$sdev^2))
+    df = data.frame(
+      PC1 = pca$x[, 1],
+      PC2 = pca$x[, 2],
+      condition = fit$y$samples$group,
+      sample = rownames(pca$x)
+    )
+    pca_plots[[key]] = ggplot(df, aes(PC1, PC2, colour = condition, label = sample)) +
+      geom_point(size = 2) +
+      geom_text_repel(size = 2.5, show.legend = FALSE) +
+      xlab(paste0("PC1: ", pct[1], "%")) +
+      ylab(paste0("PC2: ", pct[2], "%")) +
+      scale_colour_manual(values = cbbPalette) +
+      theme_ng() +
+      ggtitle(paste(al, fs))
+  }
+}
+if (length(pca_plots) > 0) wrap_plots(pca_plots, ncol = 3)
+save_rds(pca_plots, "gse230647_oe_pca_plots")
+```
+
+```{r oe-volcano, fig.width=10, fig.height=10}
+for (gr in granularities) {
+  vol_plots = list()
+  for (al in aligners) {
+    for (fs in feature_sets) {
+      key = paste(al, fs, gr, sep = "_")
+      fit = oe_results[[key]]
+      if (is.null(fit)) next
+      tt = fit$tt
+      tt$sig = tt$FDR < 0.05 & abs(tt$logFC) > 1
+      vol_plots[[key]] = ggplot(tt, aes(logFC, -log10(PValue), colour = sig)) +
+        geom_point(size = 0.6, alpha = 0.6) +
+        scale_colour_manual(values = c("grey70", cbbPalette[2]),
+                            labels = c("ns", "FDR<0.05 & |lfc|>1")) +
+        geom_vline(xintercept = c(-1, 1), linetype = "dashed", linewidth = 0.3) +
+        theme_ng() +
+        ggtitle(paste(al, fs, gr))
+    }
+  }
+  if (length(vol_plots) > 0) print(wrap_plots(vol_plots, ncol = 3))
+}
+```
+
+```{r oe-ma, fig.width=10, fig.height=10}
+for (gr in granularities) {
+  ma_plots = list()
+  for (al in aligners) {
+    for (fs in feature_sets) {
+      key = paste(al, fs, gr, sep = "_")
+      fit = oe_results[[key]]
+      if (is.null(fit)) next
+      tt = fit$tt
+      tt$sig = tt$FDR < 0.05
+      ma_plots[[key]] = ggplot(tt, aes(logCPM, logFC, colour = sig)) +
+        geom_point(size = 0.6, alpha = 0.6) +
+        scale_colour_manual(values = c("grey70", cbbPalette[2]),
+                            labels = c("ns", "FDR<0.05")) +
+        geom_hline(yintercept = 0, linewidth = 0.3) +
+        theme_ng() +
+        ggtitle(paste(al, fs, gr))
+    }
+  }
+  if (length(ma_plots) > 0) print(wrap_plots(ma_plots, ncol = 3))
+}
+```
+
+```{r oe-top-hits}
+for (al in aligners) {
+  for (fs in feature_sets) {
+    for (gr in granularities) {
+      key = paste(al, fs, gr, sep = "_")
+      fit = oe_results[[key]]
+      if (is.null(fit)) next
+      top = fit$tt[fit$tt$FDR < 0.05, , drop = FALSE]
+      if (nrow(top) == 0) next
+      cat("\nOE top hits -", al, fs, gr, "\n")
+      print(knitr::kable(head(top[, c("logFC", "logCPM", "F", "PValue", "FDR")], 20),
+                         digits = 4))
+    }
+  }
+}
+```
+
+```{r oe-heatmap, fig.width=ng_fig_size(2, 1, panel_mm = 60)$w, fig.height=ng_fig_size(2, 1, panel_mm = 60)$h}
+for (al in aligners) {
+  for (fs in feature_sets) {
+    for (gr in granularities) {
+      key = paste(al, fs, gr, sep = "_")
+      fit = oe_results[[key]]
+      if (is.null(fit)) next
+      tt = fit$tt
+      sig_feats = rownames(tt)[tt$FDR < 0.05 & abs(tt$logFC) > 1]
+      if (length(sig_feats) < 2) next
+      sig_feats = head(sig_feats, 40)
+      lcpm = cpm(fit$y, log = TRUE)[sig_feats, , drop = FALSE]
+      ann = data.frame(condition = fit$y$samples$group,
+                       row.names = colnames(lcpm))
+      pheatmap(lcpm,
+               annotation_col = ann,
+               scale = "row",
+               show_rownames = nrow(lcpm) <= 40,
+               main = paste("OE", al, fs, gr),
+               fontsize = 7,
+               silent = TRUE)
+    }
+  }
+}
+```
+
+```{r oe-counts, fig.width=10, fig.height=10}
+plot_cpm = function(y, feature, title) {
+  if (!feature %in% rownames(y$counts)) return(invisible(NULL))
+  lcpm = cpm(y, log = TRUE)
+  df = data.frame(
+    lcpm = lcpm[feature, ],
+    condition = y$samples$group,
+    replicate = seq_len(ncol(lcpm))
+  )
+  ggplot(df, aes(condition, lcpm, colour = condition)) +
+    geom_boxplot(outlier.shape = NA, width = 0.4) +
+    geom_jitter(aes(shape = factor(replicate)), width = 0.1, size = 2) +
+    scale_colour_manual(values = cbbPalette) +
+    theme_ng() +
+    ylab("log2 CPM") +
+    ggtitle(feature)
+}
+
+for (al in aligners) {
+  for (fs in feature_sets) {
+    for (gr in granularities) {
+      key = paste(al, fs, gr, sep = "_")
+      fit = oe_results[[key]]
+      if (is.null(fit)) next
+      top6 = head(rownames(fit$tt), 6)
+      plots = Filter(Negate(is.null),
+                     lapply(top6, function(f) plot_cpm(fit$y, f, f)))
+      if (length(plots) > 0) {
+        cat("\nOE top 6 normalized counts -", al, fs, gr, "\n")
+        print(wrap_plots(plots, ncol = 3))
+      }
+    }
+  }
+}
+```
+
+## Knockdown experiment
+
+TDP-43 shRNA (tdp43_kd) vs non-targeting shRNA control (nt_kd_ctrl).
+
+```{r kd-edger}
+kd_results = list()
+for (al in aligners) {
+  for (fs in feature_sets) {
+    for (gr in granularities) {
+      key = paste(al, fs, gr, sep = "_")
+      mat = counts_cache[[key]]
+      if (is.null(mat)) next
+      res = run_edger(mat, kd_meta, treat_level = "tdp43_kd", ref_level = "nt_kd_ctrl")
+      if (!is.null(res)) kd_results[[key]] = res
+    }
+  }
+}
+save_rds(kd_results, "gse230647_kd_edger")
+cat("KD edgeR fits completed:", length(kd_results), "\n")
+```
+
+```{r kd-pca, fig.width=10, fig.height=10}
+pca_plots = list()
+for (al in aligners) {
+  for (fs in feature_sets) {
+    key = paste(al, fs, "gene_id", sep = "_")
+    fit = kd_results[[key]]
+    if (is.null(fit)) next
+    lcpm = cpm(fit$y, log = TRUE)
+    pca = prcomp(t(lcpm), scale. = FALSE)
+    pct = round(100 * pca$sdev^2 / sum(pca$sdev^2))
+    df = data.frame(
+      PC1 = pca$x[, 1],
+      PC2 = pca$x[, 2],
+      condition = fit$y$samples$group,
+      sample = rownames(pca$x)
+    )
+    pca_plots[[key]] = ggplot(df, aes(PC1, PC2, colour = condition, label = sample)) +
+      geom_point(size = 2) +
+      geom_text_repel(size = 2.5, show.legend = FALSE) +
+      xlab(paste0("PC1: ", pct[1], "%")) +
+      ylab(paste0("PC2: ", pct[2], "%")) +
+      scale_colour_manual(values = cbbPalette) +
+      theme_ng() +
+      ggtitle(paste(al, fs))
+  }
+}
+if (length(pca_plots) > 0) wrap_plots(pca_plots, ncol = 3)
+save_rds(pca_plots, "gse230647_kd_pca_plots")
+```
+
+```{r kd-volcano, fig.width=10, fig.height=10}
+for (gr in granularities) {
+  vol_plots = list()
+  for (al in aligners) {
+    for (fs in feature_sets) {
+      key = paste(al, fs, gr, sep = "_")
+      fit = kd_results[[key]]
+      if (is.null(fit)) next
+      tt = fit$tt
+      tt$sig = tt$FDR < 0.05 & abs(tt$logFC) > 1
+      vol_plots[[key]] = ggplot(tt, aes(logFC, -log10(PValue), colour = sig)) +
+        geom_point(size = 0.6, alpha = 0.6) +
+        scale_colour_manual(values = c("grey70", cbbPalette[2]),
+                            labels = c("ns", "FDR<0.05 & |lfc|>1")) +
+        geom_vline(xintercept = c(-1, 1), linetype = "dashed", linewidth = 0.3) +
+        theme_ng() +
+        ggtitle(paste(al, fs, gr))
+    }
+  }
+  if (length(vol_plots) > 0) print(wrap_plots(vol_plots, ncol = 3))
+}
+```
+
+```{r kd-ma, fig.width=10, fig.height=10}
+for (gr in granularities) {
+  ma_plots = list()
+  for (al in aligners) {
+    for (fs in feature_sets) {
+      key = paste(al, fs, gr, sep = "_")
+      fit = kd_results[[key]]
+      if (is.null(fit)) next
+      tt = fit$tt
+      tt$sig = tt$FDR < 0.05
+      ma_plots[[key]] = ggplot(tt, aes(logCPM, logFC, colour = sig)) +
+        geom_point(size = 0.6, alpha = 0.6) +
+        scale_colour_manual(values = c("grey70", cbbPalette[2]),
+                            labels = c("ns", "FDR<0.05")) +
+        geom_hline(yintercept = 0, linewidth = 0.3) +
+        theme_ng() +
+        ggtitle(paste(al, fs, gr))
+    }
+  }
+  if (length(ma_plots) > 0) print(wrap_plots(ma_plots, ncol = 3))
+}
+```
+
+```{r kd-top-hits}
+for (al in aligners) {
+  for (fs in feature_sets) {
+    for (gr in granularities) {
+      key = paste(al, fs, gr, sep = "_")
+      fit = kd_results[[key]]
+      if (is.null(fit)) next
+      top = fit$tt[fit$tt$FDR < 0.05, , drop = FALSE]
+      if (nrow(top) == 0) next
+      cat("\nKD top hits -", al, fs, gr, "\n")
+      print(knitr::kable(head(top[, c("logFC", "logCPM", "F", "PValue", "FDR")], 20),
+                         digits = 4))
+    }
+  }
+}
+```
+
+```{r kd-heatmap, fig.width=10, fig.height=10}
+for (al in aligners) {
+  for (fs in feature_sets) {
+    for (gr in granularities) {
+      key = paste(al, fs, gr, sep = "_")
+      fit = kd_results[[key]]
+      if (is.null(fit)) next
+      tt = fit$tt
+      sig_feats = rownames(tt)[tt$FDR < 0.05 & abs(tt$logFC) > 1]
+      if (length(sig_feats) < 2) next
+      sig_feats = head(sig_feats, 40)
+      lcpm = cpm(fit$y, log = TRUE)[sig_feats, , drop = FALSE]
+      ann = data.frame(condition = fit$y$samples$group,
+                       row.names = colnames(lcpm))
+      pheatmap(lcpm,
+               annotation_col = ann,
+               scale = "row",
+               show_rownames = nrow(lcpm) <= 40,
+               main = paste("KD", al, fs, gr),
+               fontsize = 7,
+               silent = TRUE)
+    }
+  }
+}
+```
+
+```{r kd-counts, fig.width=10, fig.height=10}
+for (al in aligners) {
+  for (fs in feature_sets) {
+    for (gr in granularities) {
+      key = paste(al, fs, gr, sep = "_")
+      fit = kd_results[[key]]
+      if (is.null(fit)) next
+      top6 = head(rownames(fit$tt), 6)
+      plots = Filter(Negate(is.null),
+                     lapply(top6, function(f) plot_cpm(fit$y, f, f)))
+      if (length(plots) > 0) {
+        cat("\nKD top 6 normalized counts -", al, fs, gr, "\n")
+        print(wrap_plots(plots, ncol = 3))
+      }
+    }
+  }
+}
+```
+
+## Session info
+
+```{r session-info}
+sessionInfo()
+```

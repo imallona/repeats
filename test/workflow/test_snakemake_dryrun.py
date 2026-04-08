@@ -43,6 +43,7 @@ def run_dryrun(snakefile, configfile, workdir=WORKFLOW_DIR):
         '-s', snakefile,
         '--configfile', configfile,
         '--dry-run',
+        '--cores', '1',
         '--quiet',
     ]
     return subprocess.run(cmd, capture_output=True, text=True, cwd=workdir)
