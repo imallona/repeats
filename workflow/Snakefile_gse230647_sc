@@ -60,11 +60,13 @@ def srrs_for(sample_id):
 
 
 def srr_r1(sample_id, srr):
-    return op.join(config["base"], "data", "raw", sample_id, f"{srr}_1.fastq.gz")
+    # read position 2: R1 (cell barcode + UMI), produced by fasterq-dump --include-technical
+    return op.join(config["base"], "data", "raw", sample_id, f"{srr}_2.fastq.gz")
 
 
 def srr_r2(sample_id, srr):
-    return op.join(config["base"], "data", "raw", sample_id, f"{srr}_2.fastq.gz")
+    # read position 3: R2 (cDNA), produced by fasterq-dump --include-technical
+    return op.join(config["base"], "data", "raw", sample_id, f"{srr}_3.fastq.gz")
 
 
 def sample_r1_files(sample_id):
@@ -128,8 +130,8 @@ rule download_sra_gse230647_sc:
     conda:
         op.join(workflow.basedir, "envs", "sratools.yaml")
     output:
-        r1 = op.join(config["base"], "data", "raw", "{sample_id}", "{srr}_1.fastq.gz"),
-        r2 = op.join(config["base"], "data", "raw", "{sample_id}", "{srr}_2.fastq.gz"),
+        r1 = op.join(config["base"], "data", "raw", "{sample_id}", "{srr}_2.fastq.gz"),
+        r2 = op.join(config["base"], "data", "raw", "{sample_id}", "{srr}_3.fastq.gz"),
     params:
         outdir = op.join(config["base"], "data", "raw", "{sample_id}"),
     log:
@@ -138,13 +140,16 @@ rule download_sra_gse230647_sc:
     shell:
         """
         mkdir -p {params.outdir}
+        rm -f {params.outdir}/{wildcards.srr}_*.fastq {params.outdir}/{wildcards.srr}_*.fastq.gz
         fasterq-dump {wildcards.srr} \
             --split-files \
+            --include-technical \
             --threads {threads} \
             --outdir {params.outdir} \
             &> {log}
-        gzip {params.outdir}/{wildcards.srr}_1.fastq
+        rm -f {params.outdir}/{wildcards.srr}_1.fastq
         gzip {params.outdir}/{wildcards.srr}_2.fastq
+        gzip {params.outdir}/{wildcards.srr}_3.fastq
         """
 
 
