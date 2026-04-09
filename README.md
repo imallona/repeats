@@ -114,9 +114,9 @@ expression report.
 #### GSE230647 single-cell extension
 
 A companion single-cell analysis covers the TDP-43-HA overexpression scRNA-seq experiment
-from the same GEO series (GSE230647). Only the 3 DOX-on 10x Chromium 3' v3 samples are
-included (GSM7230453-7230455; AvgSpotLen=126, two sequencing lanes each). The DOX-off
-control and the unrelated unlabeled samples are excluded.
+from the same GEO series (GSE230647). Three DOX-on 10x Chromium 3' v3 samples are included
+(two sequencing lanes each): GSM7230453 (2-week culture), GSM7230454 and GSM7230455
+(4-week culture, replicates A and B). The DOX-off control and unlabeled samples are excluded.
 
 | Item | Value |
 |---|---|

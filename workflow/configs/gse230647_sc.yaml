@@ -34,24 +34,28 @@ dataset:
   metadata_url: "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE230647&format=file&file=GSE230647%5Fsingle%5Fcell%5Fmetadata%5Ftdp43ha%2Etxt%2Egz"
   sample_metadata: "configs/gse230647_sc_sample_metadata.tsv"
   # TDP-43-HA DOX-on samples only.
-  # Paper describes 2-week and 4-week induction timepoints; exact timepoint
-  # per GSM should be confirmed from the GEO series page before analysis.
+  # GSM7230453: 2-week induction. GSM7230454/GSM7230455: 4-week induction (replicates A and B).
   samples:
     GSM7230455:
       gsm: GSM7230455
       condition: tdp43_oe
+      culture_weeks: 4
+      replicate: B
       srrs:
         - SRR24314031
         - SRR24314032
     GSM7230454:
       gsm: GSM7230454
       condition: tdp43_oe
+      culture_weeks: 4
+      replicate: A
       srrs:
         - SRR24314033
         - SRR24314034
     GSM7230453:
       gsm: GSM7230453
       condition: tdp43_oe
+      culture_weeks: 2
       srrs:
         - SRR24314035
         - SRR24314036
