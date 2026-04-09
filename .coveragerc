@@ -1,10 +1,7 @@
 [run]
 source = workflow/scripts
 
-# Scripts requiring subprocess calls to samtools/BAM files or real aligner
-# output matrices cannot be meaningfully unit-tested without bioinformatics
-# infrastructure. Omit them so the coverage threshold applies only to
-# logic that can be exercised with synthetic data.
+# scripts that require real aligner output or BAM files; not unit-testable
 omit =
     workflow/scripts/count_pseudo_genome.py
     workflow/scripts/count_pseudo_genome_chromium.py

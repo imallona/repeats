@@ -1,0 +1,386 @@
+---
+title: "GSE230647 single-cell repeat profiling: cluster 12 vs other cells"
+author: "Izaskun Mallona"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    code_folding: hide
+params:
+  starsolo_base: "."
+  kallisto_base: "."
+  indices_base: "."
+  metadata: "."
+  sample_metadata: "."
+  report_outdir: "."
+  feature_sets: "genes genic_repeats intergenic_repeats"
+  starsolo_modes: "unique"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(Matrix)
+library(edgeR)
+library(ggplot2)
+library(ggrepel)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(pheatmap)
+
+starsolo_base = params$starsolo_base
+kallisto_base = params$kallisto_base
+indices_base = params$indices_base
+report_outdir = params$report_outdir
+
+feature_sets = strsplit(params$feature_sets, " ")[[1]]
+starsolo_modes = strsplit(params$starsolo_modes, " ")[[1]]
+repeat_fsets = feature_sets[feature_sets != "genes"]
+
+save_rds = function(obj, name) {
+  path = file.path(report_outdir, paste0(name, ".rds"))
+  saveRDS(obj, path)
+  invisible(path)
+}
+```
+
+# Sample metadata
+
+```{r sample-meta}
+sample_meta = read_tsv(params$sample_metadata, show_col_types = FALSE)
+sample_ids = sample_meta$sample_id
+knitr::kable(sample_meta)
+```
+
+# Cell-type annotations from GEO
+
+The GEO supplementary file maps each cell barcode to its cluster assignment.
+Cluster 12 contains cells that express TDP-43-HA.
+
+```{r load-geo-meta}
+geo_meta = read_tsv(params$metadata, show_col_types = FALSE)
+save_rds(geo_meta, "geo_meta_raw")
+
+cat("columns:", paste(colnames(geo_meta), collapse = ", "), "\n")
+cat("rows:", nrow(geo_meta), "\n")
+```
+
+```{r inspect-geo-meta}
+# print first rows to confirm column names before hardcoding
+head(geo_meta)
+```
+
+```{r cluster-column}
+# identify the cluster column (adjust if the GEO file uses a different name)
+cluster_col = grep("cluster", colnames(geo_meta), ignore.case = TRUE, value = TRUE)[1]
+barcode_col = grep("barcode|cell|cb", colnames(geo_meta), ignore.case = TRUE, value = TRUE)[1]
+cat("using barcode column:", barcode_col, "\n")
+cat("using cluster column:", cluster_col, "\n")
+
+geo_meta$cluster = geo_meta[[cluster_col]]
+geo_meta$barcode_raw = geo_meta[[barcode_col]]
+
+table(geo_meta$cluster)
+```
+
+```{r cluster12-flag}
+geo_meta$group = ifelse(geo_meta$cluster == 12, "cluster12", "other")
+cat("cluster 12 cells:", sum(geo_meta$group == "cluster12"), "\n")
+cat("other cells:", sum(geo_meta$group == "other"), "\n")
+save_rds(geo_meta, "geo_meta_annotated")
+```
+
+# Load STARsolo matrices and create pseudo-bulk counts
+
+For each sample and each repeat feature set, load the raw CB x feature
+matrix from STARsolo, intersect barcodes with GEO metadata, and sum
+counts within cluster 12 vs all other annotated cells.
+
+```{r load-starsolo}
+# returns a named list: cluster12 and other, each a numeric vector of feature sums
+load_and_split = function(raw_dir, geo_meta) {
+  barcodes = readLines(file.path(raw_dir, "barcodes.tsv"))
+  features = read_tsv(file.path(raw_dir, "features.tsv"),
+                      col_names = c("id", "name", "type"),
+                      show_col_types = FALSE)
+  mat = readMM(file.path(raw_dir, "matrix.mtx"))
+  # STARsolo: rows = features, cols = barcodes
+  rownames(mat) = features$id
+  colnames(mat) = barcodes
+
+  # strip any suffix like -1 from STARsolo barcodes for matching
+  cb_stripped = sub("-[0-9]+$", "", barcodes)
+  geo_stripped = sub("-[0-9]+$", "", geo_meta$barcode_raw)
+
+  matched = cb_stripped %in% geo_stripped
+  cat("  barcodes in matrix:", length(barcodes),
+      "| matched to GEO metadata:", sum(matched), "\n")
+
+  if (sum(matched) == 0) {
+    warning("no barcodes matched; check barcode format in GEO metadata")
+    return(NULL)
+  }
+
+  idx12 = matched & (geo_meta$group[match(cb_stripped, geo_stripped)] == "cluster12")
+  idx_other = matched & (geo_meta$group[match(cb_stripped, geo_stripped)] == "other")
+  idx12[is.na(idx12)] = FALSE
+  idx_other[is.na(idx_other)] = FALSE
+
+  list(
+    cluster12 = Matrix::rowSums(mat[, idx12, drop = FALSE]),
+    other     = Matrix::rowSums(mat[, idx_other, drop = FALSE]),
+    n12       = sum(idx12),
+    n_other   = sum(idx_other)
+  )
+}
+
+# collect pseudo-bulk counts across samples x feature_sets x starsolo_modes
+pb_list = list()
+
+for (mode in starsolo_modes) {
+  for (fs in feature_sets) {
+    key = paste(mode, fs, sep = "_")
+    counts12 = list()
+    counts_other = list()
+
+    for (sid in sample_ids) {
+      raw_dir = file.path(starsolo_base, sid,
+                          paste0(mode, "_", fs),
+                          "Solo.out", "Gene", "raw")
+      cat("loading", sid, key, "\n")
+      res = load_and_split(raw_dir, geo_meta)
+      if (!is.null(res)) {
+        counts12[[sid]]    = res$cluster12
+        counts_other[[sid]] = res$other
+        cat("  cluster12:", res$n12, "cells | other:", res$n_other, "cells\n")
+      }
+    }
+
+    if (length(counts12) > 0) {
+      features_union = Reduce(union, lapply(counts12, names))
+      mat12 = sapply(counts12, function(x) x[features_union])
+      mat_other = sapply(counts_other, function(x) x[features_union])
+      rownames(mat12) = features_union
+      rownames(mat_other) = features_union
+      mat12[is.na(mat12)] = 0
+      mat_other[is.na(mat_other)] = 0
+      pb_list[[key]] = list(cluster12 = mat12, other = mat_other)
+    }
+  }
+}
+
+save_rds(pb_list, "pseudobulk_counts")
+```
+
+# edgeR: cluster 12 vs other cells
+
+Pseudo-bulk: each sample contributes one column per group (cluster12 / other).
+A paired design (sample as blocking factor) accounts for between-sample variation.
+
+```{r edger-function}
+run_edger = function(mat12, mat_other, label) {
+  stopifnot(ncol(mat12) == ncol(mat_other))
+  n_samples = ncol(mat12)
+  counts = cbind(mat12, mat_other)
+  group = factor(c(rep("cluster12", n_samples), rep("other", n_samples)))
+  sample_block = factor(rep(seq_len(n_samples), 2))
+
+  design = model.matrix(~ sample_block + group)
+
+  dge = DGEList(counts = counts, group = group)
+  dge = dge[filterByExpr(dge, design), ]
+  dge = calcNormFactors(dge)
+  dge = estimateDisp(dge, design)
+
+  fit = glmQLFit(dge, design)
+  res = glmQLFTest(fit, coef = ncol(design))
+  tt = topTags(res, n = Inf)$table
+  tt$feature = rownames(tt)
+  tt$feature_set = label
+  tt
+}
+```
+
+```{r run-edger}
+edger_results = list()
+
+for (key in names(pb_list)) {
+  cat("edgeR:", key, "\n")
+  pb = pb_list[[key]]
+  tt = tryCatch(
+    run_edger(pb$cluster12, pb$other, label = key),
+    error = function(e) { message("edgeR failed for ", key, ": ", e$message); NULL }
+  )
+  if (!is.null(tt)) edger_results[[key]] = tt
+}
+
+save_rds(edger_results, "edger_results")
+```
+
+# Results
+
+```{r sig-summary}
+for (key in names(edger_results)) {
+  tt = edger_results[[key]]
+  cat(key, ": FDR < 0.05 features:", sum(tt$FDR < 0.05, na.rm = TRUE),
+      "/ total tested:", nrow(tt), "\n")
+}
+```
+
+```{r volcano-plots, fig.width=7, fig.height=5}
+for (key in names(edger_results)) {
+  tt = edger_results[[key]]
+  tt$sig = tt$FDR < 0.05
+  p = ggplot(tt, aes(x = logFC, y = -log10(FDR), colour = sig)) +
+    geom_point(size = 0.8, alpha = 0.6) +
+    geom_text_repel(
+      data = filter(tt, FDR < 0.01) %>% arrange(FDR) %>% head(20),
+      aes(label = feature), size = 2.5, max.overlaps = 15
+    ) +
+    scale_colour_manual(values = c("FALSE" = "grey60", "TRUE" = "firebrick")) +
+    labs(title = key,
+         x = "log2 fold change (cluster 12 / other)",
+         y = "-log10 FDR",
+         colour = "FDR < 0.05") +
+    theme_bw()
+  print(p)
+}
+```
+
+```{r top-tables}
+for (key in names(edger_results)) {
+  tt = edger_results[[key]]
+  cat("\n###", key, "\n")
+  top = tt %>% filter(FDR < 0.05) %>% arrange(FDR) %>% head(30)
+  if (nrow(top) > 0) print(knitr::kable(top, digits = 4))
+}
+```
+
+```{r heatmap-top, fig.width=8, fig.height=10}
+# heatmap of top 40 FDR-significant features for the unique_genic_repeats result
+key_heat = paste0(starsolo_modes[1], "_genic_repeats")
+if (key_heat %in% names(edger_results) && key_heat %in% names(pb_list)) {
+  tt = edger_results[[key_heat]]
+  top_feats = tt %>% filter(FDR < 0.05) %>% arrange(FDR) %>% head(40) %>% pull(feature)
+
+  if (length(top_feats) > 1) {
+    pb = pb_list[[key_heat]]
+    mat = cbind(pb$cluster12, pb$other)
+    colnames(mat) = c(paste0(sample_ids, "_c12"), paste0(sample_ids, "_other"))
+    mat_sub = mat[top_feats, , drop = FALSE]
+
+    # CPM for display
+    lib_sizes = colSums(mat)
+    cpm_mat = sweep(mat_sub, 2, lib_sizes / 1e6, "/")
+    cpm_log = log1p(cpm_mat)
+
+    ann_col = data.frame(
+      group = factor(c(rep("cluster12", length(sample_ids)),
+                       rep("other", length(sample_ids)))),
+      row.names = colnames(cpm_log)
+    )
+
+    pheatmap(cpm_log,
+             annotation_col = ann_col,
+             cluster_rows = TRUE,
+             cluster_cols = FALSE,
+             show_rownames = TRUE,
+             fontsize_row = 7,
+             main = paste("top genic repeats:", key_heat))
+  }
+}
+```
+
+# Per-cluster repeat expression dotplot
+
+Extra analysis: for the top genic repeats (by FDR from cluster 12 vs other),
+show expression across all 17 clusters as a dotplot. Each dot: mean log-CPM
+and fraction of cells with at least one count.
+
+```{r per-cluster-pseudobulk}
+key_dot = paste0(starsolo_modes[1], "_genic_repeats")
+
+dotplot_df = NULL
+
+if (key_dot %in% names(pb_list) && key_dot %in% names(edger_results)) {
+  tt = edger_results[[key_dot]]
+  top_feats = tt %>% filter(FDR < 0.05) %>% arrange(FDR) %>% head(25) %>% pull(feature)
+
+  # build per-cluster pseudo-bulk across all samples
+  cluster_counts = list()
+  cluster_ncells = list()
+
+  for (sid in sample_ids) {
+    raw_dir = file.path(starsolo_base, sid,
+                        paste0(starsolo_modes[1], "_genic_repeats"),
+                        "Solo.out", "Gene", "raw")
+    if (!dir.exists(raw_dir)) next
+
+    barcodes = readLines(file.path(raw_dir, "barcodes.tsv"))
+    features = read_tsv(file.path(raw_dir, "features.tsv"),
+                        col_names = c("id", "name", "type"),
+                        show_col_types = FALSE)
+    mat = readMM(file.path(raw_dir, "matrix.mtx"))
+    rownames(mat) = features$id
+    colnames(mat) = sub("-[0-9]+$", "", barcodes)
+
+    geo_sub = geo_meta %>%
+      mutate(cb = sub("-[0-9]+$", "", barcode_raw)) %>%
+      filter(cb %in% colnames(mat))
+
+    for (cl in unique(geo_sub$cluster)) {
+      cbs = geo_sub$cb[geo_sub$cluster == cl]
+      cbs = intersect(cbs, colnames(mat))
+      if (length(cbs) == 0) next
+      key_cl = as.character(cl)
+      m_sub = mat[top_feats, cbs, drop = FALSE]
+      prev_counts = if (is.null(cluster_counts[[key_cl]])) 0 else cluster_counts[[key_cl]]
+      cluster_counts[[key_cl]] = prev_counts + Matrix::rowSums(m_sub)
+      prev_ncells = if (is.null(cluster_ncells[[key_cl]])) 0 else cluster_ncells[[key_cl]]
+      cluster_ncells[[key_cl]] = prev_ncells + length(cbs)
+    }
+  }
+
+  # build dotplot data frame
+  rows = list()
+  for (cl in names(cluster_counts)) {
+    tot = cluster_ncells[[cl]]
+    cnts = cluster_counts[[cl]]
+    lib = sum(unlist(lapply(cluster_counts, sum)))
+    cpm = cnts / (lib / 1e6)
+    rows[[cl]] = data.frame(
+      cluster = cl,
+      feature = names(cpm),
+      mean_log_cpm = log1p(cpm),
+      stringsAsFactors = FALSE
+    )
+  }
+  dotplot_df = bind_rows(rows)
+  dotplot_df$cluster = factor(dotplot_df$cluster,
+                              levels = sort(unique(as.integer(dotplot_df$cluster))))
+  save_rds(dotplot_df, "dotplot_df")
+}
+```
+
+```{r dotplot, fig.width=10, fig.height=7}
+if (!is.null(dotplot_df)) {
+  ggplot(dotplot_df, aes(x = cluster, y = feature, colour = mean_log_cpm,
+                         size = mean_log_cpm)) +
+    geom_point() +
+    scale_colour_viridis_c(option = "plasma") +
+    scale_size_continuous(range = c(0.5, 5)) +
+    labs(title = "Genic repeat expression per cluster",
+         subtitle = "top FDR-significant features, cluster 12 vs other",
+         x = "cluster", y = NULL,
+         colour = "mean log-CPM", size = "mean log-CPM") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 0),
+          axis.text.y = element_text(size = 8))
+}
+```
+
+```{r session}
+sessionInfo()
+```

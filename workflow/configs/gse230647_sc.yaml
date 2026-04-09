@@ -1,0 +1,83 @@
+base: "../results/gse230647_sc"
+indices_base: "../results/shared"
+
+mode: real_data
+
+reference:
+  assembly: hg38
+  ensembl_release: "112"
+  chromosomes: []
+  filter_genic: true
+  rmsk_source: ucsc_flatfile
+  genome_fasta: "../results/shared/refs/GRCh38.dna.primary_assembly.fa.gz"
+  repeats_gtf: "../results/shared/refs/hg38_rmsk_TE.gtf.gz"
+  genes_gtf: "../results/shared/refs/GRCh38.112.genes.gtf.gz"
+
+real_data:
+  technology: chromium
+  chemistry: 10xv3
+  cb_length: 16
+  umi_length: 12
+
+# GSE230647 (SRP434658) 10x Chromium 3' v3 single-cell RNA-seq.
+# Identified by AvgSpotLen=126 (R1=28bp CB+UMI, R2=98bp cDNA) and
+# LibrarySource="TRANSCRIPTOMIC SINGLE CELL" in the SRA run table.
+# Only the 3 TDP-43-HA DOX-on samples are included (no DOX-off control).
+# Each sample has two sequencing lanes (two SRRs).
+# Paper: TDP-43-HA was induced for 2 or 4 weeks in iNets (iPSC-derived neural
+# networks, ~3 months). Cells were clustered into 17 clusters; cluster 12
+# marks TDP-43-HA-expressing cells. 6,000-10,000 cells per sample after QC.
+# Cell-type annotations are from the GEO supplementary file at dataset.metadata_url.
+dataset:
+  sra_study: SRP434658
+  geo_accession: GSE230647
+  metadata_url: "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE230647&format=file&file=GSE230647%5Fsingle%5Fcell%5Fmetadata%5Ftdp43ha%2Etxt%2Egz"
+  sample_metadata: "configs/gse230647_sc_sample_metadata.tsv"
+  # TDP-43-HA DOX-on samples only.
+  # Paper describes 2-week and 4-week induction timepoints; exact timepoint
+  # per GSM should be confirmed from the GEO series page before analysis.
+  samples:
+    GSM7230455:
+      gsm: GSM7230455
+      condition: tdp43_oe
+      srrs:
+        - SRR24314031
+        - SRR24314032
+    GSM7230454:
+      gsm: GSM7230454
+      condition: tdp43_oe
+      srrs:
+        - SRR24314033
+        - SRR24314034
+    GSM7230453:
+      gsm: GSM7230453
+      condition: tdp43_oe
+      srrs:
+        - SRR24314035
+        - SRR24314036
+
+feature_sets:
+  - genes
+  - genic_repeats
+  - intergenic_repeats
+
+aligners:
+  - starsolo
+  - kallisto
+
+aligner_params:
+  starsolo:
+    multimapper_modes:
+      - unique
+      - multi
+    extra_args: ""
+  kallisto:
+    extra_args: ""
+
+granularities:
+  - gene_id
+  - family_id
+
+resources:
+  max_threads: 10
+  max_mem_mb: 60000

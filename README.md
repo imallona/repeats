@@ -111,6 +111,46 @@ Both pipelines download paired-end FASTQs from SRA, align with STAR, kallisto, a
 quantify repeats at gene_id and family_id granularities, and render an edgeR differential
 expression report.
 
+#### GSE230647 single-cell extension
+
+A companion single-cell analysis covers the TDP-43-HA overexpression scRNA-seq experiment
+from the same GEO series (GSE230647). Only the 3 DOX-on 10x Chromium 3' v3 samples are
+included (GSM7230453-7230455; AvgSpotLen=126, two sequencing lanes each). The DOX-off
+control and the unrelated unlabeled samples are excluded.
+
+| Item | Value |
+|---|---|
+| Snakefile | `Snakefile_gse230647_sc` |
+| Config | `configs/gse230647_sc.yaml` |
+| Sample metadata | `configs/gse230647_sc_sample_metadata.tsv` |
+| Report script | `scripts/gse230647_sc_report.Rmd` |
+| Output | `../results/gse230647_sc/gse230647_sc_report.html` |
+
+The pipeline downloads each SRR pair, runs STARsolo (CB_UMI_Simple, 10x v3 geometry)
+and kallisto|bustools against genic and intergenic repeat annotations, and fetches
+the GEO supplementary file `GSE230647_single_cell_metadata_tdp43ha.txt.gz` which
+maps each cell barcode to its cluster assignment (17 clusters; cluster 12 marks
+TDP-43-HA-expressing cells).
+
+The report builds pseudo-bulk count matrices by aggregating STARsolo raw counts
+for cluster-12 cells vs all other annotated cells, then runs edgeR (quasi-likelihood,
+sample as blocking factor) to identify differentially expressed repeat elements.
+A per-cluster dotplot of the top significant features is also included as a
+standalone section.
+
+To run from the `workflow/` directory:
+
+```
+source ~/miniconda3/bin/activate
+conda activate snakemake
+snakemake -s Snakefile_gse230647_sc \
+    --configfile configs/gse230647_sc.yaml \
+    --use-conda --cores 10
+```
+
+Indices are shared with the bulk GSE230647 pipeline via `indices_base: ../results/shared`,
+so building them once is sufficient for both analyses.
+
 Key parameters:
 
 - `base`: run-specific output directory.
