@@ -296,11 +296,11 @@ def kallisto_counts():
 
 
 # Set render_report inputs now that the output functions are defined
-if _pipeline_type == 'bulk':
+if _pipeline_type == 'bulk' and config.get('report'):
     _render_report_inputs = bulk_count_outputs()
     include: "modules/render_report.snmk"
 
-if _pipeline_type == 'sc':
+if _pipeline_type == 'sc' and config.get('report'):
     _render_report_inputs = (
         starsolo_bams() + kallisto_counts()
         + ([_metadata_txt] if _metadata_url else [])
@@ -323,7 +323,8 @@ def _all_inputs():
         inputs += [_raw_r1(sid) for sid in _bulk_sample_ids]
         inputs += [_raw_r2(sid) for sid in _bulk_sample_ids]
         inputs += bulk_count_outputs()
-        inputs.append(op.join(config['base'], config['report']['output']))
+        if config.get('report'):
+            inputs.append(op.join(config['base'], config['report']['output']))
 
     elif _pipeline_type == 'sc':
         for sid in _sc_sample_ids:
@@ -334,7 +335,8 @@ def _all_inputs():
         inputs += kallisto_counts()
         if _metadata_url:
             inputs.append(_metadata_txt)
-        inputs.append(op.join(config['base'], config['report']['output']))
+        if config.get('report'):
+            inputs.append(op.join(config['base'], config['report']['output']))
 
     return inputs
 
