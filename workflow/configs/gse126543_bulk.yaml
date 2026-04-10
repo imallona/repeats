@@ -14,7 +14,7 @@ reference:
   genes_gtf: "../results/shared/refs/GRCh38.112.genes.gtf.gz"
 
 real_data:
-  library_layout: paired
+  technology: paired_end
 
 # GSE126543 (SRP185789). NeuN-positive neuronal nuclei from human frontal
 # cortex, FTD/ALS post-mortem tissue. Samples sorted by TDP-43 nuclear status

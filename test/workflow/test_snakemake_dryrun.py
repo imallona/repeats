@@ -78,6 +78,11 @@ def test_test_snakefile_dryrun_negative_control():
     )
 
 
+TEST_BULK_SINGLE_END_CFG = os.path.join(REPO_ROOT, 'test', 'workflow', 'configs',
+                                        'test_bulk_single_end.yaml')
+TEST_BULK_PAIRED_END_CFG = os.path.join(REPO_ROOT, 'test', 'workflow', 'configs',
+                                        'test_bulk_paired_end.yaml')
+
 BULK_GSE230647_CFG = os.path.join(WORKFLOW_DIR, 'configs', 'gse230647_bulk.yaml')
 BULK_GSE126543_CFG = os.path.join(WORKFLOW_DIR, 'configs', 'gse126543_bulk.yaml')
 SC_GSE230647_CFG = os.path.join(WORKFLOW_DIR, 'configs', 'gse230647_sc.yaml')
@@ -108,6 +113,24 @@ def test_main_snakefile_dryrun_sc_gse230647():
     assert r.returncode == 0, (
         f'Dry-run failed for gse230647_sc.yaml:\n{r.stderr}'
     )
+@pytest.mark.workflow
+@SKIP_IF_NO_SNAKEMAKE
+def test_main_snakefile_dryrun_bulk_single_end():
+    r = run_dryrun(os.path.join(WORKFLOW_DIR, 'Snakefile'), TEST_BULK_SINGLE_END_CFG)
+    assert r.returncode == 0, (
+        f'Dry-run failed for test_bulk_single_end.yaml:\n{r.stderr}'
+    )
+
+
+@pytest.mark.workflow
+@SKIP_IF_NO_SNAKEMAKE
+def test_main_snakefile_dryrun_bulk_paired_end():
+    r = run_dryrun(os.path.join(WORKFLOW_DIR, 'Snakefile'), TEST_BULK_PAIRED_END_CFG)
+    assert r.returncode == 0, (
+        f'Dry-run failed for test_bulk_paired_end.yaml:\n{r.stderr}'
+    )
+
+
 @pytest.mark.workflow
 @SKIP_IF_NO_SNAKEMAKE
 def test_main_snakefile_lint():

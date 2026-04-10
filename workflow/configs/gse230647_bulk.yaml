@@ -14,7 +14,7 @@ reference:
   genes_gtf: "../results/shared/refs/GRCh38.112.genes.gtf.gz"
 
 real_data:
-  library_layout: paired
+  technology: paired_end
 
 # GSE230647 (SRP434658). Paired-end bulk RNA-seq from iPSC-derived neural
 # cultures. Two experiments: doxycycline-inducible TDP-43-HA overexpression

@@ -64,6 +64,22 @@ Read counts per locus are obtained with `samtools idxstats` and aggregated by th
 1. Counting is exact per-locus without GTF/chromosome name reconciliation.
 2. Multi-granularity outputs (locus → family → class) are produced in a single pass.
 
+## Technology modes
+
+`real_data.technology` (and `simulation.technology`) controls which code path
+each aligner module takes. The three supported values are:
+
+| `technology` | reads | download | quantification | use case |
+|---|---|---|---|---|
+| `single_end` | R1 only | 1 file per SRR | kallisto `quant`, salmon `quant`, STARsolo manifest | single-end bulk RNA-seq; SmartSeq2 scRNA-seq (one FASTQ per cell) |
+| `paired_end` | R1 + R2 | 2 files per SRR | STAR + featureCounts, kallisto `quant`, salmon `quant` | paired-end bulk RNA-seq |
+| `chromium` | R1 (CB+UMI) + R2 (cDNA) | 2 files per SRR | STARsolo CB_UMI_Simple, kallisto `bus`, salmon `alevin` | 10x Chromium scRNA-seq |
+
+`single_end` and `paired_end` both use bulk-style quantification (no barcodes).
+`single_end` treats each sample or cell as a single FASTQ; the per-cell
+normalization scripts handle both simulation (one FASTQ per simulated cell) and
+real single-end bulk (one FASTQ per sample) identically.
+
 ## Adding a new aligner
 
 1. Create `modules/<aligner>.snmk` with rules gated on `sim_technology`.

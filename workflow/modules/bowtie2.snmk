@@ -19,7 +19,7 @@ Two independent chunking axes are supported (aligner_params.bowtie2):
 import os.path as op
 import math
 
-sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'smartseq2')
+sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'single_end')
 bt2_cfg = config.get('aligner_params', {}).get('bowtie2', {})
 cell_chunk_size = bt2_cfg.get('featurecounts_cell_chunk_size', 50)
 n_feature_chunks = bt2_cfg.get('featurecounts_n_feature_chunks', 1)
@@ -38,7 +38,7 @@ def bowtie2_index_prefix(wildcards):
 
 # SmartSeq2 helper variables
 
-if sim_technology == 'smartseq2':
+if sim_technology == 'single_end':
     _ss2_cell_ids = [
         f'cell_{i + 1:03d}'
         for i in range(config.get('simulation', {}).get('n_cells', 20))

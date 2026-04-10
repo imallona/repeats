@@ -173,7 +173,6 @@ for (al in aligners) {
       xlab(paste0("PC1: ", pct[1], "%")) +
       ylab(paste0("PC2: ", pct[2], "%")) +
       scale_colour_manual(values = cbbPalette) +
-    scale_shape_manual(values = 0:24) +
       theme_ng() +
       ggtitle(paste(al, fs))
   }

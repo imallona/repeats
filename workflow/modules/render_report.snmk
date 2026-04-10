@@ -44,6 +44,12 @@ _known_params = {
 }
 
 _requested_keys = _report_cfg.get('params', list(_known_params.keys()))
+_unknown = [k for k in _requested_keys if k not in _known_params]
+if _unknown:
+    raise ValueError(
+        f"report.params contains unknown keys: {_unknown}. "
+        f"Allowed keys: {list(_known_params.keys())}"
+    )
 _params_r_str = ', '.join(
     f"{k} = '{_known_params[k]}'" for k in _requested_keys
 )

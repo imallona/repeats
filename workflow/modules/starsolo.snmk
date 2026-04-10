@@ -2,6 +2,9 @@
 """
 STARsolo alignment and quantification for SmartSeq2 and Chromium data.
 
+The SmartSeq2 path (manifest mode, one FASTQ per cell) is also used as-is for
+single-end bulk RNA-seq, where each sample is treated as one cell.
+
 Wildcards:
   {multimapper_mode} - "unique" (Unique) or "multi" (EM)
   {feature_set}      - annotation to quantify against (genes, repeats,
@@ -18,7 +21,7 @@ multimapper_mode_to_star_param = {
     'multi': 'EM'
 }
 
-sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'smartseq2')
+sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'single_end')
 
 _ss2_manifest = op.join(config['base'], 'simulations', 'smartseq2', 'manifest.tsv')
 

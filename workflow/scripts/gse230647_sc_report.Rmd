@@ -87,7 +87,7 @@ table(geo_meta$cluster)
 ```
 
 ```{r cluster12-flag}
-geo_meta$group = ifelse(geo_meta$cluster == 12, "cluster12", "other")
+geo_meta$group = ifelse(as.integer(geo_meta$cluster) == 12L, "cluster12", "other")
 cat("cluster 12 cells:", sum(geo_meta$group == "cluster12"), "\n")
 cat("other cells:", sum(geo_meta$group == "other"), "\n")
 save_rds(geo_meta, "geo_meta_annotated")

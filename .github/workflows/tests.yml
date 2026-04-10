@@ -2,6 +2,11 @@ name: Tests
 
 on:
   workflow_dispatch:
+    inputs:
+      run_negative_control:
+        description: "Run the full negative-control workflow (slow)"
+        type: boolean
+        default: false
   pull_request:
     branches: [master, dev]
 
@@ -85,6 +90,26 @@ jobs:
             --rerun-triggers mtime \
             --quiet --cores 2
 
+      - name: Dry-run main Snakefile with single-end bulk config
+        shell: bash -el {0}
+        working-directory: workflow
+        run: |
+          snakemake \
+            --configfile ../test/workflow/configs/test_bulk_single_end.yaml \
+            --dry-run \
+            --rerun-triggers mtime \
+            --quiet --cores 2
+
+      - name: Dry-run main Snakefile with paired-end bulk config
+        shell: bash -el {0}
+        working-directory: workflow
+        run: |
+          snakemake \
+            --configfile ../test/workflow/configs/test_bulk_paired_end.yaml \
+            --dry-run \
+            --rerun-triggers mtime \
+            --quiet --cores 2
+
       - name: Run workflow dry-run pytest tests
         shell: bash -el {0}
         run: |
@@ -96,8 +121,7 @@ jobs:
   negative-control-run:
     name: Negative control full run
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch'
+    if: inputs.run_negative_control == true
     steps:
       - uses: actions/checkout@v4
 

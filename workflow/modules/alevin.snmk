@@ -2,7 +2,8 @@
 """
 Salmon quantification for SmartSeq2 and Chromium modes.
 
-SmartSeq2: salmon quant per cell (bulk mode, one run per cell FASTQ).
+SmartSeq2: salmon quant per cell (one run per cell FASTQ). Also used as-is
+for single-end bulk RNA-seq, where each sample is treated as one cell.
 Chromium:  salmon alevin with droplet chemistry flags.
 
 Both modes support {feature_set}: genes, repeats, genic_repeats, intergenic_repeats.
@@ -13,7 +14,7 @@ can later aggregate to any granularity without re-running alignment.
 
 import os.path as op
 
-sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'smartseq2')
+sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'single_end')
 
 _ss2_fastq = lambda wc: op.join(config['base'], 'simulations', 'smartseq2', f'{wc.cell_id}.fastq.gz')
 

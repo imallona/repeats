@@ -10,7 +10,7 @@ import os.path as op
 
 
 sim_cfg = config.get('simulation', {})
-sim_technology = sim_cfg.get('technology', 'smartseq2')
+sim_technology = sim_cfg.get('technology', 'single_end')
 sim_n_cells = sim_cfg.get('n_cells', 20)
 sim_seed = sim_cfg.get('seed', 42)
 sim_chromosomes = config['reference'].get('chromosomes', [])
@@ -49,7 +49,7 @@ rule simulate_smartseq2:
     shell:
         """
         python {simulation_script} \
-            --mode smartseq2 \
+            --mode single_end \
             --gtf {input.gtf} \
             --fasta {input.fasta} \
             --outdir {params.outdir} \
