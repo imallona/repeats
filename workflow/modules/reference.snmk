@@ -117,7 +117,8 @@ rule star_genome_index:
     output:
         index = op.join(config['indices_base'], 'indices', genome_tag, 'star', 'SAindex')
     params:
-        index_dir = op.join(config['indices_base'], 'indices', genome_tag, 'star')
+        index_dir = op.join(config['indices_base'], 'indices', genome_tag, 'star'),
+        max_ram_bytes = config['resources']['max_mem_mb'] * 1024 * 1024
     log:
         op.join(config['base'], 'logs', 'star_index.log')
     benchmark:
@@ -129,7 +130,8 @@ rule star_genome_index:
              --runMode genomeGenerate \
              --genomeDir {params.index_dir} \
              --genomeFastaFiles {input.genome} \
-             --sjdbGTFfile {input.repeats_gtf} &> {log}
+             --sjdbGTFfile {input.repeats_gtf} \
+             --limitGenomeGenerateRAM {params.max_ram_bytes} &> {log}
         """
 
 
