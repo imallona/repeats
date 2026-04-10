@@ -11,16 +11,15 @@ We are extremely grateful to SNF for their funding in ca. 2020.
 
 ## Overview
 
-The pipeline:
+A single `Snakefile` drives four pipeline modes selected by `pipeline_type` in the config:
 
-1. Prepares references (genome, Ensembl gene annotation, RepeatMasker repeat annotation).
-2. Simulates single-cell RNA-seq reads from repeat loci (SmartSeq2 or 10x Chromium).
-3. Quantifies repeat expression with STARsolo, Kallisto (bustools), Alevin (Salmon),
-   and Bowtie2 (pseudo-genome approach).
-4. Evaluates each aligner against simulation ground truth at three aggregation levels:
-   locus (gene_id), repeat family (family_id), and repeat class (class_id).
-5. Produces an HTML evaluation report with accuracy, precision/recall, and compute
-   resource plots.
+- `simulation` - simulate reads from repeat loci (SmartSeq2 or 10x Chromium), align,
+  and evaluate against ground truth
+- `bulk` - download paired-end FASTQs from SRA, align with STAR/kallisto/salmon,
+  quantify repeats, render a differential expression report
+- `sc` - download 10x Chromium FASTQs from SRA, run STARsolo and kallisto|bustools,
+  render a single-cell report
+- `noise_report` - render a noise sweep HTML report across multiple simulation runs
 
 For method details see [docs/methods.md](docs/methods.md).
 Workflow diagrams (mermaid, renders on GitHub) are in [docs/diagrams.md](docs/diagrams.md).
@@ -73,11 +72,21 @@ environment automatically.
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate snakemake
 cd workflow
-snakemake --configfile configs/simulation_smartseq2.yaml --use-conda --cores 10 --rerun-triggers mtime
-snakemake --configfile configs/simulation_chromium.yaml  --use-conda --cores 10 --rerun-triggers mtime
+
+# simulation
+snakemake --configfile configs/simulation_smartseq2.yaml --use-conda --cores 10
+snakemake --configfile configs/simulation_chromium.yaml  --use-conda --cores 10
+
+# bulk reanalysis
+snakemake --configfile configs/gse230647_bulk.yaml --use-conda --cores 10
+snakemake --configfile configs/gse126543_bulk.yaml --use-conda --cores 10
+
+# single-cell reanalysis
+snakemake --configfile configs/gse230647_sc.yaml --use-conda --cores 10
 ```
 
-The per-run evaluation report is written to `{base}/evaluation/evaluation_report.html`.
+The simulation evaluation report is written to `{base}/evaluation/evaluation_report.html`.
+Bulk and SC reports are written to `{base}/{report.output}`.
 
 ## Configuration
 
@@ -102,64 +111,63 @@ Unused real-data configs have been moved to `workflow/configs/old/`.
 
 Two publicly available bulk RNA-seq datasets are reanalysed for repeat element quantification:
 
-| GSE | Description | Design | Snakefile | Config |
-|---|---|---|---|---|
-| GSE126543 | NeuN+ neuronal nuclei, human frontal cortex (FTD/ALS), TDP-43 nuclear positive vs negative, 7 donors | paired by donor | Snakefile_gse126543 | configs/gse126543_bulk.yaml |
-| GSE230647 | iPSC-derived neural cultures, TDP-43 OE (HA-TDP43 DOX on vs off, n=4) and KD (TDP-43 shRNA vs NT shRNA, n=4) | two independent experiments | Snakefile_gse230647 | configs/gse230647_bulk.yaml |
+| GSE | Description | Design | Config |
+|---|---|---|---|
+| GSE126543 | NeuN+ neuronal nuclei, human frontal cortex (FTD/ALS), TDP-43 nuclear positive vs negative, 7 donors | paired by donor | `configs/gse126543_bulk.yaml` |
+| GSE230647 | iPSC-derived neural cultures, TDP-43 OE (HA-TDP43 DOX on vs off, n=4) and KD (TDP-43 shRNA vs NT shRNA, n=4) | two independent experiments | `configs/gse230647_bulk.yaml` |
 
 Both pipelines download paired-end FASTQs from SRA, align with STAR, kallisto, and salmon,
 quantify repeats at gene_id and family_id granularities, and render an edgeR differential
 expression report.
 
-#### GSE230647 single-cell extension
+### Single-cell reanalysis
 
-A companion single-cell analysis covers the TDP-43-HA overexpression scRNA-seq experiment
-from the same GEO series (GSE230647). Three DOX-on 10x Chromium 3' v3 samples are included
-(two sequencing lanes each): GSM7230453 (2-week culture), GSM7230454 and GSM7230455
-(4-week culture, replicates A and B). The DOX-off control and unlabeled samples are excluded.
+A single-cell analysis covers the TDP-43-HA overexpression scRNA-seq experiment from
+GSE230647. Three DOX-on 10x Chromium 3' v3 samples are included (two sequencing lanes
+each): GSM7230453 (2-week culture), GSM7230454 and GSM7230455 (4-week culture,
+replicates A and B). The DOX-off control and unlabeled samples are excluded.
 
 | Item | Value |
 |---|---|
-| Snakefile | `Snakefile_gse230647_sc` |
 | Config | `configs/gse230647_sc.yaml` |
 | Sample metadata | `configs/gse230647_sc_sample_metadata.tsv` |
 | Report script | `scripts/gse230647_sc_report.Rmd` |
 | Output | `../results/gse230647_sc/gse230647_sc_report.html` |
 
-The pipeline downloads each SRR pair, runs STARsolo (CB_UMI_Simple, 10x v3 geometry)
-and kallisto|bustools against genic and intergenic repeat annotations, and fetches
-the GEO supplementary file `GSE230647_single_cell_metadata_tdp43ha.txt.gz` which
-maps each cell barcode to its cluster assignment (17 clusters; cluster 12 marks
-TDP-43-HA-expressing cells).
+The pipeline downloads each SRR with `fasterq-dump --include-technical`. For 10x
+Chromium, file `_2` carries the CB+UMI read and file `_3` carries the cDNA read
+(configured via `sc_cbumi_index` and `sc_cdna_index` in the config). STARsolo
+(CB_UMI_Simple, 10x v3 geometry) and kallisto|bustools are run against genic and
+intergenic repeat annotations. The GEO supplementary file
+`GSE230647_single_cell_metadata_tdp43ha.txt.gz` maps each cell barcode to its
+cluster assignment (17 clusters; cluster 12 marks TDP-43-HA-expressing cells).
 
 The report builds pseudo-bulk count matrices by aggregating STARsolo raw counts
 for cluster-12 cells vs all other annotated cells, then runs edgeR (quasi-likelihood,
 sample as blocking factor) to identify differentially expressed repeat elements.
-A per-cluster dotplot of the top significant features is also included as a
-standalone section.
-
-To run from the `workflow/` directory:
-
-```
-source ~/miniconda3/bin/activate
-conda activate snakemake
-snakemake -s Snakefile_gse230647_sc \
-    --configfile configs/gse230647_sc.yaml \
-    --use-conda --cores 10
-```
 
 Indices are shared with the bulk GSE230647 pipeline via `indices_base: ../results/shared`,
 so building them once is sufficient for both analyses.
 
-Key parameters:
+Key config parameters (shared across pipeline types):
 
+- `pipeline_type`: `simulation`, `bulk`, `sc`, or `noise_report`.
 - `base`: run-specific output directory.
-- `indices_base`: shared directory for aligner indices and decompressed references.
-  All noise-sweep configs share the same `indices_base` so indices are built once.
-- `simulation.mutation_rate`: per-base substitution rate applied to simulated reads.
+- `indices_base`: shared directory for aligner indices. Multiple runs can share one index.
 - `feature_sets`: which repeat subsets to quantify (`repeats`, `genic_repeats`, `intergenic_repeats`).
 - `granularities`: aggregation levels (`gene_id`, `family_id`, `class_id`).
-- `aligner_params.{aligner}.multimapper_modes`: `unique` (best hit only) or `multi` (EM/all-alignments).
+
+Simulation-specific:
+- `simulation.mutation_rate`: per-base substitution rate applied to simulated reads.
+- `aligner_params.{aligner}.multimapper_modes`: `unique` or `multi` (EM).
+
+Bulk-specific (`real_data`):
+- `library_layout`: `paired` (default) or `single`.
+
+SC-specific (`real_data`):
+- `sc_cbumi_index`: fasterq-dump file number containing CB+UMI (default `2`).
+- `sc_cdna_index`: fasterq-dump file number containing cDNA (default `3`).
+- `cb_length`, `umi_length`: barcode and UMI lengths for STARsolo.
 
 ## Implementation notes
 

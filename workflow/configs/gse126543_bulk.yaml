@@ -1,12 +1,12 @@
 base: "../results/gse126543_bulk"
 indices_base: "../results/shared"
 
-mode: real_data
+pipeline_type: bulk
 
 reference:
   assembly: hg38
   ensembl_release: "112"
-  chromosomes: []  # empty = whole genome
+  chromosomes: []
   filter_genic: true
   rmsk_source: ucsc_flatfile
   genome_fasta: "../results/shared/refs/GRCh38.dna.primary_assembly.fa.gz"
@@ -14,7 +14,7 @@ reference:
   genes_gtf: "../results/shared/refs/GRCh38.112.genes.gtf.gz"
 
 real_data:
-  technology: smartseq2
+  library_layout: paired
 
 # GSE126543 (SRP185789). NeuN-positive neuronal nuclei from human frontal
 # cortex, FTD/ALS post-mortem tissue. Samples sorted by TDP-43 nuclear status
@@ -24,24 +24,40 @@ dataset:
   sra_study: SRP185789
   samples:
     # NeuN+/TDP-43 nuclear positive (TDP-43 retained in nucleus)
-    tdp43pos_s1: SRR8571937
-    tdp43pos_s2: SRR8571939
-    tdp43pos_s3: SRR8571941
-    tdp43pos_s4: SRR8571944
-    tdp43pos_s5: SRR8571947
-    tdp43pos_s6: SRR8571949
-    tdp43pos_s7: SRR8571951
+    tdp43pos_s1:
+      srrs: [SRR8571937]
+    tdp43pos_s2:
+      srrs: [SRR8571939]
+    tdp43pos_s3:
+      srrs: [SRR8571941]
+    tdp43pos_s4:
+      srrs: [SRR8571944]
+    tdp43pos_s5:
+      srrs: [SRR8571947]
+    tdp43pos_s6:
+      srrs: [SRR8571949]
+    tdp43pos_s7:
+      srrs: [SRR8571951]
     # NeuN+/TDP-43 nuclear negative (TDP-43 lost from nucleus)
-    tdp43neg_s1: SRR8571938
-    tdp43neg_s2: SRR8571940
-    tdp43neg_s3: SRR8571942
-    tdp43neg_s4: SRR8571945
-    tdp43neg_s5: SRR8571948
-    tdp43neg_s6: SRR8571950
-    tdp43neg_s7: SRR8571952
+    tdp43neg_s1:
+      srrs: [SRR8571938]
+    tdp43neg_s2:
+      srrs: [SRR8571940]
+    tdp43neg_s3:
+      srrs: [SRR8571942]
+    tdp43neg_s4:
+      srrs: [SRR8571945]
+    tdp43neg_s5:
+      srrs: [SRR8571948]
+    tdp43neg_s6:
+      srrs: [SRR8571950]
+    tdp43neg_s7:
+      srrs: [SRR8571952]
     # Unsorted NeuN+ (mixed TDP-43 status)
-    unsorted_s3: SRR8571943
-    unsorted_s4: SRR8571946
+    unsorted_s3:
+      srrs: [SRR8571943]
+    unsorted_s4:
+      srrs: [SRR8571946]
 
 feature_sets:
   - repeats
@@ -69,3 +85,12 @@ granularities:
 resources:
   max_threads: 10
   max_mem_mb: 60000
+
+report:
+  script: scripts/gse126543_bulk_report.Rmd
+  conda: envs/edger.yaml
+  output: gse126543_bulk_report.html
+  outdir: report_rds
+  params:
+    - counts_dir
+    - report_outdir

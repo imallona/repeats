@@ -11,7 +11,7 @@ reference:
   repeats_gtf: "../results/shared/refs/hg38_rmsk_TE.gtf.gz"
   genes_gtf: "../results/shared/refs/GRCh38.112.genes.gtf.gz"
 
-mode: simulation
+pipeline_type: simulation
 
 simulation:
   technology: chromium

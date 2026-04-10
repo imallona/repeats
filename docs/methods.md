@@ -2,9 +2,21 @@
 
 ## Overview
 
-The pipeline quantifies repeat element expression from single-cell RNA-seq data
-(SmartSeq2 or 10x Chromium) using four aligners/quantifiers and evaluates them
-against simulation ground truth.
+A single Snakefile drives four pipeline modes selected by `pipeline_type` in the config.
+
+The simulation pipeline generates reads from repeat loci (SmartSeq2 or 10x Chromium),
+aligns them with four tools, and evaluates quantification accuracy against ground truth.
+
+The bulk pipeline downloads paired-end (or single-end) FASTQs from SRA via
+fasterq-dump, aligns with STAR, kallisto, and salmon, and produces edgeR
+differential expression reports at gene_id and family_id granularity.
+
+The sc pipeline downloads 10x Chromium FASTQs from SRA with
+`fasterq-dump --include-technical`. File numbering follows fasterq-dump conventions:
+file `_1` is the index read and is discarded; which file carries CB+UMI and which
+carries cDNA is configured via `sc_cbumi_index` and `sc_cdna_index` (defaults 2 and 3,
+matching 10x Chromium v2/v3). STARsolo (CB_UMI_Simple) and kallisto|bustools quantify
+genic and intergenic repeat annotations.
 
 ## Reference preparation
 

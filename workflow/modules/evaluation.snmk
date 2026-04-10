@@ -146,7 +146,7 @@ rule aggregate_global_metrics:
                                         delimiter='\t')
                 writer.writeheader()
                 writer.writerows(all_rows)
-rule render_report:
+rule render_evaluation_report:
     """Render an HTML evaluation report summarising all metrics across aligners."""
     conda: op.join(workflow.basedir, 'envs', 'rmarkdown.yaml')
     input:

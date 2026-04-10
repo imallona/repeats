@@ -1,0 +1,115 @@
+#!/usr/bin/env snakemake -s
+"""
+Kallisto|bustools quantification for 10x Chromium single-cell data.
+
+Expects these globals from the including Snakefile:
+  _sc_sample_ids, feature_sets, genome_tag,
+  srrs_for(sample_id), sample_cb_files(sample_id), sample_cdna_files(sample_id)
+
+Reads across lanes are interleaved as positional pairs for kallisto bus:
+  cb_lane1 cdna_lane1 cb_lane2 cdna_lane2 ...
+"""
+
+import os.path as op
+
+
+rule kallisto_bus_sc:
+    wildcard_constraints:
+        feature_set = 'genes|genic_repeats|intergenic_repeats',
+    conda:
+        op.join(workflow.basedir, 'envs', 'kallisto.yaml')
+    input:
+        index = lambda wc: op.join(config['indices_base'], 'indices', genome_tag,
+                                   'kallisto', f'{wc.feature_set}.idx'),
+        cb = lambda wc: sample_cb_files(wc.sample_id),
+        cdna = lambda wc: sample_cdna_files(wc.sample_id),
+    output:
+        bus = op.join(config['base'], 'kallisto', '{feature_set}',
+                      '{sample_id}', 'output.bus'),
+        ec = op.join(config['base'], 'kallisto', '{feature_set}',
+                     '{sample_id}', 'matrix.ec'),
+        transcripts = op.join(config['base'], 'kallisto', '{feature_set}',
+                              '{sample_id}', 'transcripts.txt'),
+    params:
+        outdir = op.join(config['base'], 'kallisto', '{feature_set}', '{sample_id}'),
+        cb_cdna_pairs = lambda wc, input: ' '.join(
+            f'{cb} {cdna}' for cb, cdna in zip(input.cb, input.cdna)
+        ),
+        extra_args = config.get('aligner_params', {}).get('kallisto', {}).get('extra_args', ''),
+    log:
+        op.join(config['base'], 'logs', 'kallisto_bus_{feature_set}_{sample_id}.log'),
+    benchmark:
+        op.join(config['base'], 'benchmarks', 'kallisto_bus_{feature_set}_{sample_id}.txt'),
+    threads: workflow.cores
+    shell:
+        """
+        kallisto bus \
+            --index {input.index} \
+            --output-dir {params.outdir} \
+            -x 10xv3 \
+            --threads {threads} \
+            {params.extra_args} \
+            {params.cb_cdna_pairs} 2> {log}
+        """
+
+
+rule bustools_sort_sc:
+    wildcard_constraints:
+        feature_set = 'genes|genic_repeats|intergenic_repeats',
+    conda:
+        op.join(workflow.basedir, 'envs', 'kallisto.yaml')
+    input:
+        op.join(config['base'], 'kallisto', '{feature_set}', '{sample_id}', 'output.bus'),
+    output:
+        op.join(config['base'], 'kallisto', '{feature_set}', '{sample_id}', 'output.sorted.bus'),
+    log:
+        op.join(config['base'], 'logs', 'bustools_sort_{feature_set}_{sample_id}.log'),
+    benchmark:
+        op.join(config['base'], 'benchmarks', 'bustools_sort_{feature_set}_{sample_id}.txt'),
+    threads: workflow.cores
+    shell:
+        """
+        bustools sort \
+            --threads {threads} \
+            -o {output} \
+            {input} 2> {log}
+        """
+
+
+rule bustools_count_sc:
+    wildcard_constraints:
+        feature_set = 'genes|genic_repeats|intergenic_repeats',
+    conda:
+        op.join(workflow.basedir, 'envs', 'kallisto.yaml')
+    input:
+        bus = op.join(config['base'], 'kallisto', '{feature_set}',
+                      '{sample_id}', 'output.sorted.bus'),
+        ec = op.join(config['base'], 'kallisto', '{feature_set}',
+                     '{sample_id}', 'matrix.ec'),
+        transcripts = op.join(config['base'], 'kallisto', '{feature_set}',
+                              '{sample_id}', 'transcripts.txt'),
+        t2g = lambda wc: t2g_path(wc),
+    output:
+        counts = op.join(config['base'], 'kallisto', '{feature_set}',
+                         '{sample_id}', 'counts.mtx'),
+        barcodes = op.join(config['base'], 'kallisto', '{feature_set}',
+                           '{sample_id}', 'counts.barcodes.txt'),
+        genes = op.join(config['base'], 'kallisto', '{feature_set}',
+                        '{sample_id}', 'counts.genes.txt'),
+    params:
+        out_prefix = op.join(config['base'], 'kallisto', '{feature_set}',
+                             '{sample_id}', 'counts'),
+    log:
+        op.join(config['base'], 'logs', 'bustools_count_{feature_set}_{sample_id}.log'),
+    benchmark:
+        op.join(config['base'], 'benchmarks', 'bustools_count_{feature_set}_{sample_id}.txt'),
+    shell:
+        """
+        bustools count \
+            --ec {input.ec} \
+            --txnames {input.transcripts} \
+            --genemap {input.t2g} \
+            --genecounts \
+            --output {params.out_prefix} \
+            {input.bus} 2> {log}
+        """

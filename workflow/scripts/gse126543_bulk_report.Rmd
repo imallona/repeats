@@ -173,6 +173,7 @@ for (al in aligners) {
       xlab(paste0("PC1: ", pct[1], "%")) +
       ylab(paste0("PC2: ", pct[2], "%")) +
       scale_colour_manual(values = cbbPalette) +
+    scale_shape_manual(values = 0:24) +
       theme_ng() +
       ggtitle(paste(al, fs))
   }
@@ -288,6 +289,7 @@ plot_cpm = function(y, feature, meta, title) {
     geom_boxplot(outlier.shape = NA, width = 0.4) +
     geom_jitter(aes(shape = donor), width = 0.1, size = 2) +
     scale_colour_manual(values = cbbPalette) +
+    scale_shape_manual(values = 0:24) +
     theme_ng() +
     ylab("log2 CPM") +
     ggtitle(feature)

@@ -56,23 +56,15 @@ else:
 
 
 def smartseq2_fastq(wc):
-    if config['mode'] == 'simulation':
-        return op.join(
-            config['base'], 'simulations', 'smartseq2', f'{wc.cell_id}.fastq.gz'
-        )
-    return config['real_data']['samples'][wc.cell_id]['R1']
+    return op.join(config['base'], 'simulations', 'smartseq2', f'{wc.cell_id}.fastq.gz')
 
 
 def chromium_r2(wc):
-    if config['mode'] == 'simulation':
-        return op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
-    return config['real_data']['samples'][wc.sample]['R2']
+    return op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
 
 
 def chromium_r1(wc):
-    if config['mode'] == 'simulation':
-        return op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
-    return config['real_data']['samples'][wc.sample]['R1']
+    return op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
 
 
 _cb_len = config.get('simulation', config.get('real_data', {})).get('cb_length', 16)

@@ -20,27 +20,11 @@ multimapper_mode_to_star_param = {
 
 sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'smartseq2')
 
-_ss2_manifest = (
-    op.join(config['base'], 'simulations', 'smartseq2', 'manifest.tsv')
-    if config['mode'] == 'simulation'
-    else config.get('real_data', {}).get('manifest', 'MISSING_MANIFEST')
-)
+_ss2_manifest = op.join(config['base'], 'simulations', 'smartseq2', 'manifest.tsv')
 
-_chromium_r1 = (
-    op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
-    if config['mode'] == 'simulation'
-    else []
-)
-_chromium_r2 = (
-    op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
-    if config['mode'] == 'simulation'
-    else []
-)
-_chromium_barcodes = (
-    op.join(config['base'], 'simulations', 'chromium', 'barcodes.txt')
-    if config['mode'] == 'simulation'
-    else config.get('real_data', {}).get('barcode_whitelist', 'None')
-)
+_chromium_r1 = op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
+_chromium_r2 = op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
+_chromium_barcodes = op.join(config['base'], 'simulations', 'chromium', 'barcodes.txt')
 
 _cb_len = config.get('simulation', config.get('real_data', {})).get('cb_length', 16)
 _umi_len = config.get('simulation', config.get('real_data', {})).get('umi_length', 12)

@@ -1,0 +1,84 @@
+#!/usr/bin/env snakemake -s
+"""
+STARsolo alignment for 10x Chromium single-cell data.
+
+Expects these globals from the including Snakefile:
+  _sc_samples, _sc_sample_ids, _cb_len, _umi_len, _umi_start,
+  starsolo_modes, feature_sets, genome_tag,
+  sample_cb_files(sample_id), sample_cdna_files(sample_id)
+
+Reads are supplied as comma-separated lists across lanes (SRRs) so that
+fasterq-dump outputs are fed directly to STAR without concatenation.
+"""
+
+import os.path as op
+
+multimapper_mode_to_star_param = {'unique': 'Unique', 'multi': 'EM'}
+
+
+rule starsolo_chromium_sc:
+    wildcard_constraints:
+        multimapper_mode = 'unique|multi',
+        feature_set = 'genes|genic_repeats|intergenic_repeats',
+    conda:
+        op.join(workflow.basedir, 'envs', 'star.yaml')
+    input:
+        index = rules.star_genome_index.output.index,
+        gtf = gtf_for_feature_set,
+        cb = lambda wc: sample_cb_files(wc.sample_id),
+        cdna = lambda wc: sample_cdna_files(wc.sample_id),
+    output:
+        bam = op.join(config['base'], 'starsolo', '{sample_id}',
+                      '{multimapper_mode}_{feature_set}',
+                      'Aligned.sortedByCoord.out.bam'),
+        raw_dir = directory(op.join(config['base'], 'starsolo', '{sample_id}',
+                                    '{multimapper_mode}_{feature_set}',
+                                    'Solo.out', 'Gene', 'raw')),
+    params:
+        out_prefix = op.join(config['base'], 'starsolo', '{sample_id}',
+                             '{multimapper_mode}_{feature_set}') + '/',
+        index_dir = op.join(config['indices_base'], 'indices', genome_tag, 'star'),
+        tmp_dir = op.join(config['base'], 'tmp',
+                          'starsolo_{sample_id}_{multimapper_mode}_{feature_set}'),
+        solo_multimappers = lambda wc: multimapper_mode_to_star_param[wc.multimapper_mode],
+        max_ram_bytes = config['resources']['max_mem_mb'] * 1024 * 1024,
+        cb_len = _cb_len,
+        umi_len = _umi_len,
+        umi_start = _umi_start,
+        cdna_csv = lambda wc, input: ','.join(input.cdna),
+        cb_csv = lambda wc, input: ','.join(input.cb),
+        extra_args = config.get('aligner_params', {}).get('starsolo', {}).get('extra_args', ''),
+    log:
+        op.join(config['base'], 'logs',
+                'starsolo_{sample_id}_{multimapper_mode}_{feature_set}.log'),
+    benchmark:
+        op.join(config['base'], 'benchmarks',
+                'starsolo_{sample_id}_{multimapper_mode}_{feature_set}.txt'),
+    threads: workflow.cores
+    shell:
+        """
+        rm -rf {params.tmp_dir} {params.out_prefix}Solo.out
+        mkdir -p {params.tmp_dir} {params.out_prefix}
+
+        STAR --runThreadN {threads} \
+             --runDirPerm All_RWX \
+             --soloType CB_UMI_Simple \
+             --genomeDir {params.index_dir} \
+             --readFilesIn {params.cdna_csv} {params.cb_csv} \
+             --readFilesCommand pigz -d -c \
+             --outFileNamePrefix {params.out_prefix} \
+             --sjdbGTFfile {input.gtf} \
+             --soloFeatures Gene \
+             --soloCBwhitelist None \
+             --soloCellFilter None \
+             --soloCBstart 1 --soloCBlen {params.cb_len} \
+             --soloUMIstart {params.umi_start} \
+             --soloUMIlen {params.umi_len} \
+             --soloMultiMappers {params.solo_multimappers} \
+             --outSAMattributes NH HI AS NM CB UB \
+             --outSAMtype BAM SortedByCoordinate \
+             --limitBAMsortRAM {params.max_ram_bytes} \
+             {params.extra_args} 2> {log}
+
+        rm -rf {params.tmp_dir}
+        """

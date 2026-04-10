@@ -15,40 +15,19 @@ import os.path as op
 
 sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'smartseq2')
 
-_ss2_fastq = (
-    lambda wc: op.join(config['base'], 'simulations', 'smartseq2', f'{wc.cell_id}.fastq.gz')
-    if config['mode'] == 'simulation'
-    else lambda wc: config['real_data']['samples'][wc.cell_id]['R1']
-)
+_ss2_fastq = lambda wc: op.join(config['base'], 'simulations', 'smartseq2', f'{wc.cell_id}.fastq.gz')
 
-_chromium_r1 = (
-    op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
-    if config['mode'] == 'simulation'
-    else []
-)
-_chromium_r2 = (
-    op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
-    if config['mode'] == 'simulation'
-    else []
-)
-_chromium_barcodes = (
-    op.join(config['base'], 'simulations', 'chromium', 'barcodes.txt')
-    if config['mode'] == 'simulation'
-    else []
-)
+_chromium_r1 = op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
+_chromium_r2 = op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
+_chromium_barcodes = op.join(config['base'], 'simulations', 'chromium', 'barcodes.txt')
 
 _alevin_cb_len = config.get('simulation', config.get('real_data', {})).get('cb_length', 16)
 _alevin_umi_len = config.get('simulation', config.get('real_data', {})).get('umi_length', 12)
 
-if config['mode'] == 'simulation':
-    _chem_map_sim = {(16, 10): '--chromium', (16, 12): '--chromiumV3'}
-    _alevin_chem_flag = _chem_map_sim.get(
-        (_alevin_cb_len, _alevin_umi_len),
-        f'--end 5 --barcodeLength {_alevin_cb_len} --umiLength {_alevin_umi_len}')
-else:
-    _chem_map = {'10xv2': '--chromiumV1', '10xv3': '--chromiumV3'}
-    _alevin_chem_flag = _chem_map.get(
-        config.get('real_data', {}).get('chemistry', '10xv3'), '--chromiumV3')
+_chem_map_sim = {(16, 10): '--chromium', (16, 12): '--chromiumV3'}
+_alevin_chem_flag = _chem_map_sim.get(
+    (_alevin_cb_len, _alevin_umi_len),
+    f'--end 5 --barcodeLength {_alevin_cb_len} --umiLength {_alevin_umi_len}')
 
 
 rule salmon_quant_smartseq2_cell:

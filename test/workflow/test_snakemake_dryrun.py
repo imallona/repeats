@@ -78,6 +78,36 @@ def test_test_snakefile_dryrun_negative_control():
     )
 
 
+BULK_GSE230647_CFG = os.path.join(WORKFLOW_DIR, 'configs', 'gse230647_bulk.yaml')
+BULK_GSE126543_CFG = os.path.join(WORKFLOW_DIR, 'configs', 'gse126543_bulk.yaml')
+SC_GSE230647_CFG = os.path.join(WORKFLOW_DIR, 'configs', 'gse230647_sc.yaml')
+
+
+@pytest.mark.workflow
+@SKIP_IF_NO_SNAKEMAKE
+def test_main_snakefile_dryrun_bulk_gse230647():
+    r = run_dryrun(os.path.join(WORKFLOW_DIR, 'Snakefile'), BULK_GSE230647_CFG)
+    assert r.returncode == 0, (
+        f'Dry-run failed for gse230647_bulk.yaml:\n{r.stderr}'
+    )
+
+
+@pytest.mark.workflow
+@SKIP_IF_NO_SNAKEMAKE
+def test_main_snakefile_dryrun_bulk_gse126543():
+    r = run_dryrun(os.path.join(WORKFLOW_DIR, 'Snakefile'), BULK_GSE126543_CFG)
+    assert r.returncode == 0, (
+        f'Dry-run failed for gse126543_bulk.yaml:\n{r.stderr}'
+    )
+
+
+@pytest.mark.workflow
+@SKIP_IF_NO_SNAKEMAKE
+def test_main_snakefile_dryrun_sc_gse230647():
+    r = run_dryrun(os.path.join(WORKFLOW_DIR, 'Snakefile'), SC_GSE230647_CFG)
+    assert r.returncode == 0, (
+        f'Dry-run failed for gse230647_sc.yaml:\n{r.stderr}'
+    )
 @pytest.mark.workflow
 @SKIP_IF_NO_SNAKEMAKE
 def test_main_snakefile_lint():

@@ -1,0 +1,37 @@
+#!/usr/bin/env snakemake -s
+"""
+Noise sweep report rendering.
+
+Requires in config:
+  report.eval_dirs  - comma-separated list of evaluation directories
+  report.output     - absolute path for the HTML output file
+"""
+
+import os.path as op
+
+_rmd = op.join(workflow.basedir, 'scripts', 'noise_sweep_report.Rmd')
+_output = config['report']['output']
+
+
+rule render_noise_sweep_report:
+    conda:
+        op.join(workflow.basedir, 'envs', 'rmarkdown.yaml')
+    input:
+        rmd = _rmd,
+    output:
+        html = _output,
+    params:
+        eval_dirs = config['report']['eval_dirs'],
+        output_file = _output,
+        rmd = _rmd,
+    log:
+        op.join(op.dirname(_output), 'noise_sweep_report.log'),
+    shell:
+        """
+        Rscript -e "rmarkdown::render(
+            '{params.rmd}',
+            output_file = '{params.output_file}',
+            knit_root_dir = getwd(),
+            params = list(eval_dirs = '{params.eval_dirs}')
+        )" 2> {log}
+        """

@@ -1,7 +1,8 @@
 base: "../results/gse230647_sc"
 indices_base: "../results/shared"
 
-mode: real_data
+pipeline_type: sc
+
 
 reference:
   assembly: hg38
@@ -18,6 +19,10 @@ real_data:
   chemistry: 10xv3
   cb_length: 16
   umi_length: 12
+  # fasterq-dump --include-technical read numbering for 10x Chromium:
+  # _1 = index read (discarded), _2 = CB+UMI, _3 = cDNA
+  sc_cbumi_index: 2
+  sc_cdna_index: 3
 
 # GSE230647 (SRP434658) 10x Chromium 3' v3 single-cell RNA-seq.
 # Identified by AvgSpotLen=126 (R1=28bp CB+UMI, R2=98bp cDNA) and
@@ -85,3 +90,18 @@ granularities:
 resources:
   max_threads: 10
   max_mem_mb: 60000
+
+report:
+  script: scripts/gse230647_sc_report.Rmd
+  conda: envs/edger.yaml
+  output: gse230647_sc_report.html
+  outdir: report_rds
+  params:
+    - starsolo_base
+    - kallisto_base
+    - indices_base
+    - metadata
+    - sample_metadata
+    - report_outdir
+    - feature_sets
+    - starsolo_modes

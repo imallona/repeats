@@ -43,16 +43,16 @@ cd /path/to/repeats
 pytest test/workflow/test_snakemake_dryrun.py -v -m workflow
 ```
 
-Or run the dry-runs directly with snakemake. The working directory must be
-`workflow/` for the production Snakefile, and paths to the test Snakefile and
-configs are given relative to that directory:
+Or run the dry-runs directly with snakemake from the `workflow/` directory:
 
 ```
 cd /path/to/repeats/workflow
 
 snakemake --configfile configs/simulation_smartseq2.yaml --dry-run --quiet
-
-snakemake --configfile configs/simulation_chromium.yaml --dry-run --quiet
+snakemake --configfile configs/simulation_chromium.yaml  --dry-run --quiet
+snakemake --configfile configs/gse230647_bulk.yaml       --dry-run --quiet
+snakemake --configfile configs/gse126543_bulk.yaml       --dry-run --quiet
+snakemake --configfile configs/gse230647_sc.yaml         --dry-run --quiet
 
 snakemake -s ../test/workflow/Snakefile_test \
   --configfile ../test/workflow/configs/test_negative_control.yaml \
@@ -169,10 +169,11 @@ without needing exact expected values:
 
 ## Workflow tests (test/workflow/)
 
-test_snakemake_dryrun.py verifies that snakemake --dry-run succeeds for both
-production configs (simulation_smartseq2.yaml and simulation_chromium.yaml)
-and for the test negative control config. These tests are skipped if snakemake
-is not in the PATH and are marked with the workflow marker.
+test_snakemake_dryrun.py verifies that snakemake --dry-run succeeds for all
+production configs: both simulation configs (smartseq2 and chromium), both
+bulk reanalysis configs (gse230647 and gse126543), the sc reanalysis config
+(gse230647_sc), and the test negative control config. Tests are skipped if
+snakemake is not in the PATH and are marked with the workflow marker.
 
 Snakefile_test is a separate Snakemake workflow that includes all production
 snmk modules and adds the negative control rules:
@@ -199,9 +200,8 @@ unit-and-integration runs on every push and pull request. It uses plain
 Python and does not need any bioinformatics tools installed.
 
 snakemake-dryrun runs on every push and pull request. It installs snakemake
-via micromamba and runs dry-run checks on both production configs and the test
-Snakefile. Snakemake installs conda dependencies itself when --use-conda is
-passed, but dry-runs do not trigger conda installs.
+via micromamba and runs dry-run checks on all production configs (simulation,
+bulk, sc) and the test Snakefile. Dry-runs do not trigger conda installs.
 
 negative-control-run is only triggered manually (workflow_dispatch) or when
 the repository variable ENABLE_FULL_INTEGRATION is set to true. It runs the
