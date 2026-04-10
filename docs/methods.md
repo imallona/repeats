@@ -7,9 +7,13 @@ A single Snakefile drives four pipeline modes selected by `pipeline_type` in the
 The simulation pipeline generates reads from repeat loci (SmartSeq2 or 10x Chromium),
 aligns them with four tools, and evaluates quantification accuracy against ground truth.
 
-The bulk pipeline downloads paired-end (or single-end) FASTQs from SRA via
-fasterq-dump, aligns with STAR, kallisto, and salmon, and produces edgeR
-differential expression reports at gene_id and family_id granularity.
+The bulk pipeline downloads FASTQs from SRA via fasterq-dump, aligns with STAR,
+kallisto, and salmon, and produces edgeR differential expression reports at
+gene_id and family_id granularity. Read layout is controlled by
+`real_data.library_layout`: `paired` (R1 + R2) or `single` (R1 only).
+Paired-end runs use `bulk_paired.snmk`; single-end runs use `bulk_single.snmk`,
+which passes `--single --fragment-length --sd` to kallisto and
+`--unmatedReads` to salmon.
 
 The sc pipeline downloads 10x Chromium FASTQs from SRA with
 `fasterq-dump --include-technical`. File numbering follows fasterq-dump conventions:
@@ -103,9 +107,15 @@ technologies.
 
 ### Kallisto
 
-For **SmartSeq2**, `kallisto quant` is run per cell in bulk single-end mode
-against a repeat-sequence pseudo-transcriptome.  Per-cell `abundance.tsv` files
-are merged and aggregated at the requested granularity.
+For **SmartSeq2** (simulation) and **bulk single-end**, `kallisto quant` is run
+per sample/cell against a repeat-sequence pseudo-transcriptome.  For single-end
+bulk, `--single --fragment-length --sd` are passed (fragment length and standard
+deviation are set via `real_data.fragment_length` and `real_data.fragment_sd` in
+the config, defaulting to 200 and 20).  Per-sample `abundance.tsv` files are
+merged and aggregated at the requested granularity.
+
+For **bulk paired-end**, `kallisto quant` is run without `--single`, passing
+both R1 and R2.
 
 For **10x Chromium**, `kallisto bus` is run on the combined R1/R2 files; the
 resulting BUS file is sorted and corrected with bustools, and per-cell count
@@ -113,8 +123,12 @@ matrices are produced with `bustools count`.
 
 ### Alevin (Salmon)
 
-For **SmartSeq2**, `salmon quant` is run per cell in quasi-mapping mode.
+For **SmartSeq2** (simulation) and **bulk paired-end**, `salmon quant` is run
+per sample/cell in quasi-mapping mode with `-1` and `-2` for the two mates.
 `--minAssignedFrags 1` prevents Salmon from exiting when few reads map.
+
+For **bulk single-end**, `salmon quant` is run with `--unmatedReads` instead
+of `-1`/`-2`.
 
 For **10x Chromium**, `salmon alevin` is run in Chromium v3 mode using the
 repeat pseudo-transcriptome index.  Output is converted by

@@ -84,6 +84,7 @@ if _pipeline_type == 'bulk':
                      if fs in ('repeats', 'genic_repeats', 'intergenic_repeats')]
     _non_locus_grans = [g for g in granularities if g != 'locus']
     _has_locus = 'locus' in granularities
+    _library_layout = config.get('real_data', {}).get('library_layout', 'paired')
 
     _bulk_samples = config['dataset']['samples']
     _bulk_sample_ids = sorted(_bulk_samples.keys())
@@ -95,17 +96,26 @@ if _pipeline_type == 'bulk':
         return op.join(config['base'], 'data', 'raw', sample_id, f'{sample_id}_2.fastq.gz')
 
     config.setdefault('real_data', {})
-    config['real_data']['samples'] = {
-        sid: {'R1': _raw_r1(sid), 'R2': _raw_r2(sid)}
-        for sid in _bulk_sample_ids
-    }
+    if _library_layout == 'paired':
+        config['real_data']['samples'] = {
+            sid: {'R1': _raw_r1(sid), 'R2': _raw_r2(sid)}
+            for sid in _bulk_sample_ids
+        }
+    else:
+        config['real_data']['samples'] = {
+            sid: {'R1': _raw_r1(sid)}
+            for sid in _bulk_sample_ids
+        }
 
     _render_report_inputs = []  # set after bulk_count_outputs is defined
 
     include: "modules/download_references.snmk"
     include: "modules/reference.snmk"
     include: "modules/download_sra.snmk"
-    include: "modules/bulk_paired.snmk"
+    if _library_layout == 'paired':
+        include: "modules/bulk_paired.snmk"
+    else:
+        include: "modules/bulk_single.snmk"
 
     for _d in ['tmp', 'logs', 'benchmarks', 'counts', 'metadata']:
         os.makedirs(op.join(config['base'], _d), exist_ok=True)
@@ -321,7 +331,8 @@ def _all_inputs():
 
     elif _pipeline_type == 'bulk':
         inputs += [_raw_r1(sid) for sid in _bulk_sample_ids]
-        inputs += [_raw_r2(sid) for sid in _bulk_sample_ids]
+        if _library_layout == 'paired':
+            inputs += [_raw_r2(sid) for sid in _bulk_sample_ids]
         inputs += bulk_count_outputs()
         if config.get('report'):
             inputs.append(op.join(config['base'], config['report']['output']))
