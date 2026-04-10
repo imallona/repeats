@@ -378,7 +378,7 @@ rule salmon_index:
     input: sequences_fasta
     output:
         index = op.join(config['indices_base'], 'indices', genome_tag,
-                        'salmon_{feature_set}', 'sshash.bin')
+                        'salmon_{feature_set}', 'info.json')
     params:
         index_dir = op.join(config['indices_base'], 'indices', genome_tag,
                             'salmon_{feature_set}')
