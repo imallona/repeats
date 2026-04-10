@@ -196,6 +196,7 @@ rule count_bowtie2_smartseq2:
 
 rule split_gtf_for_featurecounts:
     """Split the annotation GTF into N feature chunks for parallel featureCounts runs."""
+    conda: op.join(workflow.basedir, 'envs', 'python.yaml')
     input:
         gtf = gtf_for_feature_set
     output:
@@ -271,6 +272,7 @@ rule featurecounts_smartseq2_chunk:
 
 rule merge_featurecounts_smartseq2:
     """Merge all cell x feature chunk count tables into the full feature x cell matrix."""
+    conda: op.join(workflow.basedir, 'envs', 'python.yaml')
     input:
         chunks = expand(
             op.join(

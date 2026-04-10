@@ -248,6 +248,7 @@ rule extract_gene_transcripts:
 
 rule build_locus_map:
     """Build TSV: transcript_id, gene_id, family_id, class_id from a repeat feature_set GTF."""
+    conda: op.join(workflow.basedir, 'envs', 'python.yaml')
     input:
         gtf = gtf_for_repeat_feature_set
     output:
@@ -303,6 +304,7 @@ rule build_t2g_full:
     granularity=locus maps each FASTA header to its bare transcript_id.
     This is the canonical input for salmon alevin --tgMap (chromium mode).
     """
+    conda: op.join(workflow.basedir, 'envs', 'python.yaml')
     input:
         locus_map = op.join(config['indices_base'], 'indices', genome_tag,
                             '{feature_set}_locus_map.tsv'),
@@ -343,7 +345,7 @@ with open('{input.fasta}') as fa, open('{output.t2g}', 'w') as out:
 
 rule build_gene_t2g:
     """Two-column TSV: transcript_id -> gene_id from the genes GTF."""
-    conda: op.join(workflow.basedir, 'envs', 'star.yaml')
+    conda: op.join(workflow.basedir, 'envs', 'python.yaml')
     input: rules.decompress_genes_gtf.output
     output: op.join(config['indices_base'], 'indices', genome_tag, 'genes_t2g.tsv')
     log:

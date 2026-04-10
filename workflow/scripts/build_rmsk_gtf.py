@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Convert a UCSC rmsk.txt.gz flat file (or per-chromosome MySQL query output)
-to a TEtranscripts-compatible GTF.
+to a repeat-annotated GTF.
 
 UCSC rmsk.txt.gz columns (0-based index):
   0  bin
@@ -22,7 +22,7 @@ UCSC rmsk.txt.gz columns (0-based index):
   15 repLeft
   16 id
 
-Output GTF attributes match TEtranscripts format:
+Output GTF attributes:
   gene_id "repName"; transcript_id "repName_dupN"; family_id "repFamily"; class_id "repClass";
 
 The file is processed line by line so only one line is in memory at a time.
@@ -90,7 +90,7 @@ def convert_rmsk_to_gtf(input_path, output_path, allowed_chroms=None, min_length
 
 
 def main():
-    ap = argparse.ArgumentParser(description='Convert UCSC rmsk.txt.gz to TEtranscripts GTF')
+    ap = argparse.ArgumentParser(description='Convert UCSC rmsk.txt.gz to repeat GTF')
     ap.add_argument('--input', required=True, help='rmsk.txt.gz from UCSC or MySQL TSV output')
     ap.add_argument('--output', required=True, help='Output GTF (use .gtf.gz to compress)')
     ap.add_argument('--chromosomes', nargs='+', default=None,
