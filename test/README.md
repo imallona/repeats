@@ -54,6 +54,9 @@ snakemake --configfile configs/gse230647_bulk.yaml       --dry-run --quiet
 snakemake --configfile configs/gse126543_bulk.yaml       --dry-run --quiet
 snakemake --configfile configs/gse230647_sc.yaml         --dry-run --quiet
 
+snakemake --configfile ../test/workflow/configs/test_bulk_single_end.yaml --dry-run --quiet
+snakemake --configfile ../test/workflow/configs/test_bulk_paired_end.yaml --dry-run --quiet
+
 snakemake -s ../test/workflow/Snakefile_test \
   --configfile ../test/workflow/configs/test_negative_control.yaml \
   --dry-run --quiet
@@ -172,8 +175,9 @@ without needing exact expected values:
 test_snakemake_dryrun.py verifies that snakemake --dry-run succeeds for all
 production configs: both simulation configs (smartseq2 and chromium), both
 bulk reanalysis configs (gse230647 and gse126543), the sc reanalysis config
-(gse230647_sc), and the test negative control config. Tests are skipped if
-snakemake is not in the PATH and are marked with the workflow marker.
+(gse230647_sc), the minimal bulk test configs (test_bulk_single_end and
+test_bulk_paired_end), and the test negative control config. Tests are skipped
+if snakemake is not in the PATH and are marked with the workflow marker.
 
 Snakefile_test is a separate Snakemake workflow that includes all production
 snmk modules and adds the negative control rules:

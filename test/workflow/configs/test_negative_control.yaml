@@ -21,7 +21,7 @@ reference:
 pipeline_type: simulation
 
 simulation:
-  technology: single_end
+  technology: smartseq2
   n_cells: 5
   n_expressed_per_cell: 20
   read_length: 90

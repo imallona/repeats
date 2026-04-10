@@ -19,7 +19,7 @@ Two independent chunking axes are supported (aligner_params.bowtie2):
 import os.path as op
 import math
 
-sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'single_end')
+sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'smartseq2')
 bt2_cfg = config.get('aligner_params', {}).get('bowtie2', {})
 cell_chunk_size = bt2_cfg.get('featurecounts_cell_chunk_size', 50)
 n_feature_chunks = bt2_cfg.get('featurecounts_n_feature_chunks', 1)
@@ -38,7 +38,7 @@ def bowtie2_index_prefix(wildcards):
 
 # SmartSeq2 helper variables
 
-if sim_technology == 'single_end':
+if sim_technology == 'smartseq2':
     _ss2_cell_ids = [
         f'cell_{i + 1:03d}'
         for i in range(config.get('simulation', {}).get('n_cells', 20))
@@ -84,7 +84,7 @@ rule bowtie2_align_smartseq2_cell:
         fastq = smartseq2_fastq
     output:
         bam = op.join(
-            config['base'], 'bowtie2', '{feature_set}', 'smartseq2', '{cell_id}.bam'
+            config['base'], 'bowtie2', '{feature_set}', sim_technology, '{cell_id}.bam'
         )
     params:
         index_prefix = bowtie2_index_prefix,
@@ -114,11 +114,11 @@ rule filter_unique_bam_smartseq2:
     conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
     input:
         bam = op.join(
-            config['base'], 'bowtie2', '{feature_set}', 'smartseq2', '{cell_id}.bam'
+            config['base'], 'bowtie2', '{feature_set}', sim_technology, '{cell_id}.bam'
         )
     output:
         bam = op.join(
-            config['base'], 'bowtie2', '{feature_set}', 'smartseq2', '{cell_id}_unique.bam'
+            config['base'], 'bowtie2', '{feature_set}', sim_technology, '{cell_id}_unique.bam'
         )
     log:
         op.join(
@@ -143,7 +143,7 @@ rule count_bowtie2_smartseq2:
     input:
         bams = lambda wc: [
             op.join(
-                config['base'], 'bowtie2', wc.feature_set, 'smartseq2',
+                config['base'], 'bowtie2', wc.feature_set, sim_technology,
                 cid + ('_unique' if wc.multimapper_mode == 'unique' else '') + '.bam'
             )
             for cid in _ss2_cell_ids
@@ -155,7 +155,7 @@ rule count_bowtie2_smartseq2:
         script = ancient(op.join(workflow.basedir, 'scripts', 'count_pseudo_genome.py'))
     output:
         counts = op.join(
-            config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
+            config['base'], 'bowtie2', '{feature_set}', sim_technology,
             'counts_{granularity}_{multimapper_mode}.tsv'
         )
     wildcard_constraints:
@@ -166,7 +166,7 @@ rule count_bowtie2_smartseq2:
         cell_ids_arg = ' '.join(_ss2_cell_ids),
         bams_arg = lambda wc: ' '.join(
             op.join(
-                config['base'], 'bowtie2', wc.feature_set, 'smartseq2',
+                config['base'], 'bowtie2', wc.feature_set, sim_technology,
                 cid + ('_unique' if wc.multimapper_mode == 'unique' else '') + '.bam'
             )
             for cid in _ss2_cell_ids
@@ -228,7 +228,7 @@ rule featurecounts_smartseq2_chunk:
         bams = lambda wc: expand(
             op.join(
                 config['base'], 'bowtie2', '{feature_set}',
-                'smartseq2', '{cell_id}.bam'
+                sim_technology, '{cell_id}.bam'
             ),
             feature_set=wc.feature_set,
             cell_id=_cell_chunks[int(wc.cell_chunk_id)]
@@ -240,13 +240,13 @@ rule featurecounts_smartseq2_chunk:
     output:
         counts = temp(
             op.join(
-                config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
+                config['base'], 'bowtie2', '{feature_set}', sim_technology,
                 'chunks', 'cell{cell_chunk_id}_feat{feature_chunk_id}.tsv'
             )
         )
     params:
         tmp_counts = op.join(
-            config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
+            config['base'], 'bowtie2', '{feature_set}', sim_technology,
             'chunks', 'cell{cell_chunk_id}_feat{feature_chunk_id}.raw'
         ),
         multimapper_flag = lambda wc: '-M --fraction'
@@ -276,7 +276,7 @@ rule merge_featurecounts_smartseq2:
     input:
         chunks = expand(
             op.join(
-                config['base'], 'bowtie2', '{{feature_set}}', 'smartseq2',
+                config['base'], 'bowtie2', '{{feature_set}}', sim_technology,
                 'chunks', 'cell{cell_chunk_id}_feat{feature_chunk_id}.tsv'
             ),
             cell_chunk_id=_cell_chunk_ids,
@@ -287,7 +287,7 @@ rule merge_featurecounts_smartseq2:
         )
     output:
         merged = op.join(
-            config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
+            config['base'], 'bowtie2', '{feature_set}', sim_technology,
             'counts_merged.tsv'
         )
     log:

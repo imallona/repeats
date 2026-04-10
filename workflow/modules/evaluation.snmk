@@ -13,10 +13,10 @@ feature_set's loci (correct FN calculation for genic/intergenic subsets).
 """
 import os.path as op
 active_aligners = config.get('aligners', [])
-sim_technology = config.get('simulation', {}).get('technology', 'single_end')
+sim_technology = config.get('simulation', {}).get('technology', 'smartseq2')
 starsolo_modes = config.get('aligner_params', {}).get('starsolo', {}).get(
     'multimapper_modes', ['unique'])
-if sim_technology == 'single_end' and 'multi' in starsolo_modes:
+if sim_technology == 'smartseq2' and 'multi' in starsolo_modes:
     starsolo_modes = [m for m in starsolo_modes if m != 'multi']
 bowtie2_modes = config.get('aligner_params', {}).get('bowtie2', {}).get(
     'multimapper_modes', ['unique'])
@@ -44,19 +44,19 @@ def eval_benchmark(wildcards):
         return op.join(config['base'], 'benchmarks',
                        f'starsolo_{sim_technology}_{mm}_{fs}.txt')
     if aligner == 'bowtie2':
-        if sim_technology == 'single_end':
+        if sim_technology == 'smartseq2':
             return op.join(config['base'], 'benchmarks',
                            f'count_bowtie2_{fs}_smartseq2_{gran}_{mm}.txt')
         return op.join(config['base'], 'benchmarks',
                        f'count_bowtie2_{fs}_chromium_{gran}.txt')
     if aligner == 'alevin':
-        if sim_technology == 'single_end':
+        if sim_technology == 'smartseq2':
             return op.join(config['base'], 'benchmarks',
                            f'salmon_{fs}_quant_smartseq2_cell_001.txt')
         return op.join(config['base'], 'benchmarks',
                        f'salmon_{fs}_alevin_chromium.txt')
     # kallisto
-    if sim_technology == 'single_end':
+    if sim_technology == 'smartseq2':
         return op.join(config['base'], 'benchmarks',
                        f'kallisto_{fs}_smartseq2_cell_001.txt')
     return op.join(config['base'], 'benchmarks',

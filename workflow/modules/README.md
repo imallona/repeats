@@ -1,7 +1,7 @@
 # workflow/modules/
 
 Each `.snmk` file is a self-contained Snakemake module included by the main `Snakefile`.
-Modules are conditionally included based on `config['mode']` and `config['aligners']`.
+Modules are conditionally included based on `config['pipeline_type']` and `config['aligners']`.
 
 ## Module index
 
@@ -64,21 +64,29 @@ Read counts per locus are obtained with `samtools idxstats` and aggregated by th
 1. Counting is exact per-locus without GTF/chromosome name reconciliation.
 2. Multi-granularity outputs (locus → family → class) are produced in a single pass.
 
-## Technology modes
+## Technology and library layout
 
-`real_data.technology` (and `simulation.technology`) controls which code path
-each aligner module takes. The three supported values are:
+Single-cell runs set `simulation.technology` or `real_data.technology`. Bulk runs set
+`real_data.library_layout`. The values are:
 
-| `technology` | reads | download | quantification | use case |
-|---|---|---|---|---|
-| `single_end` | R1 only | 1 file per SRR | kallisto `quant`, salmon `quant`, STARsolo manifest | single-end bulk RNA-seq; SmartSeq2 scRNA-seq (one FASTQ per cell) |
-| `paired_end` | R1 + R2 | 2 files per SRR | STAR + featureCounts, kallisto `quant`, salmon `quant` | paired-end bulk RNA-seq |
-| `chromium` | R1 (CB+UMI) + R2 (cDNA) | 2 files per SRR | STARsolo CB_UMI_Simple, kallisto `bus`, salmon `alevin` | 10x Chromium scRNA-seq |
+Single-cell (`technology`):
 
-`single_end` and `paired_end` both use bulk-style quantification (no barcodes).
-`single_end` treats each sample or cell as a single FASTQ; the per-cell
-normalization scripts handle both simulation (one FASTQ per simulated cell) and
-real single-end bulk (one FASTQ per sample) identically.
+| value | reads | quantification |
+|---|---|---|
+| `smartseq2` | one FASTQ per cell | kallisto `quant`, salmon `quant`, STARsolo manifest |
+| `chromium` | R1 (CB+UMI) + R2 (cDNA) | STARsolo CB_UMI_Simple, kallisto `bus`, salmon `alevin` |
+
+Bulk (`library_layout` under `real_data`):
+
+| value | reads | quantification |
+|---|---|---|
+| `single` | R1 only per sample | kallisto `quant`, salmon `quant`, STAR |
+| `paired` | R1 + R2 per sample | kallisto `quant`, salmon `quant`, STAR |
+
+SmartSeq2 and bulk single both produce one FASTQ per sample or cell and share the same
+per-file normalization scripts. The difference is that SmartSeq2 runs the simulation
+pipeline with per-cell ground truth, while bulk single processes real SRA downloads
+without cell barcodes.
 
 ## Adding a new aligner
 

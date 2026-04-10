@@ -14,7 +14,7 @@ reference:
   genes_gtf: "../results/shared/refs/GRCh38.112.genes.gtf.gz"
 
 real_data:
-  technology: single_end
+  library_layout: single
 
 dataset:
   samples:

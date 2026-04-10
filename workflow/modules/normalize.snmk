@@ -9,13 +9,13 @@ For kallisto and alevin, multimapper_mode is always "unique".
 For starsolo and bowtie2, multimapper_mode is "unique" or "multi".
 For the genes feature_set, granularity is always "gene_id".
 
-Technology (single_end vs chromium) is taken from config and used to select
+Technology (smartseq2 vs chromium) is taken from config and used to select
 inputs at module load time — one rule per aligner handles both technologies.
 """
 
 import os.path as op
 
-sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'single_end')
+sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'smartseq2')
 active_aligners = config.get('aligners', [])
 sim_cell_ids = [f'cell_{i + 1:03d}' for i in range(
     config.get('simulation', {}).get('n_cells', 20))]
@@ -46,7 +46,7 @@ def normalize_locus_map(wildcards):
 
 
 # ---------------------------------------------------------------------------
-# STARsolo normalisation (path already encodes sim_technology)
+# STARsolo normalisation
 # ---------------------------------------------------------------------------
 
 rule normalize_starsolo:
@@ -84,17 +84,17 @@ rule normalize_starsolo:
 # Kallisto normalisation — one rule, branches on sim_technology via params
 # ---------------------------------------------------------------------------
 
-if sim_technology == 'single_end':
+if sim_technology == 'smartseq2':
     def _kallisto_norm_input(wc):
         return expand(
             op.join(config['base'], 'kallisto', '{feature_set}',
-                    'smartseq2', '{cell_id}', 'abundance.tsv'),
+                    sim_technology, '{cell_id}', 'abundance.tsv'),
             feature_set=wc.feature_set,
             cell_id=sim_cell_ids)
     _kallisto_norm_t2g = normalize_t2g
     _kallisto_norm_cell_ids = ' '.join(sim_cell_ids)
     _kallisto_norm_cell_dirs = lambda wc: ' '.join(
-        op.join(config['base'], 'kallisto', wc.feature_set, 'smartseq2', cid)
+        op.join(config['base'], 'kallisto', wc.feature_set, sim_technology, cid)
         for cid in sim_cell_ids)
     _kallisto_norm_mtx = lambda wc: ''
     _kallisto_norm_barcodes = lambda wc: ''
@@ -147,7 +147,7 @@ rule normalize_kallisto:
                 'normalize_kallisto_{feature_set}_{granularity}.log')
     shell:
         """
-        if [ "{params.technology}" = "single_end" ]; then
+        if [ "{params.technology}" = "smartseq2" ]; then
             python {workflow.basedir}/scripts/normalize_kallisto_smartseq2_granular.py \
                 --cell-ids {params.cell_ids} \
                 --cell-dirs {params.cell_dirs} \
@@ -169,17 +169,17 @@ rule normalize_kallisto:
 # Alevin normalisation — one rule, branches on sim_technology via params
 # ---------------------------------------------------------------------------
 
-if sim_technology == 'single_end':
+if sim_technology == 'smartseq2':
     def _alevin_norm_input(wc):
         return expand(
             op.join(config['base'], 'alevin', '{feature_set}',
-                    'smartseq2', '{cell_id}', 'quant.sf'),
+                    sim_technology, '{cell_id}', 'quant.sf'),
             feature_set=wc.feature_set,
             cell_id=sim_cell_ids)
     _alevin_norm_t2g = normalize_t2g
     _alevin_norm_cell_ids = ' '.join(sim_cell_ids)
     _alevin_norm_cell_dirs = lambda wc: ' '.join(
-        op.join(config['base'], 'alevin', wc.feature_set, 'smartseq2', cid)
+        op.join(config['base'], 'alevin', wc.feature_set, sim_technology, cid)
         for cid in sim_cell_ids)
     _alevin_norm_alevin_dir = lambda wc: ''
     _alevin_norm_locus_map = lambda wc: []
@@ -220,7 +220,7 @@ rule normalize_alevin:
                 'normalize_alevin_{feature_set}_{granularity}.log')
     shell:
         """
-        if [ "{params.technology}" = "single_end" ]; then
+        if [ "{params.technology}" = "smartseq2" ]; then
             python {workflow.basedir}/scripts/normalize_alevin_smartseq2.py \
                 --cell-ids {params.cell_ids} \
                 --cell-dirs {params.cell_dirs} \
@@ -240,9 +240,9 @@ rule normalize_alevin:
 # Bowtie2 normalisation — one rule, branches on sim_technology via input path
 # ---------------------------------------------------------------------------
 
-if sim_technology == 'single_end':
+if sim_technology == 'smartseq2':
     _bowtie2_norm_input = lambda wc: op.join(
-        config['base'], 'bowtie2', wc.feature_set, 'smartseq2',
+        config['base'], 'bowtie2', wc.feature_set, sim_technology,
         f'counts_{wc.granularity}_{wc.multimapper_mode}.tsv')
 else:
     _bowtie2_norm_input = lambda wc: op.join(

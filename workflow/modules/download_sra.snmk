@@ -2,15 +2,16 @@
 """
 SRA download rules for bulk and single-cell data.
 
-Technology values (real_data.technology in config):
+Bulk (real_data.library_layout in config):
 
-  single_end  - one FASTQ per sample; R2 not produced.
-                Used for single-end bulk RNA-seq and SmartSeq2-style
-                single-cell data (one file per cell).
-  paired_end  - two FASTQs per sample (R1 + R2).
-                Used for paired-end bulk RNA-seq.
-  chromium    - droplet 10x; R1 carries CB+UMI, R2 carries cDNA.
-                Handled by download_sra_sc (separate rule).
+  single  - one FASTQ per sample; R2 not produced.
+  paired  - two FASTQs per sample (R1 + R2).
+
+SC (real_data.technology in config):
+
+  smartseq2 - one FASTQ per cell; uses download_sra_bulk with library_layout: single.
+  chromium  - droplet 10x; R1 carries CB+UMI, R2 carries cDNA.
+              Handled by download_sra_sc (separate rule).
 
 SC (10x Chromium with --include-technical):
   Downloads one SRR per rule invocation. fasterq-dump produces three files;
@@ -24,14 +25,14 @@ GEO metadata:
 
 import os.path as op
 
-_technology = config.get('real_data', {}).get('technology', 'paired_end')
-_is_paired = _technology == 'paired_end'
+_library_layout = config.get('real_data', {}).get('library_layout', 'paired')
+_is_paired = _library_layout == 'paired'
 _sc_cbumi_idx = config.get('real_data', {}).get('sc_cbumi_index', 2)
 _sc_cdna_idx = config.get('real_data', {}).get('sc_cdna_index', 3)
 
 
 rule download_sra_bulk:
-    """Download one bulk SRR; produces R1 only for single_end, R1+R2 for paired_end."""
+    """Download one bulk SRR; produces R1 only for library_layout: single, R1+R2 for paired."""
     conda:
         op.join(workflow.basedir, 'envs', 'sratools.yaml')
     output:

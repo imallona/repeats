@@ -15,8 +15,8 @@ A single `Snakefile` drives four pipeline modes selected by `pipeline_type` in t
 
 - `simulation` - simulate reads from repeat loci (SmartSeq2 or 10x Chromium), align,
   and evaluate against ground truth
-- `bulk` - download paired-end FASTQs from SRA, align with STAR/kallisto/salmon,
-  quantify repeats, render a differential expression report
+- `bulk` - download FASTQs from SRA (paired or single, set via `real_data.library_layout`),
+  align with STAR/kallisto/salmon, quantify repeats, render a differential expression report
 - `sc` - download 10x Chromium FASTQs from SRA, run STARsolo and kallisto|bustools,
   render a single-cell report
 - `noise_report` - render a noise sweep HTML report across multiple simulation runs
@@ -116,7 +116,7 @@ Two publicly available bulk RNA-seq datasets are reanalysed for repeat element q
 | GSE126543 | NeuN+ neuronal nuclei, human frontal cortex (FTD/ALS), TDP-43 nuclear positive vs negative, 7 donors | paired by donor | `configs/gse126543_bulk.yaml` |
 | GSE230647 | iPSC-derived neural cultures, TDP-43 OE (HA-TDP43 DOX on vs off, n=4) and KD (TDP-43 shRNA vs NT shRNA, n=4) | two independent experiments | `configs/gse230647_bulk.yaml` |
 
-Both pipelines download paired-end FASTQs from SRA, align with STAR, kallisto, and salmon,
+Both pipelines download paired-end FASTQs from SRA (`library_layout: paired`), align with STAR, kallisto, and salmon,
 quantify repeats at gene_id and family_id granularities, and render an edgeR differential
 expression report.
 

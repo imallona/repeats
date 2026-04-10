@@ -12,7 +12,7 @@ Kallisto always runs in unique-read mode (no multimapper_mode wildcard needed).
 
 import os.path as op
 
-sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'single_end')
+sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'smartseq2')
 
 _ss2_fastq = lambda wc: op.join(config['base'], 'simulations', 'smartseq2', f'{wc.cell_id}.fastq.gz')
 
@@ -33,11 +33,11 @@ rule kallisto_quant_smartseq2_cell:
         fastq = _ss2_fastq
     output:
         abundance = op.join(config['base'], 'kallisto', '{feature_set}',
-                            'smartseq2', '{cell_id}', 'abundance.tsv')
+                            sim_technology, '{cell_id}', 'abundance.tsv')
     wildcard_constraints:
         feature_set = 'genes|repeats|genic_repeats|intergenic_repeats'
     params:
-        outdir = op.join(config['base'], 'kallisto', '{feature_set}', 'smartseq2', '{cell_id}'),
+        outdir = op.join(config['base'], 'kallisto', '{feature_set}', sim_technology, '{cell_id}'),
         fragment_length = 200,
         fragment_length_sd = 20,
         extra_args = config.get('aligner_params', {}).get('kallisto', {}).get('extra_args', '')

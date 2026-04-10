@@ -310,7 +310,7 @@ def write_repeat_fasta(cell_plan, fasta_path, chrom_locus_coords, fasta_source_p
 
 def main():
     ap = argparse.ArgumentParser(description='Simulate scRNA-seq reads from repeat elements')
-    ap.add_argument('--mode', choices=['single_end', 'chromium'], required=True)
+    ap.add_argument('--mode', choices=['smartseq2', 'chromium'], required=True)
     ap.add_argument('--gtf', required=True)
     ap.add_argument('--fasta', required=True)
     ap.add_argument('--outdir', required=True)
@@ -352,8 +352,8 @@ def main():
     repeat_fasta_path = os.path.join(args.outdir, 'simulated_repeats.fa')
     chrom_locus_coords = build_chrom_locus_coords(cell_plan)
 
-    if args.mode == 'single_end':
-        print(f'Simulating single-end reads (streaming FASTA by chrom)', file=sys.stderr)
+    if args.mode == 'smartseq2':
+        print(f'Simulating SmartSeq2 reads (streaming FASTA by chrom)', file=sys.stderr)
         cell_fastq_paths, ground_truth = simulate_smartseq2(
             args.fasta, cell_plan, args.read_length, args.outdir, rng, mutation_rate=args.mutation_rate)
         write_ground_truth(ground_truth, ground_truth_path, cell_column='cell_id')

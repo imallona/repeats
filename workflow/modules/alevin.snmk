@@ -14,7 +14,7 @@ can later aggregate to any granularity without re-running alignment.
 
 import os.path as op
 
-sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'single_end')
+sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'smartseq2')
 
 _ss2_fastq = lambda wc: op.join(config['base'], 'simulations', 'smartseq2', f'{wc.cell_id}.fastq.gz')
 
@@ -39,11 +39,11 @@ rule salmon_quant_smartseq2_cell:
         fastq = _ss2_fastq
     output:
         quant_sf = op.join(config['base'], 'alevin', '{feature_set}',
-                           'smartseq2', '{cell_id}', 'quant.sf')
+                           sim_technology, '{cell_id}', 'quant.sf')
     wildcard_constraints:
         feature_set = 'genes|repeats|genic_repeats|intergenic_repeats'
     params:
-        outdir = op.join(config['base'], 'alevin', '{feature_set}', 'smartseq2', '{cell_id}'),
+        outdir = op.join(config['base'], 'alevin', '{feature_set}', sim_technology, '{cell_id}'),
         index_dir = lambda wc: op.join(config['indices_base'], 'indices', genome_tag,
                                        f'salmon_{wc.feature_set}'),
         extra_args = config.get('aligner_params', {}).get('alevin', {}).get('extra_args', '')

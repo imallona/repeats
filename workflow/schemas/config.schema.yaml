@@ -65,7 +65,7 @@ properties:
     properties:
       technology:
         type: string
-        enum: [single_end, chromium]
+        enum: [smartseq2, chromium]
       n_cells:
         type: integer
         minimum: 2
@@ -94,7 +94,10 @@ properties:
     properties:
       technology:
         type: string
-        enum: [single_end, paired_end, chromium]
+        enum: [smartseq2, chromium]
+      library_layout:
+        type: string
+        enum: [single, paired]
       chemistry:
         type: string
         enum: [10xv2, 10xv3]

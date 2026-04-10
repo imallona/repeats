@@ -21,7 +21,7 @@ multimapper_mode_to_star_param = {
     'multi': 'EM'
 }
 
-sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'single_end')
+sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'smartseq2')
 
 _ss2_manifest = op.join(config['base'], 'simulations', 'smartseq2', 'manifest.tsv')
 
