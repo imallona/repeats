@@ -3,7 +3,6 @@ channels:
   - bioconda
   - conda-forge
 dependencies:
-  # >=1.10: alevin sketch mode (used for simulation chemistry) was introduced
-  # in salmon 1.10; lower versions lack --sketch/--barcodeLength/--umiLength flags
-  - bioconda::salmon>=1.10
+  # pinned to 1.10.2: salmon alevin was removed in versions after 1.10.2
+  - bioconda::salmon=1.10.2
   - conda-forge::pigz
