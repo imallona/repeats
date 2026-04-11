@@ -1,15 +1,17 @@
 #!/usr/bin/env snakemake -s
 """
-Salmon quantification for SmartSeq2 and Chromium modes.
+Salmon quantification for simulation pipelines.
 
-SmartSeq2: salmon quant per cell (one run per cell FASTQ). Also used as-is
-for single-end bulk RNA-seq, where each sample is treated as one cell.
+SmartSeq2: salmon quant per cell (one run per cell FASTQ).
 Chromium:  salmon alevin with droplet chemistry flags.
 
 Both modes support {feature_set}: genes, repeats, genic_repeats, intergenic_repeats.
 Alevin always runs in unique-read mode (no multimapper_mode wildcard needed).
 For chromium, alevin uses a locus-level t2g (identity mapping) so normalisation
 can later aggregate to any granularity without re-running alignment.
+
+Bulk RNA-seq uses a separate salmon rule in modules/bulk_single.snmk or
+modules/bulk_paired.snmk.
 """
 
 import os.path as op
@@ -53,8 +55,11 @@ rule salmon_quant_smartseq2_cell:
         op.join(config['base'], 'benchmarks',
                 'salmon_{feature_set}_quant_smartseq2_{cell_id}.txt')
     threads: 4
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
+        mkdir -p {params.outdir}
         salmon quant \
             --index {params.index_dir} \
             --libType A \
@@ -98,8 +103,11 @@ rule salmon_alevin_chromium:
     benchmark:
         op.join(config['base'], 'benchmarks', 'salmon_{feature_set}_alevin_chromium.txt')
     threads: workflow.cores
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
+        mkdir -p {params.outdir}
         salmon alevin \
             --libType ISR \
             --index {params.index_dir} \

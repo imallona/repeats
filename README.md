@@ -66,6 +66,13 @@ make help                      # List all targets
 Tune parallelism with `make CORES=20`. The Makefile activates the `snakemake` conda
 environment automatically.
 
+### Memory-aware scheduling
+
+Alignment rules and the report rule declare `resources: mem_mb` from
+`resources.max_mem_mb` (override the report budget with `resources.report_mem_mb`).
+Pass `--resources mem_mb=N` to cap the concurrent sum, for example
+`--resources mem_mb=16000` on a 16 GB host.
+
 ### Manually
 
 ```
@@ -167,7 +174,10 @@ Bulk-specific (`real_data`):
 SC-specific (`real_data`):
 - `sc_cbumi_index`: fasterq-dump file number containing CB+UMI (default `2`).
 - `sc_cdna_index`: fasterq-dump file number containing cDNA (default `3`).
-- `cb_length`, `umi_length`: barcode and UMI lengths for STARsolo.
+- `cb_length`, `umi_length`: barcode and UMI lengths. Single source of truth
+  for both STARsolo (`--soloCBlen`/`--soloUMIlen`) and kallisto bus
+  (`-x 0,0,cb:0,cb,cb+umi:1,0,0` custom geometry), so both aligners stay in
+  sync if you change the chemistry.
 
 ## Implementation notes
 

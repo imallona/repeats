@@ -4,15 +4,23 @@ type: object
 required:
   - base
   - reference
-  - mode
+  - pipeline_type
   - aligners
   - resources
-additionalProperties: false
+additionalProperties: true
 properties:
 
   base:
     type: string
     description: output root directory
+
+  indices_base:
+    type: string
+    description: root directory for shared indices and references
+
+  pipeline_type:
+    type: string
+    enum: [simulation, bulk, sc, noise_report]
 
   reference:
     type: object
@@ -29,7 +37,6 @@ properties:
         type: array
         items:
           type: string
-        minItems: 1
       filter_genic:
         type: boolean
         default: false
@@ -54,10 +61,6 @@ properties:
             type: string
           rmsk_flatfile:
             type: string
-
-  mode:
-    type: string
-    enum: [simulation, real_data]
 
   simulation:
     type: object
@@ -87,10 +90,16 @@ properties:
       seed:
         type: integer
         default: 42
+      mutation_rate:
+        type: number
+        minimum: 0
+        maximum: 1
+        default: 0.001
+        description: per-base substitution rate applied to simulated reads
 
   real_data:
     type: object
-    additionalProperties: false
+    additionalProperties: true
     properties:
       technology:
         type: string
@@ -101,16 +110,43 @@ properties:
       chemistry:
         type: string
         enum: [10xv2, 10xv3]
+      cb_length:
+        type: integer
+      umi_length:
+        type: integer
+      sc_cbumi_index:
+        type: integer
+      sc_cdna_index:
+        type: integer
+      fragment_length:
+        type: integer
+      fragment_sd:
+        type: integer
       samples:
         type: object
         additionalProperties:
           type: object
-          required: [R1]
           properties:
             R1:
               type: string
             R2:
               type: string
+
+  dataset:
+    type: object
+    additionalProperties: true
+    description: real-data dataset descriptor (bulk or sc). sra_study/geo_accession are optional.
+    properties:
+      sra_study:
+        type: string
+      geo_accession:
+        type: string
+      metadata_url:
+        type: string
+      sample_metadata:
+        type: string
+      samples:
+        type: object
 
   feature_sets:
     type: array
@@ -120,16 +156,23 @@ properties:
       enum: [repeats, genes, genic_repeats, intergenic_repeats, repeat_harboring_genes]
     default: [repeats]
 
+  granularities:
+    type: array
+    minItems: 1
+    items:
+      type: string
+      enum: [locus, gene_id, family_id, class_id]
+
   aligners:
     type: array
     minItems: 1
     items:
       type: string
-      enum: [starsolo, kallisto, alevin, bowtie2]
+      enum: [starsolo, kallisto, alevin, bowtie2, star, salmon]
 
   aligner_params:
     type: object
-    additionalProperties: false
+    additionalProperties: true
     properties:
       starsolo:
         type: object
@@ -139,7 +182,14 @@ properties:
             type: array
             items:
               type: string
-              enum: [unique, multimapping]
+              enum: [unique, multi]
+          extra_args:
+            type: string
+            default: ""
+      star:
+        type: object
+        additionalProperties: false
+        properties:
           extra_args:
             type: string
             default: ""
@@ -157,10 +207,22 @@ properties:
           extra_args:
             type: string
             default: ""
+      salmon:
+        type: object
+        additionalProperties: false
+        properties:
+          extra_args:
+            type: string
+            default: ""
       bowtie2:
         type: object
         additionalProperties: false
         properties:
+          multimapper_modes:
+            type: array
+            items:
+              type: string
+              enum: [unique, multi]
           extra_args:
             type: string
             default: ""
@@ -184,3 +246,25 @@ properties:
       max_mem_mb:
         type: integer
         minimum: 1000
+        description: per-rule mem_mb budget used by heavy alignment rules; not enforced unless snakemake is invoked with --resources mem_mb=N
+      report_mem_mb:
+        type: integer
+        minimum: 1000
+        description: per-rule mem_mb budget for render_report, defaults to max_mem_mb
+
+  report:
+    type: object
+    additionalProperties: true
+    properties:
+      script:
+        type: string
+      conda:
+        type: string
+      output:
+        type: string
+      outdir:
+        type: string
+      params:
+        type: array
+        items:
+          type: string

@@ -300,7 +300,7 @@ def test_parse_gtf_repeats_by_chrom_allowed_chroms(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# parse_gtf_repeats_by_chrom – additional branch coverage
+# parse_gtf_repeats_by_chrom - additional branch coverage
 # ---------------------------------------------------------------------------
 
 def test_parse_gtf_repeats_by_chrom_skips_comment_lines(tmp_path):

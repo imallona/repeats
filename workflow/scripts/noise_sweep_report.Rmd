@@ -143,7 +143,7 @@ ggplot(deg, aes(x = mutation_rate, y = value,
         legend.text  = element_text(size = 8))
 ```
 
-## pearson r and F1 — noise overview
+## pearson r and F1 - noise overview
 
 Summary view focusing on the two most interpretable metrics.
 

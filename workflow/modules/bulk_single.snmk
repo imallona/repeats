@@ -40,22 +40,24 @@ rule star_align_bulk:
     conda:
         op.join(workflow.basedir, 'envs', 'star.yaml')
     input:
-        r1    = _bulk_r1,
+        r1 = _bulk_r1,
         index = rules.star_genome_index.output.index,
     output:
         bam = op.join(config['base'], 'star', 'bulk', '{sample_id}',
                       'Aligned.sortedByCoord.out.bam'),
     params:
-        out_prefix    = op.join(config['base'], 'star', 'bulk', '{sample_id}') + '/',
-        index_dir     = op.join(config['indices_base'], 'indices', genome_tag, 'star'),
-        tmp_dir       = op.join(config['base'], 'tmp', 'star_bulk_{sample_id}'),
+        out_prefix = op.join(config['base'], 'star', 'bulk', '{sample_id}') + '/',
+        index_dir = op.join(config['indices_base'], 'indices', genome_tag, 'star'),
+        tmp_dir = op.join(config['base'], 'tmp', 'star_bulk_{sample_id}'),
         max_ram_bytes = config['resources']['max_mem_mb'] * 1024 * 1024,
-        extra_args    = config.get('aligner_params', {}).get('star', {}).get('extra_args', ''),
+        extra_args = config.get('aligner_params', {}).get('star', {}).get('extra_args', ''),
     log:
         op.join(config['base'], 'logs', 'star_bulk_{sample_id}.log'),
     benchmark:
         op.join(config['base'], 'benchmarks', 'star_bulk_{sample_id}.txt'),
     threads: workflow.cores
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
         rm -rf {params.tmp_dir}
@@ -123,7 +125,7 @@ rule aggregate_star_bulk:
                       'star_{feature_set}_{granularity}_unique.tsv'),
     wildcard_constraints:
         feature_set = 'genes|repeats|genic_repeats|intergenic_repeats',
-        granularity  = 'locus|gene_id|family_id|class_id',
+        granularity = 'locus|gene_id|family_id|class_id',
     log:
         op.join(config['base'], 'logs',
                 'aggregate_star_bulk_{feature_set}_{granularity}.log'),
@@ -177,18 +179,18 @@ rule kallisto_quant_bulk:
     input:
         index = lambda wc: op.join(config['indices_base'], 'indices', genome_tag,
                                    'kallisto', f'{wc.feature_set}.idx'),
-        r1    = _bulk_r1,
+        r1 = _bulk_r1,
     output:
         abundance = op.join(config['base'], 'kallisto', '{feature_set}',
                             'bulk', '{sample_id}', 'abundance.tsv'),
     wildcard_constraints:
         feature_set = 'genes|repeats|genic_repeats|intergenic_repeats',
     params:
-        outdir          = op.join(config['base'], 'kallisto', '{feature_set}',
+        outdir = op.join(config['base'], 'kallisto', '{feature_set}',
                                   'bulk', '{sample_id}'),
         fragment_length = config.get('real_data', {}).get('fragment_length', 200),
-        fragment_sd     = config.get('real_data', {}).get('fragment_sd', 20),
-        extra_args      = config.get('aligner_params', {}).get('kallisto', {}).get('extra_args', ''),
+        fragment_sd = config.get('real_data', {}).get('fragment_sd', 20),
+        extra_args = config.get('aligner_params', {}).get('kallisto', {}).get('extra_args', ''),
     log:
         op.join(config['base'], 'logs',
                 'kallisto_bulk_{feature_set}_{sample_id}.log'),
@@ -196,8 +198,11 @@ rule kallisto_quant_bulk:
         op.join(config['base'], 'benchmarks',
                 'kallisto_bulk_{feature_set}_{sample_id}.txt'),
     threads: 4
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
+        mkdir -p {params.outdir}
         kallisto quant \
             --index {input.index} \
             --output-dir {params.outdir} \
@@ -226,9 +231,9 @@ rule normalize_kallisto_bulk:
                              'kallisto_{feature_set}_{granularity}_unique.tsv'),
     wildcard_constraints:
         feature_set = 'genes|repeats|genic_repeats|intergenic_repeats',
-        granularity  = 'locus|gene_id|family_id|class_id',
+        granularity = 'locus|gene_id|family_id|class_id',
     params:
-        cell_ids  = ' '.join(_bulk_cell_ids),
+        cell_ids = ' '.join(_bulk_cell_ids),
         cell_dirs = lambda wc: ' '.join(
             op.join(config['base'], 'kallisto', wc.feature_set, 'bulk', cid)
             for cid in _bulk_cell_ids
@@ -261,7 +266,7 @@ rule salmon_quant_bulk:
     wildcard_constraints:
         feature_set = 'genes|repeats|genic_repeats|intergenic_repeats',
     params:
-        outdir    = op.join(config['base'], 'alevin', '{feature_set}',
+        outdir = op.join(config['base'], 'alevin', '{feature_set}',
                             'bulk', '{sample_id}'),
         index_dir = lambda wc: op.join(config['indices_base'], 'indices', genome_tag,
                                        f'salmon_{wc.feature_set}'),
@@ -273,8 +278,11 @@ rule salmon_quant_bulk:
         op.join(config['base'], 'benchmarks',
                 'salmon_bulk_{feature_set}_{sample_id}.txt'),
     threads: 4
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
+        mkdir -p {params.outdir}
         salmon quant \
             --index {params.index_dir} \
             --libType A \
@@ -302,9 +310,9 @@ rule normalize_salmon_bulk:
                              'salmon_{feature_set}_{granularity}_unique.tsv'),
     wildcard_constraints:
         feature_set = 'genes|repeats|genic_repeats|intergenic_repeats',
-        granularity  = 'locus|gene_id|family_id|class_id',
+        granularity = 'locus|gene_id|family_id|class_id',
     params:
-        cell_ids  = ' '.join(_bulk_cell_ids),
+        cell_ids = ' '.join(_bulk_cell_ids),
         cell_dirs = lambda wc: ' '.join(
             op.join(config['base'], 'alevin', wc.feature_set, 'bulk', cid)
             for cid in _bulk_cell_ids

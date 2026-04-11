@@ -10,7 +10,7 @@ For starsolo and bowtie2, multimapper_mode is "unique" or "multi".
 For the genes feature_set, granularity is always "gene_id".
 
 Technology (smartseq2 vs chromium) is taken from config and used to select
-inputs at module load time — one rule per aligner handles both technologies.
+inputs at module load time - one rule per aligner handles both technologies.
 """
 
 import os.path as op
@@ -81,7 +81,7 @@ rule normalize_starsolo:
 
 
 # ---------------------------------------------------------------------------
-# Kallisto normalisation — one rule, branches on sim_technology via params
+# Kallisto normalisation - one rule, branches on sim_technology via params
 # ---------------------------------------------------------------------------
 
 if sim_technology == 'smartseq2':
@@ -166,7 +166,7 @@ rule normalize_kallisto:
 
 
 # ---------------------------------------------------------------------------
-# Alevin normalisation — one rule, branches on sim_technology via params
+# Alevin normalisation - one rule, branches on sim_technology via params
 # ---------------------------------------------------------------------------
 
 if sim_technology == 'smartseq2':
@@ -237,7 +237,7 @@ rule normalize_alevin:
 
 
 # ---------------------------------------------------------------------------
-# Bowtie2 normalisation — one rule, branches on sim_technology via input path
+# Bowtie2 normalisation - one rule, branches on sim_technology via input path
 # ---------------------------------------------------------------------------
 
 if sim_technology == 'smartseq2':

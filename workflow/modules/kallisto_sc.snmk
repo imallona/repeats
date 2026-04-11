@@ -8,9 +8,20 @@ Expects these globals from the including Snakefile:
 
 Reads across lanes are interleaved as positional pairs for kallisto bus:
   cb_lane1 cdna_lane1 cb_lane2 cdna_lane2 ...
+
+The kallisto bus -x geometry flag is built from the same real_data.cb_length
+and real_data.umi_length config fields that drive --soloCBlen / --soloUMIlen
+in starsolo_sc.snmk, so both aligners see a single source of truth for the
+read geometry. Format: BC:UMI:cDNA where each group is file_idx,start,stop.
 """
 
 import os.path as op
+
+_kb_cb_len = config.get('real_data', {}).get('cb_length', 16)
+_kb_umi_len = config.get('real_data', {}).get('umi_length', 12)
+# Barcode on R1[0:cb_len), UMI on R1[cb_len:cb_len+umi_len), cDNA is all of R2.
+# Same pattern as workflow/modules/kallisto.snmk for chromium simulations.
+_kb_tech_flag = f'0,0,{_kb_cb_len}:0,{_kb_cb_len},{_kb_cb_len + _kb_umi_len}:1,0,0'
 
 
 rule kallisto_bus_sc:
@@ -32,6 +43,7 @@ rule kallisto_bus_sc:
                               '{sample_id}', 'transcripts.txt'),
     params:
         outdir = op.join(config['base'], 'kallisto', '{feature_set}', '{sample_id}'),
+        tech_flag = _kb_tech_flag,
         cb_cdna_pairs = lambda wc, input: ' '.join(
             f'{cb} {cdna}' for cb, cdna in zip(input.cb, input.cdna)
         ),
@@ -41,12 +53,15 @@ rule kallisto_bus_sc:
     benchmark:
         op.join(config['base'], 'benchmarks', 'kallisto_bus_{feature_set}_{sample_id}.txt'),
     threads: workflow.cores
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
+        mkdir -p {params.outdir}
         kallisto bus \
             --index {input.index} \
             --output-dir {params.outdir} \
-            -x 10xv3 \
+            -x {params.tech_flag} \
             --threads {threads} \
             {params.extra_args} \
             {params.cb_cdna_pairs} 2> {log}

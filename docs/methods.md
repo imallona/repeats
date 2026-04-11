@@ -55,7 +55,7 @@ avoids holding the full genome sequence in RAM simultaneously.
 For each simulated cell a random subset of repeat loci is drawn without
 replacement.  The number of expressed loci per cell varies around a
 user-specified mean (`n_expressed_per_cell`, default 1000) by sampling uniformly
-in the range [0.7×, 1.3×] of that mean.  The count assigned to each expressed
+in the range [0.7x, 1.3x] of that mean.  The count assigned to each expressed
 locus is drawn from a geometric distribution with mean 5, truncated at 50.  The
 geometric distribution produces the heavy-tailed, low-count profile typical of
 scRNA-seq data without requiring external dependencies.
@@ -63,7 +63,7 @@ scRNA-seq data without requiring external dependencies.
 Each read is a subsequence sampled uniformly at random from within the repeat
 locus sequence.  Substitution errors are introduced independently at each base
 with probability `mutation_rate` (configurable; default 0.001).  A noise sweep
-is provided across four mutation rates — 0%, 1%, 5%, 10% — to assess aligner
+is provided across four mutation rates - 0%, 1%, 5%, 10% - to assess aligner
 robustness to sequencing errors.
 
 In **SmartSeq2** mode each cell is written to a separate gzipped FASTQ file
@@ -76,7 +76,7 @@ cell barcode and UMI (12 bp); read 2 carries the cDNA sequence.
 The ground truth is stored as a long-format TSV with one row per expressed
 (cell, repeat) pair, including `family_id` and `class_id` columns from the GTF.
 Only loci for which the genome contained a usable sequence (< 10% N bases,
-≥ 50 bp) appear in the ground truth.
+>= 50 bp) appear in the ground truth.
 
 ## Quantification granularity
 
@@ -134,7 +134,7 @@ For **10x Chromium**, `salmon alevin` is run in Chromium v3 mode using the
 repeat pseudo-transcriptome index.  Output is converted by
 `normalize_alevin_chromium.py`.
 
-### Bowtie2 — pseudo-genome approach
+### Bowtie2 - pseudo-genome approach
 
 Bowtie2 is indexed against a pseudo-genome FASTA where each repeat locus is its
 own reference sequence, named `transcript_id::chrom:start-end(strand)`.  Reads
@@ -151,14 +151,14 @@ deduplication is performed with `umi_tools dedup` before counting.
 
 ## Normalization
 
-Each aligner's native output is converted to a common feature × cell TSV (rows =
+Each aligner's native output is converted to a common feature x cell TSV (rows =
 repeat features, columns = cell identifiers) by a per-aligner `normalize_*.py`
 script.  Only non-zero rows are written.  This format is the sole input to the
 evaluation step.
 
 For 10x Chromium, kallisto and alevin normalization uses sparse accumulators:
 only non-zero `{cell_index: count}` pairs are stored per feature group, keeping
-memory proportional to expressed pairs rather than O(features × cells).
+memory proportional to expressed pairs rather than O(features x cells).
 
 The bowtie2 Chromium counting script streams the CB-tagged deduplicated BAM once
 via `samtools view`, accumulating `(barcode, feature)` counts in a sparse dict
@@ -169,7 +169,7 @@ without per-cell BAM splitting.
 `evaluate.py` compares each aligner's count matrix against the simulation ground
 truth at three levels:
 
-**Global** (one row per aligner × granularity): Pearson r, Spearman r, log1p
+**Global** (one row per aligner x granularity): Pearson r, Spearman r, log1p
 RMSE, precision, recall, F1, Jaccard index, specificity.
 
 **Per cell**: Pearson r and Spearman r computed separately for each cell across
@@ -200,6 +200,6 @@ degradation as a function of mutation rate.
 | kallisto    | envs/kallisto.yaml   | kallisto, bustools                        |
 | alevin      | envs/alevin.yaml     | salmon                                    |
 | bowtie2     | envs/bowtie2.yaml    | bowtie2, samtools                         |
-| umi_tools   | envs/umi_tools.yaml  | umi_tools, samtools (≥ 1.12), pysam       |
+| umi_tools   | envs/umi_tools.yaml  | umi_tools, samtools (>= 1.12), pysam       |
 | evaluation  | envs/evaluation.yaml | python, scipy                             |
 | rmarkdown   | envs/rmarkdown.yaml  | R, rmarkdown, ggplot2, patchwork          |

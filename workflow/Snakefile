@@ -17,7 +17,11 @@ Example:
 import os
 import os.path as op
 
+from snakemake.utils import validate
+
 configfile: "config.yaml"
+
+validate(config, op.join(workflow.basedir, 'schemas', 'config.schema.yaml'))
 
 _pipeline_type = config.get('pipeline_type')
 if _pipeline_type not in ('simulation', 'bulk', 'sc', 'noise_report'):
@@ -32,7 +36,7 @@ _chroms = config.get('reference', {}).get('chromosomes', [])
 genome_tag = '_'.join(sorted(_chroms)) if _chroms else 'all'
 
 
-# ── Simulation pipeline ──────────────────────────────────────────────────────
+# Simulation pipeline
 
 if _pipeline_type == 'simulation':
     active_aligners = config.get('aligners', [])
@@ -73,7 +77,7 @@ if _pipeline_type == 'simulation':
         os.makedirs(op.join(config['indices_base'], _d), exist_ok=True)
 
 
-# ── Bulk RNA-seq pipeline ────────────────────────────────────────────────────
+# Bulk RNA-seq pipeline
 
 if _pipeline_type == 'bulk':
     active_aligners = config.get('aligners', [])
@@ -123,7 +127,7 @@ if _pipeline_type == 'bulk':
         os.makedirs(op.join(config['indices_base'], _d), exist_ok=True)
 
 
-# ── Single-cell pipeline ─────────────────────────────────────────────────────
+# Single-cell pipeline
 
 if _pipeline_type == 'sc':
     active_aligners = config.get('aligners', [])
@@ -172,13 +176,13 @@ if _pipeline_type == 'sc':
         os.makedirs(op.join(config['indices_base'], _d), exist_ok=True)
 
 
-# ── Noise report pipeline ────────────────────────────────────────────────────
+# Noise report pipeline
 
 if _pipeline_type == 'noise_report':
     include: "modules/noise_report.snmk"
 
 
-# ── Target collection functions ───────────────────────────────────────────────
+# Target collection functions
 
 def reference_outputs():
     refs = op.join(config['indices_base'], 'indices', genome_tag)

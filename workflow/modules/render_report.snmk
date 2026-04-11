@@ -70,6 +70,9 @@ rule render_report:
         params_r = _params_r_str,
     log:
         op.join(config['base'], 'logs', 'render_report.log'),
+    resources:
+        mem_mb = config['resources'].get('report_mem_mb',
+                                         config['resources']['max_mem_mb'])
     shell:
         """
         mkdir -p {params.outdir}

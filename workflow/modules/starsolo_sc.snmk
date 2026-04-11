@@ -55,6 +55,8 @@ rule starsolo_chromium_sc:
         op.join(config['base'], 'benchmarks',
                 'starsolo_{sample_id}_{multimapper_mode}_{feature_set}.txt'),
     threads: workflow.cores
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
         rm -rf {params.tmp_dir} {params.out_prefix}Solo.out

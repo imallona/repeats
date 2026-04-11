@@ -124,6 +124,8 @@ rule star_genome_index:
     benchmark:
         op.join(config['base'], 'benchmarks', 'star_index.txt')
     threads: workflow.cores
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
         STAR --runThreadN {threads} \
@@ -372,6 +374,8 @@ rule kallisto_index:
     benchmark:
         op.join(config['base'], 'benchmarks', 'kallisto_{feature_set}_index.txt')
     threads: workflow.cores
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell: "kallisto index -i {output} {input} 2> {log}"
 
 
@@ -391,6 +395,8 @@ rule salmon_index:
     benchmark:
         op.join(config['base'], 'benchmarks', 'salmon_{feature_set}_index.txt')
     threads: workflow.cores
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell: "salmon index -t {input} -i {params.index_dir} -p {threads} 2> {log}"
 
 
@@ -410,4 +416,6 @@ rule bowtie2_index:
     benchmark:
         op.join(config['base'], 'benchmarks', 'bowtie2_{feature_set}_index.txt')
     threads: workflow.cores
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell: "bowtie2-build --threads {threads} {input} {params.index_prefix} 2> {log}"

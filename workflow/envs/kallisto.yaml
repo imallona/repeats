@@ -3,7 +3,7 @@ channels:
   - bioconda
   - conda-forge
 dependencies:
-  # =0.48: kallisto>=0.50 pulls in hdf5 which requires libcurl→libnghttp2→c-ares;
+  # =0.48: kallisto>=0.50 pulls in hdf5 which requires libcurl to libnghttp2 to c-ares;
   # that chain conflicts with other packages on this system's libmamba solver.
   # 0.48 is the last pre-hdf5 release and fully supports kallisto bus.
   - bioconda::kallisto=0.48

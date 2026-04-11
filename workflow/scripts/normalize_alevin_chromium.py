@@ -63,7 +63,7 @@ def main():
     with open(os.path.join(alevin_dir, 'quants_mat_cols.txt')) as fh:
         feature_ids = [line.rstrip('\n') for line in fh]
 
-    # MTX from alevin --dumpMtx: rows=cells, cols=genes → transpose to features x cells
+    # MTX from alevin --dumpMtx: rows=cells, cols=genes, then transpose to features x cells
     mtx_path = os.path.join(alevin_dir, 'quants_mat.mtx.gz')
     mat = scipy.io.mmread(mtx_path).T.tocsr()
     n_features, n_cells = mat.shape

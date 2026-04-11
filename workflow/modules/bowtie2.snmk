@@ -100,6 +100,8 @@ rule bowtie2_align_smartseq2_cell:
             'bowtie2_{feature_set}_smartseq2_{cell_id}.txt'
         )
     threads: 4
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
         bowtie2 -x {params.index_prefix} -U {input.fastq} \
@@ -330,6 +332,8 @@ rule bowtie2_align_chromium_r2:
             'bowtie2_{feature_set}_chromium.txt'
         )
     threads: workflow.cores
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
         bowtie2 -x {params.index_prefix} -U {input.r2} \

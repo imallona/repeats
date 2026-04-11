@@ -64,7 +64,7 @@ Read counts per locus are obtained with `samtools idxstats` and aggregated by th
 `count_pseudo_genome.py` script.  This approach has two key advantages:
 
 1. Counting is exact per-locus without GTF/chromosome name reconciliation.
-2. Multi-granularity outputs (locus → family → class) are produced in a single pass.
+2. Multi-granularity outputs (locus -> family -> class) are produced in a single pass.
 
 ## Technology and library layout
 

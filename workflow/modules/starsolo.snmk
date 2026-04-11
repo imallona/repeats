@@ -2,9 +2,6 @@
 """
 STARsolo alignment and quantification for SmartSeq2 and Chromium data.
 
-The SmartSeq2 path (manifest mode, one FASTQ per cell) is also used as-is for
-single-end bulk RNA-seq, where each sample is treated as one cell.
-
 Wildcards:
   {multimapper_mode} - "unique" (Unique) or "multi" (EM)
   {feature_set}      - annotation to quantify against (genes, repeats,
@@ -66,6 +63,8 @@ rule starsolo_smartseq2:
         op.join(config['base'], 'benchmarks',
                 'starsolo_smartseq2_{multimapper_mode}_{feature_set}.txt')
     threads: workflow.cores
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
         rm -rf {params.tmp_dir} {params.out_prefix}/Solo.out
@@ -130,6 +129,8 @@ rule starsolo_chromium:
         op.join(config['base'], 'benchmarks',
                 'starsolo_chromium_{multimapper_mode}_{feature_set}.txt')
     threads: workflow.cores
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
         rm -rf {params.tmp_dir} {params.out_prefix}/Solo.out

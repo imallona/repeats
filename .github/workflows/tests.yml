@@ -121,7 +121,7 @@ jobs:
   negative-control-run:
     name: Negative control full run
     runs-on: ubuntu-latest
-    if: inputs.run_negative_control == true
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_negative_control == 'true'
     steps:
       - uses: actions/checkout@v4
 
