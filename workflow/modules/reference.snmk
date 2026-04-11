@@ -6,14 +6,24 @@ and per-aligner indices parameterized by {feature_set}.
 feature_set values (4 total):
   genes              - Ensembl gene annotation
   repeats            - full RepeatMasker annotation
-  genic_repeats      - TE loci overlapping at least one gene body
-  intergenic_repeats - TE loci with no overlap to any gene body
+  genic_repeats      - TE loci overlapping a gene body on the same strand
+  intergenic_repeats - TE loci with no same-strand overlap to any gene body
 
 For repeat feature_sets the following are built per feature_set:
   {feature_set}.fa              - extracted repeat sequences (pseudo-genome FASTA)
   {feature_set}_locus_map.tsv   - 4-col TSV: transcript_id, gene_id, family_id, class_id
   {feature_set}_t2g_{gran}.tsv  - 2-col TSV: transcript_id -> group (SmartSeq2 normalisation)
   {feature_set}_t2g_full_locus.tsv - FASTA-header IDs -> locus (for alevin chromium --tgMap)
+
+Design notes:
+  - The genic, intergenic, and repeat-harboring-genes subsets all use
+    stranded overlap (bedtools intersect -s). The two repeat subsets are
+    complementary by construction and together cover every RepeatMasker
+    locus exactly once.
+  - The STAR genome index uses the genes GTF (not the repeats GTF) as
+    sjdbGTFfile so spliced alignments follow annotated exon boundaries. The
+    per-feature-set GTF is supplied downstream at run time (featureCounts for
+    bulk, STARsolo --sjdbGTFfile for single-cell).
 """
 
 import os.path as op
@@ -113,7 +123,7 @@ rule star_genome_index:
     conda: op.join(workflow.basedir, 'envs', 'star.yaml')
     input:
         genome = rules.decompress_genome.output,
-        repeats_gtf = rules.decompress_repeats_gtf.output
+        genes_gtf = rules.decompress_genes_gtf.output
     output:
         index = op.join(config['indices_base'], 'indices', genome_tag, 'star', 'SAindex')
     params:
@@ -132,7 +142,7 @@ rule star_genome_index:
              --runMode genomeGenerate \
              --genomeDir {params.index_dir} \
              --genomeFastaFiles {input.genome} \
-             --sjdbGTFfile {input.repeats_gtf} \
+             --sjdbGTFfile {input.genes_gtf} \
              --limitGenomeGenerateRAM {params.max_ram_bytes} &> {log}
         """
 
@@ -140,7 +150,7 @@ rule star_genome_index:
 # Genic / intergenic / repeat-harboring gene subsets (always built)
 
 rule find_genic_repeats:
-    """Repeats overlapping at least one gene body."""
+    """Repeats overlapping a gene body on the same strand."""
     conda: op.join(workflow.basedir, 'envs', 'star.yaml')
     input:
         repeats_gtf = rules.decompress_repeats_gtf.output,
@@ -157,7 +167,7 @@ rule find_genic_repeats:
 
 
 rule find_intergenic_repeats:
-    """Repeats with no overlap to any gene body."""
+    """Repeats with no same-strand overlap to any gene body."""
     conda: op.join(workflow.basedir, 'envs', 'star.yaml')
     input:
         repeats_gtf = rules.decompress_repeats_gtf.output,
@@ -169,12 +179,12 @@ rule find_intergenic_repeats:
     shell:
         """
         bedtools intersect -a {input.repeats_gtf} -b {input.genes_gtf} \
-            -v > {output} 2> {log}
+            -v -s > {output} 2> {log}
         """
 
 
 rule find_repeat_harboring_genes:
-    """Genes overlapping at least one repeat element."""
+    """Genes overlapping a repeat element on the same strand."""
     conda: op.join(workflow.basedir, 'envs', 'star.yaml')
     input:
         genes_gtf = rules.decompress_genes_gtf.output,
@@ -186,7 +196,7 @@ rule find_repeat_harboring_genes:
     shell:
         """
         bedtools intersect -a {input.genes_gtf} -b {input.repeats_gtf} \
-            -u > {output} 2> {log}
+            -u -s > {output} 2> {log}
         """
 
 
