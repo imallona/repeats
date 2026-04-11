@@ -49,7 +49,7 @@ rule star_align_bulk:
         out_prefix = op.join(config['base'], 'star', 'bulk', '{sample_id}') + '/',
         index_dir = op.join(config['indices_base'], 'indices', genome_tag, 'star'),
         tmp_dir = op.join(config['base'], 'tmp', 'star_bulk_{sample_id}'),
-        max_ram_bytes = config['resources']['max_mem_mb'] * 1024 * 1024,
+        max_ram_bytes = lambda wc, resources: min(resources.mem_mb, config['resources']['max_mem_mb']) * 1024 * 1024,
         extra_args = config.get('aligner_params', {}).get('star', {}).get('extra_args', ''),
     log:
         op.join(config['base'], 'logs', 'star_bulk_{sample_id}.log'),

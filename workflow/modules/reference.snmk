@@ -128,7 +128,7 @@ rule star_genome_index:
         index = op.join(config['indices_base'], 'indices', genome_tag, 'star', 'SAindex')
     params:
         index_dir = op.join(config['indices_base'], 'indices', genome_tag, 'star'),
-        max_ram_bytes = config['resources']['max_mem_mb'] * 1024 * 1024
+        max_ram_bytes = lambda wc, resources: min(resources.mem_mb, config['resources']['max_mem_mb']) * 1024 * 1024
     log:
         op.join(config['base'], 'logs', 'star_index.log')
     benchmark:
