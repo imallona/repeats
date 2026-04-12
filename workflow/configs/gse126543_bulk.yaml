@@ -94,3 +94,4 @@ report:
   params:
     - counts_dir
     - report_outdir
+    - indices_base

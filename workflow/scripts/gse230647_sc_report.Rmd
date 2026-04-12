@@ -1,5 +1,5 @@
 ---
-title: "GSE230647 single-cell repeat profiling: cluster 12 vs other cells"
+title: "GSE230647 single-cell repeat profiling: cluster 12 vs other cells (gene-normalized)"
 author: "Izaskun Mallona"
 date: "`r Sys.Date()`"
 output:
@@ -46,6 +46,12 @@ save_rds = function(obj, name) {
 }
 ```
 
+# About this report
+
+Repeat counts are normalized by gene library sizes (total gene read counts per
+pseudo-bulk sample) so that fold changes reflect changes in the repeat-to-gene
+expression ratio.
+
 # Sample metadata
 
 ```{r sample-meta}
@@ -68,7 +74,6 @@ cat("rows:", nrow(geo_meta), "\n")
 ```
 
 ```{r inspect-geo-meta}
-# print first rows to confirm column names before hardcoding
 head(geo_meta)
 ```
 
@@ -95,12 +100,11 @@ save_rds(geo_meta, "geo_meta_annotated")
 
 # Load STARsolo matrices and create pseudo-bulk counts
 
-For each sample and each repeat feature set, load the raw CB x feature
-matrix from STARsolo, intersect barcodes with GEO metadata, and sum
-counts within cluster 12 vs all other annotated cells.
+For each sample and each feature set (including genes), load the raw CB x feature
+matrix from STARsolo, intersect barcodes with GEO metadata, and sum counts within
+cluster 12 vs all other annotated cells.
 
 ```{r load-starsolo}
-# returns a named list: cluster12 and other, each a numeric vector of feature sums
 load_and_split = function(raw_dir, geo_meta) {
   if (!dir.exists(raw_dir)) {
     warning("STARsolo raw directory not found: ", raw_dir)
@@ -111,11 +115,9 @@ load_and_split = function(raw_dir, geo_meta) {
                       col_names = c("id", "name", "type"),
                       show_col_types = FALSE)
   mat = readMM(file.path(raw_dir, "matrix.mtx"))
-  # STARsolo: rows = features, cols = barcodes
   rownames(mat) = features$id
   colnames(mat) = barcodes
 
-  # strip any suffix like -1 from STARsolo barcodes for matching
   cb_stripped = sub("-[0-9]+$", "", barcodes)
   geo_stripped = sub("-[0-9]+$", "", geo_meta$barcode_raw)
 
@@ -141,7 +143,6 @@ load_and_split = function(raw_dir, geo_meta) {
   )
 }
 
-# collect pseudo-bulk counts across samples x feature_sets x starsolo_modes
 pb_list = list()
 
 for (mode in starsolo_modes) {
@@ -179,13 +180,36 @@ for (mode in starsolo_modes) {
 save_rds(pb_list, "pseudobulk_counts")
 ```
 
-# edgeR: cluster 12 vs other cells
+# Gene library sizes for normalization
+
+Gene pseudo-bulk library sizes are used to normalize repeat counts so that
+fold changes reflect the repeat-to-gene expression ratio.
+
+```{r gene-lib-sizes}
+gene_lib_cache = list()
+for (mode in starsolo_modes) {
+  gene_key = paste(mode, "genes", sep = "_")
+  if (gene_key %in% names(pb_list)) {
+    gene_pb = pb_list[[gene_key]]
+    gene_lib_cache[[mode]] = c(colSums(gene_pb$cluster12),
+                               colSums(gene_pb$other))
+    cat(mode, "gene lib sizes (cluster12 | other):\n")
+    cat("  cluster12:", colSums(gene_pb$cluster12), "\n")
+    cat("  other:", colSums(gene_pb$other), "\n")
+  }
+}
+save_rds(gene_lib_cache, "gene_lib_sizes")
+```
+
+# edgeR: cluster 12 vs other cells (gene-normalized)
 
 Pseudo-bulk: each sample contributes one column per group (cluster12 / other).
 A paired design (sample as blocking factor) accounts for between-sample variation.
+Library sizes are set to gene pseudo-bulk totals so that the test measures changes
+in the repeat-to-gene expression ratio.
 
 ```{r edger-function}
-run_edger = function(mat12, mat_other, label) {
+run_edger = function(mat12, mat_other, label, gene_lib_sizes) {
   stopifnot(ncol(mat12) == ncol(mat_other))
   n_samples = ncol(mat12)
   counts = cbind(mat12, mat_other)
@@ -197,7 +221,8 @@ run_edger = function(mat12, mat_other, label) {
 
   dge = DGEList(counts = counts, group = group)
   dge = dge[filterByExpr(dge, design), ]
-  dge = calcNormFactors(dge)
+  dge$samples$lib.size = gene_lib_sizes
+  dge$samples$norm.factors = rep(1, ncol(dge))
   dge = estimateDisp(dge, design)
 
   fit = glmQLFit(dge, design)
@@ -212,14 +237,24 @@ run_edger = function(mat12, mat_other, label) {
 ```{r run-edger}
 edger_results = list()
 
-for (key in names(pb_list)) {
-  cat("edgeR:", key, "\n")
-  pb = pb_list[[key]]
-  tt = tryCatch(
-    run_edger(pb$cluster12, pb$other, label = key),
-    error = function(e) { message("edgeR failed for ", key, ": ", e$message); NULL }
-  )
-  if (!is.null(tt)) edger_results[[key]] = tt
+for (mode in starsolo_modes) {
+  gene_ls = gene_lib_cache[[mode]]
+  if (is.null(gene_ls)) {
+    cat("skipping mode", mode, "- no gene library sizes\n")
+    next
+  }
+  for (fs in repeat_fsets) {
+    key = paste(mode, fs, sep = "_")
+    if (!key %in% names(pb_list)) next
+    cat("edgeR:", key, "(gene-normalized)\n")
+    pb = pb_list[[key]]
+    tt = tryCatch(
+      run_edger(pb$cluster12, pb$other, label = key,
+                gene_lib_sizes = gene_ls),
+      error = function(e) { message("edgeR failed for ", key, ": ", e$message); NULL }
+    )
+    if (!is.null(tt)) edger_results[[key]] = tt
+  }
 }
 
 save_rds(edger_results, "edger_results")
@@ -246,8 +281,8 @@ for (key in names(edger_results)) {
       aes(label = feature), size = 2.5, max.overlaps = 15
     ) +
     scale_colour_manual(values = c("FALSE" = "grey60", "TRUE" = "firebrick")) +
-    labs(title = key,
-         x = "log2 fold change (cluster 12 / other)",
+    labs(title = paste(key, "(gene-normalized)"),
+         x = "log2 FC repeat/gene ratio (cluster 12 / other)",
          y = "-log10 FDR",
          colour = "FDR < 0.05") +
     theme_bw()
@@ -265,26 +300,32 @@ for (key in names(edger_results)) {
 ```
 
 ```{r heatmap-top, fig.width=8, fig.height=10}
-# heatmap of top 40 FDR-significant features for the unique_genic_repeats result
-key_heat = paste0(starsolo_modes[1], "_genic_repeats")
-if (key_heat %in% names(edger_results) && key_heat %in% names(pb_list)) {
-  tt = edger_results[[key_heat]]
-  top_feats = tt %>% filter(FDR < 0.05) %>% arrange(FDR) %>% head(40) %>% pull(feature)
+for (mode in starsolo_modes) {
+  gene_key = paste0(mode, "_genes")
+  if (!gene_key %in% names(pb_list)) next
+  gene_pb = pb_list[[gene_key]]
+  gene_ls = c(colSums(gene_pb$cluster12), colSums(gene_pb$other))
 
-  if (length(top_feats) > 1) {
-    pb = pb_list[[key_heat]]
+  for (fs in repeat_fsets) {
+    key = paste0(mode, "_", fs)
+    if (!key %in% names(edger_results) || !key %in% names(pb_list)) next
+
+    tt = edger_results[[key]]
+    top_feats = tt %>% filter(FDR < 0.05) %>% arrange(FDR) %>% head(40) %>% pull(feature)
+    if (length(top_feats) < 2) next
+
+    pb = pb_list[[key]]
     mat = cbind(pb$cluster12, pb$other)
-    colnames(mat) = c(paste0(sample_ids, "_c12"), paste0(sample_ids, "_other"))
+    colnames(mat) = c(paste0(colnames(pb$cluster12), "_c12"),
+                      paste0(colnames(pb$other), "_other"))
     mat_sub = mat[top_feats, , drop = FALSE]
 
-    # CPM for display
-    lib_sizes = colSums(mat)
-    cpm_mat = sweep(mat_sub, 2, lib_sizes / 1e6, "/")
+    cpm_mat = sweep(mat_sub, 2, gene_ls / 1e6, "/")
     cpm_log = log1p(cpm_mat)
 
     ann_col = data.frame(
-      group = factor(c(rep("cluster12", length(sample_ids)),
-                       rep("other", length(sample_ids)))),
+      group = factor(c(rep("cluster12", ncol(pb$cluster12)),
+                       rep("other", ncol(pb$other)))),
       row.names = colnames(cpm_log)
     )
 
@@ -294,16 +335,17 @@ if (key_heat %in% names(edger_results) && key_heat %in% names(pb_list)) {
              cluster_cols = FALSE,
              show_rownames = TRUE,
              fontsize_row = 7,
-             main = paste("top genic repeats:", key_heat))
+             main = paste("top", fs, ":", key, "(gene-normalized CPM)"))
   }
 }
 ```
 
-# Per-cluster repeat expression dotplot
+# Per-cluster repeat expression dotplot (gene-normalized)
 
-Extra analysis: for the top genic repeats (by FDR from cluster 12 vs other),
-show expression across all 17 clusters as a dotplot. Each dot: mean log-CPM
-and fraction of cells with at least one count.
+For the top genic repeats (by FDR from cluster 12 vs other), show expression
+across all clusters as a dotplot. Each dot: mean gene-normalized log-CPM and
+fraction of cells with at least one count. Gene library sizes are computed per
+cluster to normalize the repeat signal.
 
 ```{r per-cluster-pseudobulk}
 key_dot = paste0(starsolo_modes[1], "_genic_repeats")
@@ -314,16 +356,19 @@ if (key_dot %in% names(pb_list) && key_dot %in% names(edger_results)) {
   tt = edger_results[[key_dot]]
   top_feats = tt %>% filter(FDR < 0.05) %>% arrange(FDR) %>% head(25) %>% pull(feature)
 
-  # build per-cluster pseudo-bulk across all samples
   cluster_counts = list()
   cluster_ncells = list()
   cluster_expr = list()
+  gene_cluster_counts = list()
 
   for (sid in sample_ids) {
     raw_dir = file.path(starsolo_base, sid,
                         paste0(starsolo_modes[1], "_genic_repeats"),
                         "Solo.out", "Gene", "raw")
-    if (!dir.exists(raw_dir)) next
+    gene_raw_dir = file.path(starsolo_base, sid,
+                             paste0(starsolo_modes[1], "_genes"),
+                             "Solo.out", "Gene", "raw")
+    if (!dir.exists(raw_dir) || !dir.exists(gene_raw_dir)) next
 
     barcodes = readLines(file.path(raw_dir, "barcodes.tsv"))
     features = read_tsv(file.path(raw_dir, "features.tsv"),
@@ -333,32 +378,43 @@ if (key_dot %in% names(pb_list) && key_dot %in% names(edger_results)) {
     rownames(mat) = features$id
     colnames(mat) = sub("-[0-9]+$", "", barcodes)
 
+    gene_barcodes = readLines(file.path(gene_raw_dir, "barcodes.tsv"))
+    gene_features = read_tsv(file.path(gene_raw_dir, "features.tsv"),
+                             col_names = c("id", "name", "type"),
+                             show_col_types = FALSE)
+    gene_mat = readMM(file.path(gene_raw_dir, "matrix.mtx"))
+    rownames(gene_mat) = gene_features$id
+    colnames(gene_mat) = sub("-[0-9]+$", "", gene_barcodes)
+
     geo_sub = geo_meta %>%
       mutate(cb = sub("-[0-9]+$", "", barcode_raw)) %>%
       filter(cb %in% colnames(mat))
 
     for (cl in unique(geo_sub$cluster)) {
       cbs = geo_sub$cb[geo_sub$cluster == cl]
-      cbs = intersect(cbs, colnames(mat))
-      if (length(cbs) == 0) next
+      cbs_rep = intersect(cbs, colnames(mat))
+      cbs_gene = intersect(cbs, colnames(gene_mat))
+      if (length(cbs_rep) == 0 || length(cbs_gene) == 0) next
       key_cl = as.character(cl)
-      m_sub = mat[top_feats, cbs, drop = FALSE]
+      m_sub = mat[top_feats, cbs_rep, drop = FALSE]
       prev_counts = if (is.null(cluster_counts[[key_cl]])) 0 else cluster_counts[[key_cl]]
       cluster_counts[[key_cl]] = prev_counts + Matrix::rowSums(m_sub)
       prev_ncells = if (is.null(cluster_ncells[[key_cl]])) 0 else cluster_ncells[[key_cl]]
-      cluster_ncells[[key_cl]] = prev_ncells + length(cbs)
+      cluster_ncells[[key_cl]] = prev_ncells + length(cbs_rep)
       prev_expr = if (is.null(cluster_expr[[key_cl]])) 0 else cluster_expr[[key_cl]]
       cluster_expr[[key_cl]] = prev_expr + Matrix::rowSums(m_sub > 0)
+      prev_gene = if (is.null(gene_cluster_counts[[key_cl]])) 0 else gene_cluster_counts[[key_cl]]
+      gene_cluster_counts[[key_cl]] = prev_gene + sum(Matrix::colSums(gene_mat[, cbs_gene, drop = FALSE]))
     }
   }
 
-  # build dotplot data frame
   rows = list()
   for (cl in names(cluster_counts)) {
     n_cells = cluster_ncells[[cl]]
     cnts = cluster_counts[[cl]]
-    lib = sum(cnts)
-    cpm = cnts / (lib / 1e6)
+    gene_lib = gene_cluster_counts[[cl]]
+    if (gene_lib == 0) gene_lib = 1
+    cpm = cnts / (gene_lib / 1e6)
     rows[[cl]] = data.frame(
       cluster = cl,
       feature = names(cpm),
@@ -381,13 +437,126 @@ if (!is.null(dotplot_df)) {
     geom_point() +
     scale_colour_viridis_c(option = "plasma") +
     scale_size_continuous(range = c(0.5, 5)) +
-    labs(title = "Genic repeat expression per cluster",
+    labs(title = "Genic repeat expression per cluster (gene-normalized)",
          subtitle = "top FDR-significant features, cluster 12 vs other",
          x = "cluster", y = NULL,
-         colour = "mean log-CPM", size = "fraction expressed") +
+         colour = "mean log gene-norm CPM", size = "fraction expressed") +
     theme_bw() +
     theme(axis.text.x = element_text(angle = 0),
           axis.text.y = element_text(size = 8))
+}
+```
+
+# Repeat detection summary
+
+Detection is defined as CPM > 1 in at least half the pseudo-bulk samples of a
+group. CPM here uses raw repeat library sizes (not gene-normalized) to reflect
+absolute detectability in the sequencing data.
+
+```{r detection-helpers}
+detect_features = function(mat, cpm_thr = 1, min_frac = 0.5) {
+  if (is.null(mat) || ncol(mat) == 0) return(character(0))
+  lib_sizes = colSums(mat)
+  lib_sizes[lib_sizes == 0] = 1
+  cpm_mat = sweep(mat, 2, lib_sizes / 1e6, "/")
+  n_above = rowSums(cpm_mat > cpm_thr)
+  names(n_above)[n_above >= ceiling(min_frac * ncol(mat))]
+}
+
+load_class_map = function(indices_base, feature_set) {
+  path = file.path(indices_base, paste0(feature_set, "_locus_map.tsv"))
+  if (!file.exists(path)) return(NULL)
+  lm = read_tsv(path,
+                 col_names = c("transcript_id", "gene_id", "family_id", "class_id"),
+                 show_col_types = FALSE)
+  dedup = lm %>% select(gene_id, class_id) %>% distinct()
+  setNames(dedup$class_id, dedup$gene_id)
+}
+```
+
+```{r detection-data}
+class_maps = list()
+for (fs in repeat_fsets) {
+  class_maps[[fs]] = load_class_map(indices_base, fs)
+}
+
+det_summary = list()
+det_class = list()
+
+for (mode in starsolo_modes) {
+  for (fs in repeat_fsets) {
+    key = paste(mode, fs, sep = "_")
+    if (!key %in% names(pb_list)) next
+    pb = pb_list[[key]]
+    cm = class_maps[[fs]]
+    for (grp in c("cluster12", "other")) {
+      grp_mat = pb[[grp]]
+      detected = detect_features(grp_mat)
+      det_summary[[length(det_summary) + 1]] = data.frame(
+        mode = mode, feature_set = fs, group = grp,
+        n_detected = length(detected), stringsAsFactors = FALSE)
+      if (!is.null(cm) && length(detected) > 0) {
+        classes = cm[detected]
+        classes[is.na(classes)] = "unknown"
+        class_tab = as.data.frame(table(classes), stringsAsFactors = FALSE)
+        colnames(class_tab) = c("class_id", "n")
+        class_tab$mode = mode
+        class_tab$feature_set = fs
+        class_tab$group = grp
+        det_class[[length(det_class) + 1]] = class_tab
+      }
+    }
+  }
+}
+
+det_summary_df = bind_rows(det_summary)
+det_class_df = bind_rows(det_class)
+
+if (nrow(det_class_df) > 0) {
+  top_classes = det_class_df %>%
+    group_by(class_id) %>%
+    summarize(total = sum(n), .groups = "drop") %>%
+    arrange(desc(total)) %>%
+    head(7) %>%
+    pull(class_id)
+  det_class_df$class_label = ifelse(det_class_df$class_id %in% top_classes,
+                                    det_class_df$class_id, "other")
+  det_class_df = det_class_df %>%
+    group_by(mode, feature_set, group, class_label) %>%
+    summarize(n = sum(n), .groups = "drop")
+}
+
+save_rds(det_summary_df, "sc_detection_summary")
+save_rds(det_class_df, "sc_detection_by_class")
+```
+
+## Features detected per group
+
+```{r detection-barplot, fig.width=8, fig.height=5}
+if (nrow(det_summary_df) > 0) {
+  ggplot(det_summary_df, aes(x = group, y = n_detected, fill = feature_set)) +
+    geom_col(position = "dodge") +
+    facet_wrap(~mode) +
+    scale_fill_brewer(palette = "Set2") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(y = "detected features (CPM > 1)", fill = "feature set",
+         title = "Repeat features detected per group (pseudo-bulk)")
+}
+```
+
+## Features detected per group by repeat class
+
+```{r detection-class-barplot, fig.width=10, fig.height=7}
+if (nrow(det_class_df) > 0) {
+  ggplot(det_class_df, aes(x = group, y = n, fill = class_label)) +
+    geom_col() +
+    facet_grid(feature_set ~ mode) +
+    scale_fill_brewer(palette = "Set2") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(y = "detected features (CPM > 1)", fill = "repeat class",
+         title = "Detected repeats by class per group (pseudo-bulk)")
 }
 ```
 

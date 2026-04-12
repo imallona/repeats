@@ -1,5 +1,5 @@
 ---
-title: "GSE126543 bulk RNA-seq repeat quantification"
+title: "GSE126543 bulk RNA-seq repeat quantification (gene-normalized)"
 author: "Izaskun Mallona"
 date: "`r Sys.Date()`"
 output:
@@ -11,6 +11,7 @@ output:
 params:
   counts_dir: "."
   report_outdir: "."
+  indices_base: "."
 ---
 
 ```{r setup, include=FALSE}
@@ -27,6 +28,7 @@ source(file.path("scripts", "ggtheme.R"))
 
 counts_dir = params$counts_dir
 report_outdir = params$report_outdir
+indices_base = params$indices_base
 
 aligners = c("star", "kallisto", "salmon")
 granularities = c("gene_id", "family_id")
@@ -73,7 +75,10 @@ GSE126543 (SRP185789): NeuN-positive neuronal nuclei from human frontal cortex
 - tdp43neg: TDP-43 lost from nucleus, n=7 donors
 - unsorted: mixed TDP-43 status, donors S3 and S4 only (shown in PCA for context)
 
-Donor-matched design; edgeR QLF with donor as blocking factor (~donor + condition).
+Repeat counts are normalized by gene library sizes (total gene read counts per
+sample) so that fold changes reflect changes in the repeat-to-gene expression
+ratio. Donor-matched design; edgeR QLF with donor as blocking factor
+(~donor + condition).
 
 ## Load counts
 
@@ -104,8 +109,24 @@ cat("Available count matrices:", sum(!sapply(counts_cache, is.null)), "\n")
 save_rds(counts_cache, "gse126543_counts_cache")
 ```
 
+## Gene library sizes for normalization
+
+Gene counts are loaded per aligner to compute gene library sizes. These replace
+the default repeat-derived library sizes in edgeR so that repeat expression is
+measured relative to gene expression depth.
+
+```{r load-gene-lib-sizes}
+gene_lib_cache = list()
+for (al in aligners) {
+  gmat = load_counts(al, "genes", "gene_id")
+  if (!is.null(gmat)) gene_lib_cache[[al]] = colSums(gmat)
+}
+cat("Gene library sizes available for:", paste(names(gene_lib_cache), collapse = ", "), "\n")
+save_rds(gene_lib_cache, "gse126543_gene_lib_sizes")
+```
+
 ```{r edger-function}
-run_edger_paired = function(counts, meta) {
+run_edger_paired = function(counts, meta, gene_lib_sizes) {
   samples = intersect(meta$sample, colnames(counts))
   if (length(samples) < 6) return(NULL)
   mat = counts[, samples, drop = FALSE]
@@ -114,8 +135,9 @@ run_edger_paired = function(counts, meta) {
   donor = factor(meta$donor)
   y = DGEList(counts = mat, group = cond)
   keep = filterByExpr(y)
-  y = y[keep, , keep.lib.sizes = FALSE]
-  y = normLibSizes(y)
+  y = y[keep, ]
+  y$samples$lib.size = gene_lib_sizes[colnames(y)]
+  y$samples$norm.factors = rep(1, ncol(y))
   design = model.matrix(~donor + cond)
   y = estimateDisp(y, design)
   fit = glmQLFit(y, design)
@@ -128,16 +150,19 @@ run_edger_paired = function(counts, meta) {
 ## TDP-43 nuclear positive vs negative
 
 edgeR QLF with donor as blocking factor.
+Repeat counts normalized by gene library sizes.
 
 ```{r de-edger}
 de_results = list()
 for (al in aligners) {
+  gene_ls = gene_lib_cache[[al]]
+  if (is.null(gene_ls)) next
   for (fs in feature_sets) {
     for (gr in granularities) {
       key = paste(al, fs, gr, sep = "_")
       mat = counts_cache[[key]]
       if (is.null(mat)) next
-      res = run_edger_paired(mat, main_meta)
+      res = run_edger_paired(mat, main_meta, gene_ls)
       if (!is.null(res)) de_results[[key]] = res
     }
   }
@@ -156,7 +181,9 @@ for (al in aligners) {
     mat = counts_cache[[key]]
     all_sids = intersect(c(main_meta$sample, unsorted_samples), colnames(mat))
     mat_sub = mat[rowSums(mat[, all_sids, drop = FALSE]) > 0, all_sids, drop = FALSE]
-    lcpm = log2(mat_sub + 0.5)
+    gene_ls = gene_lib_cache[[al]]
+    gene_ls_sub = gene_ls[all_sids]
+    lcpm = log2(sweep(mat_sub, 2, gene_ls_sub / 1e6, "/") + 0.5)
     pca = prcomp(t(lcpm), scale. = FALSE)
     pct = round(100 * pca$sdev^2 / sum(pca$sdev^2))
     cond_map = setNames(main_meta$condition, main_meta$sample)
@@ -174,7 +201,7 @@ for (al in aligners) {
       ylab(paste0("PC2: ", pct[2], "%")) +
       scale_colour_manual(values = cbbPalette) +
       theme_ng() +
-      ggtitle(paste(al, fs))
+      ggtitle(paste(al, fs, "(gene-normalized)"))
   }
 }
 if (length(pca_plots) > 0) wrap_plots(pca_plots, ncol = 3)
@@ -196,6 +223,7 @@ for (gr in granularities) {
         scale_colour_manual(values = c("grey70", cbbPalette[2]),
                             labels = c("ns", "FDR<0.05 & |lfc|>1")) +
         geom_vline(xintercept = c(-1, 1), linetype = "dashed", linewidth = 0.3) +
+        xlab("log2 FC (repeat/gene ratio)") +
         theme_ng() +
         ggtitle(paste(al, fs, gr))
     }
@@ -219,6 +247,8 @@ for (gr in granularities) {
         scale_colour_manual(values = c("grey70", cbbPalette[2]),
                             labels = c("ns", "FDR<0.05")) +
         geom_hline(yintercept = 0, linewidth = 0.3) +
+        xlab("avg log2 gene-normalized CPM") +
+        ylab("log2 FC (repeat/gene ratio)") +
         theme_ng() +
         ggtitle(paste(al, fs, gr))
     }
@@ -266,7 +296,7 @@ for (al in aligners) {
                annotation_col = ann,
                scale = "row",
                show_rownames = nrow(lcpm) <= 40,
-               main = paste(al, fs, gr),
+               main = paste(al, fs, gr, "(gene-normalized)"),
                fontsize = 7,
                silent = TRUE)
     }
@@ -274,7 +304,7 @@ for (al in aligners) {
 }
 ```
 
-```{r normalized-counts, fig.width=10, fig.height=10, results =  'asis'}
+```{r normalized-counts, fig.width=10, fig.height=10, results = 'asis'}
 plot_cpm = function(y, feature, meta, title) {
   if (!feature %in% rownames(y$counts)) return(invisible(NULL))
   lcpm = cpm(y, log = TRUE)
@@ -290,7 +320,7 @@ plot_cpm = function(y, feature, meta, title) {
     scale_colour_manual(values = cbbPalette) +
     scale_shape_manual(values = 0:24) +
     theme_ng() +
-    ylab("log2 CPM") +
+    ylab("log2 gene-normalized CPM") +
     ggtitle(feature)
 }
 
@@ -309,6 +339,128 @@ for (al in aligners) {
       }
     }
   }
+}
+```
+
+## Repeat detection summary
+
+Detection is defined as CPM > 1 in at least half the replicates of a condition.
+CPM here uses raw repeat library sizes (not gene-normalized) to reflect absolute
+detectability in the sequencing data. The gene_id granularity is used to count
+individual repeat elements.
+
+```{r detection-helpers}
+detect_features = function(mat, sample_ids, cpm_thr = 1, min_frac = 0.5) {
+  sids = intersect(sample_ids, colnames(mat))
+  if (length(sids) == 0) return(character(0))
+  lib_sizes = colSums(mat[, sids, drop = FALSE])
+  lib_sizes[lib_sizes == 0] = 1
+  cpm_mat = sweep(mat[, sids, drop = FALSE], 2, lib_sizes / 1e6, "/")
+  n_above = rowSums(cpm_mat > cpm_thr)
+  names(n_above)[n_above >= ceiling(min_frac * length(sids))]
+}
+
+load_class_map = function(indices_base, feature_set) {
+  path = file.path(indices_base, paste0(feature_set, "_locus_map.tsv"))
+  if (!file.exists(path)) return(NULL)
+  lm = read_tsv(path,
+                 col_names = c("transcript_id", "gene_id", "family_id", "class_id"),
+                 show_col_types = FALSE)
+  dedup = lm %>% select(gene_id, class_id) %>% distinct()
+  setNames(dedup$class_id, dedup$gene_id)
+}
+```
+
+```{r detection-data}
+class_maps = list()
+for (fs in feature_sets) {
+  class_maps[[fs]] = load_class_map(indices_base, fs)
+}
+
+unsorted_meta = data.frame(
+  sample = unsorted_samples,
+  condition = "unsorted",
+  row.names = unsorted_samples,
+  stringsAsFactors = FALSE
+)
+all_meta = rbind(main_meta[, c("sample", "condition")], unsorted_meta)
+
+det_summary = list()
+det_class = list()
+
+for (al in aligners) {
+  for (fs in feature_sets) {
+    mat = counts_cache[[paste(al, fs, "gene_id", sep = "_")]]
+    if (is.null(mat)) next
+    cm = class_maps[[fs]]
+    for (cond_name in unique(all_meta$condition)) {
+      sids = all_meta$sample[all_meta$condition == cond_name]
+      detected = detect_features(mat, sids)
+      det_summary[[length(det_summary) + 1]] = data.frame(
+        aligner = al, feature_set = fs, condition = cond_name,
+        n_detected = length(detected), stringsAsFactors = FALSE)
+      if (!is.null(cm) && length(detected) > 0) {
+        classes = cm[detected]
+        classes[is.na(classes)] = "unknown"
+        class_tab = as.data.frame(table(classes), stringsAsFactors = FALSE)
+        colnames(class_tab) = c("class_id", "n")
+        class_tab$aligner = al
+        class_tab$feature_set = fs
+        class_tab$condition = cond_name
+        det_class[[length(det_class) + 1]] = class_tab
+      }
+    }
+  }
+}
+
+det_summary_df = bind_rows(det_summary)
+det_class_df = bind_rows(det_class)
+
+if (nrow(det_class_df) > 0) {
+  top_classes = det_class_df %>%
+    group_by(class_id) %>%
+    summarize(total = sum(n), .groups = "drop") %>%
+    arrange(desc(total)) %>%
+    head(7) %>%
+    pull(class_id)
+  det_class_df$class_label = ifelse(det_class_df$class_id %in% top_classes,
+                                    det_class_df$class_id, "other")
+  det_class_df = det_class_df %>%
+    group_by(aligner, feature_set, condition, class_label) %>%
+    summarize(n = sum(n), .groups = "drop")
+}
+
+save_rds(det_summary_df, "gse126543_detection_summary")
+save_rds(det_class_df, "gse126543_detection_by_class")
+```
+
+### Features detected per condition
+
+```{r detection-barplot, fig.width=10, fig.height=6}
+if (nrow(det_summary_df) > 0) {
+  ggplot(det_summary_df, aes(x = condition, y = n_detected, fill = feature_set)) +
+    geom_col(position = "dodge") +
+    facet_wrap(~aligner) +
+    scale_fill_manual(values = cbbPalette) +
+    theme_ng() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(y = "detected features (CPM > 1)", fill = "feature set",
+         title = "Repeat features detected per condition (gene_id level)")
+}
+```
+
+### Features detected per condition by repeat class
+
+```{r detection-class-barplot, fig.width=12, fig.height=8}
+if (nrow(det_class_df) > 0) {
+  ggplot(det_class_df, aes(x = condition, y = n, fill = class_label)) +
+    geom_col() +
+    facet_grid(feature_set ~ aligner) +
+    scale_fill_brewer(palette = "Set2") +
+    theme_ng() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(y = "detected features (CPM > 1)", fill = "repeat class",
+         title = "Detected repeats by class per condition (gene_id level)")
 }
 ```
 
