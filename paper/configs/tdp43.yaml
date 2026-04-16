@@ -1,0 +1,16 @@
+out_base: "../results/paper/tdp43"
+
+resources:
+  ruv_mem_mb: 16000
+
+datasets:
+  gse230647_bulk:
+    counts_dir: "../results/gse230647_bulk/counts"
+    script: "ruv_gse230647_bulk_report.Rmd"
+    n_controls: 5000
+    k_selected: 2
+  gse126543_bulk:
+    counts_dir: "../results/gse126543_bulk/counts"
+    script: "ruv_gse126543_bulk_report.Rmd"
+    n_controls: 5000
+    k_selected: 2

@@ -4,84 +4,43 @@
 
 A single Snakefile drives four pipeline modes selected by `pipeline_type` in the config.
 
-The simulation pipeline generates reads from repeat loci (SmartSeq2 or 10x Chromium),
-aligns them with four tools, and evaluates quantification accuracy against ground truth.
+The simulation pipeline generates reads from repeat loci (SmartSeq2 or 10x Chromium), aligns them with four tools, and evaluates quantification accuracy against ground truth.
 
-The bulk pipeline downloads FASTQs from SRA via fasterq-dump, aligns with STAR,
-kallisto, and salmon, and produces edgeR differential expression reports at
-gene_id and family_id granularity. Read layout is controlled by
-`real_data.library_layout`: `paired` (R1 + R2) or `single` (R1 only).
-Paired-end runs use `bulk_paired.snmk`; single-end runs use `bulk_single.snmk`,
-which passes `--single --fragment-length --sd` to kallisto and
-`--unmatedReads` to salmon.
+The bulk pipeline downloads FASTQs from SRA via fasterq-dump, aligns with STAR, kallisto, and salmon, and produces edgeR differential expression reports at gene_id and family_id granularity. Read layout is controlled by `real_data.library_layout`: `paired` (R1 + R2) or `single` (R1 only). Paired-end runs use `bulk_paired.snmk`; single-end runs use `bulk_single.snmk`, which passes `--single --fragment-length --sd` to kallisto and `--unmatedReads` to salmon.
 
-The sc pipeline downloads 10x Chromium FASTQs from SRA with
-`fasterq-dump --include-technical`. File numbering follows fasterq-dump conventions:
-file `_1` is the index read and is discarded; which file carries CB+UMI and which
-carries cDNA is configured via `sc_cbumi_index` and `sc_cdna_index` (defaults 2 and 3,
-matching 10x Chromium v2/v3). STARsolo (CB_UMI_Simple) and kallisto|bustools quantify
-genic and intergenic repeat annotations.
+The sc pipeline downloads 10x Chromium FASTQs from SRA with `fasterq-dump --include-technical`. File numbering follows fasterq-dump conventions. File `_1` is the index read and is discarded. The CB+UMI and cDNA reads are selected via `sc_cbumi_index` and `sc_cdna_index` (defaults 2 and 3, matching 10x Chromium v2/v3). STARsolo (CB_UMI_Simple) and kallisto|bustools quantify genic and intergenic repeat annotations.
 
 ## Reference preparation
 
-Genome sequence (GRCh38), gene annotation (Ensembl GTF), and repeat annotation
-(RepeatMasker, UCSC RMSK format converted to GTF via makeTEgtf) are downloaded
-or provided by the user.  All shared reference files and aligner indices are
-placed under a single `indices_base` directory so that multiple runs with
-different simulation parameters (e.g. noise sweeps) reuse the same indices
-without rebuilding them.
+Genome sequence (GRCh38), gene annotation (Ensembl GTF), and repeat annotation (RepeatMasker, UCSC RMSK format converted to GTF via makeTEgtf) are downloaded or provided by the user.  All shared reference files and aligner indices are placed under a single `indices_base` directory so that multiple runs with different simulation parameters (e.g. noise sweeps) reuse the same indices without rebuilding them.
 
-Internal files use bare chromosome names without the `chr` prefix (Ensembl
-convention).  UCSC-sourced files with `chr`-prefixed chromosome names are
-stripped at decompression time.
+Internal files use bare chromosome names without the `chr` prefix (Ensembl convention).  UCSC-sourced files with `chr`-prefixed chromosome names are stripped at decompression time.
 
-When `filter_genic` is enabled, three annotation subsets are produced using
-bedtools intersect:
+When `filter_genic` is enabled, three annotation subsets are produced using bedtools intersect:
 
 - `genic_repeats`: repeat loci overlapping at least one gene body
 - `intergenic_repeats`: repeat loci with no overlap to any gene body
 - `repeat_harboring_genes`: gene records overlapping at least one repeat locus
 
-These subsets are saved as GTF files for downstream filtering and stratified
-evaluation.
+These subsets are saved as GTF files for downstream filtering and stratified evaluation.
 
 ## Simulation
 
-Reads are generated directly from repeat element loci defined in a RepeatMasker
-GTF annotation.  The genome FASTA is streamed one chromosome at a time; only
-chromosomes containing at least one sampled locus are loaded into memory, which
-avoids holding the full genome sequence in RAM simultaneously.
+Reads are generated directly from repeat element loci defined in a RepeatMasker GTF annotation.  The genome FASTA is streamed one chromosome at a time; only chromosomes containing at least one sampled locus are loaded into memory, which avoids holding the full genome sequence in RAM simultaneously.
 
-For each simulated cell a random subset of repeat loci is drawn without
-replacement.  The number of expressed loci per cell varies around a
-user-specified mean (`n_expressed_per_cell`, default 1000) by sampling uniformly
-in the range [0.7x, 1.3x] of that mean.  The count assigned to each expressed
-locus is drawn from a geometric distribution with mean 5, truncated at 50.  The
-geometric distribution produces the heavy-tailed, low-count profile typical of
-scRNA-seq data without requiring external dependencies.
+For each simulated cell a random subset of repeat loci is drawn without replacement.  The number of expressed loci per cell varies around a user-specified mean (`n_expressed_per_cell`, default 1000) by sampling uniformly in the range [0.7x, 1.3x] of that mean.  The count assigned to each expressed locus is drawn from a geometric distribution with mean 5, truncated at 50.  The geometric distribution produces the heavy-tailed, low-count profile typical of scRNA-seq data without requiring external dependencies.
 
-Each read is a subsequence sampled uniformly at random from within the repeat
-locus sequence.  Substitution errors are introduced independently at each base
-with probability `mutation_rate` (configurable; default 0.001).  A noise sweep
-is provided across four mutation rates - 0%, 1%, 5%, 10% - to assess aligner
-robustness to sequencing errors.
+Each read is a subsequence sampled uniformly at random from within the repeat locus sequence.  Substitution errors are introduced independently at each base with probability `mutation_rate` (configurable; default 0.001).  A noise sweep is provided across four mutation rates (0%, 1%, 5%, 10%) to assess aligner robustness to sequencing errors.
 
-In **SmartSeq2** mode each cell is written to a separate gzipped FASTQ file
-alongside a STARsolo-compatible manifest.
+In SmartSeq2 mode each cell is written to a separate gzipped FASTQ file alongside a STARsolo-compatible manifest.
 
-In **Chromium** mode cell barcodes are drawn at random (16 bp, matching 10x v3)
-and a single paired-end FASTQ pair is generated.  Read 1 carries the synthetic
-cell barcode and UMI (12 bp); read 2 carries the cDNA sequence.
+In Chromium mode cell barcodes are drawn at random (16 bp, matching 10x v3) and a single paired-end FASTQ pair is generated.  Read 1 carries the synthetic cell barcode and UMI (12 bp); read 2 carries the cDNA sequence.
 
-The ground truth is stored as a long-format TSV with one row per expressed
-(cell, repeat) pair, including `family_id` and `class_id` columns from the GTF.
-Only loci for which the genome contained a usable sequence (< 10% N bases,
->= 50 bp) appear in the ground truth.
+The ground truth is stored as a long-format TSV with one row per expressed (cell, repeat) pair, including `family_id` and `class_id` columns from the GTF. Only loci for which the genome contained a usable sequence (< 10% N bases, >= 50 bp) appear in the ground truth.
 
 ## Quantification granularity
 
-All repeat-aware aligners produce count matrices at configurable aggregation
-levels:
+All repeat-aware aligners produce count matrices at configurable aggregation levels:
 
 | Level     | RepeatMasker field | Example value |
 |-----------|--------------------|---------------|
@@ -90,107 +49,63 @@ levels:
 | family_id | family_id          | Alu           |
 | class_id  | class_id           | SINE          |
 
-The `granularities` config key specifies which levels to compute.  Ground truth
-is aggregated to the same level before evaluation so metrics are always computed
-at matching resolution.
+The `granularities` config key specifies which levels to compute.  Ground truth is aggregated to the same level before evaluation so metrics are always computed at matching resolution.
 
 ## Aligners and quantifiers
 
 ### STARsolo
 
-STAR 2.7+ is run in SmartSeq (`soloType SmartSeq`) or Chromium (`soloType
-CB_UMI_Simple`) mode with a custom `sjdbGTFfile` selecting the repeat or gene
-annotation.  Multimapper handling is controlled by `--soloMultiMappers`:
-`Unique` (only uniquely mapping reads contribute) or `EM` (multimapping reads
-are distributed by the EM algorithm).  Both modes are evaluated for all
-technologies.
+STAR 2.7+ is run in SmartSeq (`soloType SmartSeq`) or Chromium (`soloType CB_UMI_Simple`) mode with a custom `sjdbGTFfile` selecting the repeat or gene annotation.  Multimapper handling is controlled by `--soloMultiMappers`: `Unique` (only uniquely mapping reads contribute) or `EM` (multimapping reads are distributed by the EM algorithm).  Both modes are evaluated for all technologies.
 
 ### Kallisto
 
-For **SmartSeq2** (simulation) and **bulk single-end**, `kallisto quant` is run
-per sample/cell against a repeat-sequence pseudo-transcriptome.  For single-end
-bulk, `--single --fragment-length --sd` are passed (fragment length and standard
-deviation are set via `real_data.fragment_length` and `real_data.fragment_sd` in
-the config, defaulting to 200 and 20).  Per-sample `abundance.tsv` files are
-merged and aggregated at the requested granularity.
+For SmartSeq2 (simulation) and bulk single-end, `kallisto quant` is run per sample/cell against a repeat-sequence pseudo-transcriptome.  For single-end bulk, `--single --fragment-length --sd` are passed (fragment length and standard deviation are set via `real_data.fragment_length` and `real_data.fragment_sd` in the config, defaulting to 200 and 20).  Per-sample `abundance.tsv` files are merged and aggregated at the requested granularity.
 
-For **bulk paired-end**, `kallisto quant` is run without `--single`, passing
-both R1 and R2.
+For bulk paired-end, `kallisto quant` is run without `--single`, passing both R1 and R2.
 
-For **10x Chromium**, `kallisto bus` is run on the combined R1/R2 files; the
-resulting BUS file is sorted and corrected with bustools, and per-cell count
-matrices are produced with `bustools count`.
+For 10x Chromium, `kallisto bus` is run on the combined R1/R2 files; the resulting BUS file is sorted and corrected with bustools, and per-cell count matrices are produced with `bustools count`.
 
 ### Alevin (Salmon)
 
-For **SmartSeq2** (simulation) and **bulk paired-end**, `salmon quant` is run
-per sample/cell in quasi-mapping mode with `-1` and `-2` for the two mates.
-`--minAssignedFrags 1` prevents Salmon from exiting when few reads map.
+For SmartSeq2 (simulation) and bulk paired-end, `salmon quant` is run per sample/cell in quasi-mapping mode with `-1` and `-2` for the two mates. `--minAssignedFrags 1` prevents Salmon from exiting when few reads map.
 
-For **bulk single-end**, `salmon quant` is run with `--unmatedReads` instead
-of `-1`/`-2`.
+For bulk single-end, `salmon quant` is run with `--unmatedReads` instead of `-1`/`-2`.
 
-For **10x Chromium**, `salmon alevin` is run in Chromium v3 mode using the
-repeat pseudo-transcriptome index.  Output is converted by
-`normalize_alevin_chromium.py`.
+For 10x Chromium, `salmon alevin` is run in Chromium v3 mode using the repeat pseudo-transcriptome index.  Output is converted by `normalize_alevin_chromium.py`.
 
-### Bowtie2 - pseudo-genome approach
+### Bowtie2: pseudo-genome approach
 
-Bowtie2 is indexed against a pseudo-genome FASTA where each repeat locus is its
-own reference sequence, named `transcript_id::chrom:start-end(strand)`.  Reads
-are aligned with `bowtie2 -a` (all alignments) and per-locus counts are obtained
-from `samtools idxstats`, which counts alignments per reference sequence without
-coordinate lookup.
+Bowtie2 is indexed against a pseudo-genome FASTA where each repeat locus is its own reference sequence, named `transcript_id::chrom:start-end(strand)`.  Reads are aligned with `bowtie2 -a` (all alignments) and per-locus counts are obtained from `samtools idxstats`, which counts alignments per reference sequence without coordinate lookup.
 
-For **SmartSeq2**, one BAM is produced per cell; featureCounts is then run on
-configurable cell chunks to limit peak memory.
+For SmartSeq2, one BAM is produced per cell; featureCounts is then run on configurable cell chunks to limit peak memory.
 
-For **10x Chromium**, read 2 (cDNA) is aligned to the repeat index and cell
-barcode/UMI tags from read 1 are attached via `umi_tools extract`.  UMI
-deduplication is performed with `umi_tools dedup` before counting.
+For 10x Chromium, read 2 (cDNA) is aligned to the repeat index and cell barcode/UMI tags from read 1 are attached via `umi_tools extract`.  UMI deduplication is performed with `umi_tools dedup` before counting.
 
 ## Normalization
 
-Each aligner's native output is converted to a common feature x cell TSV (rows =
-repeat features, columns = cell identifiers) by a per-aligner `normalize_*.py`
-script.  Only non-zero rows are written.  This format is the sole input to the
-evaluation step.
+Each aligner's native output is converted to a common feature x cell TSV (rows = repeat features, columns = cell identifiers) by a per-aligner `normalize_*.py` script.  Only non-zero rows are written.  This format is the sole input to the evaluation step.
 
-For 10x Chromium, kallisto and alevin normalization uses sparse accumulators:
-only non-zero `{cell_index: count}` pairs are stored per feature group, keeping
-memory proportional to expressed pairs rather than O(features x cells).
+For 10x Chromium, kallisto and alevin normalization uses sparse accumulators: only non-zero `{cell_index: count}` pairs are stored per feature group, keeping memory proportional to expressed pairs rather than O(features x cells).
 
-The bowtie2 Chromium counting script streams the CB-tagged deduplicated BAM once
-via `samtools view`, accumulating `(barcode, feature)` counts in a sparse dict
-without per-cell BAM splitting.
+The bowtie2 Chromium counting script streams the CB-tagged deduplicated BAM once via `samtools view`, accumulating `(barcode, feature)` counts in a sparse dict without per-cell BAM splitting.
 
 ## Evaluation
 
-`evaluate.py` compares each aligner's count matrix against the simulation ground
-truth at three levels:
+`evaluate.py` compares each aligner's count matrix against the simulation ground truth at three levels:
 
-**Global** (one row per aligner x granularity): Pearson r, Spearman r, log1p
-RMSE, precision, recall, F1, Jaccard index, specificity.
+Global (one row per aligner x granularity): Pearson r, Spearman r, log1p RMSE, precision, recall, F1, Jaccard index, specificity.
 
-**Per cell**: Pearson r and Spearman r computed separately for each cell across
-all repeat loci.
+Per cell: Pearson r and Spearman r computed separately for each cell across all repeat loci.
 
-**Per repeat class**: All global metrics stratified by `class_id` (LINE, SINE,
-LTR, DNA transposon, satellite, etc.), revealing which repeat types are
-accurately quantified.
+Per repeat class: All global metrics stratified by `class_id` (LINE, SINE, LTR, DNA transposon, satellite, etc.), revealing which repeat types are accurately quantified.
 
-Compute resource metrics (wall time, CPU time, peak RSS, I/O) are read from
-Snakemake benchmark files and included in the summary table.
+Compute resource metrics (wall time, CPU time, peak RSS, I/O) are read from Snakemake benchmark files and included in the summary table.
 
-The `aggregate_global_metrics` rule concatenates all per-aligner global metric
-TSVs into a single `summary_global_metrics.tsv`.
+The `aggregate_global_metrics` rule concatenates all per-aligner global metric TSVs into a single `summary_global_metrics.tsv`.
 
-An HTML report (`evaluation_report.html`) is rendered by
-`evaluation_report.Rmd` using `rmarkdown::render` with ggplot2 + patchwork.
+An HTML report (`evaluation_report.html`) is rendered by `evaluation_report.Rmd` using `rmarkdown::render` with ggplot2 + patchwork.
 
-A separate **noise sweep report** (`noise_sweep_report.Rmd`) loads
-`summary_global_metrics.tsv` from each noise-level run and plots metric
-degradation as a function of mutation rate.
+A separate noise sweep report (`noise_sweep_report.Rmd`) loads `summary_global_metrics.tsv` from each noise-level run and plots metric degradation as a function of mutation rate.
 
 ## Conda environments
 
@@ -203,3 +118,35 @@ degradation as a function of mutation rate.
 | umi_tools   | envs/umi_tools.yaml  | umi_tools, samtools (>= 1.12), pysam       |
 | evaluation  | envs/evaluation.yaml | python, scipy                             |
 | rmarkdown   | envs/rmarkdown.yaml  | R, rmarkdown, ggplot2, patchwork          |
+| edger       | envs/edger.yaml      | R, edgeR, rmarkdown, ggplot2              |
+| ruvseq      | paper/envs/ruvseq.yaml | R, edgeR, RUVSeq, EDASeq, rmarkdown     |
+
+## Paper analyses
+
+The `paper/` directory holds a separate Snakefile for dataset-specific reanalyses used in the manuscript. It is kept out of `workflow/Snakefile` for two reasons. First, paper analyses are cross-dataset, with a single config referencing outputs of multiple method runs. Second, paper rules should not retrigger method jobs via Snakemake provenance tracking.
+
+Entry point: `paper/Snakefile`, driven by `paper/configs/tdp43.yaml`. Counts are consumed from `results/{dataset}/counts/` produced by the bulk method pipeline, so the bulk pipeline must be run first for each dataset.
+
+### TDP-43 differential expression
+
+The `render_ruv` rule runs a per-dataset RUVg-normalized edgeR analysis, parameterized by dataset wildcard so GSE230647 and GSE126543 share a single rule definition. Inputs are the STAR unique-count matrices (all repeats, genic repeats, intergenic repeats, at gene_id and family_id granularity, plus the gene matrix). STAR unique counts outperform the kallisto and salmon quantifications on repeats in the simulation benchmark. The kallisto and salmon matrices produced by the bulk method pipeline are not consumed by the paper rule. The baseline bulk edgeR reports rendered by the method pipeline are kept; the paper rule adds a second, RUVg-normalized analysis rather than replacing them.
+
+Per-dataset procedure, encoded in `paper/scripts/ruv_{dataset}_bulk_report.Rmd`:
+
+1. Load the gene matrix and the six repeat matrices. Filter the gene matrix to rows with count >= 10 in at least half the samples; repeat matrices are not filtered at this stage.
+2. Fit a naive edgeR quasi-likelihood model on the filtered gene matrix (TMM normalization computed inside edgeR), using the design of interest: two-group for GSE126543, four-group with F-test across the three non-reference coefficients for GSE230647. Rank genes by p-value and take the `n_controls` genes with the largest p-values (default 5000) as empirical controls, i.e. genes least associated with the condition contrasts.
+3. Run RUVg with k = 1..4 on the gene matrix and score each k by the mean-absolute-deviation of the relative log expression distribution, writing the full k = 0..4 table to `ruv_rle_diagnostic.tsv` for audit. The operating k is set via the `k_selected` config parameter (default 2), not chosen automatically from the RLE. RUVg produces per-sample W factors that are orthogonal to feature granularity or featureset, so the same W is reused for every downstream repeat contrast.
+4. For each repeat featureset and each contrast, build a DGEList on the raw repeat counts, compute TMM factors, fit `~ W + group` with `glmQLFit` and `glmQLFTest`, and write a ranked TSV with feature_id, logFC, logCPM, F, PValue, FDR. GSE126543 drops the two unsorted samples and runs a single tdp43pos vs tdp43neg contrast; GSE230647 runs two contrasts, TDP-43 knockdown vs non-targeting and TDP-43 overexpression vs DOX-off control.
+
+Outputs per dataset are written under `results/paper/tdp43/{dataset}/`: the HTML report, one ranked DE TSV per featureset x contrast named `ruv_k{k}_{featureset}_{label}.tsv`, RDS snapshots (`ruv_state.rds`, `ruv_naive_gene_de.rds`, `ruv_repeat_de.rds`), `ruv_empirical_controls.txt`, `ruv_rle_diagnostic.tsv`, and `ruv_summary.tsv`.
+
+Run:
+
+```
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate snakemake
+cd paper
+snakemake --use-conda --cores 4 --configfile configs/tdp43.yaml
+```
+
+Cross-dataset synthesis (intersecting ranked repeat tables across the GSE230647 contrasts and GSE126543) is not yet wired into `paper/Snakefile`.

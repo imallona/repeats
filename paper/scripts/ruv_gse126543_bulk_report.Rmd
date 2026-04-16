@@ -1,0 +1,195 @@
+---
+title: "GSE126543 bulk RNA-seq repeats, RUVg-normalized edgeR DE"
+author: "Izaskun Mallona"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    code_folding: hide
+params:
+  counts_dir: "."
+  report_outdir: "."
+  indices_base: "."
+  n_controls: 5000
+  k_selected: 2
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+suppressPackageStartupMessages({
+  library(edgeR)
+  library(RUVSeq)
+})
+
+counts_dir <- params$counts_dir
+report_outdir <- params$report_outdir
+n_controls <- as.integer(params$n_controls)
+k_selected <- as.integer(params$k_selected)
+stopifnot(dir.exists(counts_dir), dir.exists(report_outdir),
+          n_controls > 100, k_selected >= 1, k_selected <= 4)
+
+save_rds <- function(obj, name) {
+  saveRDS(obj, file.path(report_outdir, paste0(name, ".rds")))
+}
+```
+
+Data-driven RUVg normalization for gse126543 (tdp43pos vs tdp43neg sorted
+nuclei). Unsorted samples are dropped because they are not part of the
+contrast and would inflate W with non-biological group structure. STAR
+unique-count matrices for genes and repeats.
+
+# Inputs
+
+```{r meta}
+samples <- c(paste0("tdp43neg_s", 1:7), paste0("tdp43pos_s", 1:7))
+group <- factor(sub("_s[0-9]+$", "", samples),
+                levels = c("tdp43neg","tdp43pos"))
+stopifnot(length(group) == length(samples), !any(is.na(group)),
+          table(group)["tdp43neg"] == 7, table(group)["tdp43pos"] == 7)
+```
+
+```{r load}
+load_counts <- function(path, samples) {
+  stopifnot(file.exists(path))
+  m <- read.table(path, header = TRUE, sep = "\t", row.names = 1,
+                  check.names = FALSE, stringsAsFactors = FALSE)
+  m <- as.matrix(m)
+  stopifnot(all(samples %in% colnames(m)))
+  m <- m[, samples, drop = FALSE]
+  storage.mode(m) <- "integer"
+  stopifnot(all(is.finite(m)), all(m >= 0))
+  m
+}
+
+genes <- load_counts(file.path(counts_dir, "star_genes_gene_id_unique.tsv"),
+                     samples)
+
+repeat_files <- list(
+  all_family   = "star_repeats_family_id_unique.tsv",
+  all_geneid   = "star_repeats_gene_id_unique.tsv",
+  genic_family = "star_genic_repeats_family_id_unique.tsv",
+  genic_geneid = "star_genic_repeats_gene_id_unique.tsv",
+  inter_family = "star_intergenic_repeats_family_id_unique.tsv",
+  inter_geneid = "star_intergenic_repeats_gene_id_unique.tsv"
+)
+repeats <- lapply(repeat_files, function(f)
+  load_counts(file.path(counts_dir, f), samples))
+stopifnot(all(vapply(repeats, function(m) identical(colnames(m), samples), TRUE)))
+```
+
+# Empirical control selection
+
+Two-group naive DE ranks genes by p-value for the pos-vs-neg contrast; top
+p-values define the empirical stable-gene panel.
+
+```{r filter_rank}
+keep <- rowSums(genes >= 10) >= floor(ncol(genes) / 2)
+genes_expr <- genes[keep, ]
+stopifnot(nrow(genes_expr) > 5000)
+
+design0 <- model.matrix(~ group)
+stopifnot(qr(design0)$rank == ncol(design0))
+dge0 <- DGEList(counts = genes_expr, group = group)
+dge0 <- calcNormFactors(dge0, method = "TMM")
+dge0 <- estimateDisp(dge0, design0)
+fit0 <- glmQLFit(dge0, design0)
+qlf0 <- glmQLFTest(fit0, coef = "grouptdp43pos")
+tt0 <- topTags(qlf0, n = Inf, sort.by = "none")$table
+stopifnot(nrow(tt0) == nrow(genes_expr))
+save_rds(tt0, "ruv_naive_gene_de")
+```
+
+```{r controls}
+stopifnot(n_controls <= nrow(tt0))
+controls <- rownames(tt0)[order(tt0$PValue, decreasing = TRUE)][seq_len(n_controls)]
+stopifnot(length(controls) == n_controls, !anyDuplicated(controls))
+writeLines(controls, file.path(report_outdir, "ruv_empirical_controls.txt"))
+```
+
+# RUVg factor estimation
+
+```{r ruvg}
+set1 <- newSeqExpressionSet(counts = genes_expr,
+                            phenoData = data.frame(group, row.names = samples))
+rle_score <- function(mat) {
+  med <- matrixStats::rowMedians(log2(mat + 1))
+  rle <- sweep(log2(mat + 1), 1, med, "-")
+  mean(apply(rle, 2, function(x) mean(abs(x - median(x)))))
+}
+
+ruv_fits <- list()
+for (k in 1:4) {
+  ruv_fits[[as.character(k)]] <- RUVg(set1, controls, k = k)
+}
+rle_before <- rle_score(genes_expr)
+rle_after <- vapply(ruv_fits, function(s) rle_score(normCounts(s)), numeric(1))
+diag_rle <- data.frame(k = 0:4,
+                       rle_mean_abs_dev = c(rle_before, rle_after))
+knitr::kable(diag_rle, digits = 3)
+write.table(diag_rle, file.path(report_outdir, "ruv_rle_diagnostic.tsv"),
+            sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+```{r pick_k}
+W_all <- lapply(ruv_fits, function(s) pData(s))
+W_sel <- as.matrix(W_all[[as.character(k_selected)]][,
+          grep("^W_", colnames(W_all[[as.character(k_selected)]])), drop = FALSE])
+stopifnot(nrow(W_sel) == length(samples), identical(rownames(W_sel), samples),
+          ncol(W_sel) == k_selected)
+save_rds(list(W_all = W_all, k_selected = k_selected, controls = controls,
+              rle = diag_rle, samples = samples, group = group),
+         "ruv_state")
+```
+
+# Repeat DE with RUV covariates
+
+```{r repeat_de}
+run_contrast <- function(counts, W, group, label, featureset) {
+  design <- model.matrix(~ W + group)
+  stopifnot(qr(design)$rank == ncol(design))
+  d <- DGEList(counts = counts, group = group)
+  d <- calcNormFactors(d, method = "TMM")
+  d <- estimateDisp(d, design)
+  fit <- glmQLFit(d, design)
+  qlf <- glmQLFTest(fit, coef = "grouptdp43pos")
+  tt <- topTags(qlf, n = Inf, sort.by = "none")$table
+  tt$feature_id <- rownames(tt)
+  tt <- tt[order(tt$PValue), c("feature_id","logFC","logCPM","F","PValue","FDR")]
+  out <- file.path(report_outdir,
+                   sprintf("ruv_k%d_%s_%s.tsv", ncol(W), featureset, label))
+  write.table(tt, out, sep = "\t", quote = FALSE, row.names = FALSE)
+  tt
+}
+
+all_results <- list()
+for (fs in names(repeats)) {
+  all_results[[fs]] <- run_contrast(
+    counts = repeats[[fs]], W = W_sel, group = group,
+    label = "tdp43pos_vs_tdp43neg", featureset = fs
+  )
+}
+stopifnot(length(all_results) == length(repeats))
+save_rds(all_results, "ruv_repeat_de")
+```
+
+# Summary
+
+```{r summary}
+summary_rows <- do.call(rbind, lapply(names(all_results), function(fs) {
+  r <- all_results[[fs]]
+  data.frame(
+    featureset = fs,
+    n_features = nrow(r),
+    n_fdr_05 = sum(r$FDR < 0.05, na.rm = TRUE),
+    n_fdr_10 = sum(r$FDR < 0.10, na.rm = TRUE),
+    top_feature = r$feature_id[1],
+    top_logfc = round(r$logFC[1], 3),
+    top_fdr = signif(r$FDR[1], 3)
+  )
+}))
+knitr::kable(summary_rows)
+write.table(summary_rows, file.path(report_outdir, "ruv_summary.tsv"),
+            sep = "\t", quote = FALSE, row.names = FALSE)
+```

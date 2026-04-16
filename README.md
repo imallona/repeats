@@ -22,6 +22,7 @@ A single `Snakefile` drives four pipeline modes selected by `pipeline_type` in t
 - `noise_report` - render a noise sweep HTML report across multiple simulation runs
 
 For method details see [docs/methods.md](docs/methods.md).
+Dataset-specific paper reanalyses live under [paper/](paper/) with their own Snakefile.
 Workflow diagrams (mermaid, renders on GitHub) are in [docs/diagrams.md](docs/diagrams.md).
 
 ## Requirements
@@ -42,6 +43,10 @@ Exact package pins (platform-locked explicit exports) are in `workflow/envs/expl
 | `repeats_umi_tools.txt` | repeats_umi_tools | umi_tools, samtools >= 1.12, pysam |
 | `repeats_evaluation.txt` | repeats_evaluation | python, scipy, pysam |
 | `rmarkdown.txt` | rmarkdown | R, rmarkdown, ggplot2, patchwork |
+
+Two additional envs without explicit pins: `workflow/envs/edger.yaml`
+(used by the baseline bulk edgeR report) and `paper/envs/ruvseq.yaml`
+(used by the paper TDP-43 RUVg report, see Paper analyses below).
 
 ## Running
 
@@ -101,16 +106,16 @@ Simulation configs are under `workflow/configs/`:
 
 | File | Technology | Cells | Expressed loci/cell | Mutation rate |
 |---|---|---|---|---|
-| `simulation_smartseq2.yaml` | SmartSeq2 | 500 | 1000 | 0.1% |
-| `simulation_chromium.yaml`  | 10x Chromium | 500 | 1000 | 0.1% |
-| `simulation_smartseq2_noise_0pct.yaml` | SmartSeq2 | 500 | 1000 | 0% |
-| `simulation_smartseq2_noise_1pct.yaml` | SmartSeq2 | 500 | 1000 | 1% |
-| `simulation_smartseq2_noise_5pct.yaml` | SmartSeq2 | 500 | 1000 | 5% |
-| `simulation_smartseq2_noise_10pct.yaml` | SmartSeq2 | 500 | 1000 | 10% |
-| `simulation_chromium_noise_0pct.yaml` | 10x Chromium | 500 | 1000 | 0% |
-| `simulation_chromium_noise_1pct.yaml` | 10x Chromium | 500 | 1000 | 1% |
-| `simulation_chromium_noise_5pct.yaml` | 10x Chromium | 500 | 1000 | 5% |
-| `simulation_chromium_noise_10pct.yaml` | 10x Chromium | 500 | 1000 | 10% |
+| `simulation_smartseq2.yaml` | SmartSeq2 | 100 | 500 | 0.1% |
+| `simulation_chromium.yaml`  | 10x Chromium | 100 | 500 | 0.1% |
+| `simulation_smartseq2_noise_0pct.yaml` | SmartSeq2 | 100 | 500 | 0% |
+| `simulation_smartseq2_noise_1pct.yaml` | SmartSeq2 | 100 | 500 | 1% |
+| `simulation_smartseq2_noise_5pct.yaml` | SmartSeq2 | 100 | 500 | 5% |
+| `simulation_smartseq2_noise_10pct.yaml` | SmartSeq2 | 100 | 500 | 10% |
+| `simulation_chromium_noise_0pct.yaml` | 10x Chromium | 100 | 500 | 0% |
+| `simulation_chromium_noise_1pct.yaml` | 10x Chromium | 100 | 500 | 1% |
+| `simulation_chromium_noise_5pct.yaml` | 10x Chromium | 100 | 500 | 5% |
+| `simulation_chromium_noise_10pct.yaml` | 10x Chromium | 100 | 500 | 10% |
 
 Unused real-data configs have been moved to `workflow/configs/old/`.
 
@@ -150,8 +155,9 @@ intergenic repeat annotations. The GEO supplementary file
 cluster assignment (17 clusters; cluster 12 marks TDP-43-HA-expressing cells).
 
 The report builds pseudo-bulk count matrices by aggregating STARsolo raw counts
-for cluster-12 cells vs all other annotated cells, then runs edgeR (quasi-likelihood,
-sample as blocking factor) to identify differentially expressed repeat elements.
+for cluster-12 cells against all other annotated cells. It then runs edgeR
+(quasi-likelihood, sample as blocking factor) to identify differentially
+expressed repeat elements.
 
 Indices are shared with the bulk GSE230647 pipeline via `indices_base: ../results/shared`,
 so building them once is sufficient for both analyses.
@@ -178,6 +184,40 @@ SC-specific (`real_data`):
   for both STARsolo (`--soloCBlen`/`--soloUMIlen`) and kallisto bus
   (`-x 0,0,cb:0,cb,cb+umi:1,0,0` custom geometry), so both aligners stay in
   sync if you change the chemistry.
+
+## Paper analyses
+
+A separate Snakefile under `paper/` drives manuscript-specific reanalyses that
+span multiple datasets produced by the bulk method pipeline. It is kept
+separate from `workflow/Snakefile` because paper analyses consume outputs of
+multiple method runs and should not retrigger method jobs via Snakemake
+provenance tracking. The paper rule adds a RUVg-normalized edgeR report per
+dataset alongside the baseline edgeR report produced by the bulk method
+pipeline. It does not replace the baseline report and does not re-run
+alignment.
+
+| Item | Value |
+|---|---|
+| Entry point | `paper/Snakefile` |
+| Config | `paper/configs/tdp43.yaml` |
+| Reports | `paper/scripts/ruv_gse230647_bulk_report.Rmd`, `paper/scripts/ruv_gse126543_bulk_report.Rmd` |
+| Conda env | `paper/envs/ruvseq.yaml` (R, edgeR, RUVSeq, EDASeq) |
+| Output base | `results/paper/tdp43/{dataset}/` |
+
+The TDP-43 pipeline runs a per-dataset RUVg-normalized edgeR analysis on STAR
+unique counts. Empirical controls are selected from the gene matrix by edgeR
+F-test ranking. RUVg is fit on those controls. The resulting per-sample W
+factors are plugged into `~ W + group` models for every repeat featureset and
+granularity. See [docs/methods.md](docs/methods.md) for the full procedure.
+
+Run after the relevant bulk pipeline completes:
+
+```
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate snakemake
+cd paper
+snakemake --use-conda --cores 4 --configfile configs/tdp43.yaml
+```
 
 ## Implementation notes
 
