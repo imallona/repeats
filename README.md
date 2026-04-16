@@ -2,8 +2,7 @@
 
 ## Status
 
-Active development (2024-2026). See [TODO](TODO.md) for open items.
-Previous exploratory version: [v0.1](https://github.com/imallona/repeats/releases/tag/v0.1).
+Active development (2024-2026). See [TODO](TODO.md) for open items. Previous exploratory version: [v0.1](https://github.com/imallona/repeats/releases/tag/v0.1).
 
 ## Acknowledgements
 
@@ -13,17 +12,12 @@ We are extremely grateful to SNF for their funding in ca. 2020.
 
 A single `Snakefile` drives four pipeline modes selected by `pipeline_type` in the config:
 
-- `simulation` - simulate reads from repeat loci (SmartSeq2 or 10x Chromium), align,
-  and evaluate against ground truth
-- `bulk` - download FASTQs from SRA (paired or single, set via `real_data.library_layout`),
-  align with STAR/kallisto/salmon, quantify repeats, render a differential expression report
-- `sc` - download 10x Chromium FASTQs from SRA, run STARsolo and kallisto|bustools,
-  render a single-cell report
+- `simulation` - simulate reads from repeat loci (SmartSeq2 or 10x Chromium), align, and evaluate against ground truth
+- `bulk` - download FASTQs from SRA (paired or single, set via `real_data.library_layout`), align with STAR/kallisto/salmon, quantify repeats, render a differential expression report
+- `sc` - download 10x Chromium FASTQs from SRA, run STARsolo and kallisto|bustools, render a single-cell report
 - `noise_report` - render a noise sweep HTML report across multiple simulation runs
 
-For method details see [docs/methods.md](docs/methods.md).
-Dataset-specific paper reanalyses live under [paper/](paper/) with their own Snakefile.
-Workflow diagrams (mermaid, renders on GitHub) are in [docs/diagrams.md](docs/diagrams.md).
+For method details see [docs/methods.md](docs/methods.md). Dataset-specific paper reanalyses live under [paper/](paper/) with their own Snakefile. Workflow diagrams (mermaid, renders on GitHub) are in [docs/diagrams.md](docs/diagrams.md).
 
 ## Requirements
 
@@ -44,9 +38,7 @@ Exact package pins (platform-locked explicit exports) are in `workflow/envs/expl
 | `repeats_evaluation.txt` | repeats_evaluation | python, scipy, pysam |
 | `rmarkdown.txt` | rmarkdown | R, rmarkdown, ggplot2, patchwork |
 
-Two additional envs without explicit pins: `workflow/envs/edger.yaml`
-(used by the baseline bulk edgeR report) and `paper/envs/ruvseq.yaml`
-(used by the paper TDP-43 RUVg report, see Paper analyses below).
+Two additional envs without explicit pins: `workflow/envs/edger.yaml` (used by the baseline bulk edgeR report) and `paper/envs/ruvseq.yaml` (used by the paper TDP-43 RUVg report, see Paper analyses below).
 
 ## Running
 
@@ -68,15 +60,11 @@ make report_noise_chromium     # Render Chromium noise sweep HTML report
 make help                      # List all targets
 ```
 
-Tune parallelism with `make CORES=20`. The Makefile activates the `snakemake` conda
-environment automatically.
+Tune parallelism with `make CORES=20`. The Makefile activates the `snakemake` conda environment automatically.
 
 ### Memory-aware scheduling
 
-Alignment rules and the report rule declare `resources: mem_mb` from
-`resources.max_mem_mb` (override the report budget with `resources.report_mem_mb`).
-Pass `--resources mem_mb=N` to cap the concurrent sum, for example
-`--resources mem_mb=16000` on a 16 GB host.
+Alignment rules and the report rule declare `resources: mem_mb` from `resources.max_mem_mb` (override the report budget with `resources.report_mem_mb`). Pass `--resources mem_mb=N` to cap the concurrent sum, for example `--resources mem_mb=16000` on a 16 GB host.
 
 ### Manually
 
@@ -97,8 +85,7 @@ snakemake --configfile configs/gse126543_bulk.yaml --use-conda --cores 10
 snakemake --configfile configs/gse230647_sc.yaml --use-conda --cores 10
 ```
 
-The simulation evaluation report is written to `{base}/evaluation/evaluation_report.html`.
-Bulk and SC reports are written to `{base}/{report.output}`.
+The simulation evaluation report is written to `{base}/evaluation/evaluation_report.html`. Bulk and SC reports are written to `{base}/{report.output}`.
 
 ## Configuration
 
@@ -128,16 +115,11 @@ Two publicly available bulk RNA-seq datasets are reanalysed for repeat element q
 | GSE126543 | NeuN+ neuronal nuclei, human frontal cortex (FTD/ALS), TDP-43 nuclear positive vs negative, 7 donors | paired by donor | `configs/gse126543_bulk.yaml` |
 | GSE230647 | iPSC-derived neural cultures, TDP-43 OE (HA-TDP43 DOX on vs off, n=4) and KD (TDP-43 shRNA vs NT shRNA, n=4) | two independent experiments | `configs/gse230647_bulk.yaml` |
 
-Both pipelines download paired-end FASTQs from SRA (`library_layout: paired`), align with STAR, kallisto, and salmon,
-quantify repeats at gene_id and family_id granularities, and render an edgeR differential
-expression report.
+Both pipelines download paired-end FASTQs from SRA (`library_layout: paired`). Reads align with STAR, kallisto, and salmon. Repeats are quantified at gene_id and family_id granularity. An edgeR differential expression report is rendered at the end.
 
 ### Single-cell reanalysis
 
-A single-cell analysis covers the TDP-43-HA overexpression scRNA-seq experiment from
-GSE230647. Three DOX-on 10x Chromium 3' v3 samples are included (two sequencing lanes
-each): GSM7230453 (2-week culture), GSM7230454 and GSM7230455 (4-week culture,
-replicates A and B). The DOX-off control and unlabeled samples are excluded.
+A single-cell analysis covers the TDP-43-HA overexpression scRNA-seq experiment from GSE230647. Three DOX-on 10x Chromium 3' v3 samples are included (two sequencing lanes each): GSM7230453 (2-week culture), GSM7230454 and GSM7230455 (4-week culture, replicates A and B). The DOX-off control and unlabeled samples are excluded.
 
 | Item | Value |
 |---|---|
@@ -146,21 +128,11 @@ replicates A and B). The DOX-off control and unlabeled samples are excluded.
 | Report script | `scripts/gse230647_sc_report.Rmd` |
 | Output | `../results/gse230647_sc/gse230647_sc_report.html` |
 
-The pipeline downloads each SRR with `fasterq-dump --include-technical`. For 10x
-Chromium, file `_2` carries the CB+UMI read and file `_3` carries the cDNA read
-(configured via `sc_cbumi_index` and `sc_cdna_index` in the config). STARsolo
-(CB_UMI_Simple, 10x v3 geometry) and kallisto|bustools are run against genic and
-intergenic repeat annotations. The GEO supplementary file
-`GSE230647_single_cell_metadata_tdp43ha.txt.gz` maps each cell barcode to its
-cluster assignment (17 clusters; cluster 12 marks TDP-43-HA-expressing cells).
+The pipeline downloads each SRR with `fasterq-dump --include-technical`. For 10x Chromium, file `_2` carries the CB+UMI read and file `_3` carries the cDNA read (set via `sc_cbumi_index` and `sc_cdna_index`). STARsolo (CB_UMI_Simple, 10x v3 geometry) and kallisto|bustools run against genic and intergenic repeat annotations. The GEO supplementary file `GSE230647_single_cell_metadata_tdp43ha.txt.gz` maps each cell barcode to its cluster (17 clusters). Cluster 12 marks the TDP-43-HA-expressing cells.
 
-The report builds pseudo-bulk count matrices by aggregating STARsolo raw counts
-for cluster-12 cells against all other annotated cells. It then runs edgeR
-(quasi-likelihood, sample as blocking factor) to identify differentially
-expressed repeat elements.
+The report builds pseudo-bulk count matrices by aggregating STARsolo raw counts for cluster-12 cells against all other annotated cells. edgeR (quasi-likelihood, sample as blocking factor) identifies differentially expressed repeat elements. A second, RUVg-normalized pass on the same pseudo-bulk matrices provides a sensitivity check.
 
-Indices are shared with the bulk GSE230647 pipeline via `indices_base: ../results/shared`,
-so building them once is sufficient for both analyses.
+Indices are shared with the bulk GSE230647 pipeline via `indices_base: ../results/shared`, so building them once is sufficient for both analyses.
 
 Key config parameters (shared across pipeline types):
 
@@ -171,46 +143,46 @@ Key config parameters (shared across pipeline types):
 - `granularities`: aggregation levels (`gene_id`, `family_id`, `class_id`).
 
 Simulation-specific:
+
 - `simulation.mutation_rate`: per-base substitution rate applied to simulated reads.
 - `aligner_params.{aligner}.multimapper_modes`: `unique` or `multi` (EM).
 
 Bulk-specific (`real_data`):
+
 - `library_layout`: `paired` (default) or `single`.
 
 SC-specific (`real_data`):
+
 - `sc_cbumi_index`: fasterq-dump file number containing CB+UMI (default `2`).
 - `sc_cdna_index`: fasterq-dump file number containing cDNA (default `3`).
-- `cb_length`, `umi_length`: barcode and UMI lengths. Single source of truth
-  for both STARsolo (`--soloCBlen`/`--soloUMIlen`) and kallisto bus
-  (`-x 0,0,cb:0,cb,cb+umi:1,0,0` custom geometry), so both aligners stay in
-  sync if you change the chemistry.
+- `cb_length`, `umi_length`: barcode and UMI lengths. Single source of truth for both STARsolo (`--soloCBlen`/`--soloUMIlen`) and kallisto bus (`-x 0,0,cb:0,cb,cb+umi:1,0,0` custom geometry), so both aligners stay in sync if you change the chemistry.
 
 ## Paper analyses
 
-A separate Snakefile under `paper/` drives manuscript-specific reanalyses that
-span multiple datasets produced by the bulk method pipeline. It is kept
-separate from `workflow/Snakefile` because paper analyses consume outputs of
-multiple method runs and should not retrigger method jobs via Snakemake
-provenance tracking. The paper rule adds a RUVg-normalized edgeR report per
-dataset alongside the baseline edgeR report produced by the bulk method
-pipeline. It does not replace the baseline report and does not re-run
-alignment.
+A separate Snakefile under `paper/` drives manuscript-specific reanalyses across datasets produced by the method pipelines. It is kept separate from `workflow/Snakefile` because paper analyses consume outputs of multiple method runs and should not retrigger method jobs via Snakemake provenance tracking. The paper rule adds a RUVg-normalized edgeR report per dataset alongside the baseline method reports. It does not replace the baseline reports and does not re-run alignment.
+
+Dataset keys in `paper/configs/tdp43.yaml` are named by last author plus study label plus assay kind. Each entry also records the source GEO accession and the method-pipeline config that produced its inputs.
+
+| Paper dataset key | GSE | Assay | Source method config | Paper report script |
+|---|---|---|---|---|
+| `lee_nuclear_tdp_retention_bulk` | GSE126543 | bulk | `workflow/configs/gse126543_bulk.yaml` | `paper/scripts/ruv_lee_nuclear_tdp_retention_bulk_report.Rmd` |
+| `polymenidou_tdp_kd_oe_cultures_bulk` | GSE230647 | bulk | `workflow/configs/gse230647_bulk.yaml` | `paper/scripts/ruv_polymenidou_tdp_kd_oe_cultures_bulk_report.Rmd` |
+| `polymenidou_tdp_oe_cultures_scrnaseq` | GSE230647 | scRNA-seq | `workflow/configs/gse230647_sc.yaml` | `paper/scripts/ruv_polymenidou_tdp_oe_cultures_scrnaseq_report.Rmd` |
 
 | Item | Value |
 |---|---|
 | Entry point | `paper/Snakefile` |
 | Config | `paper/configs/tdp43.yaml` |
-| Reports | `paper/scripts/ruv_gse230647_bulk_report.Rmd`, `paper/scripts/ruv_gse126543_bulk_report.Rmd` |
 | Conda env | `paper/envs/ruvseq.yaml` (R, edgeR, RUVSeq, EDASeq) |
 | Output base | `results/paper/tdp43/{dataset}/` |
 
-The TDP-43 pipeline runs a per-dataset RUVg-normalized edgeR analysis on STAR
-unique counts. Empirical controls are selected from the gene matrix by edgeR
-F-test ranking. RUVg is fit on those controls. The resulting per-sample W
-factors are plugged into `~ W + group` models for every repeat featureset and
-granularity. See [docs/methods.md](docs/methods.md) for the full procedure.
+The bulk reports run a per-dataset RUVg-normalized edgeR analysis on STAR unique counts. Empirical controls come from the gene matrix by edgeR F-test ranking. RUVg is fit on those controls. The per-sample W factors go into `~ W + group` (GSE126543) or `~ sample_block + W + group` (GSE230647 four-group design) models for every repeat featureset and granularity. See [docs/methods.md](docs/methods.md) for the full procedure.
 
-Run after the relevant bulk pipeline completes:
+The single-cell RUVg report (`polymenidou_tdp_oe_cultures_scrnaseq`) is the paper-side counterpart of the sc method pipeline's RUVg block. It builds pseudo-bulk count matrices for cluster-12 vs other annotated cells from the STARsolo raw matrices at `results/gse230647_sc/starsolo/`, then runs the same RUVg + edgeR procedure on a `~ sample_block + W + group` design with the three biological replicates as the sample block. Cluster 12 captures the DOX-on TDP-43-HA overexpressing neurons and acts as the neuron-resolved counterpart of the bulk `tdp43_oe vs oe_ctrl` contrast in `polymenidou_tdp_kd_oe_cultures_bulk`.
+
+A planned cross-dataset synthesis rule will pull CSVs from `results/paper/tdp43/{lee_nuclear_tdp_retention_bulk,polymenidou_tdp_kd_oe_cultures_bulk,polymenidou_tdp_oe_cultures_scrnaseq}/` and merge them into a long-format table for cross-contrast intersections (FDR < 0.05 concordance, logFC direction agreement). Not yet wired.
+
+Run after the relevant method pipelines complete:
 
 ```
 source ~/miniconda3/etc/profile.d/conda.sh
@@ -221,21 +193,15 @@ snakemake --use-conda --cores 4 --configfile configs/tdp43.yaml
 
 ## Implementation notes
 
-Chromium normalization (kallisto, alevin) uses sparse accumulators to avoid
-allocating a dense cells x features matrix.  Only non-zero (cell_index, count)
-pairs are stored per feature group, keeping memory proportional to expressed
-pairs rather than O(features x cells).
+Chromium normalization (kallisto, alevin) uses sparse accumulators to avoid allocating a dense cells x features matrix. Only non-zero (cell_index, count) pairs are stored per feature group, keeping memory proportional to expressed pairs rather than O(features x cells).
 
-Bowtie2 Chromium counting streams the CB-tagged BAM once and accumulates
-per-(barcode, locus) counts directly, without splitting into per-cell BAM files.
+Bowtie2 Chromium counting streams the CB-tagged BAM once and accumulates per-(barcode, locus) counts directly, without splitting into per-cell BAM files.
 
 See [docs/methods.md](docs/methods.md) for full details.
 
 ## Testing
 
-Unit tests, integration tests, and Snakemake dry-run tests are in the
-`test/` directory. See [test/README.md](test/README.md) for details on
-design, coverage, and how to run the tests.
+Unit tests, integration tests, and Snakemake dry-run tests are in the `test/` directory. See [test/README.md](test/README.md) for details on design, coverage, and how to run the tests.
 
 ## Contact
 

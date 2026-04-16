@@ -18,5 +18,7 @@ dependencies:
   - r-viridis
   - r-pheatmap
   - bioconductor-edger
+  - bioconductor-ruvseq
+  - r-matrixstats
   - r-ggrepel
   - pandoc

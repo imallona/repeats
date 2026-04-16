@@ -23,12 +23,16 @@ params:
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 library(Matrix)
 library(edgeR)
+library(RUVSeq)
+library(matrixStats)
 library(ggplot2)
 library(ggrepel)
 library(dplyr)
 library(tidyr)
 library(readr)
 library(pheatmap)
+
+source("scripts/ruv_common.R")
 
 starsolo_base = params$starsolo_base
 kallisto_base = params$kallisto_base
@@ -42,6 +46,15 @@ repeat_fsets = feature_sets[feature_sets != "genes"]
 save_rds = function(obj, name) {
   path = file.path(report_outdir, paste0(name, ".rds"))
   saveRDS(obj, path)
+  invisible(path)
+}
+
+csv_dir = file.path(report_outdir, "csv")
+dir.create(csv_dir, showWarnings = FALSE, recursive = TRUE)
+save_csv = function(df, name) {
+  path = file.path(csv_dir, paste0(name, ".csv"))
+  write.csv(df, path, row.names = FALSE)
+  cat("wrote", path, "(", nrow(df), "rows)\n")
   invisible(path)
 }
 ```
@@ -131,6 +144,18 @@ cat("cluster 12 label(s):", paste(c12_labels, collapse = "; "), "\n")
 cat("cluster 12 cells:", sum(geo_meta$group == "cluster12", na.rm = TRUE), "\n")
 cat("other cells:", sum(geo_meta$group == "other", na.rm = TRUE), "\n")
 save_rds(geo_meta, "geo_meta_annotated")
+
+cluster_sizes = geo_meta %>%
+  filter(!is.na(sample_id), !is.na(cluster_num)) %>%
+  count(sample_id, cluster_num, cluster, name = "n_cells") %>%
+  arrange(sample_id, cluster_num)
+save_csv(cluster_sizes, "cluster_sizes_per_sample")
+
+group_sizes = geo_meta %>%
+  filter(!is.na(sample_id), !is.na(cluster_num)) %>%
+  count(sample_id, group, name = "n_cells") %>%
+  pivot_wider(names_from = group, values_from = n_cells, values_fill = 0)
+save_csv(group_sizes, "group_sizes_per_sample")
 ```
 
 # Load STARsolo matrices and create pseudo-bulk counts
@@ -224,6 +249,7 @@ fold changes reflect the repeat-to-gene expression ratio.
 
 ```{r gene-lib-sizes}
 gene_lib_cache = list()
+gene_lib_rows = list()
 for (mode in starsolo_modes) {
   gene_key = paste(mode, "genes", sep = "_")
   if (gene_key %in% names(pb_list)) {
@@ -233,9 +259,18 @@ for (mode in starsolo_modes) {
     cat(mode, "gene lib sizes (cluster12 | other):\n")
     cat("  cluster12:", colSums(gene_pb$cluster12), "\n")
     cat("  other:", colSums(gene_pb$other), "\n")
+    gene_lib_rows[[paste(mode, "cluster12")]] = data.frame(
+      mode = mode, group = "cluster12",
+      sample_id = names(colSums(gene_pb$cluster12)),
+      gene_lib_size = unname(colSums(gene_pb$cluster12)))
+    gene_lib_rows[[paste(mode, "other")]] = data.frame(
+      mode = mode, group = "other",
+      sample_id = names(colSums(gene_pb$other)),
+      gene_lib_size = unname(colSums(gene_pb$other)))
   }
 }
 save_rds(gene_lib_cache, "gene_lib_sizes")
+save_csv(bind_rows(gene_lib_rows), "pseudobulk_gene_lib_sizes")
 ```
 
 # edgeR: cluster 12 vs other cells (gene-normalized)
@@ -300,10 +335,24 @@ save_rds(edger_results, "edger_results")
 # Results
 
 ```{r sig-summary}
+sig_rows_gnorm = list()
 for (key in names(edger_results)) {
   tt = edger_results[[key]]
+  tt_sorted = tt %>% arrange(FDR)
   cat(key, ": FDR < 0.05 features:", sum(tt$FDR < 0.05, na.rm = TRUE),
       "/ total tested:", nrow(tt), "\n")
+  sig_rows_gnorm[[key]] = data.frame(
+    key = key,
+    n_features = nrow(tt),
+    n_fdr_05 = sum(tt$FDR < 0.05, na.rm = TRUE),
+    n_fdr_10 = sum(tt$FDR < 0.10, na.rm = TRUE),
+    top_feature = tt_sorted$feature[1],
+    top_logfc = round(tt_sorted$logFC[1], 3),
+    top_fdr = signif(tt_sorted$FDR[1], 3)
+  )
+}
+if (length(sig_rows_gnorm) > 0) {
+  save_csv(bind_rows(sig_rows_gnorm), "edger_gene_norm_summary")
 }
 ```
 
@@ -327,12 +376,27 @@ for (key in names(edger_results)) {
 }
 ```
 
-```{r top-tables}
+```{r write-csv}
+csv_dir = file.path(report_outdir, "edger_csv")
+dir.create(csv_dir, showWarnings = FALSE, recursive = TRUE)
 for (key in names(edger_results)) {
   tt = edger_results[[key]]
-  cat("\n###", key, "\n")
+  out_csv = file.path(csv_dir, paste0("edger_cluster12_vs_other_", key, ".csv"))
+  write.csv(tt, out_csv, row.names = FALSE)
+  cat("wrote", out_csv, "(", nrow(tt), "features)\n")
+}
+```
+
+```{r top-tables, results='asis'}
+for (key in names(edger_results)) {
+  tt = edger_results[[key]]
+  cat("\n###", key, "\n\n")
   top = tt %>% filter(FDR < 0.05) %>% arrange(FDR) %>% head(30)
-  if (nrow(top) > 0) print(knitr::kable(top, digits = 4))
+  if (nrow(top) > 0) {
+    print(knitr::kable(top, digits = 4, format = "html"))
+  } else {
+    cat("no features at FDR < 0.05\n\n")
+  }
 }
 ```
 
@@ -374,6 +438,342 @@ for (mode in starsolo_modes) {
              fontsize_row = 7,
              main = paste("top", fs, ":", key, "(gene-normalized CPM)"))
   }
+}
+```
+
+# edgeR with RUVg (empirical HKG) normalization
+
+Alternative normalization: rather than scaling by total gene library size, select
+empirical stable genes from the pseudo-bulk gene matrix via a naive cluster-12
+vs other QL F-test, fit RUVg, and use the resulting W factors as covariates in
+the repeat edgeR contrasts (`~ sample_block + W + group`).
+
+**Caveat: residual degrees of freedom.** GSE230647 contributes three 10x
+Chromium libraries, so pseudo-bulking cluster 12 vs other gives only
+3 samples x 2 groups = 6 columns. The design `~ sample_block + W + group` uses
+an intercept, 2 sample-block dummies, k W factors, and 1 group coefficient, i.e.
+k + 4 coefficients total. Residual df = 6 - (k + 4) = 2 - k. So k = 1 leaves
+1 residual df (marginal), k = 2 is rank-deficient and edgeR will refuse to fit.
+The default `ruv_k_sc = 1` is the only usable setting for this dataset.
+Because 1 residual df gives unstable dispersion and F-statistic estimates, the
+RUVg sc results should be read as a sensitivity check against the primary
+gene-library-size normalization, not as an independently powered analysis.
+More biological replicates (or sub-sampling cells into independent pseudo-reps
+per sample) would be needed to run this analysis with proper power.
+
+```{r ruv-params}
+ruv_n_controls_sc = 3000
+ruv_k_sc = 1
+```
+
+```{r ruv-build-matrices}
+ruv_results = list()
+ruv_state_by_mode = list()
+
+for (mode in starsolo_modes) {
+  gene_key = paste(mode, "genes", sep = "_")
+  if (!gene_key %in% names(pb_list)) {
+    cat("skipping", mode, "RUV: no gene pseudo-bulk\n"); next
+  }
+  gene_pb = pb_list[[gene_key]]
+
+  sample_cols = colnames(gene_pb$cluster12)
+  pb_samples = c(paste0(sample_cols, "__c12"), paste0(sample_cols, "__other"))
+  group = factor(c(rep("cluster12", length(sample_cols)),
+                   rep("other",     length(sample_cols))),
+                 levels = c("other", "cluster12"))
+  sample_block = factor(rep(sample_cols, 2))
+
+  genes_mat = cbind(gene_pb$cluster12, gene_pb$other)
+  colnames(genes_mat) = pb_samples
+  storage.mode(genes_mat) = "integer"
+  keep = rowSums(genes_mat >= 10) >= floor(ncol(genes_mat) / 2)
+  genes_expr = genes_mat[keep, , drop = FALSE]
+  cat(mode, ": filtered gene matrix:", nrow(genes_expr), "x", ncol(genes_expr), "\n")
+
+  n_controls = min(ruv_n_controls_sc, nrow(genes_expr) - 10)
+  if (n_controls < 500) {
+    cat("  too few genes for RUV, skipping\n"); next
+  }
+
+  design0 = model.matrix(~ sample_block + group)
+  if (qr(design0)$rank != ncol(design0)) {
+    cat("  naive design rank-deficient, skipping\n"); next
+  }
+  ctrl_res = rank_empirical_controls(
+    counts = genes_expr, design = design0,
+    test = list(coef = "groupcluster12"), n_controls = n_controls
+  )
+  controls = ctrl_res$controls
+  writeLines(controls, file.path(report_outdir,
+                                 paste0("ruv_controls_", mode, ".txt")))
+
+  ruv_fit_res = fit_ruv_range(
+    genes_expr = genes_expr, controls = controls,
+    pheno_df = data.frame(group, row.names = pb_samples), ks = 1:2
+  )
+  print(knitr::kable(ruv_fit_res$diag_rle, digits = 3,
+                     caption = paste("RLE diagnostic, mode =", mode)))
+  write.table(ruv_fit_res$diag_rle,
+              file.path(report_outdir, paste0("ruv_rle_", mode, ".tsv")),
+              sep = "\t", quote = FALSE, row.names = FALSE)
+
+  W = pick_W_matrix(ruv_fit_res$fits, ruv_k_sc, pb_samples)
+  design = model.matrix(~ sample_block + W + group)
+  if (qr(design)$rank != ncol(design)) {
+    cat("  DE design rank-deficient at k =", ruv_k_sc, ", skipping\n"); next
+  }
+  resid_df = ncol(genes_expr) - qr(design)$rank
+  cat("  design:", paste(colnames(design), collapse = " + "),
+      "| residual df =", resid_df, "\n")
+
+  ruv_state_by_mode[[mode]] = list(
+    W = W, controls = controls, pb_samples = pb_samples,
+    group = group, sample_block = sample_block,
+    diag_rle = ruv_fit_res$diag_rle, design = design
+  )
+
+  for (fs in repeat_fsets) {
+    key = paste(mode, fs, sep = "_")
+    if (!key %in% names(pb_list)) next
+    pb = pb_list[[key]]
+    counts = cbind(pb$cluster12, pb$other)
+    colnames(counts) = pb_samples
+    storage.mode(counts) = "integer"
+    tt = tryCatch(
+      run_ruv_repeat_de(counts = counts, design = design,
+                        test = list(coef = "groupcluster12")),
+      error = function(e) {
+        message("  RUV edgeR failed for ", key, ": ", e$message); NULL
+      }
+    )
+    if (!is.null(tt)) {
+      ruv_results[[key]] = tt
+      out_csv = file.path(report_outdir, "edger_csv",
+                          paste0("edger_ruv_k", ruv_k_sc, "_cluster12_vs_other_",
+                                 key, ".csv"))
+      dir.create(dirname(out_csv), showWarnings = FALSE, recursive = TRUE)
+      write.csv(tt, out_csv, row.names = FALSE)
+      cat("  wrote", out_csv, "(", nrow(tt), "features)\n")
+    }
+  }
+}
+save_rds(ruv_state_by_mode, "ruv_state_by_mode")
+save_rds(ruv_results, "ruv_edger_results")
+```
+
+```{r ruv-sig-summary}
+sig_rows_ruv = list()
+for (key in names(ruv_results)) {
+  tt = ruv_results[[key]]
+  tt_sorted = tt %>% arrange(FDR)
+  cat(key, ": FDR < 0.05 features:", sum(tt$FDR < 0.05, na.rm = TRUE),
+      "/ total tested:", nrow(tt), "\n")
+  sig_rows_ruv[[key]] = data.frame(
+    key = key, ruv_k = ruv_k_sc,
+    n_features = nrow(tt),
+    n_fdr_05 = sum(tt$FDR < 0.05, na.rm = TRUE),
+    n_fdr_10 = sum(tt$FDR < 0.10, na.rm = TRUE),
+    top_feature = tt_sorted$feature_id[1],
+    top_logfc = round(tt_sorted$logFC[1], 3),
+    top_fdr = signif(tt_sorted$FDR[1], 3)
+  )
+}
+if (length(sig_rows_ruv) > 0) {
+  save_csv(bind_rows(sig_rows_ruv), "edger_ruv_summary")
+}
+
+w_rows = list()
+for (mode in names(ruv_state_by_mode)) {
+  st = ruv_state_by_mode[[mode]]
+  w_df = as.data.frame(st$W)
+  w_df$sample_column = rownames(st$W)
+  w_df$mode = mode
+  w_df$group = as.character(st$group)
+  w_rows[[mode]] = w_df
+}
+if (length(w_rows) > 0) {
+  save_csv(bind_rows(w_rows), "ruv_W_factors")
+}
+```
+
+```{r ruv-volcano-plots, fig.width=7, fig.height=5}
+for (key in names(ruv_results)) {
+  tt = ruv_results[[key]]
+  tt$sig = tt$FDR < 0.05
+  p = ggplot(tt, aes(x = logFC, y = -log10(FDR), colour = sig)) +
+    geom_point(size = 0.8, alpha = 0.6) +
+    geom_text_repel(
+      data = tt %>% filter(FDR < 0.01) %>% arrange(FDR) %>% head(20),
+      aes(label = feature_id), size = 2.5, max.overlaps = 15
+    ) +
+    scale_colour_manual(values = c("FALSE" = "grey60", "TRUE" = "firebrick")) +
+    labs(title = paste(key, "(RUVg k =", ruv_k_sc, ")"),
+         x = "log2 FC repeat (cluster 12 / other), RUVg-normalized",
+         y = "-log10 FDR", colour = "FDR < 0.05") +
+    theme_bw()
+  print(p)
+}
+```
+
+```{r ruv-top-tables, results='asis'}
+for (key in names(ruv_results)) {
+  tt = ruv_results[[key]]
+  cat("\n###", key, "(RUVg)\n\n")
+  top = tt %>% filter(FDR < 0.05) %>% arrange(FDR) %>% head(30)
+  if (nrow(top) > 0) {
+    print(knitr::kable(top, digits = 4, format = "html"))
+  } else {
+    cat("no features at FDR < 0.05\n\n")
+  }
+}
+```
+
+## Overlap: gene-normalized vs RUVg top repeats
+
+```{r ruv-vs-gnorm-overlap, results='asis'}
+overlap_rows = list()
+for (key in intersect(names(edger_results), names(ruv_results))) {
+  gn_top = edger_results[[key]] %>% filter(FDR < 0.05) %>% pull(feature)
+  ruv_top = ruv_results[[key]] %>% filter(FDR < 0.05) %>% pull(feature_id)
+  both = intersect(gn_top, ruv_top)
+  cat("\n-", key, "| gene-norm:", length(gn_top),
+      "| RUVg:", length(ruv_top),
+      "| shared:", length(both), "\n")
+  overlap_rows[[key]] = data.frame(
+    key = key,
+    n_gene_norm_fdr05 = length(gn_top),
+    n_ruv_fdr05 = length(ruv_top),
+    n_shared = length(both),
+    shared_features = paste(both, collapse = ";")
+  )
+}
+if (length(overlap_rows) > 0) {
+  save_csv(bind_rows(overlap_rows), "gene_norm_vs_ruv_overlap")
+}
+```
+
+## Per-cluster heatmap (all clusters, gene-normalized)
+
+For the top FDR-significant repeats from the cluster-12-vs-other test, aggregate
+raw STARsolo counts into one pseudo-bulk column per cluster (summing across all
+samples). Gene library sizes are computed per cluster from the gene matrix; repeat
+counts are divided by the per-cluster gene library so columns are comparable. This
+shows whether cluster-12 repeat upregulation is specific to cluster 12 or shared
+with other clusters.
+
+```{r per-cluster-heatmap-data}
+cluster_heatmap_data = list()
+
+for (mode in starsolo_modes) {
+  for (fs in repeat_fsets) {
+    key = paste0(mode, "_", fs)
+    if (!key %in% names(edger_results)) next
+    tt = edger_results[[key]]
+    top_feats = tt %>% filter(FDR < 0.05) %>% arrange(FDR) %>% head(40) %>% pull(feature)
+    if (length(top_feats) < 2) next
+
+    cluster_rep_counts = list()
+    cluster_gene_lib = list()
+
+    for (sid in sample_ids) {
+      rep_raw = file.path(starsolo_base, sid, paste0(mode, "_", fs),
+                          "Solo.out", "Gene", "raw")
+      gene_raw = file.path(starsolo_base, sid, paste0(mode, "_genes"),
+                           "Solo.out", "Gene", "raw")
+      if (!dir.exists(rep_raw) || !dir.exists(gene_raw)) next
+
+      rep_features = read_tsv(file.path(rep_raw, "features.tsv"),
+                              col_names = c("id", "name", "type"),
+                              show_col_types = FALSE)
+      rep_mat = readMM(file.path(rep_raw, "matrix.mtx"))
+      rownames(rep_mat) = rep_features$id
+      colnames(rep_mat) = readLines(file.path(rep_raw, "barcodes.tsv"))
+
+      gene_features = read_tsv(file.path(gene_raw, "features.tsv"),
+                               col_names = c("id", "name", "type"),
+                               show_col_types = FALSE)
+      gene_mat = readMM(file.path(gene_raw, "matrix.mtx"))
+      rownames(gene_mat) = gene_features$id
+      colnames(gene_mat) = readLines(file.path(gene_raw, "barcodes.tsv"))
+
+      geo_sub = geo_meta %>%
+        filter(!is.na(sample_id) & sample_id == sid & !is.na(cluster_num))
+
+      for (cl in unique(geo_sub$cluster)) {
+        cbs = geo_sub$barcode_16bp[geo_sub$cluster == cl]
+        cbs_rep = intersect(cbs, colnames(rep_mat))
+        cbs_gene = intersect(cbs, colnames(gene_mat))
+        if (length(cbs_rep) == 0 || length(cbs_gene) == 0) next
+
+        feats_present = intersect(top_feats, rownames(rep_mat))
+        if (length(feats_present) == 0) next
+
+        rep_sum = Matrix::rowSums(rep_mat[feats_present, cbs_rep, drop = FALSE])
+        gene_sum = sum(Matrix::colSums(gene_mat[, cbs_gene, drop = FALSE]))
+
+        prev_rep = cluster_rep_counts[[cl]]
+        if (is.null(prev_rep)) {
+          cluster_rep_counts[[cl]] = setNames(rep(0, length(top_feats)), top_feats)
+        }
+        cluster_rep_counts[[cl]][names(rep_sum)] =
+          cluster_rep_counts[[cl]][names(rep_sum)] + rep_sum
+        cluster_gene_lib[[cl]] = (if (is.null(cluster_gene_lib[[cl]])) 0 else cluster_gene_lib[[cl]]) + gene_sum
+      }
+    }
+
+    if (length(cluster_rep_counts) < 2) next
+
+    cluster_order_df = geo_meta %>%
+      filter(!is.na(cluster_num)) %>%
+      distinct(cluster, cluster_num) %>%
+      arrange(cluster_num)
+    cluster_order = cluster_order_df$cluster[cluster_order_df$cluster %in% names(cluster_rep_counts)]
+
+    counts_mat = sapply(cluster_order, function(cl) cluster_rep_counts[[cl]])
+    gene_libs = sapply(cluster_order, function(cl) cluster_gene_lib[[cl]])
+    gene_libs[gene_libs == 0] = 1
+
+    cpm_mat = sweep(counts_mat, 2, gene_libs / 1e6, "/")
+    cpm_log = log1p(cpm_mat)
+
+    cluster_heatmap_data[[key]] = list(cpm_log = cpm_log, gene_libs = gene_libs)
+  }
+}
+save_rds(cluster_heatmap_data, "cluster_heatmap_data")
+
+heatmap_long_rows = list()
+for (key in names(cluster_heatmap_data)) {
+  d = cluster_heatmap_data[[key]]
+  long_df = as.data.frame(d$cpm_log) %>%
+    tibble::rownames_to_column("feature") %>%
+    pivot_longer(cols = -feature, names_to = "cluster", values_to = "log1p_cpm") %>%
+    mutate(key = key)
+  heatmap_long_rows[[key]] = long_df
+}
+if (length(heatmap_long_rows) > 0) {
+  save_csv(bind_rows(heatmap_long_rows), "per_cluster_heatmap_long")
+}
+```
+
+```{r per-cluster-heatmap, fig.width=9, fig.height=10}
+for (key in names(cluster_heatmap_data)) {
+  d = cluster_heatmap_data[[key]]
+  ann_col = data.frame(
+    is_cluster12 = factor(ifelse(grepl("^12_", colnames(d$cpm_log)), "yes", "no"),
+                          levels = c("no", "yes")),
+    row.names = colnames(d$cpm_log)
+  )
+  pheatmap(d$cpm_log,
+           annotation_col = ann_col,
+           annotation_colors = list(is_cluster12 = c(no = "grey80", yes = "firebrick")),
+           cluster_rows = TRUE,
+           cluster_cols = FALSE,
+           show_rownames = TRUE,
+           fontsize_row = 7,
+           fontsize_col = 7,
+           angle_col = 45,
+           main = paste("top", key, "across all clusters (gene-normalized CPM)"))
 }
 ```
 
@@ -469,6 +869,7 @@ if (key_dot %in% names(pb_list) && key_dot %in% names(edger_results)) {
   cluster_levels = cluster_order_df$cluster[cluster_order_df$cluster %in% dotplot_df$cluster]
   dotplot_df$cluster = factor(dotplot_df$cluster, levels = cluster_levels)
   save_rds(dotplot_df, "dotplot_df")
+  save_csv(dotplot_df, "per_cluster_dotplot_genic_repeats")
 }
 ```
 
@@ -570,6 +971,8 @@ if (nrow(det_class_df) > 0) {
 
 save_rds(det_summary_df, "sc_detection_summary")
 save_rds(det_class_df, "sc_detection_by_class")
+if (nrow(det_summary_df) > 0) save_csv(det_summary_df, "detection_summary")
+if (nrow(det_class_df) > 0) save_csv(det_class_df, "detection_by_class")
 ```
 
 ## Features detected per group

@@ -2,15 +2,37 @@ out_base: "../results/paper/tdp43"
 
 resources:
   ruv_mem_mb: 16000
+  ruv_sc_mem_mb: 32000
 
+# Dataset keys are named by last author plus study label and assay kind.
+# gse and source_config record the GEO accession and the method-pipeline
+# config that produced counts_dir / starsolo_base, for traceability.
 datasets:
-  gse230647_bulk:
+  polymenidou_tdp_kd_oe_cultures_bulk:
+    kind: bulk
+    gse: GSE230647
+    source_config: "workflow/configs/gse230647_bulk.yaml"
     counts_dir: "../results/gse230647_bulk/counts"
-    script: "ruv_gse230647_bulk_report.Rmd"
+    script: "ruv_polymenidou_tdp_kd_oe_cultures_bulk_report.Rmd"
     n_controls: 5000
     k_selected: 2
-  gse126543_bulk:
+  lee_nuclear_tdp_retention_bulk:
+    kind: bulk
+    gse: GSE126543
+    source_config: "workflow/configs/gse126543_bulk.yaml"
     counts_dir: "../results/gse126543_bulk/counts"
-    script: "ruv_gse126543_bulk_report.Rmd"
+    script: "ruv_lee_nuclear_tdp_retention_bulk_report.Rmd"
     n_controls: 5000
     k_selected: 2
+  polymenidou_tdp_oe_cultures_scrnaseq:
+    kind: sc
+    gse: GSE230647
+    source_config: "workflow/configs/gse230647_sc.yaml"
+    starsolo_base: "../results/gse230647_sc/starsolo"
+    metadata: "../results/gse230647_sc/metadata/cell_metadata.txt"
+    sample_metadata: "../workflow/configs/gse230647_sc_sample_metadata.tsv"
+    script: "ruv_polymenidou_tdp_oe_cultures_scrnaseq_report.Rmd"
+    feature_sets: "genes genic_repeats intergenic_repeats"
+    starsolo_modes: "unique"
+    n_controls: 3000
+    k_selected: 1
