@@ -5,18 +5,24 @@ Modules are conditionally included based on `config['pipeline_type']` and `confi
 
 ## Module index
 
+| module | active when | purpose |
+|---|---|---|
 | `download_references.snmk` | always | Download genome FASTA, genes GTF, and RepeatMasker annotation from Ensembl/UCSC |
 | `reference.snmk` | always | Build indices (STAR, Kallisto, Salmon, Bowtie2), extract repeat/gene FASTAs, genic/intergenic filtering |
-| `data_acquisition.snmk` | always | SRA download rules for real-data mode |
+| `data_acquisition.snmk` | `pipeline_type: simulation` | Legacy SRA download rule reused by the simulation pipeline (colon_cancer_cell_lines layout) |
+| `download_sra.snmk` | `pipeline_type: bulk` or `sc` | SRA download for real-data bulk and sc pipelines; honours `real_data.sc_cbumi_index` / `sc_cdna_index` for 10x Chromium splitting |
 | `simulations.snmk` | `pipeline_type: simulation` | Simulate SmartSeq2 per-cell FASTQs or Chromium R1/R2 from repeat loci |
-| `starsolo.snmk` | `starsolo` in aligners | STARsolo alignment (SmartSeq2 manifest or Chromium CB_UMI_Simple) |
-| `kallisto.snmk` | `kallisto` in aligners | Kallisto pseudoalignment (bulk per-cell for SS2, `kallisto bus` + bustools for Chromium) |
-| `alevin.snmk` | `alevin` in aligners | Salmon quant (bulk per-cell for SS2) or salmon alevin (Chromium) |
-| `bowtie2.snmk` | `bowtie2` in aligners | Bowtie2 alignment to repeat pseudo-genome + `samtools idxstats` counting |
+| `starsolo.snmk` | `starsolo` in aligners, simulation pipeline | STARsolo alignment (SmartSeq2 manifest or Chromium CB_UMI_Simple) |
+| `starsolo_sc.snmk` | `starsolo` in aligners, sc pipeline | STARsolo CB_UMI_Simple for real 10x Chromium data |
+| `kallisto.snmk` | `kallisto` in aligners, simulation pipeline | Kallisto pseudoalignment (per-cell for SS2, `kallisto bus` + bustools for Chromium) |
+| `kallisto_sc.snmk` | `kallisto` in aligners, sc pipeline | `kallisto bus` + bustools for real 10x Chromium data |
+| `alevin.snmk` | `alevin` in aligners, simulation pipeline | Salmon quant (per-cell for SS2) or salmon alevin (Chromium) |
+| `bowtie2.snmk` | `bowtie2` in aligners, simulation pipeline | Bowtie2 alignment to repeat pseudo-genome + `samtools idxstats` counting |
 | `bulk_paired.snmk` | `pipeline_type: bulk`, `library_layout: paired` | STAR, kallisto, salmon for paired-end bulk RNA-seq |
 | `bulk_single.snmk` | `pipeline_type: bulk`, `library_layout: single` | STAR, kallisto (--single), salmon (--unmatedReads) for single-end bulk RNA-seq |
 | `normalize.snmk` | always | Convert each aligner's native output to a common feature x cell TSV |
 | `evaluation.snmk` | `pipeline_type: simulation` | Compare normalized counts against simulation ground truth; produce metric tables and HTML report |
+| `noise_report.snmk` | `pipeline_type: noise_report` | Render the cross-mutation-rate noise sweep HTML report from existing evaluation dirs |
 
 ## Chromosome subsetting and `genome_tag`
 

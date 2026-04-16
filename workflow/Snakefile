@@ -142,6 +142,8 @@ if _pipeline_type == 'sc':
     _cb_len = config.get('real_data', {}).get('cb_length', 16)
     _umi_len = config.get('real_data', {}).get('umi_length', 12)
     _umi_start = _cb_len + 1
+    _sc_cbumi_idx = config.get('real_data', {}).get('sc_cbumi_index', 2)
+    _sc_cdna_idx = config.get('real_data', {}).get('sc_cdna_index', 3)
 
     def srrs_for(sample_id):
         return _sc_samples[sample_id]['srrs']

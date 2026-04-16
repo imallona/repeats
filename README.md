@@ -2,7 +2,7 @@
 
 ## Status
 
-Active development (2024-2026). See [TODO](TODO.md) for open items. Previous exploratory version: [v0.1](https://github.com/imallona/repeats/releases/tag/v0.1).
+Active development (2024-2026). Previous exploratory version: [v0.1](https://github.com/imallona/repeats/releases/tag/v0.1).
 
 ## Acknowledgements
 

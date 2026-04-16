@@ -21,7 +21,7 @@ library(tidyr)
 library(readr)
 library(scales)
 library(patchwork)
-source(file.path(dirname(knitr::current_input(dir = TRUE)), "ggtheme.R"))
+source(file.path(knitr::current_input(dir = TRUE), "ggtheme.R"))
 
 eval_dir <- params$eval_dir
 
