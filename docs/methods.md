@@ -103,9 +103,9 @@ Compute resource metrics (wall time, CPU time, peak RSS, I/O) are read from Snak
 
 The `aggregate_global_metrics` rule concatenates all per-aligner global metric TSVs into a single `summary_global_metrics.tsv`.
 
-An HTML report (`evaluation_report.html`) is rendered by `evaluation_report.Rmd` using `rmarkdown::render` with ggplot2 + patchwork.
+An HTML report (`evaluation_report.html`) is rendered by `evaluation_report.Rmd` using `rmarkdown::render` with ggplot2 + patchwork. The report also writes paper-ready CSV tables to `{eval_dir}/paper_csv/`: `global_metrics_long.csv` (tidy long format), `global_metrics_wide.csv`, `aligner_ranking_per_metric.csv` (rank per feature_set x granularity x metric, direction-aware), `best_aligner_per_metric.csv` (best, second, delta), `per_cell_metrics_summary.csv` (n, mean, median, sd, q25, q75 per aligner x granularity x feature_set), `per_class_metrics.csv`, and `resources_wide.csv`.
 
-A separate noise sweep report (`noise_sweep_report.Rmd`) loads `summary_global_metrics.tsv` from each noise-level run and plots metric degradation as a function of mutation rate.
+A separate noise sweep report (`noise_sweep_report.Rmd`) loads `summary_global_metrics.tsv` from each noise-level run and plots metric degradation as a function of mutation rate. It writes paper-ready CSV tables to `{csv_outdir}/paper_csv/` (by default the directory of the HTML output): `noise_metrics_long.csv`, `noise_metrics_wide.csv` (columns per mutation rate), `noise_degradation_slopes.csv` (linear fit `value ~ mutation_rate` with slope, intercept, R^2, n_points per aligner x feature_set x granularity x metric), `noise_robustness_ranking.csv` (ranks aligners by shallowest slope for accuracy metrics), `per_cell_noise_summary.csv`, and `per_class_noise_metrics.csv`.
 
 ## Conda environments
 

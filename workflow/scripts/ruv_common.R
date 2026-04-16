@@ -34,13 +34,13 @@ rle_score <- function(mat) {
 fit_ruv_range <- function(genes_expr, controls, pheno_df, ks = 1:4) {
   stopifnot(is.matrix(genes_expr), ncol(genes_expr) == nrow(pheno_df),
             length(controls) > 0, all(controls %in% rownames(genes_expr)))
-  set1 <- RUVSeq::newSeqExpressionSet(counts = genes_expr, phenoData = pheno_df)
+  set1 <- EDASeq::newSeqExpressionSet(counts = genes_expr, phenoData = pheno_df)
   fits <- list()
   for (k in ks) {
     fits[[as.character(k)]] <- RUVSeq::RUVg(set1, controls, k = k)
   }
   rle_before <- rle_score(genes_expr)
-  rle_after <- vapply(fits, function(s) rle_score(RUVSeq::normCounts(s)),
+  rle_after <- vapply(fits, function(s) rle_score(EDASeq::normCounts(s)),
                       numeric(1))
   diag_rle <- data.frame(k = c(0, ks),
                          rle_mean_abs_dev = c(rle_before, rle_after))

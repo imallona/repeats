@@ -23,6 +23,7 @@ rule render_noise_sweep_report:
     params:
         eval_dirs = config['report']['eval_dirs'],
         output_file = _output,
+        csv_outdir = op.dirname(_output),
         rmd = _rmd,
     log:
         op.join(op.dirname(_output), 'noise_sweep_report.log'),
@@ -32,6 +33,6 @@ rule render_noise_sweep_report:
             '{params.rmd}',
             output_file = '{params.output_file}',
             knit_root_dir = getwd(),
-            params = list(eval_dirs = '{params.eval_dirs}')
+            params = list(eval_dirs = '{params.eval_dirs}', csv_outdir = '{params.csv_outdir}')
         )" 2> {log}
         """
