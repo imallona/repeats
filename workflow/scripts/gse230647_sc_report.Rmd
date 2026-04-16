@@ -78,23 +78,58 @@ head(geo_meta)
 ```
 
 ```{r cluster-column}
-cluster_col = grep("cluster", colnames(geo_meta), ignore.case = TRUE, value = TRUE)[1]
+# Prefer v2 cluster assignment from the biorxiv reanalysis for both group
+# assignment and plotting labels; fall back to any cluster column if absent.
+cluster_num_col = if ("biorxiv_v2_cluster_number" %in% colnames(geo_meta)) {
+  "biorxiv_v2_cluster_number"
+} else {
+  grep("cluster_number", colnames(geo_meta), ignore.case = TRUE, value = TRUE)[1]
+}
+cluster_name_col = if ("biorxiv_v2_cluster_name" %in% colnames(geo_meta)) {
+  "biorxiv_v2_cluster_name"
+} else {
+  grep("cluster_name|cluster$", colnames(geo_meta), ignore.case = TRUE, value = TRUE)[1]
+}
 barcode_col = grep("barcode|cell|cb", colnames(geo_meta), ignore.case = TRUE, value = TRUE)[1]
-if (is.na(cluster_col)) stop("no cluster column found; available: ", paste(colnames(geo_meta), collapse = ", "))
+if (is.na(cluster_num_col)) stop("no cluster number column found; available: ", paste(colnames(geo_meta), collapse = ", "))
+if (is.na(cluster_name_col)) stop("no cluster name column found; available: ", paste(colnames(geo_meta), collapse = ", "))
 if (is.na(barcode_col)) stop("no barcode column found; available: ", paste(colnames(geo_meta), collapse = ", "))
 cat("using barcode column:", barcode_col, "\n")
-cat("using cluster column:", cluster_col, "\n")
+cat("using cluster number column:", cluster_num_col, "\n")
+cat("using cluster name column:", cluster_name_col, "\n")
 
-geo_meta$cluster = geo_meta[[cluster_col]]
-geo_meta$barcode_raw = geo_meta[[barcode_col]]
+geo_meta$cluster_num = as.integer(geo_meta[[cluster_num_col]])
+geo_meta$cluster = geo_meta[[cluster_name_col]]
+
+# GEO cell id format: <16bp_barcode>-<lane>.<sample_tag>, e.g. AAACCCACATGTCTAG-1.TDP2wON
+# STARsolo raw barcodes are plain 16bp. Strip lane and sample tag to get the 16bp barcode,
+# and keep the sample tag so we can match per-sample (16bp barcodes are not unique across samples).
+geo_meta$barcode_16bp = sub("-[0-9]+\\..*$", "", geo_meta[[barcode_col]])
+geo_meta$sample_tag = sub("^[^.]*\\.", "", geo_meta[[barcode_col]])
+
+# Map sample_tag to sample_id using sample_meta (culture_weeks + replicate).
+# Observed tags: TDP2wON (2w, no replicate), TDP4wONa (4w rep A), TDP4wONb (4w rep B).
+rep_suffix = ifelse(is.na(sample_meta$replicate) | sample_meta$replicate == "",
+                    "", tolower(sample_meta$replicate))
+tag_to_sid = setNames(sample_meta$sample_id,
+                      paste0("TDP", sample_meta$culture_weeks, "wON", rep_suffix))
+geo_meta$sample_id = unname(tag_to_sid[geo_meta$sample_tag])
+
+cat("geo sample_tag -> sample_id mapping:\n")
+print(tag_to_sid)
+cat("cells per sample_id in GEO metadata:\n")
+print(table(geo_meta$sample_id, useNA = "ifany"))
 
 table(geo_meta$cluster)
 ```
 
 ```{r cluster12-flag}
-geo_meta$group = ifelse(as.integer(geo_meta$cluster) == 12L, "cluster12", "other")
-cat("cluster 12 cells:", sum(geo_meta$group == "cluster12"), "\n")
-cat("other cells:", sum(geo_meta$group == "other"), "\n")
+geo_meta$group = ifelse(!is.na(geo_meta$cluster_num) & geo_meta$cluster_num == 12L,
+                        "cluster12", "other")
+c12_labels = unique(geo_meta$cluster[geo_meta$group == "cluster12"])
+cat("cluster 12 label(s):", paste(c12_labels, collapse = "; "), "\n")
+cat("cluster 12 cells:", sum(geo_meta$group == "cluster12", na.rm = TRUE), "\n")
+cat("other cells:", sum(geo_meta$group == "other", na.rm = TRUE), "\n")
 save_rds(geo_meta, "geo_meta_annotated")
 ```
 
@@ -105,7 +140,7 @@ matrix from STARsolo, intersect barcodes with GEO metadata, and sum counts withi
 cluster 12 vs all other annotated cells.
 
 ```{r load-starsolo}
-load_and_split = function(raw_dir, geo_meta) {
+load_and_split = function(raw_dir, geo_meta_sample) {
   if (!dir.exists(raw_dir)) {
     warning("STARsolo raw directory not found: ", raw_dir)
     return(NULL)
@@ -118,10 +153,8 @@ load_and_split = function(raw_dir, geo_meta) {
   rownames(mat) = features$id
   colnames(mat) = barcodes
 
-  cb_stripped = sub("-[0-9]+$", "", barcodes)
-  geo_stripped = sub("-[0-9]+$", "", geo_meta$barcode_raw)
-
-  matched = cb_stripped %in% geo_stripped
+  matched_idx = match(barcodes, geo_meta_sample$barcode_16bp)
+  matched = !is.na(matched_idx)
   cat("  barcodes in matrix:", length(barcodes),
       "| matched to GEO metadata:", sum(matched), "\n")
 
@@ -130,10 +163,9 @@ load_and_split = function(raw_dir, geo_meta) {
     return(NULL)
   }
 
-  idx12 = matched & (geo_meta$group[match(cb_stripped, geo_stripped)] == "cluster12")
-  idx_other = matched & (geo_meta$group[match(cb_stripped, geo_stripped)] == "other")
-  idx12[is.na(idx12)] = FALSE
-  idx_other[is.na(idx_other)] = FALSE
+  group_matched = geo_meta_sample$group[matched_idx]
+  idx12 = matched & !is.na(group_matched) & group_matched == "cluster12"
+  idx_other = matched & !is.na(group_matched) & group_matched == "other"
 
   list(
     cluster12 = Matrix::rowSums(mat[, idx12, drop = FALSE]),
@@ -156,7 +188,12 @@ for (mode in starsolo_modes) {
                           paste0(mode, "_", fs),
                           "Solo.out", "Gene", "raw")
       cat("loading", sid, key, "\n")
-      res = load_and_split(raw_dir, geo_meta)
+      geo_sample = geo_meta[!is.na(geo_meta$sample_id) & geo_meta$sample_id == sid, ]
+      if (nrow(geo_sample) == 0) {
+        cat("  no GEO annotations for sample", sid, "- skipping\n")
+        next
+      }
+      res = load_and_split(raw_dir, geo_sample)
       if (!is.null(res)) {
         counts12[[sid]]    = res$cluster12
         counts_other[[sid]] = res$other
@@ -387,7 +424,8 @@ if (key_dot %in% names(pb_list) && key_dot %in% names(edger_results)) {
     colnames(gene_mat) = sub("-[0-9]+$", "", gene_barcodes)
 
     geo_sub = geo_meta %>%
-      mutate(cb = sub("-[0-9]+$", "", barcode_raw)) %>%
+      filter(!is.na(sample_id) & sample_id == sid) %>%
+      mutate(cb = barcode_16bp) %>%
       filter(cb %in% colnames(mat))
 
     for (cl in unique(geo_sub$cluster)) {
@@ -424,8 +462,12 @@ if (key_dot %in% names(pb_list) && key_dot %in% names(edger_results)) {
     )
   }
   dotplot_df = bind_rows(rows)
-  dotplot_df$cluster = factor(dotplot_df$cluster,
-                              levels = sort(unique(as.integer(dotplot_df$cluster))))
+  cluster_order_df = geo_meta %>%
+    filter(!is.na(cluster_num)) %>%
+    distinct(cluster, cluster_num) %>%
+    arrange(cluster_num)
+  cluster_levels = cluster_order_df$cluster[cluster_order_df$cluster %in% dotplot_df$cluster]
+  dotplot_df$cluster = factor(dotplot_df$cluster, levels = cluster_levels)
   save_rds(dotplot_df, "dotplot_df")
 }
 ```
@@ -442,7 +484,7 @@ if (!is.null(dotplot_df)) {
          x = "cluster", y = NULL,
          colour = "mean log gene-norm CPM", size = "fraction expressed") +
     theme_bw() +
-    theme(axis.text.x = element_text(angle = 0),
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7),
           axis.text.y = element_text(size = 8))
 }
 ```
