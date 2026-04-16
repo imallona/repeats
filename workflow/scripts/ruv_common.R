@@ -1,8 +1,8 @@
 ## Shared helpers for RUVg-based repeat DE analyses.
-## Sourced from:
-##   paper/scripts/ruv_gse230647_bulk_report.Rmd
-##   paper/scripts/ruv_gse126543_bulk_report.Rmd
-##   workflow/scripts/gse230647_sc_report.Rmd
+## Sourced from the paper-side Rmds:
+##   paper/scripts/ruv_polymenidou_tdp_kd_oe_cultures_bulk_report.Rmd
+##   paper/scripts/ruv_lee_nuclear_tdp_retention_bulk_report.Rmd
+##   paper/scripts/ruv_polymenidou_tdp_oe_cultures_scrnaseq_report.Rmd
 ##
 ## Expects edgeR, RUVSeq, and matrixStats to be attached by the caller.
 

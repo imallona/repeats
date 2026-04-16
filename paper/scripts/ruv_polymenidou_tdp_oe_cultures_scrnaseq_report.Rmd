@@ -17,6 +17,7 @@ params:
   starsolo_modes: "unique"
   n_controls: 3000
   k_selected: 1
+  min_cells_per_col: 10
 ---
 
 ```{r setup, include = FALSE}
@@ -29,20 +30,26 @@ suppressPackageStartupMessages({
   library(readr)
   library(dplyr)
   library(tidyr)
+  library(ggplot2)
+  library(ggrepel)
 })
 
 source("../workflow/scripts/ruv_common.R")
+source("../workflow/scripts/ggtheme.R")
+source("../workflow/scripts/ruv_plots.R")
 
 starsolo_base <- params$starsolo_base
 report_outdir <- params$report_outdir
 n_controls <- as.integer(params$n_controls)
 k_selected <- as.integer(params$k_selected)
+min_cells_per_col <- as.integer(params$min_cells_per_col)
 feature_sets <- strsplit(params$feature_sets, " ")[[1]]
 starsolo_modes <- strsplit(params$starsolo_modes, " ")[[1]]
 repeat_fsets <- feature_sets[feature_sets != "genes"]
 
 stopifnot(dir.exists(starsolo_base), dir.exists(report_outdir),
-          n_controls >= 500, k_selected >= 1, k_selected <= 2,
+          n_controls >= 500, k_selected >= 1,
+          min_cells_per_col >= 1,
           "genes" %in% feature_sets, length(repeat_fsets) >= 1,
           length(starsolo_modes) >= 1)
 
@@ -61,6 +68,8 @@ save_csv <- function(df, name) {
 ```
 
 Paper counterpart of the sc method report's RUVg block. This script owns its own RUVg analysis end-to-end, parallel to the two bulk paper Rmds. Data: GSE230647 (Polymenidou lab), three DOX-on HA-TDP-43 iPSC-derived neural cultures (2-week and 4-week time points). Cluster 12 in the GEO cell metadata flags the TDP-43-HA-expressing neurons and acts as the neuron-resolved counterpart of the bulk `tdp43_oe vs oe_ctrl` contrast. Inputs are STARsolo raw matrices from `results/gse230647_sc/starsolo/` (produced by the method pipeline with `workflow/configs/gse230647_sc.yaml`) plus the GEO cell metadata file. No counts are re-derived from raw reads.
+
+Pseudo-bulking is per (sample, cluster) pair: each cluster gets its own pseudo-bulk column per sample, so with three samples and many GEO-annotated clusters the design ends up with dozens of columns. The binary test contrast is cluster 12 versus any non-12 cluster, encoded as a single `group` factor (`TRUE` when the pseudo-bulk column is cluster 12, `FALSE` otherwise). The sample of origin is absorbed via `sample_block`. Pairs with fewer than `min_cells_per_col` cells are dropped to keep pseudo-bulk columns informative.
 
 # Sample metadata
 
@@ -117,8 +126,28 @@ save_csv(group_sizes, "group_sizes_per_sample")
 
 # Pseudo-bulk from STARsolo raw matrices
 
+```{r pseudobulk-col-meta}
+col_meta <- geo_meta %>%
+  filter(!is.na(sample_id), !is.na(cluster_num)) %>%
+  count(sample_id, cluster_num, cluster, name = "n_cells") %>%
+  filter(n_cells >= min_cells_per_col) %>%
+  arrange(sample_id, cluster_num) %>%
+  mutate(col_tag = sprintf("%s__c%02d", sample_id, cluster_num),
+         cluster_name = cluster,
+         is_cluster12 = cluster_num == 12L)
+
+stopifnot(!anyDuplicated(col_meta$col_tag),
+          any(col_meta$is_cluster12),
+          any(!col_meta$is_cluster12))
+
+cat("pseudo-bulk columns:", nrow(col_meta),
+    "| cluster 12 cols:", sum(col_meta$is_cluster12),
+    "| other cols:", sum(!col_meta$is_cluster12), "\n")
+save_csv(col_meta, "pseudobulk_col_meta")
+```
+
 ```{r load-starsolo}
-load_and_split <- function(raw_dir, geo_sample) {
+pseudobulk_by_cluster <- function(raw_dir, sample_id, geo_sample, cols_for_sample) {
   stopifnot(dir.exists(raw_dir))
   barcodes <- readLines(file.path(raw_dir, "barcodes.tsv"))
   features <- read_tsv(file.path(raw_dir, "features.tsv"),
@@ -129,45 +158,45 @@ load_and_split <- function(raw_dir, geo_sample) {
   colnames(mat) <- barcodes
 
   matched_idx <- match(barcodes, geo_sample$barcode_16bp)
-  matched <- !is.na(matched_idx)
-  group_matched <- geo_sample$group[matched_idx]
-  idx12 <- matched & !is.na(group_matched) & group_matched == "cluster12"
-  idx_other <- matched & !is.na(group_matched) & group_matched == "other"
+  cluster_of_cell <- geo_sample$cluster_num[matched_idx]
 
-  list(
-    cluster12 = Matrix::rowSums(mat[, idx12, drop = FALSE]),
-    other     = Matrix::rowSums(mat[, idx_other, drop = FALSE]),
-    n12       = sum(idx12),
-    n_other   = sum(idx_other)
-  )
+  out <- matrix(0L, nrow = nrow(mat), ncol = nrow(cols_for_sample),
+                dimnames = list(rownames(mat), cols_for_sample$col_tag))
+  for (i in seq_len(nrow(cols_for_sample))) {
+    cl <- cols_for_sample$cluster_num[i]
+    sel <- !is.na(cluster_of_cell) & cluster_of_cell == cl
+    out[, i] <- as.integer(Matrix::rowSums(mat[, sel, drop = FALSE]))
+  }
+  out
 }
 
 pb_list <- list()
 for (mode in starsolo_modes) {
   for (fs in feature_sets) {
     key <- paste(mode, fs, sep = "_")
-    counts12 <- list()
-    counts_other <- list()
+    per_sample_mats <- list()
     for (sid in sample_ids) {
+      cols_for_sample <- col_meta[col_meta$sample_id == sid, , drop = FALSE]
+      if (nrow(cols_for_sample) == 0) next
       raw_dir <- file.path(starsolo_base, sid,
                            paste0(mode, "_", fs),
                            "Solo.out", "Gene", "raw")
       geo_sample <- geo_meta[!is.na(geo_meta$sample_id) &
                              geo_meta$sample_id == sid, ]
       stopifnot(nrow(geo_sample) > 0)
-      res <- load_and_split(raw_dir, geo_sample)
-      counts12[[sid]] <- res$cluster12
-      counts_other[[sid]] <- res$other
-      cat(key, sid, "| cluster12:", res$n12, "| other:", res$n_other, "\n")
+      mat_sid <- pseudobulk_by_cluster(raw_dir, sid, geo_sample, cols_for_sample)
+      per_sample_mats[[sid]] <- mat_sid
+      cat(key, sid, "| cols:", ncol(mat_sid),
+          "| total_counts:", sum(mat_sid), "\n")
     }
-    features_union <- Reduce(union, lapply(counts12, names))
-    mat12 <- sapply(counts12, function(x) x[features_union])
-    mat_other <- sapply(counts_other, function(x) x[features_union])
-    rownames(mat12) <- features_union
-    rownames(mat_other) <- features_union
-    mat12[is.na(mat12)] <- 0
-    mat_other[is.na(mat_other)] <- 0
-    pb_list[[key]] <- list(cluster12 = mat12, other = mat_other)
+    features_union <- Reduce(union, lapply(per_sample_mats, rownames))
+    combined <- matrix(0L, nrow = length(features_union), ncol = nrow(col_meta),
+                       dimnames = list(features_union, col_meta$col_tag))
+    for (sid in names(per_sample_mats)) {
+      m <- per_sample_mats[[sid]]
+      combined[rownames(m), colnames(m)] <- m
+    }
+    pb_list[[key]] <- combined
   }
 }
 save_rds(pb_list, "pseudobulk_counts")
@@ -179,38 +208,35 @@ for (mode in starsolo_modes) {
   gene_key <- paste(mode, "genes", sep = "_")
   stopifnot(gene_key %in% names(pb_list))
   gene_pb <- pb_list[[gene_key]]
-  lib_rows[[paste(mode, "cluster12")]] <- data.frame(
-    mode = mode, group = "cluster12",
-    sample_id = names(colSums(gene_pb$cluster12)),
-    gene_lib_size = unname(colSums(gene_pb$cluster12)))
-  lib_rows[[paste(mode, "other")]] <- data.frame(
-    mode = mode, group = "other",
-    sample_id = names(colSums(gene_pb$other)),
-    gene_lib_size = unname(colSums(gene_pb$other)))
+  stopifnot(identical(colnames(gene_pb), col_meta$col_tag))
+  lib_rows[[mode]] <- data.frame(
+    mode = mode,
+    col_tag = col_meta$col_tag,
+    sample_id = col_meta$sample_id,
+    cluster_num = col_meta$cluster_num,
+    cluster_name = col_meta$cluster_name,
+    n_cells = col_meta$n_cells,
+    is_cluster12 = col_meta$is_cluster12,
+    gene_lib_size = unname(colSums(gene_pb)))
 }
 save_csv(bind_rows(lib_rows), "pseudobulk_gene_lib_sizes")
 ```
 
 # Empirical control selection
 
-Per-mode naive edgeR QL F-test on the pseudo-bulk gene matrix. Design is `~ sample_block + group`; the top `n_controls` genes with the largest p-values become empirical controls.
+Per-mode naive edgeR QL F-test on the pseudo-bulk gene matrix. Design is `~ sample_block + group`, where `sample_block = factor(sample_id)` and `group = factor(is_cluster12)` (`TRUE` for cluster 12 columns, `FALSE` otherwise). The tested coefficient is `groupTRUE`. The top `n_controls` genes with the largest p-values become empirical controls.
 
 ```{r rank-controls}
+group <- factor(col_meta$is_cluster12, levels = c(FALSE, TRUE))
+sample_block <- factor(col_meta$sample_id)
+pb_samples <- col_meta$col_tag
+
 ruv_state_by_mode <- list()
 naive_de_by_mode <- list()
 for (mode in starsolo_modes) {
   gene_key <- paste(mode, "genes", sep = "_")
-  gene_pb <- pb_list[[gene_key]]
-  sample_cols <- colnames(gene_pb$cluster12)
-  pb_samples <- c(paste0(sample_cols, "__c12"),
-                  paste0(sample_cols, "__other"))
-  group <- factor(c(rep("cluster12", length(sample_cols)),
-                    rep("other",     length(sample_cols))),
-                  levels = c("other", "cluster12"))
-  sample_block <- factor(rep(sample_cols, 2))
-
-  genes_mat <- cbind(gene_pb$cluster12, gene_pb$other)
-  colnames(genes_mat) <- pb_samples
+  genes_mat <- pb_list[[gene_key]]
+  stopifnot(identical(colnames(genes_mat), pb_samples))
   storage.mode(genes_mat) <- "integer"
   keep <- rowSums(genes_mat >= 10) >= floor(ncol(genes_mat) / 2)
   genes_expr <- genes_mat[keep, , drop = FALSE]
@@ -220,10 +246,11 @@ for (mode in starsolo_modes) {
   stopifnot(n_ctrl >= 500)
 
   design0 <- model.matrix(~ sample_block + group)
-  stopifnot(qr(design0)$rank == ncol(design0))
+  stopifnot(qr(design0)$rank == ncol(design0),
+            "groupTRUE" %in% colnames(design0))
   ctrl_res <- rank_empirical_controls(
     counts = genes_expr, design = design0,
-    test = list(coef = "groupcluster12"), n_controls = n_ctrl
+    test = list(coef = "groupTRUE"), n_controls = n_ctrl
   )
   naive_de_by_mode[[mode]] <- ctrl_res$naive_de
   writeLines(ctrl_res$controls,
@@ -239,15 +266,15 @@ save_rds(naive_de_by_mode, "ruv_naive_gene_de")
 
 # RUVg factor estimation
 
-k runs from 1 to 2 (capped by residual df of the pseudo-bulk design). The operating k is fixed via `k_selected` (default 1); k = 2 is marginal because `~ sample_block + W + group` has k + 4 coefficients over 6 columns.
+k runs from 1 to 4. The operating k is fixed via `k_selected` (default 1). Residual df is comfortable because the column count now equals the number of (sample, cluster) pairs passing `min_cells_per_col` (tens of columns), not 6.
 
 ```{r ruvg}
 for (mode in starsolo_modes) {
   st <- ruv_state_by_mode[[mode]]
   ruv_fit_res <- fit_ruv_range(
     genes_expr = st$genes_expr, controls = st$controls,
-    pheno_df = data.frame(st$group, row.names = st$pb_samples),
-    ks = 1:2
+    pheno_df = data.frame(group = st$group, row.names = st$pb_samples),
+    ks = 1:4
   )
   st$diag_rle <- ruv_fit_res$diag_rle
   st$fits <- ruv_fit_res$fits
@@ -279,10 +306,13 @@ rle_rows <- list()
 for (mode in names(ruv_state_by_mode)) {
   st <- ruv_state_by_mode[[mode]]
   wdf <- as.data.frame(st$W)
-  wdf$sample_column <- rownames(st$W)
+  wdf$col_tag <- rownames(st$W)
   wdf$mode <- mode
-  wdf$group <- as.character(st$group)
-  wdf$sample_block <- as.character(st$sample_block)
+  wdf$sample_id <- col_meta$sample_id[match(wdf$col_tag, col_meta$col_tag)]
+  wdf$cluster_num <- col_meta$cluster_num[match(wdf$col_tag, col_meta$col_tag)]
+  wdf$cluster_name <- col_meta$cluster_name[match(wdf$col_tag, col_meta$col_tag)]
+  wdf$n_cells <- col_meta$n_cells[match(wdf$col_tag, col_meta$col_tag)]
+  wdf$is_cluster12 <- col_meta$is_cluster12[match(wdf$col_tag, col_meta$col_tag)]
   w_rows[[mode]] <- wdf
   rle_df <- st$diag_rle
   rle_df$mode <- mode
@@ -294,7 +324,7 @@ save_csv(bind_rows(rle_rows), "ruv_rle_diagnostic")
 
 # Repeat DE with RUV covariates
 
-Per (mode, featureset), contrast `groupcluster12` on the pseudo-bulk repeat counts under `~ sample_block + W + group`.
+Per (mode, featureset), contrast `groupTRUE` on the pseudo-bulk repeat counts under `~ sample_block + W + group`.
 
 ```{r repeat-de}
 all_results <- list()
@@ -302,13 +332,12 @@ for (mode in starsolo_modes) {
   st <- ruv_state_by_mode[[mode]]
   for (fs in repeat_fsets) {
     key <- paste(mode, fs, sep = "_")
-    pb <- pb_list[[key]]
-    counts <- cbind(pb$cluster12, pb$other)
-    colnames(counts) <- st$pb_samples
+    counts <- pb_list[[key]]
+    stopifnot(identical(colnames(counts), st$pb_samples))
     storage.mode(counts) <- "integer"
-    stopifnot("groupcluster12" %in% colnames(st$design))
+    stopifnot("groupTRUE" %in% colnames(st$design))
     tt <- run_ruv_repeat_de(counts = counts, design = st$design,
-                            test = list(coef = "groupcluster12"))
+                            test = list(coef = "groupTRUE"))
     tag <- paste(key, "cluster12_vs_other", sep = ":")
     out_tsv <- file.path(report_outdir,
                          sprintf("ruv_k%d_%s_%s_cluster12_vs_other.tsv",
@@ -319,6 +348,23 @@ for (mode in starsolo_modes) {
 }
 stopifnot(length(all_results) == length(starsolo_modes) * length(repeat_fsets))
 save_rds(all_results, "ruv_repeat_de")
+```
+
+## Volcano plots per (mode, featureset)
+
+```{r ruv-volcano-plots, fig.width=7, fig.height=5}
+for (tag in names(all_results)) {
+  print(ruv_volcano(all_results[[tag]], tag, k_selected))
+}
+```
+
+## Top features per (mode, featureset)
+
+```{r ruv-top-tables, results='asis'}
+for (tag in names(all_results)) {
+  cat("\n###", tag, "\n\n")
+  ruv_top_table(all_results[[tag]])
+}
 ```
 
 ```{r de-long-csv}
