@@ -92,6 +92,7 @@ rule render_ruv_bulk:
         abs_html = lambda wc: op.abspath(_html_for(wc.dataset)),
         outdir = lambda wc: op.abspath(_rds_for(wc.dataset)),
         counts_dir = lambda wc: _abspath(wc.dataset, 'counts_dir'),
+        indices_base = lambda wc: _abspath(wc.dataset, 'indices_base'),
         n_controls = lambda wc: int(_datasets[wc.dataset].get("n_controls", 5000)),
         k_selected = lambda wc: int(_datasets[wc.dataset].get("k_selected", 2)),
     log:
@@ -108,6 +109,7 @@ rule render_ruv_bulk:
             params = list(
                 counts_dir = '{params.counts_dir}',
                 report_outdir = '{params.outdir}',
+                indices_base = '{params.indices_base}',
                 n_controls = {params.n_controls},
                 k_selected = {params.k_selected}
             )
@@ -132,6 +134,7 @@ rule render_ruv_sc:
         starsolo_base = lambda wc: _abspath(wc.dataset, 'starsolo_base'),
         metadata = lambda wc: _abspath(wc.dataset, 'metadata'),
         sample_metadata = lambda wc: _abspath(wc.dataset, 'sample_metadata'),
+        indices_base = lambda wc: _abspath(wc.dataset, 'indices_base'),
         feature_sets = lambda wc: _datasets[wc.dataset].get(
             "feature_sets", "genes genic_repeats intergenic_repeats"),
         starsolo_modes = lambda wc: _datasets[wc.dataset].get(
@@ -154,6 +157,7 @@ rule render_ruv_sc:
                 metadata = '{params.metadata}',
                 sample_metadata = '{params.sample_metadata}',
                 report_outdir = '{params.outdir}',
+                indices_base = '{params.indices_base}',
                 feature_sets = '{params.feature_sets}',
                 starsolo_modes = '{params.starsolo_modes}',
                 n_controls = {params.n_controls},

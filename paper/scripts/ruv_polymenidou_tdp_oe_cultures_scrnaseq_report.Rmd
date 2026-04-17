@@ -13,6 +13,7 @@ params:
   metadata: "."
   sample_metadata: "."
   report_outdir: "."
+  indices_base: "."
   feature_sets: "genes genic_repeats intergenic_repeats"
   starsolo_modes: "unique"
   n_controls: 3000
@@ -40,6 +41,7 @@ source("../workflow/scripts/ruv_plots.R")
 
 starsolo_base <- params$starsolo_base
 report_outdir <- params$report_outdir
+indices_base <- params$indices_base
 n_controls <- as.integer(params$n_controls)
 k_selected <- as.integer(params$k_selected)
 min_cells_per_col <- as.integer(params$min_cells_per_col)
@@ -64,6 +66,66 @@ save_csv <- function(df, name) {
   write.csv(df, path, row.names = FALSE)
   cat("wrote", path, "(", nrow(df), "rows)\n")
   invisible(path)
+}
+```
+
+## Biology annotation for DE stratification
+
+```{r biology-setup}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(readr)
+})
+source("../workflow/scripts/biology_checks.R")
+
+biology_annotation_path <- file.path(indices_base, "repeat_biology_annotation.tsv")
+biology_annotation <- load_biology_annotation(biology_annotation_path)
+if (is.null(biology_annotation)) {
+  cat("No biology annotation at", biology_annotation_path,
+      "- biology-stratified panels will be skipped.\n")
+} else {
+  cat("Loaded biology annotation:", nrow(biology_annotation), "subfamilies\n")
+}
+save_rds(biology_annotation, "biology_annotation")
+
+annotate_de_with_biology <- function(tt) {
+  rownames(tt) <- tt$feature_id
+  tt <- annotate_biology(tt, biology_annotation, key = "gene_id")
+  tt$polya <- polya_label(tt$class_id)
+  tt$age <- family_age_label(tt$family_age)
+  tt$strand <- strand_vs_gene_label(tt$strand_vs_gene)
+  tt$a_run <- a_run_label(tt$frac_downstream_a_run)
+  tt
+}
+
+de_stratify_counts <- function(tt, key, fdr = 0.05) {
+  tt <- annotate_de_with_biology(tt)
+  tt$direction <- ifelse(is.na(tt$FDR) | tt$FDR >= fdr, "ns",
+                         ifelse(tt$logFC > 0, "up", "down"))
+  facet_cols <- c(polya = "polya", family_age = "age",
+                  strand_vs_gene = "strand", downstream_a_run = "a_run")
+  rows <- list()
+  for (facet_nm in names(facet_cols)) {
+    col <- facet_cols[[facet_nm]]
+    rows[[facet_nm]] <- tt %>%
+      group_by(label = .data[[col]], direction) %>%
+      summarize(n = dplyr::n(), .groups = "drop") %>%
+      mutate(facet = facet_nm, key = key)
+  }
+  bind_rows(rows)
+}
+
+plot_de_stratification <- function(strat_df, title) {
+  if (is.null(strat_df) || nrow(strat_df) == 0) return(invisible(NULL))
+  strat_df$direction <- factor(strat_df$direction, levels = c("up", "down", "ns"))
+  ggplot(strat_df, aes(x = label, y = n, fill = direction)) +
+    geom_col() +
+    facet_grid(facet ~ key, scales = "free", space = "free_x") +
+    scale_fill_manual(values = c(up = "firebrick", down = "steelblue", ns = "grey70")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = title, x = NULL, y = "features")
 }
 ```
 
@@ -348,6 +410,22 @@ for (mode in starsolo_modes) {
 }
 stopifnot(length(all_results) == length(starsolo_modes) * length(repeat_fsets))
 save_rds(all_results, "ruv_repeat_de")
+```
+
+## DE stratified by biology (polyA / age / strand / A-run)
+
+```{r biology-de-strat, fig.width=14, fig.height=10}
+if (!is.null(biology_annotation) && length(all_results) > 0) {
+  strat_all <- bind_rows(lapply(names(all_results), function(key) {
+    de_stratify_counts(all_results[[key]], key)
+  }))
+  save_rds(strat_all, "ruv_de_biology_stratification")
+  for (facet_nm in unique(strat_all$facet)) {
+    print(plot_de_stratification(filter(strat_all, facet == facet_nm),
+                                 paste("cluster 12 vs other, stratified by",
+                                       facet_nm)))
+  }
+}
 ```
 
 ## Volcano plots per (mode, featureset)

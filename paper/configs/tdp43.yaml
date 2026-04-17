@@ -13,6 +13,7 @@ datasets:
     gse: GSE230647
     source_config: "workflow/configs/gse230647_bulk.yaml"
     counts_dir: "../results/gse230647_bulk/counts"
+    indices_base: "../results/gse230647_bulk/indices/all"
     script: "ruv_polymenidou_tdp_kd_oe_cultures_bulk_report.Rmd"
     n_controls: 5000
     k_selected: 2
@@ -21,6 +22,7 @@ datasets:
     gse: GSE126543
     source_config: "workflow/configs/gse126543_bulk.yaml"
     counts_dir: "../results/gse126543_bulk/counts"
+    indices_base: "../results/gse126543_bulk/indices/all"
     script: "ruv_lee_nuclear_tdp_retention_bulk_report.Rmd"
     n_controls: 5000
     k_selected: 2
@@ -31,6 +33,7 @@ datasets:
     starsolo_base: "../results/gse230647_sc/starsolo"
     metadata: "../results/gse230647_sc/metadata/cell_metadata.txt"
     sample_metadata: "../workflow/configs/gse230647_sc_sample_metadata.tsv"
+    indices_base: "../results/gse230647_sc/indices/all"
     script: "ruv_polymenidou_tdp_oe_cultures_scrnaseq_report.Rmd"
     feature_sets: "genes genic_repeats intergenic_repeats"
     starsolo_modes: "unique"

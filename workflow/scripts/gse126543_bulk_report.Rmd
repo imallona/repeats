@@ -53,6 +53,60 @@ save_rds = function(obj, name) {
 }
 ```
 
+## Biology annotation for detection and DE stratification
+
+```{r biology-setup}
+source(file.path("scripts", "biology_checks.R"))
+
+biology_annotation_path = file.path(indices_base, "repeat_biology_annotation.tsv")
+biology_annotation = load_biology_annotation(biology_annotation_path)
+if (is.null(biology_annotation)) {
+  cat("No biology annotation at", biology_annotation_path,
+      "- biology-stratified panels will be skipped.\n")
+} else {
+  cat("Loaded biology annotation:", nrow(biology_annotation), "subfamilies\n")
+}
+save_rds(biology_annotation, "biology_annotation")
+
+annotate_de_with_biology = function(tt) {
+  tt = annotate_biology(tt, biology_annotation, key = "gene_id")
+  tt$polya = polya_label(tt$class_id)
+  tt$age = family_age_label(tt$family_age)
+  tt$strand = strand_vs_gene_label(tt$strand_vs_gene)
+  tt$a_run = a_run_label(tt$frac_downstream_a_run)
+  tt
+}
+
+de_stratify_counts = function(tt, key, fdr = 0.05) {
+  tt = annotate_de_with_biology(tt)
+  tt$direction = ifelse(is.na(tt$FDR) | tt$FDR >= fdr, "ns",
+                        ifelse(tt$logFC > 0, "up", "down"))
+  facet_cols = c(polya = "polya", family_age = "age",
+                 strand_vs_gene = "strand", downstream_a_run = "a_run")
+  rows = list()
+  for (facet_nm in names(facet_cols)) {
+    col = facet_cols[[facet_nm]]
+    rows[[facet_nm]] = tt %>%
+      group_by(label = .data[[col]], direction) %>%
+      summarize(n = dplyr::n(), .groups = "drop") %>%
+      mutate(facet = facet_nm, key = key)
+  }
+  bind_rows(rows)
+}
+
+plot_de_stratification = function(strat_df, title) {
+  if (is.null(strat_df) || nrow(strat_df) == 0) return(invisible(NULL))
+  strat_df$direction = factor(strat_df$direction, levels = c("up", "down", "ns"))
+  ggplot(strat_df, aes(x = label, y = n, fill = direction)) +
+    geom_col() +
+    facet_grid(facet ~ key, scales = "free", space = "free_x") +
+    scale_fill_manual(values = c(up = "firebrick", down = "steelblue", ns = "grey70")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = title, x = NULL, y = "features")
+}
+```
+
 ## About this report
 
 ```{r provenance}
@@ -79,6 +133,69 @@ Repeat counts are normalized by gene library sizes (total gene read counts per
 sample) so that fold changes reflect changes in the repeat-to-gene expression
 ratio. Donor-matched design; edgeR QLF with donor as blocking factor
 (~donor + condition).
+
+## PolyA-competence of detected repeats
+
+Detection and differential-expression results can be split into two groups
+based on the intrinsic ability of each repeat class to produce a
+polyadenylated transcript. This split uses only the `class_id` column from
+`{feature_set}_locus_map.tsv` (equivalent to RepeatMasker `repClass`); no
+sequence-level polyA scanning is performed.
+
+- with polyA (polyA-competent): `LINE`, `SINE`, `LTR`, `Retroposon`.
+  These classes produce polyadenylated transcripts when expressed from their
+  own promoters (LINE-1 and ERV internal transcripts carry canonical AATAAA
+  poly(A) sites, SINE/Alu relies on LINE-1 machinery and poly(A) tails,
+  Retroposon/SVA also polyadenylates).
+- without polyA (not polyA-competent): every other class, including
+  `Satellite`, `Simple_repeat`, `Low_complexity`, `DNA`, `RC`, and the
+  structural-RNA-derived classes (`rRNA`, `tRNA`, `snRNA`, `scRNA`,
+  `srpRNA`). These lack a canonical polyadenylation signal in their body.
+- unknown: loci with no class annotation in the locus map.
+
+The genic vs intergenic feature_set split is complementary: genic repeats can
+be captured through a polyadenylated host transcript regardless of intrinsic
+class, while intergenic repeats need their own poly(A) tail to be detected by
+polyA-selection assays. The class-based facet therefore matters most on the
+`intergenic_repeats` feature set.
+
+## Biology-driven sanity checks for detection
+
+Three additional commonsense checks help reason about why a given repeat is
+or is not detected. Classification logic is shared across reports in
+`workflow/scripts/biology_annotations.py` (Python, pure functions, unit
+tested in `test/unit/test_biology_annotations.py`) and the R-side join and
+labelling helpers live in `workflow/scripts/biology_checks.R`.
+
+- Family age (from RepeatMasker subfamily name or milliDiv). Younger
+  subfamilies are more often transcriptionally active, older ones are
+  generally silenced. Brackets:
+
+      young   L1HS, L1PA2-7, AluY, SVA_A-F, HERVK/HERVH/LTR5
+      medium  L1PA8-16, AluS
+      old     L1PA17+, L1PB, L1M*, AluJ, FLAM, FRAM
+      unknown anything not matching, including DNA/RC/satellite classes
+
+  When milliDiv is available the same brackets are produced from
+  divergence thresholds (<=50 young, <=200 medium, >200 old).
+
+- Strand concordance with overlapping genes. By construction
+  `genic_repeats` is built with a same-strand intersect, so loci in that
+  set are sense-with-host. The shared annotation labels every locus as
+  `sense`, `antisense`, `both`, or `intergenic` against a strand-aware
+  gene-body overlap so reports can also surface antisense loci that the
+  current `intergenic_repeats` set silently absorbs.
+
+- Internal A-tract proxy for polyA priming. Length of the longest run of
+  As in the genomic region downstream of each locus (in mRNA-sense
+  orientation). A long downstream A-run flags a repeat that may be
+  detected by internal priming rather than by a genuine poly(A) tail,
+  which matters most for intergenic non-polyA-competent classes.
+
+The shared annotation is loaded from
+`{indices_base}/indices/{genome_tag}/repeat_biology_annotation.tsv` when
+present; otherwise the helpers no-op and reports fall back to the
+class-only polyA facet.
 
 ## Load counts
 
@@ -229,6 +346,21 @@ for (gr in granularities) {
     }
   }
   if (length(vol_plots) > 0) print(wrap_plots(vol_plots, ncol = 3))
+}
+```
+
+## DE stratified by biology (polyA / age / strand / A-run)
+
+```{r biology-de-strat-gse126543, fig.width=14, fig.height=10}
+if (!is.null(biology_annotation) && length(de_results) > 0) {
+  strat_all = bind_rows(lapply(names(de_results), function(key) {
+    de_stratify_counts(de_results[[key]]$tt, key)
+  }))
+  save_rds(strat_all, "gse126543_de_biology_stratification")
+  for (facet_nm in unique(strat_all$facet)) {
+    print(plot_de_stratification(filter(strat_all, facet == facet_nm),
+                                 paste("TDP43 pos vs neg, stratified by", facet_nm)))
+  }
 }
 ```
 

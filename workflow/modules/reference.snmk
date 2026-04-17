@@ -429,3 +429,32 @@ rule bowtie2_index:
     resources:
         mem_mb = config['resources']['max_mem_mb']
     shell: "bowtie2-build --threads {threads} {input} {params.index_prefix} 2> {log}"
+
+
+rule build_repeat_biology_annotation:
+    """Per-subfamily TSV with age, strand, and A-run proxies for each repeat."""
+    conda: op.join(workflow.basedir, 'envs', 'python.yaml')
+    input:
+        rmsk = op.join(refs_dir, f'{assembly}_rmsk_raw.txt.gz'),
+        genes_gtf = rules.decompress_genes_gtf.output,
+        genome = rules.decompress_genome.output,
+    output:
+        tsv = op.join(config['indices_base'], 'indices', genome_tag,
+                      'repeat_biology_annotation.tsv')
+    params:
+        chrom_filter = chrom_filter_arg,
+        outdir = op.join(config['indices_base'], 'indices', genome_tag),
+    log:
+        op.join(config['base'], 'logs', 'build_repeat_biology_annotation.log')
+    benchmark:
+        op.join(config['base'], 'benchmarks', 'build_repeat_biology_annotation.txt')
+    shell:
+        """
+        mkdir -p {params.outdir}
+        python {workflow.basedir}/scripts/build_repeat_biology_annotation.py \
+            --rmsk {input.rmsk} \
+            --genes-gtf {input.genes_gtf} \
+            --genome-fasta {input.genome} \
+            --output {output.tsv} \
+            {params.chrom_filter} 2> {log}
+        """

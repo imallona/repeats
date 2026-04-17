@@ -192,6 +192,7 @@ def reference_outputs():
         op.join(refs, 'genic_repeats.gtf'),
         op.join(refs, 'intergenic_repeats.gtf'),
         op.join(refs, 'repeat_harboring_genes.gtf'),
+        op.join(refs, 'repeat_biology_annotation.tsv'),
     ]
 
 
@@ -313,13 +314,17 @@ def kallisto_counts():
 
 # Set render_report inputs now that the output functions are defined
 if _pipeline_type == 'bulk' and config.get('report'):
-    _render_report_inputs = bulk_count_outputs()
+    _render_report_inputs = bulk_count_outputs() + [
+        op.join(config['indices_base'], 'indices', genome_tag,
+                'repeat_biology_annotation.tsv')]
     include: "modules/render_report.snmk"
 
 if _pipeline_type == 'sc' and config.get('report'):
     _render_report_inputs = (
         starsolo_bams() + kallisto_counts()
         + ([_metadata_txt] if _metadata_url else [])
+        + [op.join(config['indices_base'], 'indices', genome_tag,
+                   'repeat_biology_annotation.tsv')]
     )
     include: "modules/render_report.snmk"
 
