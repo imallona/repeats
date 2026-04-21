@@ -244,6 +244,25 @@ stopifnot(length(all_results) == length(repeats) * length(contrasts))
 save_rds(all_results, "ruv_repeat_de")
 ```
 
+## Per-contrast naive gene DE
+
+Gene-level two-group contrasts with gene-TMM normalization and no RUV covariates, matched to the repeat contrasts. The cross-dataset integrative report reuses these to correlate repeat logFCs against gene logFCs on the same axis. The earlier `ruv_naive_gene_de.rds` is the omnibus F-test across the four-group design and is kept as the basis for empirical control ranking.
+
+```{r naive_per_contrast}
+naive_per_contrast <- list()
+for (cname in names(contrasts)) {
+  cvec <- build_contrast_vec(colnames(design0), levels(group), contrasts[[cname]])
+  dge <- edgeR::DGEList(counts = genes_expr)
+  dge <- edgeR::calcNormFactors(dge, method = "TMM")
+  dge <- edgeR::estimateDisp(dge, design0)
+  fit <- edgeR::glmQLFit(dge, design0)
+  qlf <- edgeR::glmQLFTest(fit, contrast = cvec)
+  tt <- edgeR::topTags(qlf, n = Inf, sort.by = "none")$table
+  naive_per_contrast[[cname]] <- tt
+}
+save_rds(naive_per_contrast, "ruv_naive_gene_de_per_contrast")
+```
+
 ## DE stratified by biology (polyA / age / strand / A-run)
 
 ```{r biology-de-strat, fig.width=14, fig.height=10}

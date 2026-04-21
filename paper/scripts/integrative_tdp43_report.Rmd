@@ -1,0 +1,576 @@
+---
+title: "TDP-43 cross-dataset integrative overview"
+author: ""
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    code_folding: hide
+params:
+  polymenidou_bulk_rds_dir: "../../results/paper/tdp43/polymenidou_tdp_kd_oe_cultures_bulk/ruv_rds"
+  lee_bulk_rds_dir: "../../results/paper/tdp43/lee_nuclear_tdp_retention_bulk/ruv_rds"
+  polymenidou_sc_rds_dir: "../../results/paper/tdp43/polymenidou_tdp_oe_cultures_scrnaseq/ruv_rds"
+  report_outdir: "../../results/paper/tdp43/integrative_rds"
+  fdr_cutoff: 0.05
+  logfc_cutoff: 0
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.width = 6, fig.height = 5)
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  library(purrr)
+  library(tibble)
+  library(scales)
+})
+
+source("../workflow/scripts/biology_checks.R")
+
+dir.create(params$report_outdir, recursive = TRUE, showWarnings = FALSE)
+
+save_rds <- function(obj, name) {
+  saveRDS(obj, file.path(params$report_outdir, paste0(name, ".rds")))
+}
+
+save_csv <- function(df, name) {
+  readr::write_csv(df, file.path(params$report_outdir, paste0(name, ".csv")))
+}
+```
+
+# Inputs
+
+Three studies, each contributing one or more TDP-43 contrasts. The shared axis
+across bulk and sc is repeat subfamily (`gene_id` in bulk, STARsolo feature
+rows in sc), split by genic vs intergenic origin.
+
+```{r load}
+read_rds_safe <- function(path) {
+  if (!file.exists(path)) {
+    warning(sprintf("missing: %s", path))
+    return(NULL)
+  }
+  readRDS(path)
+}
+
+poly_bulk <- read_rds_safe(file.path(params$polymenidou_bulk_rds_dir, "ruv_repeat_de.rds"))
+lee_bulk  <- read_rds_safe(file.path(params$lee_bulk_rds_dir,        "ruv_repeat_de.rds"))
+poly_sc   <- read_rds_safe(file.path(params$polymenidou_sc_rds_dir,  "ruv_repeat_de.rds"))
+
+lee_bulk_gene_naive  <- read_rds_safe(file.path(params$lee_bulk_rds_dir,
+                                                "ruv_naive_gene_de.rds"))
+poly_bulk_gene_naive <- read_rds_safe(file.path(params$polymenidou_bulk_rds_dir,
+                                                "ruv_naive_gene_de_per_contrast.rds"))
+poly_sc_gene_naive   <- read_rds_safe(file.path(params$polymenidou_sc_rds_dir,
+                                                "ruv_naive_gene_de.rds"))
+
+biology_annotation <- read_rds_safe(file.path(params$lee_bulk_rds_dir,
+                                              "biology_annotation.rds"))
+if (is.null(biology_annotation)) {
+  biology_annotation <- read_rds_safe(file.path(params$polymenidou_bulk_rds_dir,
+                                                "biology_annotation.rds"))
+}
+if (is.null(biology_annotation)) {
+  biology_annotation <- read_rds_safe(file.path(params$polymenidou_sc_rds_dir,
+                                                "biology_annotation.rds"))
+}
+```
+
+```{r inventory}
+summarise_rds <- function(obj, label) {
+  if (is.null(obj)) return(tibble(study = label, key = NA_character_, n_rows = NA_integer_))
+  if (is.list(obj) && !is.data.frame(obj) && length(obj) > 0) {
+    tibble(study = label, key = names(obj),
+           n_rows = vapply(obj, function(x) nrow(as.data.frame(x)), integer(1)))
+  } else if (is.data.frame(obj)) {
+    tibble(study = label, key = "single", n_rows = nrow(obj))
+  } else {
+    tibble(study = label, key = "nested", n_rows = NA_integer_)
+  }
+}
+
+bind_rows(
+  summarise_rds(poly_bulk, "polymenidou_bulk_repeats"),
+  summarise_rds(lee_bulk,  "lee_bulk_repeats"),
+  summarise_rds(poly_sc,   "polymenidou_sc_repeats")
+) %>% knitr::kable()
+```
+
+# Cross-study contrast map
+
+```{r contrast_map}
+contrast_info <- tribble(
+  ~label,          ~study,             ~contrast_id,              ~direction_note,
+  "lee_tdppos",    "lee_bulk",         "tdp43pos_vs_tdp43neg",    "up = nuclear TDP-43 retained (Lee sorted nuclei)",
+  "poly_kd",       "polymenidou_bulk", "tdp43_kd_vs_nt_kd_ctrl",  "up = knockdown (Polymenidou bulk, nuclear loss analog)",
+  "poly_oe",       "polymenidou_bulk", "tdp43_oe_vs_oe_ctrl",     "up = overexpression (Polymenidou bulk)",
+  "sc_cluster12",  "polymenidou_sc",   "cluster12_vs_other",      "up = cluster 12 (Polymenidou sc OE)"
+)
+knitr::kable(contrast_info)
+```
+
+# Harmonize repeat DE tables per category
+
+Gene_id granularity is the shared axis across bulk and sc. Genic vs intergenic
+is split upstream at the count matrix level, so each study exposes two
+repeat tables per contrast.
+
+```{r pick_repeat_tables}
+repeat_key_map <- list(
+  lee_bulk = list(
+    tdp43pos_vs_tdp43neg = list(genic = "genic_geneid", intergenic = "inter_geneid")
+  ),
+  polymenidou_bulk = list(
+    tdp43_kd_vs_nt_kd_ctrl = list(
+      genic = "genic_geneid:tdp43_kd_vs_nt_kd_ctrl",
+      intergenic = "inter_geneid:tdp43_kd_vs_nt_kd_ctrl"
+    ),
+    tdp43_oe_vs_oe_ctrl = list(
+      genic = "genic_geneid:tdp43_oe_vs_oe_ctrl",
+      intergenic = "inter_geneid:tdp43_oe_vs_oe_ctrl"
+    )
+  ),
+  polymenidou_sc = list(
+    cluster12_vs_other = list(
+      genic = "unique_genic_repeats:cluster12_vs_other",
+      intergenic = "unique_intergenic_repeats:cluster12_vs_other"
+    )
+  )
+)
+
+repeat_rds_map <- list(
+  lee_bulk = lee_bulk,
+  polymenidou_bulk = poly_bulk,
+  polymenidou_sc = poly_sc
+)
+
+pick_repeat_tbl <- function(study, contrast_id, category) {
+  rds <- repeat_rds_map[[study]]
+  if (is.null(rds)) return(NULL)
+  key <- repeat_key_map[[study]][[contrast_id]][[category]]
+  if (is.null(key) || !key %in% names(rds)) return(NULL)
+  df <- as_tibble(rds[[key]]) %>%
+    select(feature_id, logFC, PValue, FDR) %>%
+    mutate(sig = FDR < params$fdr_cutoff & abs(logFC) > params$logfc_cutoff)
+  df
+}
+
+de_tables <- list()
+for (i in seq_len(nrow(contrast_info))) {
+  lbl <- contrast_info$label[i]
+  study <- contrast_info$study[i]
+  cid <- contrast_info$contrast_id[i]
+  for (cat in c("genic", "intergenic")) {
+    tbl <- pick_repeat_tbl(study, cid, cat)
+    if (!is.null(tbl)) {
+      de_tables[[paste(lbl, cat, sep = "__")]] <- tbl
+    }
+  }
+}
+
+de_inventory <- tibble(
+  table = names(de_tables),
+  n = vapply(de_tables, nrow, integer(1)),
+  n_sig = vapply(de_tables, function(x) sum(x$sig, na.rm = TRUE), integer(1))
+)
+knitr::kable(de_inventory)
+save_rds(de_tables, "integrative_repeat_de_tables")
+```
+
+# Biology annotation join
+
+Each repeat DE table is annotated with the per-subfamily biology TSV produced
+by `build_repeat_biology_annotation.py`. Subfamily id in bulk (gene_id) and
+STARsolo repeat feature id in sc both map to the `gene_id` column of the
+biology annotation.
+
+```{r annotate_biology}
+if (!is.null(biology_annotation)) {
+  bio <- as_tibble(biology_annotation) %>%
+    select(gene_id, family_id, class_id, family_age,
+           frac_intergenic, frac_downstream_a_run) %>%
+    mutate(polya_class = as.character(polya_label(class_id)),
+           age_class   = as.character(family_age_label(family_age)),
+           a_run_class = as.character(a_run_label(frac_downstream_a_run)))
+  de_tables_anno <- lapply(de_tables, function(df) {
+    left_join(df, bio, by = c("feature_id" = "gene_id"))
+  })
+} else {
+  bio <- NULL
+  de_tables_anno <- de_tables
+}
+save_rds(de_tables_anno, "integrative_repeat_de_tables_annotated")
+```
+
+# Pairwise repeat logFC concordance, by category
+
+For each genic/intergenic axis, inner-join logFC tables between pairs of
+contrasts and compute Pearson / Spearman plus quadrant counts at
+FDR < `r params$fdr_cutoff`.
+
+```{r pair_repeat_helper}
+pair_logfc <- function(tA, tB, nameA, nameB) {
+  if (is.null(tA) || is.null(tB)) return(NULL)
+  j <- inner_join(
+    tA %>% transmute(feature_id, logFC_A = logFC, FDR_A = FDR, sig_A = sig,
+                     polya_class = if ("polya_class" %in% names(.)) polya_class else NA,
+                     a_run_class = if ("a_run_class" %in% names(.)) a_run_class else NA,
+                     age_class   = if ("age_class"   %in% names(.)) age_class   else NA,
+                     class_id    = if ("class_id"    %in% names(.)) class_id    else NA),
+    tB %>% transmute(feature_id, logFC_B = logFC, FDR_B = FDR, sig_B = sig),
+    by = "feature_id"
+  )
+  if (nrow(j) < 5) return(NULL)
+  list(
+    pair = c(nameA, nameB),
+    joined = j,
+    pearson = cor(j$logFC_A, j$logFC_B, method = "pearson"),
+    spearman = cor(j$logFC_A, j$logFC_B, method = "spearman"),
+    n = nrow(j),
+    n_sig_both = sum(j$sig_A & j$sig_B, na.rm = TRUE),
+    n_concordant_sig = sum(j$sig_A & j$sig_B &
+                             sign(j$logFC_A) == sign(j$logFC_B), na.rm = TRUE),
+    n_discordant_sig = sum(j$sig_A & j$sig_B &
+                             sign(j$logFC_A) != sign(j$logFC_B), na.rm = TRUE)
+  )
+}
+
+pairs_of_interest <- list(
+  c("lee_tdppos",   "poly_kd"),
+  c("lee_tdppos",   "poly_oe"),
+  c("lee_tdppos",   "sc_cluster12"),
+  c("poly_kd",      "poly_oe"),
+  c("poly_oe",      "sc_cluster12"),
+  c("poly_kd",      "sc_cluster12")
+)
+
+run_pairs_for_category <- function(category) {
+  out <- list()
+  for (p in pairs_of_interest) {
+    tagA <- paste(p[1], category, sep = "__")
+    tagB <- paste(p[2], category, sep = "__")
+    r <- pair_logfc(de_tables_anno[[tagA]], de_tables_anno[[tagB]], p[1], p[2])
+    if (!is.null(r)) {
+      r$category <- category
+      out[[paste(p[1], "vs", p[2], sep = "__")]] <- r
+    }
+  }
+  out
+}
+
+pair_results_genic <- run_pairs_for_category("genic")
+pair_results_inter <- run_pairs_for_category("intergenic")
+```
+
+```{r pair_repeat_summary}
+summarise_pair_results <- function(lst, category) {
+  bind_rows(lapply(lst, function(r) {
+    tibble(category = category,
+           pair_A = r$pair[1], pair_B = r$pair[2],
+           n = r$n, pearson = r$pearson, spearman = r$spearman,
+           n_sig_both = r$n_sig_both,
+           n_concordant_sig = r$n_concordant_sig,
+           n_discordant_sig = r$n_discordant_sig)
+  }))
+}
+
+summary_df <- bind_rows(
+  summarise_pair_results(pair_results_genic, "genic"),
+  summarise_pair_results(pair_results_inter, "intergenic")
+)
+knitr::kable(summary_df, digits = 3)
+save_csv(summary_df, "integrative_repeat_concordance_summary")
+save_rds(list(genic = pair_results_genic,
+              intergenic = pair_results_inter),
+         "integrative_repeat_pair_results")
+```
+
+```{r pair_repeat_scatter, fig.width = 5.5, fig.height = 5}
+scatter_pair <- function(r, title_prefix) {
+  j <- r$joined
+  subtitle <- sprintf("n=%d  pearson=%.2f  spearman=%.2f  sig-both=%d (concord=%d discord=%d)",
+                      r$n, r$pearson, r$spearman,
+                      r$n_sig_both, r$n_concordant_sig, r$n_discordant_sig)
+  ggplot(j, aes(logFC_A, logFC_B)) +
+    geom_vline(xintercept = 0, color = "grey70") +
+    geom_hline(yintercept = 0, color = "grey70") +
+    geom_point(aes(color = interaction(sig_A, sig_B)),
+               alpha = 0.7, size = 1.2) +
+    scale_color_manual(values = c("FALSE.FALSE" = "grey80",
+                                  "TRUE.FALSE"  = "steelblue",
+                                  "FALSE.TRUE"  = "goldenrod",
+                                  "TRUE.TRUE"   = "firebrick"),
+                       name = "sig in") +
+    labs(title = paste(title_prefix, paste(r$pair, collapse = " vs ")),
+         subtitle = subtitle,
+         x = paste0("logFC ", r$pair[1]),
+         y = paste0("logFC ", r$pair[2])) +
+    theme_bw()
+}
+
+for (nm in names(pair_results_genic)) {
+  print(scatter_pair(pair_results_genic[[nm]], "[genic]"))
+}
+for (nm in names(pair_results_inter)) {
+  print(scatter_pair(pair_results_inter[[nm]], "[intergenic]"))
+}
+```
+
+# Concordance faceted by polyA competence
+
+Class-based polyA competence from `polya_label(class_id)`: LINE/SINE/LTR/
+Retroposon subfamilies count as polyA-competent; DNA transposons and
+satellites do not. Definition is shared with the per-dataset reports
+(`workflow/scripts/biology_checks.R`).
+
+```{r polya_scatter, fig.width = 8, fig.height = 4.5}
+scatter_pair_faceted <- function(r, facet_col, title_prefix, palette) {
+  j <- r$joined
+  if (all(is.na(j[[facet_col]]))) return(invisible(NULL))
+  subtitle <- sprintf("n=%d  pearson=%.2f  spearman=%.2f",
+                      r$n, r$pearson, r$spearman)
+  j <- j[!is.na(j[[facet_col]]), , drop = FALSE]
+  ggplot(j, aes(logFC_A, logFC_B, color = .data[[facet_col]])) +
+    geom_vline(xintercept = 0, color = "grey70") +
+    geom_hline(yintercept = 0, color = "grey70") +
+    geom_point(alpha = 0.7, size = 1.2) +
+    facet_wrap(as.formula(paste("~", facet_col)), nrow = 1) +
+    scale_color_manual(values = palette, na.value = "grey70") +
+    labs(title = paste(title_prefix, paste(r$pair, collapse = " vs ")),
+         subtitle = subtitle,
+         x = paste0("logFC ", r$pair[1]),
+         y = paste0("logFC ", r$pair[2])) +
+    theme_bw() +
+    theme(legend.position = "none")
+}
+
+polya_palette <- c("polyA-competent" = "firebrick",
+                   "not polyA-competent" = "steelblue",
+                   "unknown" = "grey70")
+
+for (nm in names(pair_results_genic)) {
+  print(scatter_pair_faceted(pair_results_genic[[nm]], "polya_class",
+                             "[genic]", polya_palette))
+}
+for (nm in names(pair_results_inter)) {
+  print(scatter_pair_faceted(pair_results_inter[[nm]], "polya_class",
+                             "[intergenic]", polya_palette))
+}
+```
+
+```{r polya_correlation_table}
+stratified_corr <- function(lst, category, facet_col) {
+  bind_rows(lapply(lst, function(r) {
+    j <- r$joined
+    if (all(is.na(j[[facet_col]]))) return(NULL)
+    j %>%
+      filter(!is.na(.data[[facet_col]])) %>%
+      group_by(stratum = .data[[facet_col]]) %>%
+      summarise(n = dplyr::n(),
+                pearson = if (dplyr::n() > 2)
+                  cor(logFC_A, logFC_B, method = "pearson") else NA_real_,
+                spearman = if (dplyr::n() > 2)
+                  cor(logFC_A, logFC_B, method = "spearman") else NA_real_,
+                n_sig_both = sum(sig_A & sig_B, na.rm = TRUE),
+                .groups = "drop") %>%
+      mutate(stratification = facet_col,
+             category = category,
+             pair = paste(r$pair, collapse = " vs "))
+  }))
+}
+
+polya_tbl <- bind_rows(
+  stratified_corr(pair_results_genic, "genic", "polya_class"),
+  stratified_corr(pair_results_inter, "intergenic", "polya_class")
+)
+knitr::kable(polya_tbl, digits = 3)
+save_csv(polya_tbl, "integrative_polya_stratified_correlation")
+```
+
+# Concordance faceted by downstream A-run (polyA priming proxy)
+
+Post-integration 3'-downstream A-run fraction from
+`a_run_label(frac_downstream_a_run)` buckets subfamilies into low/medium/high.
+Complementary to class-based polyA competence; only present for subfamilies
+carried through the biology annotation.
+
+```{r a_run_scatter, fig.width = 9, fig.height = 4.5}
+a_run_palette <- c(low = "steelblue", medium = "goldenrod",
+                   high = "firebrick", unknown = "grey70")
+
+for (nm in names(pair_results_genic)) {
+  print(scatter_pair_faceted(pair_results_genic[[nm]], "a_run_class",
+                             "[genic]", a_run_palette))
+}
+for (nm in names(pair_results_inter)) {
+  print(scatter_pair_faceted(pair_results_inter[[nm]], "a_run_class",
+                             "[intergenic]", a_run_palette))
+}
+```
+
+```{r a_run_correlation_table}
+a_run_tbl <- bind_rows(
+  stratified_corr(pair_results_genic, "genic", "a_run_class"),
+  stratified_corr(pair_results_inter, "intergenic", "a_run_class")
+)
+knitr::kable(a_run_tbl, digits = 3)
+save_csv(a_run_tbl, "integrative_a_run_stratified_correlation")
+```
+
+# Concordance faceted by family age
+
+```{r age_correlation_table}
+age_tbl <- bind_rows(
+  stratified_corr(pair_results_genic, "genic", "age_class"),
+  stratified_corr(pair_results_inter, "intergenic", "age_class")
+)
+knitr::kable(age_tbl, digits = 3)
+save_csv(age_tbl, "integrative_age_stratified_correlation")
+```
+
+# Gene-level naive (gene-norm) concordance
+
+Gene-level DE, gene-TMM normalization, no RUV. Lee bulk and sc save
+`ruv_naive_gene_de.rds` directly (two-group contrast or the unique-mode
+pseudobulk). Polymenidou bulk splits its four-group design into two
+contrasts in `ruv_naive_gene_de_per_contrast.rds`.
+
+```{r harmonise_genes}
+as_gene_tbl <- function(obj) {
+  if (is.null(obj)) return(NULL)
+  df <- as.data.frame(obj)
+  if (!"feature_id" %in% names(df)) {
+    df$feature_id <- rownames(df)
+  }
+  as_tibble(df) %>%
+    select(feature_id, any_of(c("logFC", "logCPM", "F", "PValue", "FDR"))) %>%
+    mutate(sig = if ("FDR" %in% names(.)) FDR < params$fdr_cutoff else NA)
+}
+
+unwrap_sc_naive <- function(obj) {
+  if (is.null(obj)) return(NULL)
+  if (is.list(obj) && !is.data.frame(obj) && "unique" %in% names(obj)) {
+    obj[["unique"]]
+  } else {
+    obj
+  }
+}
+
+gene_tables <- list(
+  lee_tdppos    = as_gene_tbl(lee_bulk_gene_naive),
+  poly_kd       = as_gene_tbl(poly_bulk_gene_naive[["tdp43_kd_vs_nt_kd_ctrl"]]),
+  poly_oe       = as_gene_tbl(poly_bulk_gene_naive[["tdp43_oe_vs_oe_ctrl"]]),
+  sc_cluster12  = as_gene_tbl(unwrap_sc_naive(poly_sc_gene_naive))
+)
+gene_tables <- gene_tables[!sapply(gene_tables, is.null)]
+
+gene_summary <- bind_rows(lapply(names(gene_tables), function(nm) {
+  g <- gene_tables[[nm]]
+  tibble(table = nm, n = nrow(g),
+         n_sig = sum(g$sig, na.rm = TRUE),
+         has_logFC = "logFC" %in% names(g))
+}))
+knitr::kable(gene_summary)
+save_rds(gene_tables, "integrative_gene_tables")
+```
+
+```{r gene_pairs, fig.width = 5, fig.height = 5}
+pair_gene <- function(tA, tB, nameA, nameB) {
+  if (is.null(tA) || is.null(tB)) return(NULL)
+  if (!"logFC" %in% names(tA) || !"logFC" %in% names(tB)) return(NULL)
+  j <- inner_join(
+    tA %>% rename(logFC_A = logFC, FDR_A = FDR, sig_A = sig),
+    tB %>% rename(logFC_B = logFC, FDR_B = FDR, sig_B = sig),
+    by = "feature_id"
+  )
+  if (nrow(j) < 5) return(NULL)
+  list(pair = c(nameA, nameB), joined = j,
+       pearson  = cor(j$logFC_A, j$logFC_B, method = "pearson"),
+       spearman = cor(j$logFC_A, j$logFC_B, method = "spearman"),
+       n = nrow(j),
+       n_sig_both = sum(j$sig_A & j$sig_B, na.rm = TRUE),
+       n_concordant_sig = sum(j$sig_A & j$sig_B &
+                                sign(j$logFC_A) == sign(j$logFC_B), na.rm = TRUE))
+}
+
+gene_pair_results <- list()
+for (p in pairs_of_interest) {
+  r <- pair_gene(gene_tables[[p[1]]], gene_tables[[p[2]]], p[1], p[2])
+  if (!is.null(r)) {
+    gene_pair_results[[paste(p[1], "vs", p[2], sep = "__")]] <- r
+  }
+}
+
+gene_summary_df <- bind_rows(lapply(gene_pair_results, function(r) {
+  tibble(pair_A = r$pair[1], pair_B = r$pair[2],
+         n = r$n, pearson = r$pearson, spearman = r$spearman,
+         n_sig_both = r$n_sig_both,
+         n_concordant_sig = r$n_concordant_sig)
+}))
+knitr::kable(gene_summary_df, digits = 3)
+save_csv(gene_summary_df, "integrative_gene_concordance_summary")
+save_rds(gene_pair_results, "integrative_gene_pair_results")
+
+for (nm in names(gene_pair_results)) {
+  r <- gene_pair_results[[nm]]
+  j <- r$joined
+  subtitle <- sprintf("n=%d  pearson=%.2f  spearman=%.2f  sig-both=%d (concord=%d)",
+                      r$n, r$pearson, r$spearman,
+                      r$n_sig_both, r$n_concordant_sig)
+  print(
+    ggplot(j, aes(logFC_A, logFC_B)) +
+      geom_vline(xintercept = 0, color = "grey70") +
+      geom_hline(yintercept = 0, color = "grey70") +
+      geom_point(alpha = 0.3, size = 0.7) +
+      labs(title = nm, subtitle = subtitle,
+           x = paste0("logFC ", r$pair[1]),
+           y = paste0("logFC ", r$pair[2])) +
+      theme_bw()
+  )
+}
+```
+
+# Shared significant repeats, by category
+
+For each pair and category, repeats significant in both tables, ordered by
+summed absolute logFC. Biology annotation columns are carried through for
+manual inspection.
+
+```{r shared_hits}
+collect_shared_hits <- function(lst, category) {
+  lapply(lst, function(r) {
+    r$joined %>%
+      filter(sig_A, sig_B) %>%
+      arrange(desc(abs(logFC_A) + abs(logFC_B))) %>%
+      mutate(category = category,
+             pair = paste(r$pair, collapse = " vs ")) %>%
+      select(category, pair, feature_id, class_id, polya_class, a_run_class,
+             age_class, logFC_A, FDR_A, logFC_B, FDR_B)
+  })
+}
+
+shared_genic <- collect_shared_hits(pair_results_genic, "genic")
+shared_inter <- collect_shared_hits(pair_results_inter, "intergenic")
+shared_all <- bind_rows(c(shared_genic, shared_inter))
+save_rds(list(genic = shared_genic, intergenic = shared_inter),
+         "integrative_shared_hits")
+save_csv(shared_all, "integrative_shared_hits")
+
+for (cat_label in c("genic", "intergenic")) {
+  lst <- if (cat_label == "genic") shared_genic else shared_inter
+  for (nm in names(lst)) {
+    cat("## ", cat_label, " - ", nm, "\n\n", sep = "")
+    print(knitr::kable(head(lst[[nm]], 40)))
+    cat("\n\n")
+  }
+}
+```
+
+# Session info
+
+```{r session}
+sessionInfo()
+```
