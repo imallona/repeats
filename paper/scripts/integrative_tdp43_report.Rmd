@@ -331,37 +331,50 @@ save_rds(list(genic = pair_results_genic,
 
 ```{r pair_repeat_scatter, fig.width = 5.5, fig.height = 5}
 scatter_pair <- function(r, title_prefix, n_label = 10) {
-  j <- r$joined
-  j_label <- j %>%
+  j <- r$joined %>%
+    arrange(sig_A & sig_B, sig_A | sig_B)
+  j_label <- r$joined %>%
     filter(sig_A, sig_B) %>%
     arrange(desc(abs(logFC_A) + abs(logFC_B))) %>%
     head(n_label)
   subtitle <- sprintf("n=%d  pearson=%.2f  spearman=%.2f  sig-both=%d (concord=%d discord=%d)",
                       r$n, r$pearson, r$spearman,
                       r$n_sig_both, r$n_concordant_sig, r$n_discordant_sig)
+  legend_labels <- c(
+    "FALSE.FALSE" = "n.s. in both",
+    "TRUE.FALSE"  = sprintf("signif in %s only", r$pair[1]),
+    "FALSE.TRUE"  = sprintf("signif in %s only", r$pair[2]),
+    "TRUE.TRUE"   = "signif in both"
+  )
   ggplot(j, aes(logFC_A, logFC_B)) +
     geom_vline(xintercept = 0, color = "grey70") +
     geom_hline(yintercept = 0, color = "grey70") +
     geom_point(aes(color = interaction(sig_A, sig_B)),
                alpha = 0.7, size = 1.2) +
-    ggrepel::geom_text_repel(data = j_label,
-                             aes(label = feature_id),
-                             size = 2.8, color = "black",
-                             max.overlaps = Inf,
-                             box.padding = 0.4,
-                             segment.color = "grey50",
-                             segment.size = 0.3,
-                             min.segment.length = 0) +
+    ggrepel::geom_label_repel(data = j_label,
+                              aes(label = feature_id),
+                              size = 2.8, color = "black",
+                              fill = alpha("white", 0.85),
+                              label.size = 0.15,
+                              label.padding = 0.15,
+                              max.overlaps = Inf,
+                              box.padding = 0.4,
+                              segment.color = "grey40",
+                              segment.size = 0.4,
+                              min.segment.length = 0) +
     scale_color_manual(values = c("FALSE.FALSE" = "grey80",
                                   "TRUE.FALSE"  = "steelblue",
                                   "FALSE.TRUE"  = "goldenrod",
                                   "TRUE.TRUE"   = "firebrick"),
-                       name = "sig in") +
+                       labels = legend_labels,
+                       name = NULL) +
     labs(title = paste(title_prefix, paste(r$pair, collapse = " vs ")),
          subtitle = subtitle,
          x = paste0("logFC ", r$pair[1]),
          y = paste0("logFC ", r$pair[2])) +
-    theme_bw()
+    coord_equal() +
+    theme_bw() +
+    theme(panel.grid = element_blank())
 }
 
 for (nm in names(pair_results_genic)) {
@@ -386,7 +399,8 @@ scatter_pair_faceted <- function(r, facet_col, title_prefix, palette,
   if (all(is.na(j[[facet_col]]))) return(invisible(NULL))
   subtitle <- sprintf("n=%d  pearson=%.2f  spearman=%.2f",
                       r$n, r$pearson, r$spearman)
-  j <- j[!is.na(j[[facet_col]]), , drop = FALSE]
+  j <- j[!is.na(j[[facet_col]]), , drop = FALSE] %>%
+    arrange(sig_A & sig_B, sig_A | sig_B)
   j_label <- j %>%
     filter(sig_A, sig_B) %>%
     group_by(.data[[facet_col]]) %>%
@@ -397,23 +411,28 @@ scatter_pair_faceted <- function(r, facet_col, title_prefix, palette,
     geom_vline(xintercept = 0, color = "grey70") +
     geom_hline(yintercept = 0, color = "grey70") +
     geom_point(alpha = 0.7, size = 1.2) +
-    ggrepel::geom_text_repel(data = j_label,
-                             aes(label = feature_id),
-                             size = 2.5, color = "black",
-                             max.overlaps = Inf,
-                             box.padding = 0.3,
-                             segment.color = "grey50",
-                             segment.size = 0.3,
-                             min.segment.length = 0,
-                             show.legend = FALSE) +
+    ggrepel::geom_label_repel(data = j_label,
+                              aes(label = feature_id),
+                              size = 2.5, color = "black",
+                              fill = alpha("white", 0.85),
+                              label.size = 0.1,
+                              label.padding = 0.12,
+                              max.overlaps = Inf,
+                              box.padding = 0.3,
+                              segment.color = "grey40",
+                              segment.size = 0.4,
+                              min.segment.length = 0,
+                              show.legend = FALSE) +
     facet_wrap(as.formula(paste("~", facet_col)), nrow = 1) +
     scale_color_manual(values = palette, na.value = "grey70") +
     labs(title = paste(title_prefix, paste(r$pair, collapse = " vs ")),
          subtitle = subtitle,
          x = paste0("logFC ", r$pair[1]),
          y = paste0("logFC ", r$pair[2])) +
+    coord_equal() +
     theme_bw() +
-    theme(legend.position = "none")
+    theme(legend.position = "none",
+          panel.grid = element_blank())
 }
 
 polya_palette <- c("polyA-competent" = "firebrick",
@@ -597,7 +616,9 @@ for (nm in names(gene_pair_results)) {
       labs(title = nm, subtitle = subtitle,
            x = paste0("logFC ", r$pair[1]),
            y = paste0("logFC ", r$pair[2])) +
-      theme_bw()
+      coord_equal() +
+      theme_bw() +
+      theme(panel.grid = element_blank())
   )
 }
 ```
@@ -825,7 +846,9 @@ if (nrow(rank_df) > 0) {
                       name = "cluster 12?") +
     labs(x = "sc cluster", y = "Pearson r vs Polymenidou bulk OE logFC",
          title = "Which sc cluster best matches bulk OE?") +
-    theme_bw()
+    theme_bw() +
+    theme(panel.grid.major.x = element_blank(),
+          panel.grid.minor = element_blank())
   print(p_rank)
 } else {
   cat("No per-cluster DE tables available; skipping ranking.\n")
