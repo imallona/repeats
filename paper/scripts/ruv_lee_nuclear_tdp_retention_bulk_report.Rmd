@@ -28,6 +28,7 @@ source("../workflow/scripts/ruv_common.R")
 
 counts_dir <- params$counts_dir
 report_outdir <- params$report_outdir
+indices_base <- params$indices_base
 n_controls <- as.integer(params$n_controls)
 k_selected <- as.integer(params$k_selected)
 stopifnot(dir.exists(counts_dir), dir.exists(report_outdir),
