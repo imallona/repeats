@@ -189,6 +189,7 @@ for (fs in names(repeats)) {
 }
 stopifnot(length(all_results) == length(repeats))
 save_rds(all_results, "ruv_repeat_de")
+```
 
 ## Repeat DE with gene-library-size normalization (no RUV)
 
@@ -215,7 +216,6 @@ for (fs in names(repeats)) {
 }
 stopifnot(length(all_results_gene_lib) == length(repeats))
 save_rds(all_results_gene_lib, "gene_lib_repeat_de")
-```
 ```
 
 ## DE stratified by biology (polyA / age / strand / A-run)

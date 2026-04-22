@@ -244,6 +244,7 @@ for (fs in names(repeats)) {
 }
 stopifnot(length(all_results) == length(repeats) * length(contrasts))
 save_rds(all_results, "ruv_repeat_de")
+```
 
 ## Repeat DE with gene-library-size normalization (no RUV)
 
@@ -276,7 +277,6 @@ for (fs in names(repeats)) {
 }
 stopifnot(length(all_results_gene_lib) == length(repeats) * length(contrasts))
 save_rds(all_results_gene_lib, "gene_lib_repeat_de")
-```
 ```
 
 ## Per-contrast naive gene DE
