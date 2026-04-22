@@ -1,4 +1,4 @@
-# ${\color{blue}RE}$claim
+<img src="docs/reclaim-logo.svg" alt="REclaim" height="20"/>
 
 **Repetitive element quantification in bulk and single-cell RNA-seq.**
 
