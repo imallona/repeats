@@ -95,6 +95,7 @@ rule render_ruv_bulk:
         counts = lambda wc: _bulk_inputs(wc.dataset),
     output:
         html = op.join(_out_base, "{dataset}", "ruv_{dataset}_report.html"),
+        rds_dir = directory(op.join(_out_base, "{dataset}", "ruv_rds")),
     params:
         rmd = lambda wc: op.abspath(_rmd_for(wc.dataset)),
         abs_html = lambda wc: op.abspath(_html_for(wc.dataset)),
@@ -135,6 +136,7 @@ rule render_ruv_sc:
         sc_inputs = lambda wc: _sc_inputs(wc.dataset),
     output:
         html = op.join(_out_base, "{dataset}", "ruv_{dataset}_report.html"),
+        rds_dir = directory(op.join(_out_base, "{dataset}", "ruv_rds")),
     params:
         rmd = lambda wc: op.abspath(_rmd_for(wc.dataset)),
         abs_html = lambda wc: op.abspath(_html_for(wc.dataset)),
