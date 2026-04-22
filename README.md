@@ -1,4 +1,8 @@
-# Repetitive element quantification in bulk and single-cell RNA-seq
+# ${\color{blue}RE}$claim
+
+**Repetitive element quantification in bulk and single-cell RNA-seq.**
+
+REclaim (REpetitive Elements + claim) is a Snakemake pipeline for systematic analysis of repeat RNA expression. The name foregrounds what the tool does: bring repetitive elements back into analyses that routinely discard them.
 
 ## Status
 
