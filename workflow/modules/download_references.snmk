@@ -99,6 +99,7 @@ if rmsk_source == 'ucsc_flatfile':
         shell: "curl --silent --show-error --location '{params.url}' -o {output} 2> {log}"
 
     rule build_repeats_gtf_from_flatfile:
+        conda: op.join(workflow.basedir, 'envs', 'python.yaml')
         input: rules.download_rmsk_flatfile.output
         output: op.join(refs_dir, f'{assembly}_rmsk_TE.gtf.gz')
         log: op.join(config['base'], 'logs', 'build_rmsk_gtf.log')
@@ -147,6 +148,7 @@ elif rmsk_source == 'ucsc_mysql':
             """
 
     rule build_repeats_gtf_from_mysql:
+        conda: op.join(workflow.basedir, 'envs', 'python.yaml')
         input: rules.fetch_rmsk_via_mysql.output
         output: op.join(refs_dir, f'{assembly}_rmsk_TE.gtf.gz')
         log: op.join(config['base'], 'logs', 'build_rmsk_gtf.log')

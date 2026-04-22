@@ -63,7 +63,7 @@ def main():
     with open(args.genes) as fh:
         loci = [line.rstrip('\n') for line in fh]
 
-    # bustools count MTX: rows=cells, cols=loci  →  transpose to loci x cells
+    # bustools count MTX: rows=cells, cols=loci, then transpose to loci x cells
     mat = scipy.io.mmread(args.mtx).T.tocsr()
     n_features, n_cells = mat.shape
     print(f'{n_features} loci, {n_cells} cells', file=sys.stderr)

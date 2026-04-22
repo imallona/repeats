@@ -1,0 +1,217 @@
+#!/usr/bin/env snakemake -s
+"""
+TDP-43 paper analyses.
+
+Consumes count matrices produced by the method pipeline at workflow/Snakefile
+(bulk pipeline) and raw STARsolo matrices from the sc pipeline, then runs
+dataset-specific RUVg-normalized edgeR reports plus downstream cross-dataset
+synthesis.
+
+Entry point kept separate from the method Snakefile for two reasons: paper
+analyses are cross-dataset (a single config references outputs of multiple
+method runs), and paper rules should not retrigger method jobs via Snakemake
+provenance tracking.
+
+Example:
+  cd paper
+  snakemake --use-conda --cores 4 --configfile configs/tdp43.yaml
+"""
+
+import os.path as op
+
+configfile: "configs/tdp43.yaml"
+
+_out_base = config['out_base']
+_datasets = config['datasets']
+
+_bulk_required = [
+    "star_genes_gene_id_unique.tsv",
+    "star_repeats_family_id_unique.tsv",
+    "star_repeats_gene_id_unique.tsv",
+    "star_genic_repeats_family_id_unique.tsv",
+    "star_genic_repeats_gene_id_unique.tsv",
+    "star_intergenic_repeats_family_id_unique.tsv",
+    "star_intergenic_repeats_gene_id_unique.tsv",
+]
+
+
+def _kind(dataset):
+    return _datasets[dataset].get('kind', 'bulk')
+
+
+def _abspath(dataset, key):
+    return op.abspath(_datasets[dataset][key])
+
+
+def _bulk_inputs(dataset):
+    counts_dir = _abspath(dataset, 'counts_dir')
+    return [op.join(counts_dir, f) for f in _bulk_required]
+
+
+def _sc_inputs(dataset):
+    d = _datasets[dataset]
+    return [op.abspath(d['starsolo_base']),
+            op.abspath(d['metadata']),
+            op.abspath(d['sample_metadata'])]
+
+
+def _rmd_for(dataset):
+    return op.join(workflow.basedir, "scripts", _datasets[dataset]['script'])
+
+
+def _html_for(dataset):
+    return op.join(_out_base, dataset, f"ruv_{dataset}_report.html")
+
+
+def _rds_for(dataset):
+    return op.join(_out_base, dataset, "ruv_rds")
+
+
+_bulk_datasets = [d for d in _datasets if _kind(d) == 'bulk']
+_sc_datasets = [d for d in _datasets if _kind(d) == 'sc']
+
+
+def _integrative_html():
+    return op.join(_out_base, "integrative_tdp43", "integrative_tdp43_report.html")
+
+
+def _integrative_rds_dir():
+    return op.join(_out_base, "integrative_tdp43", "integrative_rds")
+
+
+rule all:
+    default_target: True
+    input:
+        [_html_for(d) for d in _datasets] + [_integrative_html()]
+
+
+rule render_ruv_bulk:
+    wildcard_constraints:
+        dataset = "|".join(_bulk_datasets) if _bulk_datasets else "x^",
+    conda:
+        "envs/ruvseq.yaml"
+    input:
+        rmd = lambda wc: _rmd_for(wc.dataset),
+        counts = lambda wc: _bulk_inputs(wc.dataset),
+    output:
+        html = op.join(_out_base, "{dataset}", "ruv_{dataset}_report.html"),
+        rds_dir = directory(op.join(_out_base, "{dataset}", "ruv_rds")),
+    params:
+        rmd = lambda wc: op.abspath(_rmd_for(wc.dataset)),
+        abs_html = lambda wc: op.abspath(_html_for(wc.dataset)),
+        outdir = lambda wc: op.abspath(_rds_for(wc.dataset)),
+        counts_dir = lambda wc: _abspath(wc.dataset, 'counts_dir'),
+        indices_base = lambda wc: _abspath(wc.dataset, 'indices_base'),
+        n_controls = lambda wc: int(_datasets[wc.dataset].get("n_controls", 5000)),
+        k_selected = lambda wc: int(_datasets[wc.dataset].get("k_selected", 2)),
+    log:
+        op.join(_out_base, "logs", "render_ruv_{dataset}.log"),
+    resources:
+        mem_mb = config.get("resources", {}).get("ruv_mem_mb", 16000),
+    shell:
+        """
+        mkdir -p {params.outdir} $(dirname {log})
+        Rscript -e "rmarkdown::render(
+            '{params.rmd}',
+            output_file = '{params.abs_html}',
+            knit_root_dir = getwd(),
+            params = list(
+                counts_dir = '{params.counts_dir}',
+                report_outdir = '{params.outdir}',
+                indices_base = '{params.indices_base}',
+                n_controls = {params.n_controls},
+                k_selected = {params.k_selected}
+            )
+        )" 2> {log}
+        """
+
+
+rule render_ruv_sc:
+    wildcard_constraints:
+        dataset = "|".join(_sc_datasets) if _sc_datasets else "x^",
+    conda:
+        "envs/ruvseq.yaml"
+    input:
+        rmd = lambda wc: _rmd_for(wc.dataset),
+        sc_inputs = lambda wc: _sc_inputs(wc.dataset),
+    output:
+        html = op.join(_out_base, "{dataset}", "ruv_{dataset}_report.html"),
+        rds_dir = directory(op.join(_out_base, "{dataset}", "ruv_rds")),
+    params:
+        rmd = lambda wc: op.abspath(_rmd_for(wc.dataset)),
+        abs_html = lambda wc: op.abspath(_html_for(wc.dataset)),
+        outdir = lambda wc: op.abspath(_rds_for(wc.dataset)),
+        starsolo_base = lambda wc: _abspath(wc.dataset, 'starsolo_base'),
+        metadata = lambda wc: _abspath(wc.dataset, 'metadata'),
+        sample_metadata = lambda wc: _abspath(wc.dataset, 'sample_metadata'),
+        indices_base = lambda wc: _abspath(wc.dataset, 'indices_base'),
+        feature_sets = lambda wc: _datasets[wc.dataset].get(
+            "feature_sets", "genes genic_repeats intergenic_repeats"),
+        starsolo_modes = lambda wc: _datasets[wc.dataset].get(
+            "starsolo_modes", "unique"),
+        n_controls = lambda wc: int(_datasets[wc.dataset].get("n_controls", 3000)),
+        k_selected = lambda wc: int(_datasets[wc.dataset].get("k_selected", 1)),
+    log:
+        op.join(_out_base, "logs", "render_ruv_{dataset}.log"),
+    resources:
+        mem_mb = config.get("resources", {}).get("ruv_sc_mem_mb", 32000),
+    shell:
+        """
+        mkdir -p {params.outdir} $(dirname {log})
+        Rscript -e "rmarkdown::render(
+            '{params.rmd}',
+            output_file = '{params.abs_html}',
+            knit_root_dir = getwd(),
+            params = list(
+                starsolo_base = '{params.starsolo_base}',
+                metadata = '{params.metadata}',
+                sample_metadata = '{params.sample_metadata}',
+                report_outdir = '{params.outdir}',
+                indices_base = '{params.indices_base}',
+                feature_sets = '{params.feature_sets}',
+                starsolo_modes = '{params.starsolo_modes}',
+                n_controls = {params.n_controls},
+                k_selected = {params.k_selected}
+            )
+        )" 2> {log}
+        """
+
+
+rule render_integrative_tdp43:
+    conda:
+        "envs/ruvseq.yaml"
+    input:
+        rmd = op.join(workflow.basedir, "scripts", "integrative_tdp43_report.Rmd"),
+        per_dataset_rds_dirs = [_rds_for(d) for d in _datasets],
+    output:
+        html = _integrative_html(),
+    params:
+        rmd = op.abspath(op.join(workflow.basedir, "scripts",
+                                 "integrative_tdp43_report.Rmd")),
+        abs_html = op.abspath(_integrative_html()),
+        outdir = op.abspath(_integrative_rds_dir()),
+        polymenidou_bulk_rds_dir = lambda wc: op.abspath(
+            _rds_for("polymenidou_tdp_kd_oe_cultures_bulk")),
+        lee_bulk_rds_dir = lambda wc: op.abspath(
+            _rds_for("lee_nuclear_tdp_retention_bulk")),
+        polymenidou_sc_rds_dir = lambda wc: op.abspath(
+            _rds_for("polymenidou_tdp_oe_cultures_scrnaseq")),
+    log:
+        op.join(_out_base, "logs", "render_integrative_tdp43.log"),
+    resources:
+        mem_mb = config.get("resources", {}).get("integrative_mem_mb", 8000),
+    shell:
+        """
+        mkdir -p {params.outdir} $(dirname {log})
+        Rscript -e "rmarkdown::render(
+            '{params.rmd}',
+            output_file = '{params.abs_html}',
+            knit_root_dir = getwd(),
+            params = list(
+                polymenidou_bulk_rds_dir = '{params.polymenidou_bulk_rds_dir}',
+                lee_bulk_rds_dir = '{params.lee_bulk_rds_dir}',
+                polymenidou_sc_rds_dir = '{params.polymenidou_sc_rds_dir}',
+                report_outdir = '{params.outdir}'
+            )
+        )" 2> {log}
+        """

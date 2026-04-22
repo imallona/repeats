@@ -17,9 +17,9 @@ is the transcript_id (bare, no coordinates), matching locus_map col 0 and the
 count matrices produced by bowtie2/kallisto/alevin.
 
 Modes:
-  smartseq2 - Cell ID is the prefix of the read name before _r{n}_,
-              set by simulate_reads.py. All reads per (cell, locus) are counted.
-              No CB:Z tag is present in SmartSeq2 STARsolo BAMs.
+  smartseq2  - Cell ID is the prefix of the read name before _r{n}_,
+               set by simulate_reads.py. All reads per (cell, locus) are counted.
+               No CB:Z tag is present in SmartSeq2 STARsolo BAMs.
   chromium  - CB:Z = cell barcode, UB:Z = UMI. UMI deduplication is performed
               per (CB, locus) by counting distinct UMIs per cell.
 

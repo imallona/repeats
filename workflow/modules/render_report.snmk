@@ -1,0 +1,85 @@
+#!/usr/bin/env snakemake -s
+"""
+Generic report rendering rule.
+
+The config report: section must contain:
+  script  - path to Rmd relative to workflow.basedir
+  conda   - path to conda env yaml relative to workflow.basedir
+  output  - HTML filename relative to config base
+  outdir  - RDS output directory relative to config base (default: report_rds)
+  params  - list of param keys to pass to the Rmd (subset of known keys below)
+
+Known resolvable param keys:
+  counts_dir, report_outdir, starsolo_base, kallisto_base, indices_base,
+  metadata, sample_metadata, feature_sets, starsolo_modes
+"""
+
+import os.path as op
+
+_report_cfg = config['report']
+_script = op.join(workflow.basedir, _report_cfg['script'])
+_output = op.join(config['base'], _report_cfg['output'])
+_outdir = op.join(config['base'], _report_cfg.get('outdir', 'report_rds'))
+_conda = op.join(workflow.basedir, _report_cfg.get('conda', 'envs/rmarkdown.yaml'))
+_indices_base = op.abspath(
+    op.join(config.get('indices_base', config['base']), 'indices', genome_tag)
+)
+
+_known_params = {
+    'counts_dir': op.abspath(op.join(config['base'], 'counts')),
+    'report_outdir': op.abspath(_outdir),
+    'starsolo_base': op.abspath(op.join(config['base'], 'starsolo')),
+    'kallisto_base': op.abspath(op.join(config['base'], 'kallisto')),
+    'indices_base': _indices_base,
+    'metadata': op.abspath(op.join(config['base'], 'metadata', 'cell_metadata.txt')),
+    'sample_metadata': op.abspath(op.join(
+        workflow.basedir,
+        config.get('dataset', {}).get('sample_metadata', '')
+    )),
+    'feature_sets': ' '.join(config.get('feature_sets', [])),
+    'starsolo_modes': ' '.join(
+        config.get('aligner_params', {}).get('starsolo', {})
+              .get('multimapper_modes', ['unique'])
+    ),
+}
+
+_requested_keys = _report_cfg.get('params', list(_known_params.keys()))
+_unknown = [k for k in _requested_keys if k not in _known_params]
+if _unknown:
+    raise ValueError(
+        f"report.params contains unknown keys: {_unknown}. "
+        f"Allowed keys: {list(_known_params.keys())}"
+    )
+_params_r_str = ', '.join(
+    f"{k} = '{_known_params[k]}'" for k in _requested_keys
+)
+
+
+rule render_report:
+    conda:
+        _conda
+    input:
+        rmd = _script,
+        pipeline_outputs = _render_report_inputs,
+    output:
+        html = _output,
+    params:
+        rmd = _script,
+        abs_html = op.abspath(_output),
+        outdir = op.abspath(_outdir),
+        params_r = _params_r_str,
+    log:
+        op.join(config['base'], 'logs', 'render_report.log'),
+    resources:
+        mem_mb = config['resources'].get('report_mem_mb',
+                                         config['resources']['max_mem_mb'])
+    shell:
+        """
+        mkdir -p {params.outdir}
+        Rscript -e "rmarkdown::render(
+            '{params.rmd}',
+            output_file = '{params.abs_html}',
+            knit_root_dir = getwd(),
+            params = list({params.params_r})
+        )" 2> {log}
+        """

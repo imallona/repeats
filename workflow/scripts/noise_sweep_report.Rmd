@@ -10,6 +10,7 @@ output:
     code_folding: hide
 params:
   eval_dirs: "."
+  csv_outdir: "."
 ---
 
 ```{r setup, include=FALSE}
@@ -21,7 +22,7 @@ library(tidyr)
 library(readr)
 library(scales)
 library(patchwork)
-source(file.path(dirname(knitr::current_input(full.names = TRUE)), "ggtheme.R"))
+source(file.path("scripts", "ggtheme.R"))
 
 make_palette <- function(n) {
   if (n <= 8)  return(cbbPalette[seq_len(n)])
@@ -143,7 +144,7 @@ ggplot(deg, aes(x = mutation_rate, y = value,
         legend.text  = element_text(size = 8))
 ```
 
-## pearson r and F1 — noise overview
+## pearson r and F1 - noise overview
 
 Summary view focusing on the two most interpretable metrics.
 
@@ -296,6 +297,115 @@ if (!is.null(per_family) && nrow(per_family) > 0 &&
   p_f1 / p_r
 } else {
   cat("No per-family metrics with class_id and mutation_rate found.\n")
+}
+```
+
+## paper-ready CSV exports
+
+Tidy CSV tables written to `{csv_outdir}/paper_csv/` for direct citation in manuscript text, tables, and figures. Each row carries `aligner`, `multimapper_mode`, `aligner_mode`, `feature_set`, `granularity`, `metric`, `mutation_rate`, and `value`, so the tables can be filtered directly for any figure panel.
+
+```{r paper-csv-exports}
+csv_outdir <- params$csv_outdir
+csv_dir <- file.path(csv_outdir, "paper_csv")
+dir.create(csv_dir, showWarnings = FALSE, recursive = TRUE)
+
+write_csv_log <- function(df, name) {
+  path <- file.path(csv_dir, paste0(name, ".csv"))
+  write.csv(df, path, row.names = FALSE)
+  cat("wrote", path, " (", nrow(df), "rows)\n")
+  invisible(path)
+}
+
+higher_is_better <- c("pearson_r", "spearman_r", "f1", "precision",
+                      "recall", "jaccard", "specificity")
+lower_is_better <- c("log1p_rmse")
+resource_cols <- intersect(
+  c("wall_time_s", "cpu_time_s", "max_rss_mb", "io_in_mb", "io_out_mb"),
+  names(global))
+
+noise_long <- global %>%
+  filter(!is.na(mutation_rate)) %>%
+  select(aligner, multimapper_mode, aligner_mode, feature_set, granularity,
+         mutation_rate,
+         any_of(c(higher_is_better, lower_is_better, resource_cols,
+                  "n_cells", "n_features"))) %>%
+  pivot_longer(cols = -c(aligner, multimapper_mode, aligner_mode,
+                         feature_set, granularity, mutation_rate),
+               names_to = "metric", values_to = "value") %>%
+  filter(!is.na(value))
+write_csv_log(noise_long, "noise_metrics_long")
+
+noise_wide <- noise_long %>%
+  mutate(mutation_rate_pct = paste0("mut_", round(mutation_rate * 100, 1), "pct")) %>%
+  select(-mutation_rate) %>%
+  pivot_wider(names_from = mutation_rate_pct, values_from = value)
+write_csv_log(noise_wide, "noise_metrics_wide")
+
+fit_degradation <- function(d) {
+  if (nrow(d) < 2) return(data.frame(slope = NA_real_, intercept = NA_real_,
+                                     r_squared = NA_real_, n_points = nrow(d)))
+  fit <- lm(value ~ mutation_rate, data = d)
+  s <- summary(fit)
+  data.frame(slope = unname(coef(fit)[2]),
+             intercept = unname(coef(fit)[1]),
+             r_squared = s$r.squared,
+             n_points = nrow(d))
+}
+noise_degradation <- noise_long %>%
+  filter(metric %in% c(higher_is_better, lower_is_better)) %>%
+  group_by(aligner, multimapper_mode, aligner_mode,
+           feature_set, granularity, metric) %>%
+  do(fit_degradation(.)) %>%
+  ungroup() %>%
+  arrange(feature_set, granularity, metric, slope)
+write_csv_log(noise_degradation, "noise_degradation_slopes")
+
+robustness_ranking <- noise_degradation %>%
+  filter(metric %in% higher_is_better, !is.na(slope)) %>%
+  group_by(feature_set, granularity, metric) %>%
+  arrange(slope, .by_group = TRUE) %>%
+  mutate(rank_robustness = row_number()) %>%
+  ungroup()
+write_csv_log(robustness_ranking, "noise_robustness_ranking")
+
+if (!is.null(per_cell) && nrow(per_cell) > 0 &&
+    "mutation_rate" %in% names(per_cell)) {
+  pc <- per_cell %>%
+    mutate(across(c(pearson_r, spearman_r),
+                  ~ suppressWarnings(as.numeric(.)))) %>%
+    filter(!is.na(aligner), !is.na(mutation_rate))
+  if (!"multimapper_mode" %in% names(pc)) pc$multimapper_mode <- "unique"
+  if (!"feature_set" %in% names(pc)) pc$feature_set <- "repeats"
+  pc <- pc %>%
+    mutate(aligner_mode = paste0(aligner, " (", multimapper_mode, ")"))
+  per_cell_noise_summary <- pc %>%
+    pivot_longer(c(pearson_r, spearman_r),
+                 names_to = "metric", values_to = "r") %>%
+    filter(!is.na(r)) %>%
+    group_by(aligner, multimapper_mode, aligner_mode,
+             feature_set, granularity, mutation_rate, metric) %>%
+    summarise(n_cells = dplyr::n(),
+              mean_r = mean(r),
+              median_r = median(r),
+              sd_r = sd(r),
+              q25_r = quantile(r, 0.25, na.rm = TRUE),
+              q75_r = quantile(r, 0.75, na.rm = TRUE),
+              .groups = "drop")
+  write_csv_log(per_cell_noise_summary, "per_cell_noise_summary")
+}
+
+if (!is.null(per_family) && nrow(per_family) > 0 &&
+    "class_id" %in% names(per_family) &&
+    "mutation_rate" %in% names(per_family)) {
+  pf_keep <- intersect(
+    c("pearson_r", "spearman_r", "f1", "precision",
+      "recall", "jaccard", "specificity"),
+    names(per_family))
+  per_class_noise <- per_family %>%
+    filter(!is.na(class_id), class_id != "unknown", !is.na(mutation_rate)) %>%
+    select(aligner, multimapper_mode, aligner_mode, feature_set, granularity,
+           mutation_rate, class_id, all_of(pf_keep))
+  write_csv_log(per_class_noise, "per_class_noise_metrics")
 }
 ```
 

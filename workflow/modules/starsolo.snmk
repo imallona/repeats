@@ -20,27 +20,11 @@ multimapper_mode_to_star_param = {
 
 sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'smartseq2')
 
-_ss2_manifest = (
-    op.join(config['base'], 'simulations', 'smartseq2', 'manifest.tsv')
-    if config['mode'] == 'simulation'
-    else config.get('real_data', {}).get('manifest', 'MISSING_MANIFEST')
-)
+_ss2_manifest = op.join(config['base'], 'simulations', 'smartseq2', 'manifest.tsv')
 
-_chromium_r1 = (
-    op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
-    if config['mode'] == 'simulation'
-    else []
-)
-_chromium_r2 = (
-    op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
-    if config['mode'] == 'simulation'
-    else []
-)
-_chromium_barcodes = (
-    op.join(config['base'], 'simulations', 'chromium', 'barcodes.txt')
-    if config['mode'] == 'simulation'
-    else config.get('real_data', {}).get('barcode_whitelist', 'None')
-)
+_chromium_r1 = op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
+_chromium_r2 = op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
+_chromium_barcodes = op.join(config['base'], 'simulations', 'chromium', 'barcodes.txt')
 
 _cb_len = config.get('simulation', config.get('real_data', {})).get('cb_length', 16)
 _umi_len = config.get('simulation', config.get('real_data', {})).get('umi_length', 12)
@@ -70,7 +54,7 @@ rule starsolo_smartseq2:
         tmp_dir = op.join(config['base'], 'tmp',
                           'starsolo_smartseq2_{multimapper_mode}_{feature_set}'),
         solo_multimappers = lambda wc: multimapper_mode_to_star_param[wc.multimapper_mode],
-        max_ram_bytes = config['resources']['max_mem_mb'] * 1024 * 1024,
+        max_ram_bytes = lambda wc, resources: min(resources.mem_mb, config['resources']['max_mem_mb']) * 1024 * 1024,
         extra_args = config.get('aligner_params', {}).get('starsolo', {}).get('extra_args', '')
     log:
         op.join(config['base'], 'logs',
@@ -79,6 +63,8 @@ rule starsolo_smartseq2:
         op.join(config['base'], 'benchmarks',
                 'starsolo_smartseq2_{multimapper_mode}_{feature_set}.txt')
     threads: workflow.cores
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
         rm -rf {params.tmp_dir} {params.out_prefix}/Solo.out
@@ -131,7 +117,7 @@ rule starsolo_chromium:
         tmp_dir = op.join(config['base'], 'tmp',
                           'starsolo_chromium_{multimapper_mode}_{feature_set}'),
         solo_multimappers = lambda wc: multimapper_mode_to_star_param[wc.multimapper_mode],
-        max_ram_bytes = config['resources']['max_mem_mb'] * 1024 * 1024,
+        max_ram_bytes = lambda wc, resources: min(resources.mem_mb, config['resources']['max_mem_mb']) * 1024 * 1024,
         cb_len = _cb_len,
         umi_len = _umi_len,
         umi_start = _umi_start,
@@ -143,6 +129,8 @@ rule starsolo_chromium:
         op.join(config['base'], 'benchmarks',
                 'starsolo_chromium_{multimapper_mode}_{feature_set}.txt')
     threads: workflow.cores
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
         rm -rf {params.tmp_dir} {params.out_prefix}/Solo.out

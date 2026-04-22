@@ -1,0 +1,935 @@
+---
+title: "GSE230647 single-cell repeat profiling: cluster 12 vs other cells (gene-normalized)"
+author: "Izaskun Mallona"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    code_folding: hide
+params:
+  starsolo_base: "."
+  kallisto_base: "."
+  indices_base: "."
+  metadata: "."
+  sample_metadata: "."
+  report_outdir: "."
+  feature_sets: "genes genic_repeats intergenic_repeats"
+  starsolo_modes: "unique"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(Matrix)
+library(edgeR)
+library(matrixStats)
+library(ggplot2)
+library(ggrepel)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(pheatmap)
+
+starsolo_base = params$starsolo_base
+kallisto_base = params$kallisto_base
+indices_base = params$indices_base
+report_outdir = params$report_outdir
+
+feature_sets = strsplit(params$feature_sets, " ")[[1]]
+starsolo_modes = strsplit(params$starsolo_modes, " ")[[1]]
+repeat_fsets = feature_sets[feature_sets != "genes"]
+
+save_rds = function(obj, name) {
+  path = file.path(report_outdir, paste0(name, ".rds"))
+  saveRDS(obj, path)
+  invisible(path)
+}
+
+csv_dir = file.path(report_outdir, "csv")
+dir.create(csv_dir, showWarnings = FALSE, recursive = TRUE)
+save_csv = function(df, name) {
+  path = file.path(csv_dir, paste0(name, ".csv"))
+  write.csv(df, path, row.names = FALSE)
+  cat("wrote", path, "(", nrow(df), "rows)\n")
+  invisible(path)
+}
+```
+
+## Biology annotation for detection and DE stratification
+
+```{r biology-setup}
+source(file.path("scripts", "biology_checks.R"))
+
+biology_annotation_path = file.path(indices_base, "repeat_biology_annotation.tsv")
+biology_annotation = load_biology_annotation(biology_annotation_path)
+if (is.null(biology_annotation)) {
+  cat("No biology annotation at", biology_annotation_path,
+      "- biology-stratified panels will be skipped.\n")
+} else {
+  cat("Loaded biology annotation:", nrow(biology_annotation), "subfamilies\n")
+}
+save_rds(biology_annotation, "biology_annotation")
+
+annotate_de_with_biology = function(tt) {
+  tt = annotate_biology(tt, biology_annotation, key = "gene_id")
+  tt$polya = polya_label(tt$class_id)
+  tt$age = family_age_label(tt$family_age)
+  tt$strand = strand_vs_gene_label(tt$strand_vs_gene)
+  tt$a_run = a_run_label(tt$frac_downstream_a_run, class_ids = tt$class_id)
+  tt
+}
+
+de_stratify_counts = function(tt, key, fdr = 0.05) {
+  tt = annotate_de_with_biology(tt)
+  tt$direction = ifelse(is.na(tt$FDR) | tt$FDR >= fdr, "ns",
+                        ifelse(tt$logFC > 0, "up", "down"))
+  facet_cols = c(polya = "polya", family_age = "age",
+                 strand_vs_gene = "strand", downstream_a_run = "a_run")
+  rows = list()
+  for (facet_nm in names(facet_cols)) {
+    col = facet_cols[[facet_nm]]
+    rows[[facet_nm]] = tt %>%
+      group_by(label = .data[[col]], direction) %>%
+      summarize(n = dplyr::n(), .groups = "drop") %>%
+      mutate(facet = facet_nm, key = key)
+  }
+  bind_rows(rows)
+}
+
+plot_de_stratification = function(strat_df, title) {
+  if (is.null(strat_df) || nrow(strat_df) == 0) return(invisible(NULL))
+  strat_df$direction = factor(strat_df$direction, levels = c("up", "down", "ns"))
+  ggplot(strat_df, aes(x = label, y = n, fill = direction)) +
+    geom_col() +
+    facet_grid(facet ~ key, scales = "free", space = "free_x") +
+    scale_fill_manual(values = c(up = "firebrick", down = "steelblue", ns = "grey70")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = title, x = NULL, y = "features")
+}
+```
+
+# About this report
+
+Repeat counts are normalized by gene library sizes (total gene read counts per
+pseudo-bulk sample) so that fold changes reflect changes in the repeat-to-gene
+expression ratio.
+
+The RUVg (empirical HKG) pass for this dataset is paper-side only and lives at
+`../../paper/scripts/ruv_polymenidou_tdp_oe_cultures_scrnaseq_report.Rmd`;
+rendered output goes to
+`../results/paper/tdp43/polymenidou_tdp_oe_cultures_scrnaseq/ruv_polymenidou_tdp_oe_cultures_scrnaseq_report.html`
+(relative to `workflow/`).
+
+# PolyA-competence of detected repeats
+
+Detection and differential-expression results can be split into two groups
+based on the intrinsic ability of each repeat class to produce a
+polyadenylated transcript. This split uses only the `class_id` column from
+`{feature_set}_locus_map.tsv` (equivalent to RepeatMasker `repClass`); no
+sequence-level polyA scanning is performed. 10x Chromium uses polyA priming,
+so this classification is especially relevant for pseudo-bulk detection.
+
+- with polyA (polyA-competent): `LINE`, `SINE`, `LTR`, `Retroposon`.
+  These classes produce polyadenylated transcripts when expressed from their
+  own promoters (LINE-1 and ERV internal transcripts carry canonical AATAAA
+  poly(A) sites, SINE/Alu relies on LINE-1 machinery and poly(A) tails,
+  Retroposon/SVA also polyadenylates).
+- without polyA (not polyA-competent): every other class, including
+  `Satellite`, `Simple_repeat`, `Low_complexity`, `DNA`, `RC`, and the
+  structural-RNA-derived classes (`rRNA`, `tRNA`, `snRNA`, `scRNA`,
+  `srpRNA`). These lack a canonical polyadenylation signal in their body.
+- unknown: loci with no class annotation in the locus map.
+
+The genic vs intergenic feature_set split is complementary: genic repeats can
+be captured through a polyadenylated host transcript regardless of intrinsic
+class, while intergenic repeats need their own poly(A) tail to be detected by
+polyA-selection assays. The class-based facet therefore matters most on the
+`intergenic_repeats` feature set.
+
+# Biology-driven sanity checks for detection
+
+Three additional commonsense checks help reason about why a given repeat is
+or is not detected by polyA-primed scRNA-seq. Classification logic is
+shared across reports in `workflow/scripts/biology_annotations.py`
+(Python, pure functions, unit tested in
+`test/unit/test_biology_annotations.py`) and the R-side join and
+labelling helpers live in `workflow/scripts/biology_checks.R`.
+
+- Family age (from RepeatMasker subfamily name or milliDiv). Younger
+  subfamilies are more often transcriptionally active, older ones are
+  generally silenced. Brackets:
+
+      young   L1HS, L1PA2-7, AluY, SVA_A-F, HERVK/HERVH/LTR5
+      medium  L1PA8-16, AluS
+      old     L1PA17+, L1PB, L1M*, AluJ, FLAM, FRAM
+      unknown anything not matching, including DNA/RC/satellite classes
+
+  When milliDiv is available the same brackets are produced from
+  divergence thresholds (<=50 young, <=200 medium, >200 old).
+
+- Strand concordance with overlapping genes. By construction
+  `genic_repeats` is built with a same-strand intersect, so loci in that
+  set are sense-with-host. The shared annotation labels every locus as
+  `sense`, `antisense`, `both`, or `intergenic` against a strand-aware
+  gene-body overlap so reports can also surface antisense loci that the
+  current `intergenic_repeats` set silently absorbs.
+
+- Internal A-tract proxy for polyA priming. Length of the longest run of
+  As in the genomic region downstream of each locus (in mRNA-sense
+  orientation). A long downstream A-run flags a repeat that may be
+  detected by internal priming rather than by a genuine poly(A) tail,
+  which matters most for intergenic non-polyA-competent classes.
+
+The shared annotation is loaded from
+`{indices_base}/indices/{genome_tag}/repeat_biology_annotation.tsv` when
+present; otherwise the helpers no-op and reports fall back to the
+class-only polyA facet.
+
+# Sample metadata
+
+```{r sample-meta}
+sample_meta = read_tsv(params$sample_metadata, show_col_types = FALSE)
+sample_ids = sample_meta$sample_id
+knitr::kable(sample_meta)
+```
+
+# Cell-type annotations from GEO
+
+The GEO supplementary file maps each cell barcode to its cluster assignment.
+Cluster 12 contains cells that express TDP-43-HA.
+
+```{r load-geo-meta}
+geo_meta = read_tsv(params$metadata, show_col_types = FALSE)
+save_rds(geo_meta, "geo_meta_raw")
+
+cat("columns:", paste(colnames(geo_meta), collapse = ", "), "\n")
+cat("rows:", nrow(geo_meta), "\n")
+```
+
+```{r inspect-geo-meta}
+head(geo_meta)
+```
+
+```{r cluster-column}
+# Prefer v2 cluster assignment from the biorxiv reanalysis for both group
+# assignment and plotting labels; fall back to any cluster column if absent.
+cluster_num_col = if ("biorxiv_v2_cluster_number" %in% colnames(geo_meta)) {
+  "biorxiv_v2_cluster_number"
+} else {
+  grep("cluster_number", colnames(geo_meta), ignore.case = TRUE, value = TRUE)[1]
+}
+cluster_name_col = if ("biorxiv_v2_cluster_name" %in% colnames(geo_meta)) {
+  "biorxiv_v2_cluster_name"
+} else {
+  grep("cluster_name|cluster$", colnames(geo_meta), ignore.case = TRUE, value = TRUE)[1]
+}
+barcode_col = grep("barcode|cell|cb", colnames(geo_meta), ignore.case = TRUE, value = TRUE)[1]
+if (is.na(cluster_num_col)) stop("no cluster number column found; available: ", paste(colnames(geo_meta), collapse = ", "))
+if (is.na(cluster_name_col)) stop("no cluster name column found; available: ", paste(colnames(geo_meta), collapse = ", "))
+if (is.na(barcode_col)) stop("no barcode column found; available: ", paste(colnames(geo_meta), collapse = ", "))
+cat("using barcode column:", barcode_col, "\n")
+cat("using cluster number column:", cluster_num_col, "\n")
+cat("using cluster name column:", cluster_name_col, "\n")
+
+geo_meta$cluster_num = as.integer(geo_meta[[cluster_num_col]])
+geo_meta$cluster = geo_meta[[cluster_name_col]]
+
+# GEO cell id format: <16bp_barcode>-<lane>.<sample_tag>, e.g. AAACCCACATGTCTAG-1.TDP2wON
+# STARsolo raw barcodes are plain 16bp. Strip lane and sample tag to get the 16bp barcode,
+# and keep the sample tag so we can match per-sample (16bp barcodes are not unique across samples).
+geo_meta$barcode_16bp = sub("-[0-9]+\\..*$", "", geo_meta[[barcode_col]])
+geo_meta$sample_tag = sub("^[^.]*\\.", "", geo_meta[[barcode_col]])
+
+# Map sample_tag to sample_id using sample_meta (culture_weeks + replicate).
+# Observed tags: TDP2wON (2w, no replicate), TDP4wONa (4w rep A), TDP4wONb (4w rep B).
+rep_suffix = ifelse(is.na(sample_meta$replicate) | sample_meta$replicate == "",
+                    "", tolower(sample_meta$replicate))
+tag_to_sid = setNames(sample_meta$sample_id,
+                      paste0("TDP", sample_meta$culture_weeks, "wON", rep_suffix))
+geo_meta$sample_id = unname(tag_to_sid[geo_meta$sample_tag])
+
+cat("geo sample_tag -> sample_id mapping:\n")
+print(tag_to_sid)
+cat("cells per sample_id in GEO metadata:\n")
+print(table(geo_meta$sample_id, useNA = "ifany"))
+
+table(geo_meta$cluster)
+```
+
+```{r cluster12-flag}
+geo_meta$group = ifelse(!is.na(geo_meta$cluster_num) & geo_meta$cluster_num == 12L,
+                        "cluster12", "other")
+c12_labels = unique(geo_meta$cluster[geo_meta$group == "cluster12"])
+cat("cluster 12 label(s):", paste(c12_labels, collapse = "; "), "\n")
+cat("cluster 12 cells:", sum(geo_meta$group == "cluster12", na.rm = TRUE), "\n")
+cat("other cells:", sum(geo_meta$group == "other", na.rm = TRUE), "\n")
+save_rds(geo_meta, "geo_meta_annotated")
+
+cluster_sizes = geo_meta %>%
+  filter(!is.na(sample_id), !is.na(cluster_num)) %>%
+  count(sample_id, cluster_num, cluster, name = "n_cells") %>%
+  arrange(sample_id, cluster_num)
+save_csv(cluster_sizes, "cluster_sizes_per_sample")
+
+group_sizes = geo_meta %>%
+  filter(!is.na(sample_id), !is.na(cluster_num)) %>%
+  count(sample_id, group, name = "n_cells") %>%
+  pivot_wider(names_from = group, values_from = n_cells, values_fill = 0)
+save_csv(group_sizes, "group_sizes_per_sample")
+```
+
+# Load STARsolo matrices and create pseudo-bulk counts
+
+For each sample and each feature set (including genes), load the raw CB x feature
+matrix from STARsolo, intersect barcodes with GEO metadata, and sum counts within
+cluster 12 vs all other annotated cells.
+
+```{r load-starsolo}
+load_and_split = function(raw_dir, geo_meta_sample) {
+  if (!dir.exists(raw_dir)) {
+    warning("STARsolo raw directory not found: ", raw_dir)
+    return(NULL)
+  }
+  barcodes = readLines(file.path(raw_dir, "barcodes.tsv"))
+  features = read_tsv(file.path(raw_dir, "features.tsv"),
+                      col_names = c("id", "name", "type"),
+                      show_col_types = FALSE)
+  mat = readMM(file.path(raw_dir, "matrix.mtx"))
+  rownames(mat) = features$id
+  colnames(mat) = barcodes
+
+  matched_idx = match(barcodes, geo_meta_sample$barcode_16bp)
+  matched = !is.na(matched_idx)
+  cat("  barcodes in matrix:", length(barcodes),
+      "| matched to GEO metadata:", sum(matched), "\n")
+
+  if (sum(matched) == 0) {
+    warning("no barcodes matched; check barcode format in GEO metadata")
+    return(NULL)
+  }
+
+  group_matched = geo_meta_sample$group[matched_idx]
+  idx12 = matched & !is.na(group_matched) & group_matched == "cluster12"
+  idx_other = matched & !is.na(group_matched) & group_matched == "other"
+
+  list(
+    cluster12 = Matrix::rowSums(mat[, idx12, drop = FALSE]),
+    other     = Matrix::rowSums(mat[, idx_other, drop = FALSE]),
+    n12       = sum(idx12),
+    n_other   = sum(idx_other)
+  )
+}
+
+pb_list = list()
+
+for (mode in starsolo_modes) {
+  for (fs in feature_sets) {
+    key = paste(mode, fs, sep = "_")
+    counts12 = list()
+    counts_other = list()
+
+    for (sid in sample_ids) {
+      raw_dir = file.path(starsolo_base, sid,
+                          paste0(mode, "_", fs),
+                          "Solo.out", "Gene", "raw")
+      cat("loading", sid, key, "\n")
+      geo_sample = geo_meta[!is.na(geo_meta$sample_id) & geo_meta$sample_id == sid, ]
+      if (nrow(geo_sample) == 0) {
+        cat("  no GEO annotations for sample", sid, "- skipping\n")
+        next
+      }
+      res = load_and_split(raw_dir, geo_sample)
+      if (!is.null(res)) {
+        counts12[[sid]]    = res$cluster12
+        counts_other[[sid]] = res$other
+        cat("  cluster12:", res$n12, "cells | other:", res$n_other, "cells\n")
+      }
+    }
+
+    if (length(counts12) > 0) {
+      features_union = Reduce(union, lapply(counts12, names))
+      mat12 = sapply(counts12, function(x) x[features_union])
+      mat_other = sapply(counts_other, function(x) x[features_union])
+      rownames(mat12) = features_union
+      rownames(mat_other) = features_union
+      mat12[is.na(mat12)] = 0
+      mat_other[is.na(mat_other)] = 0
+      pb_list[[key]] = list(cluster12 = mat12, other = mat_other)
+    }
+  }
+}
+
+save_rds(pb_list, "pseudobulk_counts")
+```
+
+# Gene library sizes for normalization
+
+Gene pseudo-bulk library sizes are used to normalize repeat counts so that
+fold changes reflect the repeat-to-gene expression ratio.
+
+```{r gene-lib-sizes}
+gene_lib_cache = list()
+gene_lib_rows = list()
+for (mode in starsolo_modes) {
+  gene_key = paste(mode, "genes", sep = "_")
+  if (gene_key %in% names(pb_list)) {
+    gene_pb = pb_list[[gene_key]]
+    gene_lib_cache[[mode]] = c(colSums(gene_pb$cluster12),
+                               colSums(gene_pb$other))
+    cat(mode, "gene lib sizes (cluster12 | other):\n")
+    cat("  cluster12:", colSums(gene_pb$cluster12), "\n")
+    cat("  other:", colSums(gene_pb$other), "\n")
+    gene_lib_rows[[paste(mode, "cluster12")]] = data.frame(
+      mode = mode, group = "cluster12",
+      sample_id = names(colSums(gene_pb$cluster12)),
+      gene_lib_size = unname(colSums(gene_pb$cluster12)))
+    gene_lib_rows[[paste(mode, "other")]] = data.frame(
+      mode = mode, group = "other",
+      sample_id = names(colSums(gene_pb$other)),
+      gene_lib_size = unname(colSums(gene_pb$other)))
+  }
+}
+save_rds(gene_lib_cache, "gene_lib_sizes")
+save_csv(bind_rows(gene_lib_rows), "pseudobulk_gene_lib_sizes")
+```
+
+# edgeR: cluster 12 vs other cells (gene-normalized)
+
+Pseudo-bulk: each sample contributes one column per group (cluster12 / other).
+A paired design (sample as blocking factor) accounts for between-sample variation.
+Library sizes are set to gene pseudo-bulk totals so that the test measures changes
+in the repeat-to-gene expression ratio.
+
+```{r edger-function}
+run_edger = function(mat12, mat_other, label, gene_lib_sizes) {
+  stopifnot(ncol(mat12) == ncol(mat_other))
+  n_samples = ncol(mat12)
+  counts = cbind(mat12, mat_other)
+  group = factor(c(rep("cluster12", n_samples), rep("other", n_samples)),
+                 levels = c("other", "cluster12"))
+  sample_block = factor(rep(seq_len(n_samples), 2))
+
+  design = model.matrix(~ sample_block + group)
+
+  dge = DGEList(counts = counts, group = group)
+  dge = dge[filterByExpr(dge, design), ]
+  dge$samples$lib.size = gene_lib_sizes
+  dge$samples$norm.factors = rep(1, ncol(dge))
+  dge = estimateDisp(dge, design)
+
+  fit = glmQLFit(dge, design)
+  res = glmQLFTest(fit, coef = ncol(design))
+  tt = topTags(res, n = Inf)$table
+  tt$feature = rownames(tt)
+  tt$feature_set = label
+  tt
+}
+```
+
+```{r run-edger}
+edger_results = list()
+
+for (mode in starsolo_modes) {
+  gene_ls = gene_lib_cache[[mode]]
+  if (is.null(gene_ls)) {
+    cat("skipping mode", mode, "- no gene library sizes\n")
+    next
+  }
+  for (fs in repeat_fsets) {
+    key = paste(mode, fs, sep = "_")
+    if (!key %in% names(pb_list)) next
+    cat("edgeR:", key, "(gene-normalized)\n")
+    pb = pb_list[[key]]
+    tt = tryCatch(
+      run_edger(pb$cluster12, pb$other, label = key,
+                gene_lib_sizes = gene_ls),
+      error = function(e) { message("edgeR failed for ", key, ": ", e$message); NULL }
+    )
+    if (!is.null(tt)) edger_results[[key]] = tt
+  }
+}
+
+save_rds(edger_results, "edger_results")
+```
+
+# Results
+
+```{r sig-summary}
+sig_rows_gnorm = list()
+for (key in names(edger_results)) {
+  tt = edger_results[[key]]
+  tt_sorted = tt %>% arrange(FDR)
+  cat(key, ": FDR < 0.05 features:", sum(tt$FDR < 0.05, na.rm = TRUE),
+      "/ total tested:", nrow(tt), "\n")
+  sig_rows_gnorm[[key]] = data.frame(
+    key = key,
+    n_features = nrow(tt),
+    n_fdr_05 = sum(tt$FDR < 0.05, na.rm = TRUE),
+    n_fdr_10 = sum(tt$FDR < 0.10, na.rm = TRUE),
+    top_feature = tt_sorted$feature[1],
+    top_logfc = round(tt_sorted$logFC[1], 3),
+    top_fdr = signif(tt_sorted$FDR[1], 3)
+  )
+}
+if (length(sig_rows_gnorm) > 0) {
+  save_csv(bind_rows(sig_rows_gnorm), "edger_gene_norm_summary")
+}
+```
+
+```{r volcano-plots, fig.width=7, fig.height=5}
+for (key in names(edger_results)) {
+  tt = edger_results[[key]]
+  tt$sig = tt$FDR < 0.05
+  p = ggplot(tt, aes(x = logFC, y = -log10(FDR), colour = sig)) +
+    geom_point(size = 0.8, alpha = 0.6) +
+    geom_text_repel(
+      data = filter(tt, FDR < 0.01) %>% arrange(FDR) %>% head(20),
+      aes(label = feature), size = 2.5, max.overlaps = 15
+    ) +
+    scale_colour_manual(values = c("FALSE" = "grey60", "TRUE" = "firebrick")) +
+    labs(title = paste(key, "(gene-normalized)"),
+         x = "log2 FC repeat/gene ratio (cluster 12 / other)",
+         y = "-log10 FDR",
+         colour = "FDR < 0.05") +
+    theme_bw()
+  print(p)
+}
+```
+
+## DE stratified by biology (polyA / age / strand / A-run)
+
+```{r biology-de-strat-sc, fig.width=14, fig.height=10}
+if (!is.null(biology_annotation) && length(edger_results) > 0) {
+  strat_sc = bind_rows(lapply(names(edger_results), function(key) {
+    de_stratify_counts(edger_results[[key]], key)
+  }))
+  save_rds(strat_sc, "sc_de_biology_stratification")
+  for (facet_nm in unique(strat_sc$facet)) {
+    print(plot_de_stratification(filter(strat_sc, facet == facet_nm),
+                                 paste("cluster 12 vs other, stratified by", facet_nm)))
+  }
+}
+```
+
+```{r write-csv}
+csv_dir = file.path(report_outdir, "edger_csv")
+dir.create(csv_dir, showWarnings = FALSE, recursive = TRUE)
+for (key in names(edger_results)) {
+  tt = edger_results[[key]]
+  out_csv = file.path(csv_dir, paste0("edger_cluster12_vs_other_", key, ".csv"))
+  write.csv(tt, out_csv, row.names = FALSE)
+  cat("wrote", out_csv, "(", nrow(tt), "features)\n")
+}
+```
+
+```{r top-tables, results='asis'}
+for (key in names(edger_results)) {
+  tt = edger_results[[key]]
+  cat("\n###", key, "\n\n")
+  top = tt %>% filter(FDR < 0.05) %>% arrange(FDR) %>% head(30)
+  if (nrow(top) > 0) {
+    print(knitr::kable(top, digits = 4, format = "html"))
+  } else {
+    cat("no features at FDR < 0.05\n\n")
+  }
+}
+```
+
+```{r heatmap-top, fig.width=8, fig.height=10}
+for (mode in starsolo_modes) {
+  gene_key = paste0(mode, "_genes")
+  if (!gene_key %in% names(pb_list)) next
+  gene_pb = pb_list[[gene_key]]
+  gene_ls = c(colSums(gene_pb$cluster12), colSums(gene_pb$other))
+
+  for (fs in repeat_fsets) {
+    key = paste0(mode, "_", fs)
+    if (!key %in% names(edger_results) || !key %in% names(pb_list)) next
+
+    tt = edger_results[[key]]
+    top_feats = tt %>% filter(FDR < 0.05) %>% arrange(FDR) %>% head(40) %>% pull(feature)
+    if (length(top_feats) < 2) next
+
+    pb = pb_list[[key]]
+    mat = cbind(pb$cluster12, pb$other)
+    colnames(mat) = c(paste0(colnames(pb$cluster12), "_c12"),
+                      paste0(colnames(pb$other), "_other"))
+    mat_sub = mat[top_feats, , drop = FALSE]
+
+    cpm_mat = sweep(mat_sub, 2, gene_ls / 1e6, "/")
+    cpm_log = log1p(cpm_mat)
+
+    ann_col = data.frame(
+      group = factor(c(rep("cluster12", ncol(pb$cluster12)),
+                       rep("other", ncol(pb$other)))),
+      row.names = colnames(cpm_log)
+    )
+
+    pheatmap(cpm_log,
+             annotation_col = ann_col,
+             cluster_rows = TRUE,
+             cluster_cols = FALSE,
+             show_rownames = TRUE,
+             fontsize_row = 7,
+             main = paste("top", fs, ":", key, "(gene-normalized CPM)"))
+  }
+}
+```
+
+## Per-cluster heatmap (all clusters, gene-normalized)
+
+For the top FDR-significant repeats from the cluster-12-vs-other test, aggregate
+raw STARsolo counts into one pseudo-bulk column per cluster (summing across all
+samples). Gene library sizes are computed per cluster from the gene matrix; repeat
+counts are divided by the per-cluster gene library so columns are comparable. This
+shows whether cluster-12 repeat upregulation is specific to cluster 12 or shared
+with other clusters.
+
+```{r per-cluster-heatmap-data}
+cluster_heatmap_data = list()
+
+for (mode in starsolo_modes) {
+  for (fs in repeat_fsets) {
+    key = paste0(mode, "_", fs)
+    if (!key %in% names(edger_results)) next
+    tt = edger_results[[key]]
+    top_feats = tt %>% filter(FDR < 0.05) %>% arrange(FDR) %>% head(40) %>% pull(feature)
+    if (length(top_feats) < 2) next
+
+    cluster_rep_counts = list()
+    cluster_gene_lib = list()
+
+    for (sid in sample_ids) {
+      rep_raw = file.path(starsolo_base, sid, paste0(mode, "_", fs),
+                          "Solo.out", "Gene", "raw")
+      gene_raw = file.path(starsolo_base, sid, paste0(mode, "_genes"),
+                           "Solo.out", "Gene", "raw")
+      if (!dir.exists(rep_raw) || !dir.exists(gene_raw)) next
+
+      rep_features = read_tsv(file.path(rep_raw, "features.tsv"),
+                              col_names = c("id", "name", "type"),
+                              show_col_types = FALSE)
+      rep_mat = readMM(file.path(rep_raw, "matrix.mtx"))
+      rownames(rep_mat) = rep_features$id
+      colnames(rep_mat) = readLines(file.path(rep_raw, "barcodes.tsv"))
+
+      gene_features = read_tsv(file.path(gene_raw, "features.tsv"),
+                               col_names = c("id", "name", "type"),
+                               show_col_types = FALSE)
+      gene_mat = readMM(file.path(gene_raw, "matrix.mtx"))
+      rownames(gene_mat) = gene_features$id
+      colnames(gene_mat) = readLines(file.path(gene_raw, "barcodes.tsv"))
+
+      geo_sub = geo_meta %>%
+        filter(!is.na(sample_id) & sample_id == sid & !is.na(cluster_num))
+
+      for (cl in unique(geo_sub$cluster)) {
+        cbs = geo_sub$barcode_16bp[geo_sub$cluster == cl]
+        cbs_rep = intersect(cbs, colnames(rep_mat))
+        cbs_gene = intersect(cbs, colnames(gene_mat))
+        if (length(cbs_rep) == 0 || length(cbs_gene) == 0) next
+
+        feats_present = intersect(top_feats, rownames(rep_mat))
+        if (length(feats_present) == 0) next
+
+        rep_sum = Matrix::rowSums(rep_mat[feats_present, cbs_rep, drop = FALSE])
+        gene_sum = sum(Matrix::colSums(gene_mat[, cbs_gene, drop = FALSE]))
+
+        prev_rep = cluster_rep_counts[[cl]]
+        if (is.null(prev_rep)) {
+          cluster_rep_counts[[cl]] = setNames(rep(0, length(top_feats)), top_feats)
+        }
+        cluster_rep_counts[[cl]][names(rep_sum)] =
+          cluster_rep_counts[[cl]][names(rep_sum)] + rep_sum
+        cluster_gene_lib[[cl]] = (if (is.null(cluster_gene_lib[[cl]])) 0 else cluster_gene_lib[[cl]]) + gene_sum
+      }
+    }
+
+    if (length(cluster_rep_counts) < 2) next
+
+    cluster_order_df = geo_meta %>%
+      filter(!is.na(cluster_num)) %>%
+      distinct(cluster, cluster_num) %>%
+      arrange(cluster_num)
+    cluster_order = cluster_order_df$cluster[cluster_order_df$cluster %in% names(cluster_rep_counts)]
+
+    counts_mat = sapply(cluster_order, function(cl) cluster_rep_counts[[cl]])
+    gene_libs = sapply(cluster_order, function(cl) cluster_gene_lib[[cl]])
+    gene_libs[gene_libs == 0] = 1
+
+    cpm_mat = sweep(counts_mat, 2, gene_libs / 1e6, "/")
+    cpm_log = log1p(cpm_mat)
+
+    cluster_heatmap_data[[key]] = list(cpm_log = cpm_log, gene_libs = gene_libs)
+  }
+}
+save_rds(cluster_heatmap_data, "cluster_heatmap_data")
+
+heatmap_long_rows = list()
+for (key in names(cluster_heatmap_data)) {
+  d = cluster_heatmap_data[[key]]
+  long_df = as.data.frame(d$cpm_log) %>%
+    tibble::rownames_to_column("feature") %>%
+    pivot_longer(cols = -feature, names_to = "cluster", values_to = "log1p_cpm") %>%
+    mutate(key = key)
+  heatmap_long_rows[[key]] = long_df
+}
+if (length(heatmap_long_rows) > 0) {
+  save_csv(bind_rows(heatmap_long_rows), "per_cluster_heatmap_long")
+}
+```
+
+```{r per-cluster-heatmap, fig.width=9, fig.height=10}
+for (key in names(cluster_heatmap_data)) {
+  d = cluster_heatmap_data[[key]]
+  ann_col = data.frame(
+    is_cluster12 = factor(ifelse(grepl("^12_", colnames(d$cpm_log)), "yes", "no"),
+                          levels = c("no", "yes")),
+    row.names = colnames(d$cpm_log)
+  )
+  pheatmap(d$cpm_log,
+           annotation_col = ann_col,
+           annotation_colors = list(is_cluster12 = c(no = "grey80", yes = "firebrick")),
+           cluster_rows = TRUE,
+           cluster_cols = FALSE,
+           show_rownames = TRUE,
+           fontsize_row = 7,
+           fontsize_col = 7,
+           angle_col = 45,
+           main = paste("top", key, "across all clusters (gene-normalized CPM)"))
+}
+```
+
+# Per-cluster repeat expression dotplot (gene-normalized)
+
+For the top genic repeats (by FDR from cluster 12 vs other), show expression
+across all clusters as a dotplot. Each dot: mean gene-normalized log-CPM and
+fraction of cells with at least one count. Gene library sizes are computed per
+cluster to normalize the repeat signal.
+
+```{r per-cluster-pseudobulk}
+key_dot = paste0(starsolo_modes[1], "_genic_repeats")
+
+dotplot_df = NULL
+
+if (key_dot %in% names(pb_list) && key_dot %in% names(edger_results)) {
+  tt = edger_results[[key_dot]]
+  top_feats = tt %>% filter(FDR < 0.05) %>% arrange(FDR) %>% head(25) %>% pull(feature)
+
+  cluster_counts = list()
+  cluster_ncells = list()
+  cluster_expr = list()
+  gene_cluster_counts = list()
+
+  for (sid in sample_ids) {
+    raw_dir = file.path(starsolo_base, sid,
+                        paste0(starsolo_modes[1], "_genic_repeats"),
+                        "Solo.out", "Gene", "raw")
+    gene_raw_dir = file.path(starsolo_base, sid,
+                             paste0(starsolo_modes[1], "_genes"),
+                             "Solo.out", "Gene", "raw")
+    if (!dir.exists(raw_dir) || !dir.exists(gene_raw_dir)) next
+
+    barcodes = readLines(file.path(raw_dir, "barcodes.tsv"))
+    features = read_tsv(file.path(raw_dir, "features.tsv"),
+                        col_names = c("id", "name", "type"),
+                        show_col_types = FALSE)
+    mat = readMM(file.path(raw_dir, "matrix.mtx"))
+    rownames(mat) = features$id
+    colnames(mat) = sub("-[0-9]+$", "", barcodes)
+
+    gene_barcodes = readLines(file.path(gene_raw_dir, "barcodes.tsv"))
+    gene_features = read_tsv(file.path(gene_raw_dir, "features.tsv"),
+                             col_names = c("id", "name", "type"),
+                             show_col_types = FALSE)
+    gene_mat = readMM(file.path(gene_raw_dir, "matrix.mtx"))
+    rownames(gene_mat) = gene_features$id
+    colnames(gene_mat) = sub("-[0-9]+$", "", gene_barcodes)
+
+    geo_sub = geo_meta %>%
+      filter(!is.na(sample_id) & sample_id == sid) %>%
+      mutate(cb = barcode_16bp) %>%
+      filter(cb %in% colnames(mat))
+
+    for (cl in unique(geo_sub$cluster)) {
+      cbs = geo_sub$cb[geo_sub$cluster == cl]
+      cbs_rep = intersect(cbs, colnames(mat))
+      cbs_gene = intersect(cbs, colnames(gene_mat))
+      if (length(cbs_rep) == 0 || length(cbs_gene) == 0) next
+      key_cl = as.character(cl)
+      m_sub = mat[top_feats, cbs_rep, drop = FALSE]
+      prev_counts = if (is.null(cluster_counts[[key_cl]])) 0 else cluster_counts[[key_cl]]
+      cluster_counts[[key_cl]] = prev_counts + Matrix::rowSums(m_sub)
+      prev_ncells = if (is.null(cluster_ncells[[key_cl]])) 0 else cluster_ncells[[key_cl]]
+      cluster_ncells[[key_cl]] = prev_ncells + length(cbs_rep)
+      prev_expr = if (is.null(cluster_expr[[key_cl]])) 0 else cluster_expr[[key_cl]]
+      cluster_expr[[key_cl]] = prev_expr + Matrix::rowSums(m_sub > 0)
+      prev_gene = if (is.null(gene_cluster_counts[[key_cl]])) 0 else gene_cluster_counts[[key_cl]]
+      gene_cluster_counts[[key_cl]] = prev_gene + sum(Matrix::colSums(gene_mat[, cbs_gene, drop = FALSE]))
+    }
+  }
+
+  rows = list()
+  for (cl in names(cluster_counts)) {
+    n_cells = cluster_ncells[[cl]]
+    cnts = cluster_counts[[cl]]
+    gene_lib = gene_cluster_counts[[cl]]
+    if (gene_lib == 0) gene_lib = 1
+    cpm = cnts / (gene_lib / 1e6)
+    rows[[cl]] = data.frame(
+      cluster = cl,
+      feature = names(cpm),
+      mean_log_cpm = log1p(cpm),
+      pct_expressed = cluster_expr[[cl]] / n_cells,
+      stringsAsFactors = FALSE
+    )
+  }
+  dotplot_df = bind_rows(rows)
+  cluster_order_df = geo_meta %>%
+    filter(!is.na(cluster_num)) %>%
+    distinct(cluster, cluster_num) %>%
+    arrange(cluster_num)
+  cluster_levels = cluster_order_df$cluster[cluster_order_df$cluster %in% dotplot_df$cluster]
+  dotplot_df$cluster = factor(dotplot_df$cluster, levels = cluster_levels)
+  save_rds(dotplot_df, "dotplot_df")
+  save_csv(dotplot_df, "per_cluster_dotplot_genic_repeats")
+}
+```
+
+```{r dotplot, fig.width=10, fig.height=7}
+if (!is.null(dotplot_df)) {
+  ggplot(dotplot_df, aes(x = cluster, y = feature, colour = mean_log_cpm,
+                         size = pct_expressed)) +
+    geom_point() +
+    scale_colour_viridis_c(option = "plasma") +
+    scale_size_continuous(range = c(0.5, 5)) +
+    labs(title = "Genic repeat expression per cluster (gene-normalized)",
+         subtitle = "top FDR-significant features, cluster 12 vs other",
+         x = "cluster", y = NULL,
+         colour = "mean log gene-norm CPM", size = "fraction expressed") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7),
+          axis.text.y = element_text(size = 8))
+}
+```
+
+# Repeat detection summary
+
+Detection is defined as CPM > 1 in at least half the pseudo-bulk samples of a
+group. CPM here uses raw repeat library sizes (not gene-normalized) to reflect
+absolute detectability in the sequencing data.
+
+```{r detection-helpers}
+detect_features = function(mat, cpm_thr = 1, min_frac = 0.5) {
+  if (is.null(mat) || ncol(mat) == 0) return(character(0))
+  lib_sizes = colSums(mat)
+  lib_sizes[lib_sizes == 0] = 1
+  cpm_mat = sweep(mat, 2, lib_sizes / 1e6, "/")
+  n_above = rowSums(cpm_mat > cpm_thr)
+  names(n_above)[n_above >= ceiling(min_frac * ncol(mat))]
+}
+
+load_class_map = function(indices_base, feature_set) {
+  path = file.path(indices_base, paste0(feature_set, "_locus_map.tsv"))
+  if (!file.exists(path)) return(NULL)
+  lm = read_tsv(path,
+                 col_names = c("transcript_id", "gene_id", "family_id", "class_id"),
+                 show_col_types = FALSE)
+  dedup = lm %>% select(gene_id, class_id) %>% distinct()
+  setNames(dedup$class_id, dedup$gene_id)
+}
+```
+
+```{r detection-data}
+class_maps = list()
+for (fs in repeat_fsets) {
+  class_maps[[fs]] = load_class_map(indices_base, fs)
+}
+
+det_summary = list()
+det_class = list()
+
+for (mode in starsolo_modes) {
+  for (fs in repeat_fsets) {
+    key = paste(mode, fs, sep = "_")
+    if (!key %in% names(pb_list)) next
+    pb = pb_list[[key]]
+    cm = class_maps[[fs]]
+    for (grp in c("cluster12", "other")) {
+      grp_mat = pb[[grp]]
+      detected = detect_features(grp_mat)
+      det_summary[[length(det_summary) + 1]] = data.frame(
+        mode = mode, feature_set = fs, group = grp,
+        n_detected = length(detected), stringsAsFactors = FALSE)
+      if (!is.null(cm) && length(detected) > 0) {
+        classes = cm[detected]
+        classes[is.na(classes)] = "unknown"
+        class_tab = as.data.frame(table(classes), stringsAsFactors = FALSE)
+        colnames(class_tab) = c("class_id", "n")
+        class_tab$mode = mode
+        class_tab$feature_set = fs
+        class_tab$group = grp
+        det_class[[length(det_class) + 1]] = class_tab
+      }
+    }
+  }
+}
+
+det_summary_df = bind_rows(det_summary)
+det_class_df = bind_rows(det_class)
+
+if (nrow(det_class_df) > 0) {
+  top_classes = det_class_df %>%
+    group_by(class_id) %>%
+    summarize(total = sum(n), .groups = "drop") %>%
+    arrange(desc(total)) %>%
+    head(7) %>%
+    pull(class_id)
+  det_class_df$class_label = ifelse(det_class_df$class_id %in% top_classes,
+                                    det_class_df$class_id, "other")
+  det_class_df = det_class_df %>%
+    group_by(mode, feature_set, group, class_label) %>%
+    summarize(n = sum(n), .groups = "drop")
+}
+
+save_rds(det_summary_df, "sc_detection_summary")
+save_rds(det_class_df, "sc_detection_by_class")
+if (nrow(det_summary_df) > 0) save_csv(det_summary_df, "detection_summary")
+if (nrow(det_class_df) > 0) save_csv(det_class_df, "detection_by_class")
+```
+
+## Features detected per group
+
+```{r detection-barplot, fig.width=8, fig.height=5}
+if (nrow(det_summary_df) > 0) {
+  ggplot(det_summary_df, aes(x = group, y = n_detected, fill = feature_set)) +
+    geom_col(position = "dodge") +
+    facet_wrap(~mode) +
+    scale_fill_brewer(palette = "Set2") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(y = "detected features (CPM > 1)", fill = "feature set",
+         title = "Repeat features detected per group (pseudo-bulk)")
+}
+```
+
+## Features detected per group by repeat class
+
+```{r detection-class-barplot, fig.width=10, fig.height=7}
+if (nrow(det_class_df) > 0) {
+  ggplot(det_class_df, aes(x = group, y = n, fill = class_label)) +
+    geom_col() +
+    facet_grid(feature_set ~ mode) +
+    scale_fill_brewer(palette = "Set2") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(y = "detected features (CPM > 1)", fill = "repeat class",
+         title = "Detected repeats by class per group (pseudo-bulk)")
+}
+```
+
+```{r session}
+sessionInfo()
+```

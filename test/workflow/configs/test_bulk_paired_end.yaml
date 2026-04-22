@@ -1,0 +1,48 @@
+base: "../results/test_bulk_paired_end"
+indices_base: "../results/shared"
+
+pipeline_type: bulk
+
+reference:
+  assembly: hg38
+  ensembl_release: "112"
+  chromosomes: ["chr10"]
+  filter_genic: true
+  rmsk_source: ucsc_flatfile
+  genome_fasta: "../results/shared/refs/GRCh38.dna.primary_assembly.fa.gz"
+  repeats_gtf: "../results/shared/refs/hg38_rmsk_TE.gtf.gz"
+  genes_gtf: "../results/shared/refs/GRCh38.112.genes.gtf.gz"
+
+real_data:
+  library_layout: paired
+
+dataset:
+  samples:
+    sample_a:
+      srrs: [SRR000001]
+    sample_b:
+      srrs: [SRR000002]
+
+feature_sets:
+  - genes
+  - repeats
+
+aligners:
+  - star
+  - kallisto
+  - salmon
+
+aligner_params:
+  star:
+    extra_args: ""
+  kallisto:
+    extra_args: ""
+  salmon:
+    extra_args: ""
+
+granularities:
+  - gene_id
+
+resources:
+  max_threads: 4
+  max_mem_mb: 8000

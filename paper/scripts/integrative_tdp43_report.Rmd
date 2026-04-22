@@ -1,0 +1,905 @@
+---
+title: "TDP-43 cross-dataset integrative overview"
+author: ""
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    code_folding: hide
+    theme: flatly
+params:
+  polymenidou_bulk_rds_dir: "../../results/paper/tdp43/polymenidou_tdp_kd_oe_cultures_bulk/ruv_rds"
+  lee_bulk_rds_dir: "../../results/paper/tdp43/lee_nuclear_tdp_retention_bulk/ruv_rds"
+  polymenidou_sc_rds_dir: "../../results/paper/tdp43/polymenidou_tdp_oe_cultures_scrnaseq/ruv_rds"
+  report_outdir: "../../results/paper/tdp43/integrative_rds"
+  fdr_cutoff: 0.05
+  logfc_cutoff: 0
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.width = 6, fig.height = 5)
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  library(ggrepel)
+  library(purrr)
+  library(tibble)
+  library(scales)
+})
+
+source("../workflow/scripts/biology_checks.R")
+
+dir.create(params$report_outdir, recursive = TRUE, showWarnings = FALSE)
+
+save_rds <- function(obj, name) {
+  saveRDS(obj, file.path(params$report_outdir, paste0(name, ".rds")))
+}
+
+save_csv <- function(df, name) {
+  readr::write_csv(df, file.path(params$report_outdir, paste0(name, ".csv")))
+}
+```
+
+# Inputs
+
+Three studies, each contributing one or more TDP-43 contrasts. The shared axis
+across bulk and sc is repeat subfamily (`gene_id` in bulk, STARsolo feature
+rows in sc), split by genic vs intergenic origin.
+
+```{r load}
+read_rds_safe <- function(path) {
+  if (!file.exists(path)) {
+    warning(sprintf("missing: %s", path))
+    return(NULL)
+  }
+  readRDS(path)
+}
+
+poly_bulk <- read_rds_safe(file.path(params$polymenidou_bulk_rds_dir, "ruv_repeat_de.rds"))
+lee_bulk  <- read_rds_safe(file.path(params$lee_bulk_rds_dir,        "ruv_repeat_de.rds"))
+poly_sc   <- read_rds_safe(file.path(params$polymenidou_sc_rds_dir,  "ruv_repeat_de.rds"))
+
+lee_bulk_gene_naive  <- read_rds_safe(file.path(params$lee_bulk_rds_dir,
+                                                "ruv_naive_gene_de.rds"))
+poly_bulk_gene_naive <- read_rds_safe(file.path(params$polymenidou_bulk_rds_dir,
+                                                "ruv_naive_gene_de_per_contrast.rds"))
+poly_sc_gene_naive   <- read_rds_safe(file.path(params$polymenidou_sc_rds_dir,
+                                                "ruv_naive_gene_de.rds"))
+
+biology_annotation <- read_rds_safe(file.path(params$lee_bulk_rds_dir,
+                                              "biology_annotation.rds"))
+if (is.null(biology_annotation)) {
+  biology_annotation <- read_rds_safe(file.path(params$polymenidou_bulk_rds_dir,
+                                                "biology_annotation.rds"))
+}
+if (is.null(biology_annotation)) {
+  biology_annotation <- read_rds_safe(file.path(params$polymenidou_sc_rds_dir,
+                                                "biology_annotation.rds"))
+}
+```
+
+```{r inventory}
+summarise_rds <- function(obj, label) {
+  if (is.null(obj)) return(tibble(study = label, key = NA_character_, n_rows = NA_integer_))
+  if (is.list(obj) && !is.data.frame(obj) && length(obj) > 0) {
+    tibble(study = label, key = names(obj),
+           n_rows = vapply(obj, function(x) nrow(as.data.frame(x)), integer(1)))
+  } else if (is.data.frame(obj)) {
+    tibble(study = label, key = "single", n_rows = nrow(obj))
+  } else {
+    tibble(study = label, key = "nested", n_rows = NA_integer_)
+  }
+}
+
+bind_rows(
+  summarise_rds(poly_bulk, "polymenidou_bulk_repeats"),
+  summarise_rds(lee_bulk,  "lee_bulk_repeats"),
+  summarise_rds(poly_sc,   "polymenidou_sc_repeats")
+) %>% knitr::kable()
+```
+
+# Cross-study contrast map
+
+```{r contrast_map}
+contrast_info <- tribble(
+  ~label,          ~study,             ~contrast_id,              ~direction_note,
+  "lee_tdppos",    "lee_bulk",         "tdp43pos_vs_tdp43neg",    "up = nuclear TDP-43 retained (Lee sorted nuclei)",
+  "poly_kd",       "polymenidou_bulk", "tdp43_kd_vs_nt_kd_ctrl",  "up = knockdown (Polymenidou bulk, nuclear loss analog)",
+  "poly_oe",       "polymenidou_bulk", "tdp43_oe_vs_oe_ctrl",     "up = overexpression (Polymenidou bulk)",
+  "sc_cluster12",  "polymenidou_sc",   "cluster12_vs_other",      "up = cluster 12 (Polymenidou sc OE)"
+)
+knitr::kable(contrast_info)
+```
+
+
+# RUV-based
+
+All tables and plots in this section use RUV-g-normalized repeat DE. RUV-g adds data-driven unwanted-variation factors (W_1..W_k) to the edgeR design on top of TMM normalization computed on the repeat count matrix. The gene-library-size counterpart for each analysis is in the next top-level section; comparing the two separates normalization-robust signal from signal that depends on RUV factor estimation.
+
+## Biology labels used in the facet plots
+
+Repeat subfamilies are labelled on four biology axes. The labels come from `workflow/scripts/biology_checks.R`; the underlying per-subfamily TSV is produced by `build_repeat_biology_annotation.py`.
+
+- **polyA competence (`polya_class`).** Whether the RepeatMasker class (LINE, SINE, LTR, Retroposon) is thought to carry a terminal polyA tail in its RNA intermediate. Levels: `polyA-competent` (LINE/SINE/LTR/Retroposon), `not polyA-competent` (all other classes), `unknown` (NA). Relevant because polyA-based library prep preferentially captures polyA-competent repeats; a shared polyA-axis shift is one biologically interpretable route for coordinated repeat logFCs.
+- **Downstream A-run (`a_run_class`).** Internal-priming proxy: fraction of loci of a subfamily whose downstream genomic sequence contains a long A-run (default threshold: run length >= 12 bp). Binned into `low` (<= 10% of loci), `medium` (10-50%), `high` (>= 50%), `unknown` (NA). High a_run subfamilies are most at risk of being called as expressed via internal polyA priming of random A-runs rather than by transcription. If a cross-study repeat DE signal is driven mostly by high-a_run subfamilies, it is suspect. `Simple_repeat`, `Low_complexity`, and `Satellite` classes are set to NA here and excluded from a_run facet panels: their repeat units are themselves A-containing, so the flag fires tautologically and carries no information about priming of real polyadenylated transcripts.
+- **Family age (`age_class`).** Subfamily age from milliDiv buckets of RepeatMasker: `young`, `medium`, `old`, `unknown`. Young subfamilies (e.g., L1HS, AluY) are the ones commonly reported as TDP-43 targets; old subfamilies (e.g., MIR, L2) should show weaker and less consistent signal.
+- **Strand vs host gene (`strand_vs_gene`).** Used only for genic repeats: whether the repeat locus is `sense`, `antisense`, `both`, or `intergenic` (no overlap) relative to overlapping host genes. Not faceted in this report.
+
+Facets are ordered `low, medium, high, unknown` for a_run; `young, medium, old, unknown` for age; `polyA-competent, not polyA-competent, unknown` for polyA.
+
+### How `polya_class` and `a_run_class` differ
+
+The two axes are orthogonal and answer different questions:
+
+- `polya_class` is **class-level RNA biology**: does this repeat's RNA intermediate carry a real polyA tail during its life cycle? LINE, SINE, LTR, Retroposon generate polyadenylated RNA; DNA transposons, satellites, snRNAs etc. do not.
+- `a_run_class` is **locus-level genomic DNA context**: do the DNA bases immediately 3' of the repeat end contain long A-runs, making internal priming of oligo-dT beads possible?
+
+Both can generate reads in a polyA-selected library, but only one is real transcription. The 2x2 reading:
+
+| polyA-competent? | high downstream A-run? | interpretation |
+|---|---|---|
+| yes | no | clean: real polyA-tailed transcripts captured, minimal priming artifact |
+| yes | yes | ambiguous: real transcripts AND internal-priming risk. Young L1HS, SVA_B-F, and young LTRs live here. Cannot disambiguate from the data alone. |
+| no | no | typically absent from polyA libraries; any signal is suspect |
+| no | yes | pure artifact risk: no real polyA transcription, but oligo-dT can still prime on genomic A-runs. Excluded from a_run facets here because the class (Simple_repeat/Low_complexity/Satellite) makes the flag tautological. |
+
+A cross-study signal that concentrates in polyA-competent + low-a_run subfamilies (e.g. MIR SINEs, older L1/LTR subfamilies) is the cleanest real signal. A signal that concentrates in polyA-competent + medium/high-a_run subfamilies (L1HS, SVAs, young LTRs) is biologically interesting but needs orthogonal validation because priming-artifact cannot be ruled out by RNA-seq alone.
+
+## Harmonize repeat DE tables per category
+
+
+
+Gene_id granularity is the shared axis across bulk and sc. Genic vs intergenic
+is split upstream at the count matrix level, so each study exposes two
+repeat tables per contrast.
+
+```{r pick_repeat_tables}
+repeat_key_map <- list(
+  lee_bulk = list(
+    tdp43pos_vs_tdp43neg = list(genic = "genic_geneid", intergenic = "inter_geneid")
+  ),
+  polymenidou_bulk = list(
+    tdp43_kd_vs_nt_kd_ctrl = list(
+      genic = "genic_geneid:tdp43_kd_vs_nt_kd_ctrl",
+      intergenic = "inter_geneid:tdp43_kd_vs_nt_kd_ctrl"
+    ),
+    tdp43_oe_vs_oe_ctrl = list(
+      genic = "genic_geneid:tdp43_oe_vs_oe_ctrl",
+      intergenic = "inter_geneid:tdp43_oe_vs_oe_ctrl"
+    )
+  ),
+  polymenidou_sc = list(
+    cluster12_vs_other = list(
+      genic = "unique_genic_repeats:cluster12_vs_other",
+      intergenic = "unique_intergenic_repeats:cluster12_vs_other"
+    )
+  )
+)
+
+repeat_rds_map <- list(
+  lee_bulk = lee_bulk,
+  polymenidou_bulk = poly_bulk,
+  polymenidou_sc = poly_sc
+)
+
+pick_repeat_tbl <- function(study, contrast_id, category) {
+  rds <- repeat_rds_map[[study]]
+  if (is.null(rds)) return(NULL)
+  key <- repeat_key_map[[study]][[contrast_id]][[category]]
+  if (is.null(key) || !key %in% names(rds)) return(NULL)
+  df <- as_tibble(rds[[key]]) %>%
+    select(feature_id, logFC, PValue, FDR) %>%
+    mutate(sig = FDR < params$fdr_cutoff & abs(logFC) > params$logfc_cutoff)
+  df
+}
+
+de_tables <- list()
+for (i in seq_len(nrow(contrast_info))) {
+  lbl <- contrast_info$label[i]
+  study <- contrast_info$study[i]
+  cid <- contrast_info$contrast_id[i]
+  for (cat in c("genic", "intergenic")) {
+    tbl <- pick_repeat_tbl(study, cid, cat)
+    if (!is.null(tbl)) {
+      de_tables[[paste(lbl, cat, sep = "__")]] <- tbl
+    }
+  }
+}
+
+de_inventory <- tibble(
+  table = names(de_tables),
+  n = vapply(de_tables, nrow, integer(1)),
+  n_sig = vapply(de_tables, function(x) sum(x$sig, na.rm = TRUE), integer(1))
+)
+knitr::kable(de_inventory)
+save_rds(de_tables, "integrative_repeat_de_tables")
+```
+
+## Biology annotation join
+
+Each repeat DE table is annotated with the per-subfamily biology TSV produced
+by `build_repeat_biology_annotation.py`. Subfamily id in bulk (gene_id) and
+STARsolo repeat feature id in sc both map to the `gene_id` column of the
+biology annotation.
+
+```{r annotate_biology}
+if (!is.null(biology_annotation)) {
+  bio <- as_tibble(biology_annotation) %>%
+    select(gene_id, family_id, class_id, family_age,
+           frac_intergenic, frac_downstream_a_run) %>%
+    mutate(polya_class = polya_label(class_id),
+           age_class   = family_age_label(family_age),
+           a_run_class = a_run_label(frac_downstream_a_run, class_ids = class_id))
+  de_tables_anno <- lapply(de_tables, function(df) {
+    left_join(df, bio, by = c("feature_id" = "gene_id"))
+  })
+} else {
+  bio <- NULL
+  de_tables_anno <- de_tables
+}
+save_rds(de_tables_anno, "integrative_repeat_de_tables_annotated")
+```
+
+## Pairwise repeat logFC concordance, by category
+
+For each genic/intergenic axis, inner-join logFC tables between pairs of
+contrasts and compute Pearson / Spearman plus quadrant counts at
+FDR < `r params$fdr_cutoff`.
+
+```{r pair_repeat_helper}
+pair_logfc <- function(tA, tB, nameA, nameB) {
+  if (is.null(tA) || is.null(tB)) return(NULL)
+  j <- inner_join(
+    tA %>% transmute(feature_id, logFC_A = logFC, FDR_A = FDR, sig_A = sig,
+                     polya_class = if ("polya_class" %in% names(.)) polya_class else NA,
+                     a_run_class = if ("a_run_class" %in% names(.)) a_run_class else NA,
+                     age_class   = if ("age_class"   %in% names(.)) age_class   else NA,
+                     class_id    = if ("class_id"    %in% names(.)) class_id    else NA),
+    tB %>% transmute(feature_id, logFC_B = logFC, FDR_B = FDR, sig_B = sig),
+    by = "feature_id"
+  )
+  if (nrow(j) < 5) return(NULL)
+  list(
+    pair = c(nameA, nameB),
+    joined = j,
+    pearson = cor(j$logFC_A, j$logFC_B, method = "pearson"),
+    spearman = cor(j$logFC_A, j$logFC_B, method = "spearman"),
+    n = nrow(j),
+    n_sig_both = sum(j$sig_A & j$sig_B, na.rm = TRUE),
+    n_concordant_sig = sum(j$sig_A & j$sig_B &
+                             sign(j$logFC_A) == sign(j$logFC_B), na.rm = TRUE),
+    n_discordant_sig = sum(j$sig_A & j$sig_B &
+                             sign(j$logFC_A) != sign(j$logFC_B), na.rm = TRUE)
+  )
+}
+
+pairs_of_interest <- list(
+  c("lee_tdppos",   "poly_kd"),
+  c("lee_tdppos",   "poly_oe"),
+  c("lee_tdppos",   "sc_cluster12"),
+  c("poly_kd",      "poly_oe"),
+  c("poly_oe",      "sc_cluster12"),
+  c("poly_kd",      "sc_cluster12")
+)
+
+run_pairs_for_category <- function(category) {
+  out <- list()
+  for (p in pairs_of_interest) {
+    tagA <- paste(p[1], category, sep = "__")
+    tagB <- paste(p[2], category, sep = "__")
+    r <- pair_logfc(de_tables_anno[[tagA]], de_tables_anno[[tagB]], p[1], p[2])
+    if (!is.null(r)) {
+      r$category <- category
+      out[[paste(p[1], "vs", p[2], sep = "__")]] <- r
+    }
+  }
+  out
+}
+
+pair_results_genic <- run_pairs_for_category("genic")
+pair_results_inter <- run_pairs_for_category("intergenic")
+```
+
+```{r pair_repeat_summary}
+summarise_pair_results <- function(lst, category) {
+  bind_rows(lapply(lst, function(r) {
+    tibble(category = category,
+           pair_A = r$pair[1], pair_B = r$pair[2],
+           n = r$n, pearson = r$pearson, spearman = r$spearman,
+           n_sig_both = r$n_sig_both,
+           n_concordant_sig = r$n_concordant_sig,
+           n_discordant_sig = r$n_discordant_sig)
+  }))
+}
+
+summary_df <- bind_rows(
+  summarise_pair_results(pair_results_genic, "genic"),
+  summarise_pair_results(pair_results_inter, "intergenic")
+)
+knitr::kable(summary_df, digits = 3)
+save_csv(summary_df, "integrative_repeat_concordance_summary")
+save_rds(list(genic = pair_results_genic,
+              intergenic = pair_results_inter),
+         "integrative_repeat_pair_results")
+```
+
+```{r pair_repeat_scatter, fig.width = 5.5, fig.height = 5}
+scatter_pair <- function(r, title_prefix, n_label = 10) {
+  j <- r$joined %>%
+    arrange(sig_A & sig_B, sig_A | sig_B)
+  j_label <- r$joined %>%
+    filter(sig_A, sig_B) %>%
+    arrange(desc(abs(logFC_A) + abs(logFC_B))) %>%
+    head(n_label)
+  subtitle <- sprintf("n=%d  pearson=%.2f  spearman=%.2f  sig-both=%d (concord=%d discord=%d)",
+                      r$n, r$pearson, r$spearman,
+                      r$n_sig_both, r$n_concordant_sig, r$n_discordant_sig)
+  legend_labels <- c(
+    "FALSE.FALSE" = "n.s. in both",
+    "TRUE.FALSE"  = sprintf("signif in %s only", r$pair[1]),
+    "FALSE.TRUE"  = sprintf("signif in %s only", r$pair[2]),
+    "TRUE.TRUE"   = "signif in both"
+  )
+  ggplot(j, aes(logFC_A, logFC_B)) +
+    geom_vline(xintercept = 0, color = "grey70") +
+    geom_hline(yintercept = 0, color = "grey70") +
+    geom_point(aes(color = interaction(sig_A, sig_B)),
+               alpha = 0.7, size = 1.2) +
+    ggrepel::geom_label_repel(data = j_label,
+                              aes(label = feature_id),
+                              size = 2.8, color = "black",
+                              fill = alpha("white", 0.85),
+                              label.size = 0.15,
+                              label.padding = 0.15,
+                              max.overlaps = Inf,
+                              box.padding = 0.4,
+                              segment.color = "grey40",
+                              segment.size = 0.4,
+                              min.segment.length = 0) +
+    scale_color_manual(values = c("FALSE.FALSE" = "grey80",
+                                  "TRUE.FALSE"  = "steelblue",
+                                  "FALSE.TRUE"  = "goldenrod",
+                                  "TRUE.TRUE"   = "firebrick"),
+                       labels = legend_labels,
+                       name = NULL) +
+    labs(title = paste(title_prefix, paste(r$pair, collapse = " vs ")),
+         subtitle = subtitle,
+         x = paste0("logFC ", r$pair[1]),
+         y = paste0("logFC ", r$pair[2])) +
+
+    theme_bw() +
+    theme(aspect.ratio = 1, panel.grid = element_blank())
+}
+
+for (nm in names(pair_results_genic)) {
+  print(scatter_pair(pair_results_genic[[nm]], "[genic]"))
+}
+for (nm in names(pair_results_inter)) {
+  print(scatter_pair(pair_results_inter[[nm]], "[intergenic]"))
+}
+```
+
+## Concordance faceted by polyA competence
+
+Class-based polyA competence from `polya_label(class_id)`: LINE/SINE/LTR/
+Retroposon subfamilies count as polyA-competent; DNA transposons and
+satellites do not. Definition is shared with the per-dataset reports
+(`workflow/scripts/biology_checks.R`).
+
+```{r polya_scatter, fig.width = 8, fig.height = 4.5}
+scatter_pair_faceted <- function(r, facet_col, title_prefix, palette,
+                                 n_label_per_facet = 5) {
+  j <- r$joined
+  if (all(is.na(j[[facet_col]]))) return(invisible(NULL))
+  subtitle <- sprintf("n=%d  pearson=%.2f  spearman=%.2f",
+                      r$n, r$pearson, r$spearman)
+  j <- j[!is.na(j[[facet_col]]), , drop = FALSE] %>%
+    arrange(sig_A & sig_B, sig_A | sig_B)
+  j_label <- j %>%
+    filter(sig_A, sig_B) %>%
+    group_by(.data[[facet_col]]) %>%
+    arrange(desc(abs(logFC_A) + abs(logFC_B)), .by_group = TRUE) %>%
+    slice_head(n = n_label_per_facet) %>%
+    ungroup()
+  ggplot(j, aes(logFC_A, logFC_B, color = .data[[facet_col]])) +
+    geom_vline(xintercept = 0, color = "grey70") +
+    geom_hline(yintercept = 0, color = "grey70") +
+    geom_point(alpha = 0.7, size = 1.2) +
+    ggrepel::geom_label_repel(data = j_label,
+                              aes(label = feature_id),
+                              size = 2.5, color = "black",
+                              fill = alpha("white", 0.85),
+                              label.size = 0.1,
+                              label.padding = 0.12,
+                              max.overlaps = Inf,
+                              box.padding = 0.3,
+                              segment.color = "grey40",
+                              segment.size = 0.4,
+                              min.segment.length = 0,
+                              show.legend = FALSE) +
+    facet_wrap(as.formula(paste("~", facet_col)), nrow = 1) +
+    scale_color_manual(values = palette, na.value = "grey70") +
+    labs(title = paste(title_prefix, paste(r$pair, collapse = " vs ")),
+         subtitle = subtitle,
+         x = paste0("logFC ", r$pair[1]),
+         y = paste0("logFC ", r$pair[2])) +
+
+    theme_bw() +
+    theme(aspect.ratio = 1,
+          legend.position = "none",
+          panel.grid = element_blank())
+}
+
+polya_palette <- c("polyA-competent" = "firebrick",
+                   "not polyA-competent" = "steelblue",
+                   "unknown" = "grey70")
+
+for (nm in names(pair_results_genic)) {
+  print(scatter_pair_faceted(pair_results_genic[[nm]], "polya_class",
+                             "[genic]", polya_palette))
+}
+for (nm in names(pair_results_inter)) {
+  print(scatter_pair_faceted(pair_results_inter[[nm]], "polya_class",
+                             "[intergenic]", polya_palette))
+}
+```
+
+```{r polya_correlation_table}
+stratified_corr <- function(lst, category, facet_col) {
+  bind_rows(lapply(lst, function(r) {
+    j <- r$joined
+    if (all(is.na(j[[facet_col]]))) return(NULL)
+    j %>%
+      filter(!is.na(.data[[facet_col]])) %>%
+      group_by(stratum = .data[[facet_col]]) %>%
+      summarise(n = dplyr::n(),
+                pearson = if (dplyr::n() > 2)
+                  cor(logFC_A, logFC_B, method = "pearson") else NA_real_,
+                spearman = if (dplyr::n() > 2)
+                  cor(logFC_A, logFC_B, method = "spearman") else NA_real_,
+                n_sig_both = sum(sig_A & sig_B, na.rm = TRUE),
+                .groups = "drop") %>%
+      mutate(stratification = facet_col,
+             category = category,
+             pair = paste(r$pair, collapse = " vs "))
+  }))
+}
+
+polya_tbl <- bind_rows(
+  stratified_corr(pair_results_genic, "genic", "polya_class"),
+  stratified_corr(pair_results_inter, "intergenic", "polya_class")
+)
+knitr::kable(polya_tbl, digits = 3)
+save_csv(polya_tbl, "integrative_polya_stratified_correlation")
+```
+
+## Concordance faceted by downstream A-run (polyA priming proxy)
+
+Post-integration 3'-downstream A-run fraction from
+`a_run_label(frac_downstream_a_run, class_ids = class_id)` buckets subfamilies into low/medium/high.
+Complementary to class-based polyA competence; only present for subfamilies
+carried through the biology annotation.
+
+```{r a_run_scatter, fig.width = 9, fig.height = 4.5}
+a_run_palette <- c(low = "steelblue", medium = "goldenrod",
+                   high = "firebrick", unknown = "grey70")
+
+for (nm in names(pair_results_genic)) {
+  print(scatter_pair_faceted(pair_results_genic[[nm]], "a_run_class",
+                             "[genic]", a_run_palette))
+}
+for (nm in names(pair_results_inter)) {
+  print(scatter_pair_faceted(pair_results_inter[[nm]], "a_run_class",
+                             "[intergenic]", a_run_palette))
+}
+```
+
+```{r a_run_correlation_table}
+a_run_tbl <- bind_rows(
+  stratified_corr(pair_results_genic, "genic", "a_run_class"),
+  stratified_corr(pair_results_inter, "intergenic", "a_run_class")
+)
+knitr::kable(a_run_tbl, digits = 3)
+save_csv(a_run_tbl, "integrative_a_run_stratified_correlation")
+```
+
+## Concordance faceted by family age
+
+```{r age_correlation_table}
+age_tbl <- bind_rows(
+  stratified_corr(pair_results_genic, "genic", "age_class"),
+  stratified_corr(pair_results_inter, "intergenic", "age_class")
+)
+knitr::kable(age_tbl, digits = 3)
+save_csv(age_tbl, "integrative_age_stratified_correlation")
+```
+
+## Gene-level naive (gene-norm) concordance
+
+Gene-level DE, gene-TMM normalization, no RUV. Lee bulk and sc save
+`ruv_naive_gene_de.rds` directly (two-group contrast or the unique-mode
+pseudobulk). Polymenidou bulk splits its four-group design into two
+contrasts in `ruv_naive_gene_de_per_contrast.rds`.
+
+```{r harmonise_genes}
+as_gene_tbl <- function(obj) {
+  if (is.null(obj)) return(NULL)
+  df <- as.data.frame(obj)
+  if (!"feature_id" %in% names(df)) {
+    df$feature_id <- rownames(df)
+  }
+  as_tibble(df) %>%
+    select(feature_id, any_of(c("logFC", "logCPM", "F", "PValue", "FDR"))) %>%
+    mutate(sig = if ("FDR" %in% names(.)) FDR < params$fdr_cutoff else NA)
+}
+
+unwrap_sc_naive <- function(obj) {
+  if (is.null(obj)) return(NULL)
+  if (is.list(obj) && !is.data.frame(obj) && "unique" %in% names(obj)) {
+    obj[["unique"]]
+  } else {
+    obj
+  }
+}
+
+gene_tables <- list(
+  lee_tdppos    = as_gene_tbl(lee_bulk_gene_naive),
+  poly_kd       = as_gene_tbl(poly_bulk_gene_naive[["tdp43_kd_vs_nt_kd_ctrl"]]),
+  poly_oe       = as_gene_tbl(poly_bulk_gene_naive[["tdp43_oe_vs_oe_ctrl"]]),
+  sc_cluster12  = as_gene_tbl(unwrap_sc_naive(poly_sc_gene_naive))
+)
+gene_tables <- gene_tables[!sapply(gene_tables, is.null)]
+
+gene_summary <- bind_rows(lapply(names(gene_tables), function(nm) {
+  g <- gene_tables[[nm]]
+  tibble(table = nm, n = nrow(g),
+         n_sig = sum(g$sig, na.rm = TRUE),
+         has_logFC = "logFC" %in% names(g))
+}))
+knitr::kable(gene_summary)
+save_rds(gene_tables, "integrative_gene_tables")
+```
+
+```{r gene_pairs, fig.width = 5, fig.height = 5}
+pair_gene <- function(tA, tB, nameA, nameB) {
+  if (is.null(tA) || is.null(tB)) return(NULL)
+  if (!"logFC" %in% names(tA) || !"logFC" %in% names(tB)) return(NULL)
+  j <- inner_join(
+    tA %>% rename(logFC_A = logFC, FDR_A = FDR, sig_A = sig),
+    tB %>% rename(logFC_B = logFC, FDR_B = FDR, sig_B = sig),
+    by = "feature_id"
+  )
+  if (nrow(j) < 5) return(NULL)
+  list(pair = c(nameA, nameB), joined = j,
+       pearson  = cor(j$logFC_A, j$logFC_B, method = "pearson"),
+       spearman = cor(j$logFC_A, j$logFC_B, method = "spearman"),
+       n = nrow(j),
+       n_sig_both = sum(j$sig_A & j$sig_B, na.rm = TRUE),
+       n_concordant_sig = sum(j$sig_A & j$sig_B &
+                                sign(j$logFC_A) == sign(j$logFC_B), na.rm = TRUE))
+}
+
+gene_pair_results <- list()
+for (p in pairs_of_interest) {
+  r <- pair_gene(gene_tables[[p[1]]], gene_tables[[p[2]]], p[1], p[2])
+  if (!is.null(r)) {
+    gene_pair_results[[paste(p[1], "vs", p[2], sep = "__")]] <- r
+  }
+}
+
+gene_summary_df <- bind_rows(lapply(gene_pair_results, function(r) {
+  tibble(pair_A = r$pair[1], pair_B = r$pair[2],
+         n = r$n, pearson = r$pearson, spearman = r$spearman,
+         n_sig_both = r$n_sig_both,
+         n_concordant_sig = r$n_concordant_sig)
+}))
+knitr::kable(gene_summary_df, digits = 3)
+save_csv(gene_summary_df, "integrative_gene_concordance_summary")
+save_rds(gene_pair_results, "integrative_gene_pair_results")
+
+for (nm in names(gene_pair_results)) {
+  r <- gene_pair_results[[nm]]
+  j <- r$joined
+  subtitle <- sprintf("n=%d  pearson=%.2f  spearman=%.2f  sig-both=%d (concord=%d)",
+                      r$n, r$pearson, r$spearman,
+                      r$n_sig_both, r$n_concordant_sig)
+  print(
+    ggplot(j, aes(logFC_A, logFC_B)) +
+      geom_vline(xintercept = 0, color = "grey70") +
+      geom_hline(yintercept = 0, color = "grey70") +
+      geom_point(alpha = 0.3, size = 0.7) +
+      labs(title = nm, subtitle = subtitle,
+           x = paste0("logFC ", r$pair[1]),
+           y = paste0("logFC ", r$pair[2])) +
+
+      theme_bw() +
+      theme(aspect.ratio = 1, panel.grid = element_blank())
+  )
+}
+```
+
+## Shared significant repeats, by category
+
+For each pair and category, repeats significant in both tables, ordered by
+summed absolute logFC. Biology annotation columns are carried through for
+manual inspection.
+
+```{r shared_hits, results = 'asis'}
+collect_shared_hits <- function(lst, category) {
+  lapply(lst, function(r) {
+    r$joined %>%
+      filter(sig_A, sig_B) %>%
+      arrange(desc(abs(logFC_A) + abs(logFC_B))) %>%
+      mutate(category = category,
+             pair = paste(r$pair, collapse = " vs ")) %>%
+      select(category, pair, feature_id, class_id, polya_class, a_run_class,
+             age_class, logFC_A, FDR_A, logFC_B, FDR_B)
+  })
+}
+
+shared_genic <- collect_shared_hits(pair_results_genic, "genic")
+shared_inter <- collect_shared_hits(pair_results_inter, "intergenic")
+shared_all <- bind_rows(c(shared_genic, shared_inter))
+save_rds(list(genic = shared_genic, intergenic = shared_inter),
+         "integrative_shared_hits")
+save_csv(shared_all, "integrative_shared_hits")
+
+for (cat_label in c("genic", "intergenic")) {
+  lst <- if (cat_label == "genic") shared_genic else shared_inter
+  for (nm in names(lst)) {
+    cat("## ", cat_label, " - ", nm, "\n\n", sep = "")
+    print(knitr::kable(head(lst[[nm]], 40)))
+    cat("\n\n")
+  }
+}
+```
+
+
+# Alternative (gene-library-size, no RUV)
+
+## Cross-study concordance
+
+Mirror of the RUV concordance above, run on per-dataset `gene_lib_repeat_de`
+tables. Each dataset's repeat DGEList was built with library-size and
+norm factors derived from its own gene count matrix, no RUV covariates.
+Comparing the two concordance matrices side by side indicates how much of
+the cross-study signal depends on RUV factor estimation.
+
+```{r load_gene_lib}
+poly_bulk_gl <- read_rds_safe(file.path(params$polymenidou_bulk_rds_dir,
+                                        "gene_lib_repeat_de.rds"))
+lee_bulk_gl  <- read_rds_safe(file.path(params$lee_bulk_rds_dir,
+                                        "gene_lib_repeat_de.rds"))
+poly_sc_gl   <- read_rds_safe(file.path(params$polymenidou_sc_rds_dir,
+                                        "gene_lib_repeat_de.rds"))
+```
+
+```{r gene_lib_de_tables}
+repeat_rds_map_gl <- list(
+  lee_bulk = lee_bulk_gl,
+  polymenidou_bulk = poly_bulk_gl,
+  polymenidou_sc = poly_sc_gl
+)
+
+pick_repeat_tbl_gl <- function(study, contrast_id, category) {
+  rds <- repeat_rds_map_gl[[study]]
+  if (is.null(rds)) return(NULL)
+  key <- repeat_key_map[[study]][[contrast_id]][[category]]
+  if (is.null(key) || !key %in% names(rds)) return(NULL)
+  df <- as_tibble(rds[[key]]) %>%
+    select(feature_id, logFC, PValue, FDR) %>%
+    mutate(sig = FDR < params$fdr_cutoff & abs(logFC) > params$logfc_cutoff)
+  df
+}
+
+de_tables_gl <- list()
+for (i in seq_len(nrow(contrast_info))) {
+  lbl <- contrast_info$label[i]
+  study <- contrast_info$study[i]
+  cid <- contrast_info$contrast_id[i]
+  for (cat in c("genic", "intergenic")) {
+    tbl <- pick_repeat_tbl_gl(study, cid, cat)
+    if (!is.null(tbl)) {
+      de_tables_gl[[paste(lbl, cat, sep = "__")]] <- tbl
+    }
+  }
+}
+
+if (!is.null(bio)) {
+  de_tables_gl <- lapply(de_tables_gl, function(df) {
+    left_join(df, bio, by = c("feature_id" = "gene_id"))
+  })
+}
+save_rds(de_tables_gl, "integrative_gene_lib_repeat_de_tables_annotated")
+```
+
+```{r gene_lib_pair_results}
+run_pairs_for_category_gl <- function(category) {
+  out <- list()
+  for (p in pairs_of_interest) {
+    tagA <- paste(p[1], category, sep = "__")
+    tagB <- paste(p[2], category, sep = "__")
+    r <- pair_logfc(de_tables_gl[[tagA]], de_tables_gl[[tagB]], p[1], p[2])
+    if (!is.null(r)) {
+      r$category <- category
+      out[[paste(p[1], "vs", p[2], sep = "__")]] <- r
+    }
+  }
+  out
+}
+
+pair_results_gl_genic <- run_pairs_for_category_gl("genic")
+pair_results_gl_inter <- run_pairs_for_category_gl("intergenic")
+
+summary_gl <- bind_rows(
+  summarise_pair_results(pair_results_gl_genic, "genic"),
+  summarise_pair_results(pair_results_gl_inter, "intergenic")
+)
+knitr::kable(summary_gl, digits = 3,
+             caption = "Cross-study concordance with gene-library-size normalization")
+save_csv(summary_gl, "integrative_gene_lib_repeat_concordance_summary")
+save_rds(list(genic = pair_results_gl_genic,
+              intergenic = pair_results_gl_inter),
+         "integrative_gene_lib_repeat_pair_results")
+```
+
+## RUV vs gene-library-size, side by side
+
+```{r ruv_vs_gene_lib_side_by_side}
+side_by_side <- summary_df %>%
+  rename(pearson_ruv = pearson, spearman_ruv = spearman,
+         n_sig_both_ruv = n_sig_both) %>%
+  select(category, pair_A, pair_B, n, pearson_ruv, spearman_ruv, n_sig_both_ruv) %>%
+  inner_join(
+    summary_gl %>%
+      rename(pearson_gl = pearson, spearman_gl = spearman,
+             n_sig_both_gl = n_sig_both) %>%
+      select(category, pair_A, pair_B, pearson_gl, spearman_gl, n_sig_both_gl),
+    by = c("category", "pair_A", "pair_B")
+  )
+knitr::kable(side_by_side, digits = 3,
+             caption = "Concordance side by side: RUV vs gene-library-size")
+save_csv(side_by_side, "integrative_ruv_vs_gene_lib_concordance_side_by_side")
+```
+
+## Per-cluster sc counterpart of bulk OE
+
+Cluster 12 is the authors' primary hypothesis for the HA-TDP-43-expressing
+neurons, but nothing forces the bulk-OE-matching repeat signal to live there.
+This section ranks every sc cluster by the Pearson and Spearman correlation
+between its own cluster-vs-rest repeat logFC profile (gene-library-size
+normalization, no RUV) and the Polymenidou bulk `tdp43_oe_vs_oe_ctrl` repeat
+logFC profile (also gene-library-size). The cluster at the top of the
+ranking is the empirical sc counterpart of bulk OE; if that is cluster 12
+the paper story holds, and if it is not the choice deserves manual
+inspection before further inference.
+
+Bulk OE is the reference because it is a DOX-on vs DOX-off comparison in
+the same Polymenidou system, so it should share the strongest biological
+drivers with the sc library if any cluster in the sc library is dominated
+by HA-TDP-43-expressing cells.
+
+```{r per_cluster_bulk_oe_ranking, fig.width = 7, fig.height = 5}
+per_cluster_gl <- read_rds_safe(file.path(params$polymenidou_sc_rds_dir,
+                                          "per_cluster_gene_lib_repeat_de.rds"))
+
+parse_cluster_tag <- function(tag) {
+  m <- regmatches(tag, regexec("cluster(\\d+)_vs_other$", tag))[[1]]
+  if (length(m) < 2) return(NA_integer_)
+  as.integer(m[2])
+}
+
+parse_category_from_tag <- function(tag) {
+  if (grepl("genic_repeats:", tag) && !grepl("intergenic_repeats:", tag)) "genic"
+  else if (grepl("intergenic_repeats:", tag))                            "intergenic"
+  else                                                                     NA_character_
+}
+
+bulk_oe_ref <- list(
+  genic      = poly_bulk_gl[[repeat_key_map$polymenidou_bulk$tdp43_oe_vs_oe_ctrl$genic]],
+  intergenic = poly_bulk_gl[[repeat_key_map$polymenidou_bulk$tdp43_oe_vs_oe_ctrl$intergenic]]
+)
+
+rank_rows <- list()
+if (!is.null(per_cluster_gl) && length(per_cluster_gl) > 0) {
+  for (tag in names(per_cluster_gl)) {
+    cl <- parse_cluster_tag(tag)
+    cat_ <- parse_category_from_tag(tag)
+    if (is.na(cl) || is.na(cat_)) next
+    ref <- bulk_oe_ref[[cat_]]
+    if (is.null(ref)) next
+    tbl <- as_tibble(per_cluster_gl[[tag]]) %>% select(feature_id, logFC)
+    ref_tbl <- as_tibble(ref) %>% select(feature_id, logFC_bulk = logFC)
+    j <- inner_join(tbl, ref_tbl, by = "feature_id")
+    if (nrow(j) < 20) next
+    rank_rows[[tag]] <- tibble(
+      cluster = cl,
+      category = cat_,
+      tag = tag,
+      n = nrow(j),
+      pearson = cor(j$logFC, j$logFC_bulk, method = "pearson"),
+      spearman = cor(j$logFC, j$logFC_bulk, method = "spearman")
+    )
+  }
+}
+
+rank_df <- bind_rows(rank_rows)
+if (nrow(rank_df) > 0) {
+  rank_df <- rank_df %>% arrange(category, desc(pearson))
+  knitr::kable(rank_df, digits = 3,
+               caption = "Per-cluster correlation against Polymenidou bulk OE")
+  save_csv(rank_df, "integrative_per_cluster_vs_bulk_oe_ranking")
+  save_rds(rank_df, "integrative_per_cluster_vs_bulk_oe_ranking")
+
+  p_rank <- ggplot(rank_df,
+                   aes(x = reorder(factor(cluster), pearson),
+                       y = pearson, fill = cluster == 12L)) +
+    geom_col() +
+    facet_wrap(~ category, scales = "free_x") +
+    coord_flip() +
+    scale_fill_manual(values = c(`FALSE` = "grey60", `TRUE` = "firebrick"),
+                      name = "cluster 12?") +
+    labs(x = "sc cluster", y = "Pearson r vs Polymenidou bulk OE logFC",
+         title = "Which sc cluster best matches bulk OE?") +
+    theme_bw() +
+    theme(panel.grid.major.x = element_blank(),
+          panel.grid.minor = element_blank())
+  print(p_rank)
+} else {
+  cat("No per-cluster DE tables available; skipping ranking.\n")
+}
+```
+
+
+# Overview: concordance across methods and categories
+
+Single-figure summary of cross-study repeat concordance. Rows and columns are the four contrasts (`lee_tdppos`, `poly_kd`, `poly_oe`, `sc_cluster12`). Cell colour is Pearson r on shared features; text is "Pearson (n_sig_both)". Panels split the 2 x 2 grid of `method` (RUV vs gene-library-size) against `category` (genic vs intergenic). A panel where most off-diagonal cells track the expected TDP-43 direction (negative for "opposite TDP-43 state" pairs, positive for "same TDP-43 state" pairs) supports the biology; flat panels suggest the normalization is either hiding the signal (compare panels) or the pair really is null (look at matching `n_sig_both` counts).
+
+```{r overview_heatmap, fig.width = 10, fig.height = 8}
+contrast_levels <- c("lee_tdppos", "poly_kd", "poly_oe", "sc_cluster12")
+
+all_concordance <- bind_rows(
+  summary_df %>% mutate(method = "RUV"),
+  summary_gl %>% mutate(method = "gene-library-size")
+) %>%
+  select(method, category, pair_A, pair_B, pearson, n_sig_both)
+
+mirror <- all_concordance %>%
+  rename(tmp_A = pair_A) %>% rename(pair_A = pair_B) %>% rename(pair_B = tmp_A)
+
+full_mat <- bind_rows(all_concordance, mirror) %>%
+  mutate(pair_A = factor(pair_A, levels = contrast_levels),
+         pair_B = factor(pair_B, levels = contrast_levels),
+         method = factor(method, levels = c("RUV", "gene-library-size")),
+         category = factor(category, levels = c("genic", "intergenic")))
+
+ggplot(full_mat, aes(pair_A, pair_B, fill = pearson)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.2f\n(%d)", pearson, n_sig_both)),
+            size = 3, color = "black") +
+  facet_grid(method ~ category) +
+  scale_fill_gradient2(low = "steelblue", mid = "white", high = "firebrick",
+                       midpoint = 0, name = "Pearson r",
+                       limits = c(-0.5, 0.5), oob = scales::squish) +
+
+  labs(title = "Cross-study concordance: methods x category",
+       x = NULL, y = NULL) +
+  theme_bw() +
+  theme(aspect.ratio = 1,
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid = element_blank())
+```
+
+Readout. Row 1 (RUV): poly_kd/poly_oe off-diagonal is strongly blue (expected negative) in both genic and intergenic; everything else near white. Row 2 (gene-library-size): poly_kd/poly_oe off-diagonal is much closer to white, but the `n_sig_both` counts are 3-4x higher than the RUV row, so the biology is still there, just expressed through more individual hits rather than through feature-wise correlation. Cross-study rows (lee_tdppos) stay near white in both methods, confirming the Lee null is not a normalization artifact. sc_cluster12 rows pick up a small but directionally-correct signal under gene-library-size (positive with poly_oe, negative with poly_kd) that is below noise under RUV.
+
+# Session info
+
+```{r session}
+sessionInfo()
+```

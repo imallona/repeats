@@ -1,20 +1,28 @@
 # workflow/modules/
 
 Each `.snmk` file is a self-contained Snakemake module included by the main `Snakefile`.
-Modules are conditionally included based on `config['mode']` and `config['aligners']`.
+Modules are conditionally included based on `config['pipeline_type']` and `config['aligners']`.
 
 ## Module index
 
+| module | active when | purpose |
+|---|---|---|
 | `download_references.snmk` | always | Download genome FASTA, genes GTF, and RepeatMasker annotation from Ensembl/UCSC |
 | `reference.snmk` | always | Build indices (STAR, Kallisto, Salmon, Bowtie2), extract repeat/gene FASTAs, genic/intergenic filtering |
-| `data_acquisition.snmk` | always | SRA download rules for real-data mode |
-| `simulations.snmk` | `mode: simulation` | Simulate SmartSeq2 per-cell FASTQs or Chromium R1/R2 from repeat loci |
-| `starsolo.snmk` | `starsolo` in aligners | STARsolo alignment (SmartSeq2 manifest or Chromium CB_UMI_Simple) |
-| `kallisto.snmk` | `kallisto` in aligners | Kallisto pseudoalignment (bulk per-cell for SS2, `kallisto bus` + bustools for Chromium) |
-| `alevin.snmk` | `alevin` in aligners | Salmon quant (bulk per-cell for SS2) or salmon alevin (Chromium) |
-| `bowtie2.snmk` | `bowtie2` in aligners | Bowtie2 alignment to repeat pseudo-genome + `samtools idxstats` counting |
-| `normalize.snmk` | always | Convert each aligner's native output to a common feature × cell TSV |
-| `evaluation.snmk` | `mode: simulation` | Compare normalized counts against simulation ground truth; produce metric tables and HTML report |
+| `data_acquisition.snmk` | `pipeline_type: simulation` | Legacy SRA download rule reused by the simulation pipeline (colon_cancer_cell_lines layout) |
+| `download_sra.snmk` | `pipeline_type: bulk` or `sc` | SRA download for real-data bulk and sc pipelines; honours `real_data.sc_cbumi_index` / `sc_cdna_index` for 10x Chromium splitting |
+| `simulations.snmk` | `pipeline_type: simulation` | Simulate SmartSeq2 per-cell FASTQs or Chromium R1/R2 from repeat loci |
+| `starsolo.snmk` | `starsolo` in aligners, simulation pipeline | STARsolo alignment (SmartSeq2 manifest or Chromium CB_UMI_Simple) |
+| `starsolo_sc.snmk` | `starsolo` in aligners, sc pipeline | STARsolo CB_UMI_Simple for real 10x Chromium data |
+| `kallisto.snmk` | `kallisto` in aligners, simulation pipeline | Kallisto pseudoalignment (per-cell for SS2, `kallisto bus` + bustools for Chromium) |
+| `kallisto_sc.snmk` | `kallisto` in aligners, sc pipeline | `kallisto bus` + bustools for real 10x Chromium data |
+| `alevin.snmk` | `alevin` in aligners, simulation pipeline | Salmon quant (per-cell for SS2) or salmon alevin (Chromium) |
+| `bowtie2.snmk` | `bowtie2` in aligners, simulation pipeline | Bowtie2 alignment to repeat pseudo-genome + `samtools idxstats` counting |
+| `bulk_paired.snmk` | `pipeline_type: bulk`, `library_layout: paired` | STAR, kallisto, salmon for paired-end bulk RNA-seq |
+| `bulk_single.snmk` | `pipeline_type: bulk`, `library_layout: single` | STAR, kallisto (--single), salmon (--unmatedReads) for single-end bulk RNA-seq |
+| `normalize.snmk` | always | Convert each aligner's native output to a common feature x cell TSV |
+| `evaluation.snmk` | `pipeline_type: simulation` | Compare normalized counts against simulation ground truth; produce metric tables and HTML report |
+| `noise_report.snmk` | `pipeline_type: noise_report` | Render the cross-mutation-rate noise sweep HTML report from existing evaluation dirs |
 
 ## Chromosome subsetting and `genome_tag`
 
@@ -62,7 +70,31 @@ Read counts per locus are obtained with `samtools idxstats` and aggregated by th
 `count_pseudo_genome.py` script.  This approach has two key advantages:
 
 1. Counting is exact per-locus without GTF/chromosome name reconciliation.
-2. Multi-granularity outputs (locus → family → class) are produced in a single pass.
+2. Multi-granularity outputs (locus -> family -> class) are produced in a single pass.
+
+## Technology and library layout
+
+Single-cell runs set `simulation.technology` or `real_data.technology`. Bulk runs set
+`real_data.library_layout`. The values are:
+
+Single-cell (`technology`):
+
+| value | reads | quantification |
+|---|---|---|
+| `smartseq2` | one FASTQ per cell | kallisto `quant`, salmon `quant`, STARsolo manifest |
+| `chromium` | R1 (CB+UMI) + R2 (cDNA) | STARsolo CB_UMI_Simple, kallisto `bus`, salmon `alevin` |
+
+Bulk (`library_layout` under `real_data`):
+
+| value | reads | quantification |
+|---|---|---|
+| `single` | R1 only per sample | kallisto `quant`, salmon `quant`, STAR |
+| `paired` | R1 + R2 per sample | kallisto `quant`, salmon `quant`, STAR |
+
+SmartSeq2 and bulk single both produce one FASTQ per sample or cell and share the same
+per-file normalization scripts. The difference is that SmartSeq2 runs the simulation
+pipeline with per-cell ground truth, while bulk single processes real SRA downloads
+without cell barcodes.
 
 ## Adding a new aligner
 

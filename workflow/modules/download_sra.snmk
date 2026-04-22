@@ -1,0 +1,118 @@
+#!/usr/bin/env snakemake -s
+"""
+SRA download rules for bulk and single-cell data.
+
+Bulk (real_data.library_layout in config):
+
+  single  - one FASTQ per sample; R2 not produced.
+  paired  - two FASTQs per sample (R1 + R2).
+
+SC (real_data.technology in config):
+
+  smartseq2 - one FASTQ per cell; uses download_sra_bulk with library_layout: single.
+  chromium  - droplet 10x; R1 carries CB+UMI, R2 carries cDNA.
+              Handled by download_sra_sc (separate rule).
+
+SC (10x Chromium with --include-technical):
+  Downloads one SRR per rule invocation. fasterq-dump produces three files;
+  the CB+UMI and cDNA indices are configured in real_data.sc_cbumi_index and
+  real_data.sc_cdna_index (typically 2 and 3 for 10x Chromium v2/v3).
+
+GEO metadata:
+  Optional supplementary file download. Only requested when
+  dataset.metadata_url is set in the config.
+"""
+
+import os.path as op
+
+_library_layout = config.get('real_data', {}).get('library_layout', 'paired')
+_is_paired = _library_layout == 'paired'
+_sc_cbumi_idx = config.get('real_data', {}).get('sc_cbumi_index', 2)
+_sc_cdna_idx = config.get('real_data', {}).get('sc_cdna_index', 3)
+
+
+rule download_sra_bulk:
+    """Download one bulk SRR; produces R1 only for library_layout: single, R1+R2 for paired."""
+    conda:
+        op.join(workflow.basedir, 'envs', 'sratools.yaml')
+    output:
+        R1 = op.join(config['base'], 'data', 'raw', '{sample_id}',
+                     '{sample_id}_1.fastq.gz'),
+        R2 = ([op.join(config['base'], 'data', 'raw', '{sample_id}',
+                       '{sample_id}_2.fastq.gz')]
+              if _is_paired else []),
+    params:
+        srr = lambda wc: config['dataset']['samples'][wc.sample_id]['srrs'][0],
+        outdir = op.join(config['base'], 'data', 'raw', '{sample_id}'),
+        is_paired = _is_paired,
+    log:
+        op.join(config['base'], 'logs', 'download_{sample_id}_fasterqdump.log'),
+    threads: 4
+    shell:
+        """
+        mkdir -p {params.outdir}
+        fasterq-dump {params.srr} \
+            --split-files \
+            --threads {threads} \
+            --outdir {params.outdir} \
+            &> {log}
+        gzip {params.outdir}/{params.srr}_1.fastq
+        mv -f {params.outdir}/{params.srr}_1.fastq.gz {output.R1}
+        if [ "{params.is_paired}" = "True" ]; then
+            gzip {params.outdir}/{params.srr}_2.fastq
+            mv -f {params.outdir}/{params.srr}_2.fastq.gz {output.R2}
+        fi
+        """
+
+
+rule download_sra_sc:
+    """Download one SC SRR with --include-technical (CB+UMI and cDNA reads kept)."""
+    wildcard_constraints:
+        srr = r'[SED]RR[0-9]+',
+    conda:
+        op.join(workflow.basedir, 'envs', 'sratools.yaml')
+    output:
+        cb = op.join(config['base'], 'data', 'raw', '{sample_id}',
+                     '{srr}_' + str(_sc_cbumi_idx) + '.fastq.gz'),
+        cdna = op.join(config['base'], 'data', 'raw', '{sample_id}',
+                     '{srr}_' + str(_sc_cdna_idx) + '.fastq.gz'),
+    params:
+        outdir = op.join(config['base'], 'data', 'raw', '{sample_id}'),
+        cb_idx = _sc_cbumi_idx,
+        cdna_idx = _sc_cdna_idx,
+    log:
+        op.join(config['base'], 'logs', 'download_{sample_id}_{srr}.log'),
+    threads: 4
+    shell:
+        """
+        mkdir -p {params.outdir}
+        rm -f {params.outdir}/{wildcards.srr}_*.fastq \
+              {params.outdir}/{wildcards.srr}_*.fastq.gz
+        fasterq-dump {wildcards.srr} \
+            --split-files \
+            --include-technical \
+            --threads {threads} \
+            --outdir {params.outdir} \
+            &> {log}
+        for idx in $(seq 1 10); do
+            f={params.outdir}/{wildcards.srr}_${{idx}}.fastq
+            [ -f "$f" ] && gzip "$f"
+        done
+        rm -f {params.outdir}/{wildcards.srr}_1.fastq.gz
+        """
+
+
+rule download_geo_metadata:
+    """Download a GEO supplementary metadata file."""
+    output:
+        gz = op.join(config['base'], 'metadata', 'cell_metadata.txt.gz'),
+        txt = op.join(config['base'], 'metadata', 'cell_metadata.txt'),
+    params:
+        url = config.get('dataset', {}).get('metadata_url', ''),
+    log:
+        op.join(config['base'], 'logs', 'download_geo_metadata.log'),
+    shell:
+        """
+        curl -fsSL '{params.url}' -o {output.gz} 2> {log}
+        gunzip -c {output.gz} > {output.txt}
+        """

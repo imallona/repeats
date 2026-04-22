@@ -56,23 +56,15 @@ else:
 
 
 def smartseq2_fastq(wc):
-    if config['mode'] == 'simulation':
-        return op.join(
-            config['base'], 'simulations', 'smartseq2', f'{wc.cell_id}.fastq.gz'
-        )
-    return config['real_data']['samples'][wc.cell_id]['R1']
+    return op.join(config['base'], 'simulations', 'smartseq2', f'{wc.cell_id}.fastq.gz')
 
 
 def chromium_r2(wc):
-    if config['mode'] == 'simulation':
-        return op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
-    return config['real_data']['samples'][wc.sample]['R2']
+    return op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
 
 
 def chromium_r1(wc):
-    if config['mode'] == 'simulation':
-        return op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
-    return config['real_data']['samples'][wc.sample]['R1']
+    return op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
 
 
 _cb_len = config.get('simulation', config.get('real_data', {})).get('cb_length', 16)
@@ -92,7 +84,7 @@ rule bowtie2_align_smartseq2_cell:
         fastq = smartseq2_fastq
     output:
         bam = op.join(
-            config['base'], 'bowtie2', '{feature_set}', 'smartseq2', '{cell_id}.bam'
+            config['base'], 'bowtie2', '{feature_set}', sim_technology, '{cell_id}.bam'
         )
     params:
         index_prefix = bowtie2_index_prefix,
@@ -108,6 +100,8 @@ rule bowtie2_align_smartseq2_cell:
             'bowtie2_{feature_set}_smartseq2_{cell_id}.txt'
         )
     threads: 4
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
         bowtie2 -x {params.index_prefix} -U {input.fastq} \
@@ -122,11 +116,11 @@ rule filter_unique_bam_smartseq2:
     conda: op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
     input:
         bam = op.join(
-            config['base'], 'bowtie2', '{feature_set}', 'smartseq2', '{cell_id}.bam'
+            config['base'], 'bowtie2', '{feature_set}', sim_technology, '{cell_id}.bam'
         )
     output:
         bam = op.join(
-            config['base'], 'bowtie2', '{feature_set}', 'smartseq2', '{cell_id}_unique.bam'
+            config['base'], 'bowtie2', '{feature_set}', sim_technology, '{cell_id}_unique.bam'
         )
     log:
         op.join(
@@ -151,7 +145,7 @@ rule count_bowtie2_smartseq2:
     input:
         bams = lambda wc: [
             op.join(
-                config['base'], 'bowtie2', wc.feature_set, 'smartseq2',
+                config['base'], 'bowtie2', wc.feature_set, sim_technology,
                 cid + ('_unique' if wc.multimapper_mode == 'unique' else '') + '.bam'
             )
             for cid in _ss2_cell_ids
@@ -163,7 +157,7 @@ rule count_bowtie2_smartseq2:
         script = ancient(op.join(workflow.basedir, 'scripts', 'count_pseudo_genome.py'))
     output:
         counts = op.join(
-            config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
+            config['base'], 'bowtie2', '{feature_set}', sim_technology,
             'counts_{granularity}_{multimapper_mode}.tsv'
         )
     wildcard_constraints:
@@ -174,7 +168,7 @@ rule count_bowtie2_smartseq2:
         cell_ids_arg = ' '.join(_ss2_cell_ids),
         bams_arg = lambda wc: ' '.join(
             op.join(
-                config['base'], 'bowtie2', wc.feature_set, 'smartseq2',
+                config['base'], 'bowtie2', wc.feature_set, sim_technology,
                 cid + ('_unique' if wc.multimapper_mode == 'unique' else '') + '.bam'
             )
             for cid in _ss2_cell_ids
@@ -204,6 +198,7 @@ rule count_bowtie2_smartseq2:
 
 rule split_gtf_for_featurecounts:
     """Split the annotation GTF into N feature chunks for parallel featureCounts runs."""
+    conda: op.join(workflow.basedir, 'envs', 'python.yaml')
     input:
         gtf = gtf_for_feature_set
     output:
@@ -235,7 +230,7 @@ rule featurecounts_smartseq2_chunk:
         bams = lambda wc: expand(
             op.join(
                 config['base'], 'bowtie2', '{feature_set}',
-                'smartseq2', '{cell_id}.bam'
+                sim_technology, '{cell_id}.bam'
             ),
             feature_set=wc.feature_set,
             cell_id=_cell_chunks[int(wc.cell_chunk_id)]
@@ -247,13 +242,13 @@ rule featurecounts_smartseq2_chunk:
     output:
         counts = temp(
             op.join(
-                config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
+                config['base'], 'bowtie2', '{feature_set}', sim_technology,
                 'chunks', 'cell{cell_chunk_id}_feat{feature_chunk_id}.tsv'
             )
         )
     params:
         tmp_counts = op.join(
-            config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
+            config['base'], 'bowtie2', '{feature_set}', sim_technology,
             'chunks', 'cell{cell_chunk_id}_feat{feature_chunk_id}.raw'
         ),
         multimapper_flag = lambda wc: '-M --fraction'
@@ -279,10 +274,11 @@ rule featurecounts_smartseq2_chunk:
 
 rule merge_featurecounts_smartseq2:
     """Merge all cell x feature chunk count tables into the full feature x cell matrix."""
+    conda: op.join(workflow.basedir, 'envs', 'python.yaml')
     input:
         chunks = expand(
             op.join(
-                config['base'], 'bowtie2', '{{feature_set}}', 'smartseq2',
+                config['base'], 'bowtie2', '{{feature_set}}', sim_technology,
                 'chunks', 'cell{cell_chunk_id}_feat{feature_chunk_id}.tsv'
             ),
             cell_chunk_id=_cell_chunk_ids,
@@ -293,7 +289,7 @@ rule merge_featurecounts_smartseq2:
         )
     output:
         merged = op.join(
-            config['base'], 'bowtie2', '{feature_set}', 'smartseq2',
+            config['base'], 'bowtie2', '{feature_set}', sim_technology,
             'counts_merged.tsv'
         )
     log:
@@ -336,6 +332,8 @@ rule bowtie2_align_chromium_r2:
             'bowtie2_{feature_set}_chromium.txt'
         )
     threads: workflow.cores
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
         bowtie2 -x {params.index_prefix} -U {input.r2} \

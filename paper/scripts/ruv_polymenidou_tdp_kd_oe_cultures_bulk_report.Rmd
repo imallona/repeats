@@ -1,0 +1,335 @@
+---
+title: "Polymenidou lab TDP-43 KD/OE cultures (GSE230647, bulk): RUVg-normalized edgeR DE"
+author: "Izaskun Mallona"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    code_folding: hide
+params:
+  counts_dir: "."
+  report_outdir: "."
+  indices_base: "."
+  n_controls: 5000
+  k_selected: 2
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+suppressPackageStartupMessages({
+  library(edgeR)
+  library(RUVSeq)
+  library(matrixStats)
+})
+
+source("../workflow/scripts/ruv_common.R")
+source("../workflow/scripts/gene_lib_size_common.R")
+
+counts_dir <- params$counts_dir
+report_outdir <- params$report_outdir
+indices_base <- params$indices_base
+n_controls <- as.integer(params$n_controls)
+k_selected <- as.integer(params$k_selected)
+stopifnot(dir.exists(counts_dir), dir.exists(report_outdir),
+          n_controls > 100, k_selected >= 1, k_selected <= 4)
+
+save_rds <- function(obj, name) {
+  saveRDS(obj, file.path(report_outdir, paste0(name, ".rds")))
+}
+
+csv_dir <- file.path(report_outdir, "csv")
+dir.create(csv_dir, showWarnings = FALSE, recursive = TRUE)
+save_csv <- function(df, name) {
+  path <- file.path(csv_dir, paste0(name, ".csv"))
+  write.csv(df, path, row.names = FALSE)
+  cat("wrote", path, "(", nrow(df), "rows)\n")
+  invisible(path)
+}
+```
+
+## Biology annotation for DE stratification
+
+```{r biology-setup}
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(dplyr)
+  library(readr)
+})
+source("../workflow/scripts/biology_checks.R")
+
+biology_annotation_path <- file.path(indices_base, "repeat_biology_annotation.tsv")
+biology_annotation <- load_biology_annotation(biology_annotation_path)
+if (is.null(biology_annotation)) {
+  cat("No biology annotation at", biology_annotation_path,
+      "- biology-stratified panels will be skipped.\n")
+} else {
+  cat("Loaded biology annotation:", nrow(biology_annotation), "subfamilies\n")
+}
+save_rds(biology_annotation, "biology_annotation")
+
+annotate_de_with_biology <- function(tt) {
+  rownames(tt) <- tt$feature_id
+  tt <- annotate_biology(tt, biology_annotation, key = "gene_id")
+  tt$polya <- polya_label(tt$class_id)
+  tt$age <- family_age_label(tt$family_age)
+  tt$strand <- strand_vs_gene_label(tt$strand_vs_gene)
+  tt$a_run <- a_run_label(tt$frac_downstream_a_run, class_ids = tt$class_id)
+  tt
+}
+
+de_stratify_counts <- function(tt, key, fdr = 0.05) {
+  tt <- annotate_de_with_biology(tt)
+  tt$direction <- ifelse(is.na(tt$FDR) | tt$FDR >= fdr, "ns",
+                         ifelse(tt$logFC > 0, "up", "down"))
+  facet_cols <- c(polya = "polya", family_age = "age",
+                  strand_vs_gene = "strand", downstream_a_run = "a_run")
+  rows <- list()
+  for (facet_nm in names(facet_cols)) {
+    col <- facet_cols[[facet_nm]]
+    rows[[facet_nm]] <- tt %>%
+      group_by(label = .data[[col]], direction) %>%
+      summarize(n = dplyr::n(), .groups = "drop") %>%
+      mutate(facet = facet_nm, key = key)
+  }
+  bind_rows(rows)
+}
+
+plot_de_stratification <- function(strat_df, title) {
+  if (is.null(strat_df) || nrow(strat_df) == 0) return(invisible(NULL))
+  strat_df$direction <- factor(strat_df$direction, levels = c("up", "down", "ns"))
+  ggplot(strat_df, aes(x = label, y = n, fill = direction)) +
+    geom_col() +
+    facet_grid(facet ~ key, scales = "free", space = "free_x") +
+    scale_fill_manual(values = c(up = "firebrick", down = "steelblue", ns = "grey70")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = title, x = NULL, y = "features")
+}
+```
+
+Data-driven RUVg normalization for GSE230647 bulk repeat DE (iPSC-derived neural cultures with HA-TDP-43 DOX-inducible overexpression and shRNA knockdown, Polymenidou lab). Empirical control genes are selected from STAR gene counts by ranking least-significant genes in a naive edgeR F-test across the four-group design. The resulting W factors are plugged into edgeR repeat contrasts at each granularity and featureset. Inputs come from the method pipeline run with `workflow/configs/gse230647_bulk.yaml`.
+
+# Inputs
+
+Sample metadata derived from count matrix column names.
+
+```{r meta}
+samples <- c(
+  "nt_kd_ctrl_r1","nt_kd_ctrl_r2","nt_kd_ctrl_r3","nt_kd_ctrl_r4",
+  "oe_ctrl_r1","oe_ctrl_r2","oe_ctrl_r3","oe_ctrl_r4",
+  "tdp43_kd_r1","tdp43_kd_r2","tdp43_kd_r3","tdp43_kd_r4",
+  "tdp43_oe_r1","tdp43_oe_r2","tdp43_oe_r3","tdp43_oe_r4"
+)
+group <- factor(sub("_r[0-9]+$", "", samples),
+                levels = c("nt_kd_ctrl","oe_ctrl","tdp43_kd","tdp43_oe"))
+stopifnot(length(group) == length(samples), !any(is.na(group)),
+          all(table(group) == 4))
+```
+
+Gene and repeat count matrices share sample columns. Asserted rather than
+inferred from filenames.
+
+```{r load}
+genes <- load_counts_tsv(file.path(counts_dir, "star_genes_gene_id_unique.tsv"),
+                         samples)
+
+repeat_files <- list(
+  all_family   = "star_repeats_family_id_unique.tsv",
+  all_geneid   = "star_repeats_gene_id_unique.tsv",
+  genic_family = "star_genic_repeats_family_id_unique.tsv",
+  genic_geneid = "star_genic_repeats_gene_id_unique.tsv",
+  inter_family = "star_intergenic_repeats_family_id_unique.tsv",
+  inter_geneid = "star_intergenic_repeats_gene_id_unique.tsv"
+)
+repeats <- lapply(repeat_files, function(f)
+  load_counts_tsv(file.path(counts_dir, f), samples))
+stopifnot(all(vapply(repeats, function(m) identical(colnames(m), samples), TRUE)))
+```
+
+# Empirical control selection
+
+Require count >= 10 in at least half the samples to avoid low-count noise
+dominating the ranking.
+
+```{r filter}
+keep <- rowSums(genes >= 10) >= floor(ncol(genes) / 2)
+genes_expr <- genes[keep, ]
+stopifnot(nrow(genes_expr) > 5000)
+```
+
+Naive edgeR DE on the four-group design. An F-test across the three
+non-reference coefficients flags genes moving in any contrast. Genes with
+the highest p-values are the most stable.
+
+```{r rank}
+design0 <- model.matrix(~ group)
+coefs_test <- setdiff(colnames(design0), "(Intercept)")
+ctrl_res <- rank_empirical_controls(
+  counts = genes_expr, design = design0,
+  test = list(coef = coefs_test), n_controls = n_controls
+)
+tt0 <- ctrl_res$naive_de
+controls <- ctrl_res$controls
+save_rds(tt0, "ruv_naive_gene_de")
+writeLines(controls, file.path(report_outdir, "ruv_empirical_controls.txt"))
+```
+
+# RUVg factor estimation
+
+One W matrix per k in 1..4. An RLE-style mean-abs-deviation score summarises
+residual sample heterogeneity; picking k by elbow.
+
+```{r ruvg}
+ruv_fit_res <- fit_ruv_range(
+  genes_expr = genes_expr, controls = controls,
+  pheno_df = data.frame(group, row.names = samples), ks = 1:4
+)
+ruv_fits <- ruv_fit_res$fits
+diag_rle <- ruv_fit_res$diag_rle
+knitr::kable(diag_rle, digits = 3)
+write.table(diag_rle, file.path(report_outdir, "ruv_rle_diagnostic.tsv"),
+            sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
+```{r pick_k}
+W_sel <- pick_W_matrix(ruv_fits, k_selected, samples)
+W_all <- lapply(ruv_fits, function(s) pData(s))
+save_rds(list(W_all = W_all, k_selected = k_selected, controls = controls,
+              rle = diag_rle, samples = samples, group = group),
+         "ruv_state")
+```
+
+# Repeat DE with RUV covariates
+
+Two contrasts: tdp43_kd vs nt_kd_ctrl, tdp43_oe vs oe_ctrl. Each repeat
+featureset and granularity fit with `~ W + group`.
+
+```{r repeat_de}
+build_contrast_vec <- function(design_colnames, group_levels, contrast_levels) {
+  stopifnot(length(contrast_levels) == 2, all(contrast_levels %in% group_levels))
+  v <- numeric(length(design_colnames))
+  names(v) <- design_colnames
+  num_col <- paste0("group", contrast_levels[1])
+  den_col <- paste0("group", contrast_levels[2])
+  stopifnot(num_col %in% names(v))
+  v[num_col] <- 1
+  if (contrast_levels[2] != group_levels[1]) {
+    stopifnot(den_col %in% names(v))
+    v[den_col] <- -1
+  }
+  v
+}
+
+contrasts <- list(
+  tdp43_kd_vs_nt_kd_ctrl = c("tdp43_kd","nt_kd_ctrl"),
+  tdp43_oe_vs_oe_ctrl    = c("tdp43_oe","oe_ctrl")
+)
+
+design <- model.matrix(~ W_sel + group)
+
+all_results <- list()
+for (fs in names(repeats)) {
+  for (cname in names(contrasts)) {
+    tag <- paste(fs, cname, sep = ":")
+    cvec <- build_contrast_vec(colnames(design), levels(group), contrasts[[cname]])
+    tt <- run_ruv_repeat_de(counts = repeats[[fs]], design = design,
+                            test = list(contrast = cvec))
+    out <- file.path(report_outdir,
+                     sprintf("ruv_k%d_%s_%s.tsv", ncol(W_sel), fs, cname))
+    write.table(tt, out, sep = "\t", quote = FALSE, row.names = FALSE)
+    all_results[[tag]] <- tt
+  }
+}
+stopifnot(length(all_results) == length(repeats) * length(contrasts))
+save_rds(all_results, "ruv_repeat_de")
+```
+
+## Repeat DE with gene-library-size normalization (no RUV)
+
+Parallel baseline to the RUV analysis above. Library-size factors come from
+TMM on the gene count matrix (`genes_expr`) and are transferred to each
+repeat DGEList; no RUV covariates are added. TMM on the repeat matrix itself
+is avoided because TDP-43 perturbation moves many repeat subfamilies in
+concert, which violates TMM's "most features not DE" assumption and would
+bias repeat logFC toward zero. Concordance between `gene_lib_repeat_de` and
+`ruv_repeat_de` across the same contrasts is a robustness check reported in
+the integrative cross-study Rmd: strong agreement means the RUV signal is
+not an artifact of RUV-g factor estimation; discordance flags a contrast
+where RUV is absorbing or producing structure and deserves manual scrutiny.
+
+```{r gene_lib_repeat_de}
+all_results_gene_lib <- list()
+for (fs in names(repeats)) {
+  for (cname in names(contrasts)) {
+    tag <- paste(fs, cname, sep = ":")
+    cvec <- build_contrast_vec(colnames(design0), levels(group), contrasts[[cname]])
+    tt <- run_gene_lib_repeat_de(repeat_counts = repeats[[fs]],
+                                 gene_counts = genes_expr,
+                                 design = design0,
+                                 test = list(contrast = cvec))
+    out <- file.path(report_outdir,
+                     sprintf("gene_lib_%s_%s.tsv", fs, cname))
+    write.table(tt, out, sep = "\t", quote = FALSE, row.names = FALSE)
+    all_results_gene_lib[[tag]] <- tt
+  }
+}
+stopifnot(length(all_results_gene_lib) == length(repeats) * length(contrasts))
+save_rds(all_results_gene_lib, "gene_lib_repeat_de")
+```
+
+## Per-contrast naive gene DE
+
+Gene-level two-group contrasts with gene-TMM normalization and no RUV covariates, matched to the repeat contrasts. The cross-dataset integrative report reuses these to correlate repeat logFCs against gene logFCs on the same axis. The earlier `ruv_naive_gene_de.rds` is the omnibus F-test across the four-group design and is kept as the basis for empirical control ranking.
+
+```{r naive_per_contrast}
+naive_per_contrast <- list()
+for (cname in names(contrasts)) {
+  cvec <- build_contrast_vec(colnames(design0), levels(group), contrasts[[cname]])
+  dge <- edgeR::DGEList(counts = genes_expr)
+  dge <- edgeR::calcNormFactors(dge, method = "TMM")
+  dge <- edgeR::estimateDisp(dge, design0)
+  fit <- edgeR::glmQLFit(dge, design0)
+  qlf <- edgeR::glmQLFTest(fit, contrast = cvec)
+  tt <- edgeR::topTags(qlf, n = Inf, sort.by = "none")$table
+  naive_per_contrast[[cname]] <- tt
+}
+save_rds(naive_per_contrast, "ruv_naive_gene_de_per_contrast")
+```
+
+## DE stratified by biology (polyA / age / strand / A-run)
+
+```{r biology-de-strat, fig.width=14, fig.height=10}
+if (!is.null(biology_annotation) && length(all_results) > 0) {
+  strat_all <- bind_rows(lapply(names(all_results), function(key) {
+    de_stratify_counts(all_results[[key]], key)
+  }))
+  save_rds(strat_all, "ruv_de_biology_stratification")
+  for (facet_nm in unique(strat_all$facet)) {
+    print(plot_de_stratification(filter(strat_all, facet == facet_nm),
+                                 paste("KD/OE contrasts, stratified by",
+                                       facet_nm)))
+  }
+}
+```
+
+# Summary
+
+```{r summary}
+summary_rows <- do.call(rbind, lapply(names(all_results), function(tag) {
+  r <- all_results[[tag]]
+  data.frame(
+    tag = tag,
+    n_features = nrow(r),
+    n_fdr_05 = sum(r$FDR < 0.05, na.rm = TRUE),
+    n_fdr_10 = sum(r$FDR < 0.10, na.rm = TRUE),
+    top_feature = r$feature_id[1],
+    top_logfc = round(r$logFC[1], 3),
+    top_fdr = signif(r$FDR[1], 3)
+  )
+}))
+knitr::kable(summary_rows)
+write.table(summary_rows, file.path(report_outdir, "ruv_summary.tsv"),
+            sep = "\t", quote = FALSE, row.names = FALSE)
+```

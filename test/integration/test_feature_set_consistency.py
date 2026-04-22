@@ -3,7 +3,7 @@ Integration tests for evaluation consistency across feature sets.
 
 Background
 ----------
-The pipeline evaluates each (feature_set × granularity × aligner) combination.
+The pipeline evaluates each (feature_set x granularity x aligner) combination.
 An initially puzzling result was that genic_repeats and intergenic_repeats at
 gene_id granularity showed lower metrics than the full repeats set, even for a
 hypothetically perfect observer.
@@ -17,7 +17,7 @@ aggregated dict by checking whether the gene_id appeared in the genic locus_map.
 For a gene_id like AluSz6 that has copies in BOTH genic and intergenic regions:
 
   - genic locus_map contains AluSz6 (it has genic copies)
-  - OLD truth['c1']['AluSz6'] = 5 (genic) + 3 (intergenic) = 8   ← inflated
+  - OLD truth['c1']['AluSz6'] = 5 (genic) + 3 (intergenic) = 8   [inflated]
   - observed from genic normalization = 5 (only genic copy)
   - -> truth > observed -> degraded Pearson / RMSE, false-negative detections
 

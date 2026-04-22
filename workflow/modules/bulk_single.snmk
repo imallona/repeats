@@ -1,0 +1,330 @@
+#!/usr/bin/env snakemake -s
+"""
+Alignment and quantification for single-end bulk RNA-seq.
+
+This module expects config['real_data']['samples'] to be a dict mapping
+sample_id to a dict with an R1 key holding the FASTQ path.
+
+Three aligners are supported. Plain STAR aligns each sample independently
+(no STARsolo), and featureCounts counts reads against the requested GTF.
+Kallisto runs quant with --single (requires fragment-length and sd estimates).
+Salmon runs quant with --unmatedReads.
+
+All three produce output at
+    counts/{aligner}_{feature_set}_{granularity}_unique.tsv
+which is the same naming convention used by the rest of the pipeline.
+"""
+
+import os.path as op
+
+_bulk_samples = config.get('real_data', {}).get('samples', {})
+_bulk_cell_ids = sorted(_bulk_samples.keys())
+
+if not _bulk_cell_ids:
+    raise ValueError("real_data.samples is empty; cannot build bulk_single rules.")
+
+_bulk_r1 = lambda wc: _bulk_samples[wc.sample_id]['R1']
+
+
+def _t2g_for_gran(wildcards):
+    """t2g path for the requested feature_set and granularity combination."""
+    if wildcards.feature_set == 'genes':
+        return op.join(config['indices_base'], 'indices', genome_tag, 'genes_t2g.tsv')
+    return op.join(config['indices_base'], 'indices', genome_tag,
+                   f'{wildcards.feature_set}_t2g_{wildcards.granularity}.tsv')
+
+
+# STAR plain alignment, one job per sample
+
+rule star_align_bulk:
+    conda:
+        op.join(workflow.basedir, 'envs', 'star.yaml')
+    input:
+        r1 = _bulk_r1,
+        index = rules.star_genome_index.output.index,
+    output:
+        bam = op.join(config['base'], 'star', 'bulk', '{sample_id}',
+                      'Aligned.sortedByCoord.out.bam'),
+    params:
+        out_prefix = op.join(config['base'], 'star', 'bulk', '{sample_id}') + '/',
+        index_dir = op.join(config['indices_base'], 'indices', genome_tag, 'star'),
+        tmp_dir = op.join(config['base'], 'tmp', 'star_bulk_{sample_id}'),
+        max_ram_bytes = lambda wc, resources: min(resources.mem_mb, config['resources']['max_mem_mb']) * 1024 * 1024,
+        extra_args = config.get('aligner_params', {}).get('star', {}).get('extra_args', ''),
+    log:
+        op.join(config['base'], 'logs', 'star_bulk_{sample_id}.log'),
+    benchmark:
+        op.join(config['base'], 'benchmarks', 'star_bulk_{sample_id}.txt'),
+    threads: workflow.cores
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
+    shell:
+        """
+        rm -rf {params.tmp_dir}
+        mkdir -p {params.tmp_dir} {params.out_prefix}
+
+        STAR --runThreadN {threads} \
+             --runDirPerm All_RWX \
+             --genomeDir {params.index_dir} \
+             --readFilesIn {input.r1} \
+             --readFilesCommand pigz -d -c \
+             --outFileNamePrefix {params.out_prefix} \
+             --outSAMtype BAM SortedByCoordinate \
+             --outSAMattributes NH HI AS NM \
+             --limitBAMsortRAM {params.max_ram_bytes} \
+             {params.extra_args} 2> {log}
+
+        rm -rf {params.tmp_dir}
+        """
+
+
+# featureCounts per sample, one job per sample x feature_set
+
+rule featurecounts_bulk:
+    conda:
+        op.join(workflow.basedir, 'envs', 'bowtie2.yaml')
+    input:
+        bam = op.join(config['base'], 'star', 'bulk', '{sample_id}',
+                      'Aligned.sortedByCoord.out.bam'),
+        gtf = gtf_for_feature_set,
+    output:
+        counts = op.join(config['base'], 'star', 'bulk', '{sample_id}',
+                         '{feature_set}_counts.tsv'),
+    wildcard_constraints:
+        feature_set = 'genes|repeats|genic_repeats|intergenic_repeats',
+    log:
+        op.join(config['base'], 'logs',
+                'featurecounts_bulk_{sample_id}_{feature_set}.log'),
+    benchmark:
+        op.join(config['base'], 'benchmarks',
+                'featurecounts_bulk_{sample_id}_{feature_set}.txt'),
+    threads: 4
+    shell:
+        """
+        featureCounts \
+            -T {threads} \
+            -a {input.gtf} \
+            -o {output.counts} \
+            {input.bam} 2> {log}
+        """
+
+
+# Aggregate per-sample featureCounts into a feature x sample matrix.
+
+rule aggregate_star_bulk:
+    input:
+        counts = expand(
+            op.join(config['base'], 'star', 'bulk', '{sample_id}',
+                    '{feature_set}_counts.tsv'),
+            sample_id=_bulk_cell_ids,
+            allow_missing=True,
+        ),
+        t2g = _t2g_for_gran,
+    output:
+        tsv = op.join(config['base'], 'counts',
+                      'star_{feature_set}_{granularity}_unique.tsv'),
+    wildcard_constraints:
+        feature_set = 'genes|repeats|genic_repeats|intergenic_repeats',
+        granularity = 'locus|gene_id|family_id|class_id',
+    log:
+        op.join(config['base'], 'logs',
+                'aggregate_star_bulk_{feature_set}_{granularity}.log'),
+    run:
+        import os
+        from collections import defaultdict
+
+        use_t2g = wildcards.feature_set != 'genes'
+
+        t2g = {}
+        if use_t2g:
+            with open(input.t2g) as fh:
+                for line in fh:
+                    parts = line.rstrip('\n').split('\t')
+                    if len(parts) >= 2:
+                        t2g[parts[0]] = parts[1]
+
+        sample_counts = {}
+        for path in sorted(input.counts):
+            sample_id = os.path.basename(os.path.dirname(path))
+            counts = defaultdict(float)
+            with open(path) as fh:
+                for line in fh:
+                    if line.startswith('#') or line.startswith('Geneid'):
+                        continue
+                    parts = line.rstrip('\n').split('\t')
+                    if len(parts) < 7:
+                        continue
+                    locus = parts[0]
+                    count = float(parts[-1])
+                    group = t2g.get(locus, locus) if use_t2g else locus
+                    counts[group] += count
+            sample_counts[sample_id] = counts
+
+        all_features = sorted({g for c in sample_counts.values() for g in c})
+        sample_order = sorted(sample_counts.keys())
+
+        with open(output.tsv, 'w') as fh:
+            fh.write('feature\t' + '\t'.join(sample_order) + '\n')
+            for feat in all_features:
+                row = [feat] + [str(sample_counts[s].get(feat, 0.0))
+                                for s in sample_order]
+                fh.write('\t'.join(row) + '\n')
+
+
+# Kallisto single-end quant, one job per sample x feature_set
+
+rule kallisto_quant_bulk:
+    conda:
+        op.join(workflow.basedir, 'envs', 'kallisto.yaml')
+    input:
+        index = lambda wc: op.join(config['indices_base'], 'indices', genome_tag,
+                                   'kallisto', f'{wc.feature_set}.idx'),
+        r1 = _bulk_r1,
+    output:
+        abundance = op.join(config['base'], 'kallisto', '{feature_set}',
+                            'bulk', '{sample_id}', 'abundance.tsv'),
+    wildcard_constraints:
+        feature_set = 'genes|repeats|genic_repeats|intergenic_repeats',
+    params:
+        outdir = op.join(config['base'], 'kallisto', '{feature_set}',
+                                  'bulk', '{sample_id}'),
+        fragment_length = config.get('real_data', {}).get('fragment_length', 200),
+        fragment_sd = config.get('real_data', {}).get('fragment_sd', 20),
+        extra_args = config.get('aligner_params', {}).get('kallisto', {}).get('extra_args', ''),
+    log:
+        op.join(config['base'], 'logs',
+                'kallisto_bulk_{feature_set}_{sample_id}.log'),
+    benchmark:
+        op.join(config['base'], 'benchmarks',
+                'kallisto_bulk_{feature_set}_{sample_id}.txt'),
+    threads: 4
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
+    shell:
+        """
+        mkdir -p {params.outdir}
+        kallisto quant \
+            --index {input.index} \
+            --output-dir {params.outdir} \
+            --threads {threads} \
+            --single \
+            --fragment-length {params.fragment_length} \
+            --sd {params.fragment_sd} \
+            {params.extra_args} \
+            {input.r1} 2> {log}
+        """
+
+
+rule normalize_kallisto_bulk:
+    conda:
+        op.join(workflow.basedir, 'envs', 'evaluation.yaml')
+    input:
+        data = expand(
+            op.join(config['base'], 'kallisto', '{feature_set}',
+                    'bulk', '{sample_id}', 'abundance.tsv'),
+            sample_id=_bulk_cell_ids,
+            allow_missing=True,
+        ),
+        t2g = _t2g_for_gran,
+    output:
+        counts_tsv = op.join(config['base'], 'counts',
+                             'kallisto_{feature_set}_{granularity}_unique.tsv'),
+    wildcard_constraints:
+        feature_set = 'genes|repeats|genic_repeats|intergenic_repeats',
+        granularity = 'locus|gene_id|family_id|class_id',
+    params:
+        cell_ids = ' '.join(_bulk_cell_ids),
+        cell_dirs = lambda wc: ' '.join(
+            op.join(config['base'], 'kallisto', wc.feature_set, 'bulk', cid)
+            for cid in _bulk_cell_ids
+        ),
+    log:
+        op.join(config['base'], 'logs',
+                'normalize_kallisto_bulk_{feature_set}_{granularity}.log'),
+    shell:
+        """
+        python {workflow.basedir}/scripts/normalize_kallisto_smartseq2_granular.py \
+            --cell-ids {params.cell_ids} \
+            --cell-dirs {params.cell_dirs} \
+            --t2g {input.t2g} \
+            --output {output.counts_tsv} 2> {log}
+        """
+
+
+# Salmon single-end quant, one job per sample x feature_set
+
+rule salmon_quant_bulk:
+    conda:
+        op.join(workflow.basedir, 'envs', 'alevin.yaml')
+    input:
+        index_sentinel = lambda wc: op.join(config['indices_base'], 'indices', genome_tag,
+                                            f'salmon_{wc.feature_set}', 'info.json'),
+        r1 = _bulk_r1,
+    output:
+        quant_sf = op.join(config['base'], 'alevin', '{feature_set}',
+                           'bulk', '{sample_id}', 'quant.sf'),
+    wildcard_constraints:
+        feature_set = 'genes|repeats|genic_repeats|intergenic_repeats',
+    params:
+        outdir = op.join(config['base'], 'alevin', '{feature_set}',
+                            'bulk', '{sample_id}'),
+        index_dir = lambda wc: op.join(config['indices_base'], 'indices', genome_tag,
+                                       f'salmon_{wc.feature_set}'),
+        extra_args = config.get('aligner_params', {}).get('salmon', {}).get('extra_args', ''),
+    log:
+        op.join(config['base'], 'logs',
+                'salmon_bulk_{feature_set}_{sample_id}.log'),
+    benchmark:
+        op.join(config['base'], 'benchmarks',
+                'salmon_bulk_{feature_set}_{sample_id}.txt'),
+    threads: 4
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
+    shell:
+        """
+        mkdir -p {params.outdir}
+        salmon quant \
+            --index {params.index_dir} \
+            --libType A \
+            --unmatedReads {input.r1} \
+            --validateMappings \
+            --threads {threads} \
+            --output {params.outdir} \
+            {params.extra_args} 2> {log}
+        """
+
+
+rule normalize_salmon_bulk:
+    conda:
+        op.join(workflow.basedir, 'envs', 'evaluation.yaml')
+    input:
+        data = expand(
+            op.join(config['base'], 'alevin', '{feature_set}',
+                    'bulk', '{sample_id}', 'quant.sf'),
+            sample_id=_bulk_cell_ids,
+            allow_missing=True,
+        ),
+        t2g = _t2g_for_gran,
+    output:
+        counts_tsv = op.join(config['base'], 'counts',
+                             'salmon_{feature_set}_{granularity}_unique.tsv'),
+    wildcard_constraints:
+        feature_set = 'genes|repeats|genic_repeats|intergenic_repeats',
+        granularity = 'locus|gene_id|family_id|class_id',
+    params:
+        cell_ids = ' '.join(_bulk_cell_ids),
+        cell_dirs = lambda wc: ' '.join(
+            op.join(config['base'], 'alevin', wc.feature_set, 'bulk', cid)
+            for cid in _bulk_cell_ids
+        ),
+    log:
+        op.join(config['base'], 'logs',
+                'normalize_salmon_bulk_{feature_set}_{granularity}.log'),
+    shell:
+        """
+        python {workflow.basedir}/scripts/normalize_alevin_smartseq2.py \
+            --cell-ids {params.cell_ids} \
+            --cell-dirs {params.cell_dirs} \
+            --t2g {input.t2g} \
+            --output {output.counts_tsv} 2> {log}
+        """

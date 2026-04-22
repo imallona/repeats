@@ -1,69 +1,51 @@
 #!/usr/bin/env snakemake -s
 """
-Salmon quantification for SmartSeq2 and Chromium modes.
+Salmon quantification for simulation pipelines.
 
-SmartSeq2: salmon quant per cell (bulk mode, one run per cell FASTQ).
+SmartSeq2: salmon quant per cell (one run per cell FASTQ).
 Chromium:  salmon alevin with droplet chemistry flags.
 
 Both modes support {feature_set}: genes, repeats, genic_repeats, intergenic_repeats.
 Alevin always runs in unique-read mode (no multimapper_mode wildcard needed).
 For chromium, alevin uses a locus-level t2g (identity mapping) so normalisation
 can later aggregate to any granularity without re-running alignment.
+
+Bulk RNA-seq uses a separate salmon rule in modules/bulk_single.snmk or
+modules/bulk_paired.snmk.
 """
 
 import os.path as op
 
 sim_technology = config.get('simulation', config.get('real_data', {})).get('technology', 'smartseq2')
 
-_ss2_fastq = (
-    lambda wc: op.join(config['base'], 'simulations', 'smartseq2', f'{wc.cell_id}.fastq.gz')
-    if config['mode'] == 'simulation'
-    else lambda wc: config['real_data']['samples'][wc.cell_id]['R1']
-)
+_ss2_fastq = lambda wc: op.join(config['base'], 'simulations', 'smartseq2', f'{wc.cell_id}.fastq.gz')
 
-_chromium_r1 = (
-    op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
-    if config['mode'] == 'simulation'
-    else []
-)
-_chromium_r2 = (
-    op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
-    if config['mode'] == 'simulation'
-    else []
-)
-_chromium_barcodes = (
-    op.join(config['base'], 'simulations', 'chromium', 'barcodes.txt')
-    if config['mode'] == 'simulation'
-    else []
-)
+_chromium_r1 = op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz')
+_chromium_r2 = op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz')
+_chromium_barcodes = op.join(config['base'], 'simulations', 'chromium', 'barcodes.txt')
 
 _alevin_cb_len = config.get('simulation', config.get('real_data', {})).get('cb_length', 16)
 _alevin_umi_len = config.get('simulation', config.get('real_data', {})).get('umi_length', 12)
 
-if config['mode'] == 'simulation':
-    _chem_map_sim = {(16, 10): '--chromium', (16, 12): '--chromiumV3'}
-    _alevin_chem_flag = _chem_map_sim.get(
-        (_alevin_cb_len, _alevin_umi_len),
-        f'--end 5 --barcodeLength {_alevin_cb_len} --umiLength {_alevin_umi_len}')
-else:
-    _chem_map = {'10xv2': '--chromiumV1', '10xv3': '--chromiumV3'}
-    _alevin_chem_flag = _chem_map.get(
-        config.get('real_data', {}).get('chemistry', '10xv3'), '--chromiumV3')
+_chem_map_sim = {(16, 10): '--chromium', (16, 12): '--chromiumV3'}
+_alevin_chem_flag = _chem_map_sim.get(
+    (_alevin_cb_len, _alevin_umi_len),
+    f'--end 5 --barcodeLength {_alevin_cb_len} --umiLength {_alevin_umi_len}')
 
 
 rule salmon_quant_smartseq2_cell:
     conda: op.join(workflow.basedir, 'envs', 'alevin.yaml')
     input:
         index_sentinel = lambda wc: op.join(config['indices_base'], 'indices', genome_tag,
-                                            f'salmon_{wc.feature_set}', 'sshash.bin'),
+                                            f'salmon_{wc.feature_set}', 'info.json'),
         fastq = _ss2_fastq
     output:
         quant_sf = op.join(config['base'], 'alevin', '{feature_set}',
-                           'smartseq2', '{cell_id}', 'quant.sf')
+                           sim_technology, '{cell_id}', 'quant.sf')
     wildcard_constraints:
         feature_set = 'genes|repeats|genic_repeats|intergenic_repeats'
     params:
-        outdir = op.join(config['base'], 'alevin', '{feature_set}', 'smartseq2', '{cell_id}'),
+        outdir = op.join(config['base'], 'alevin', '{feature_set}', sim_technology, '{cell_id}'),
         index_dir = lambda wc: op.join(config['indices_base'], 'indices', genome_tag,
                                        f'salmon_{wc.feature_set}'),
         extra_args = config.get('aligner_params', {}).get('alevin', {}).get('extra_args', '')
@@ -73,8 +55,11 @@ rule salmon_quant_smartseq2_cell:
         op.join(config['base'], 'benchmarks',
                 'salmon_{feature_set}_quant_smartseq2_{cell_id}.txt')
     threads: 4
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
+        mkdir -p {params.outdir}
         salmon quant \
             --index {params.index_dir} \
             --libType A \
@@ -90,7 +75,7 @@ rule salmon_alevin_chromium:
     conda: op.join(workflow.basedir, 'envs', 'alevin.yaml')
     input:
         index_sentinel = lambda wc: op.join(config['indices_base'], 'indices', genome_tag,
-                                            f'salmon_{wc.feature_set}', 'sshash.bin'),
+                                            f'salmon_{wc.feature_set}', 'info.json'),
         r1 = _chromium_r1,
         r2 = _chromium_r2,
         t2g = lambda wc: t2g_path(wc),
@@ -118,8 +103,11 @@ rule salmon_alevin_chromium:
     benchmark:
         op.join(config['base'], 'benchmarks', 'salmon_{feature_set}_alevin_chromium.txt')
     threads: workflow.cores
+    resources:
+        mem_mb = config['resources']['max_mem_mb']
     shell:
         """
+        mkdir -p {params.outdir}
         salmon alevin \
             --libType ISR \
             --index {params.index_dir} \

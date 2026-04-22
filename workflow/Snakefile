@@ -1,103 +1,217 @@
 #!/usr/bin/env snakemake -s
 """
-Repeats in scRNA-seq: simulation, alignment, and evaluation pipeline.
-Run with: snakemake --use-conda --cores N --configfile configs/simulation_smartseq2.yaml
+Repeats in scRNA-seq: unified pipeline entry point.
+
+Select the pipeline type via --configfile:
+  pipeline_type: simulation  - simulate reads, align, evaluate
+  pipeline_type: bulk        - bulk RNA-seq (STAR + kallisto + salmon)
+  pipeline_type: sc          - 10x Chromium single-cell (STARsolo + kallisto)
+  pipeline_type: noise_report - render noise sweep HTML report
+
+Example:
+  snakemake --use-conda --cores N --configfile configs/simulation_smartseq2.yaml
+  snakemake --use-conda --cores N --configfile configs/gse230647_sc.yaml
+  snakemake --use-conda --cores N --configfile configs/gse230647_bulk.yaml
 """
 
 import os
 import os.path as op
 
+from snakemake.utils import validate
+
 configfile: "config.yaml"
 
+validate(config, op.join(workflow.basedir, 'schemas', 'config.schema.yaml'))
 
-_chroms = config['reference'].get('chromosomes', [])
-genome_tag = '_'.join(sorted(_chroms)) if _chroms else 'all'
+_pipeline_type = config.get('pipeline_type')
+if _pipeline_type not in ('simulation', 'bulk', 'sc', 'noise_report'):
+    raise ValueError(
+        f"pipeline_type must be simulation|bulk|sc|noise_report, got {_pipeline_type!r}"
+    )
 
 if 'indices_base' not in config:
     config['indices_base'] = config['base']
 
+_chroms = config.get('reference', {}).get('chromosomes', [])
+genome_tag = '_'.join(sorted(_chroms)) if _chroms else 'all'
 
 
-include: "modules/download_references.snmk"
-include: "modules/data_acquisition.snmk"
-include: "modules/reference.snmk"
+# Simulation pipeline
 
-if config['mode'] == 'simulation':
+if _pipeline_type == 'simulation':
+    active_aligners = config.get('aligners', [])
+    feature_sets = config.get('feature_sets', ['repeats'])
+    sim_cfg = config.get('simulation', {})
+    sim_technology = sim_cfg.get('technology', 'smartseq2')
+    starsolo_modes = (config.get('aligner_params', {}).get('starsolo', {})
+                      .get('multimapper_modes', ['unique']))
+    bowtie2_modes = (config.get('aligner_params', {}).get('bowtie2', {})
+                     .get('multimapper_modes', ['unique']))
+    if sim_technology == 'smartseq2' and 'multi' in starsolo_modes:
+        print('Warning: STARsolo soloType SmartSeq does not support EM multimappers '
+              '(STAR limitation; EM is only available for soloType CB_UMI_Simple). '
+              'Removing multi from starsolo_modes.')
+        starsolo_modes = [m for m in starsolo_modes if m != 'multi']
+    sim_cell_ids = [f'cell_{i + 1:03d}' for i in range(sim_cfg.get('n_cells', 20))]
+    eval_dir = op.join(config['base'], 'evaluation')
+    counts_dir = op.join(config['base'], 'counts')
+    granularities = config.get('granularities', ['family_id'])
+    _repeat_fsets = [fs for fs in feature_sets
+                     if fs in ('repeats', 'genic_repeats', 'intergenic_repeats')]
+    _eval_fsets = _repeat_fsets
+
+    include: "modules/download_references.snmk"
+    include: "modules/data_acquisition.snmk"
+    include: "modules/reference.snmk"
     include: "modules/simulations.snmk"
-
-include: "modules/starsolo.snmk"
-include: "modules/kallisto.snmk"
-include: "modules/alevin.snmk"
-include: "modules/bowtie2.snmk"
-include: "modules/normalize.snmk"
-
-if config['mode'] == 'simulation':
+    include: "modules/starsolo.snmk"
+    include: "modules/kallisto.snmk"
+    include: "modules/alevin.snmk"
+    include: "modules/bowtie2.snmk"
+    include: "modules/normalize.snmk"
     include: "modules/evaluation.snmk"
 
-for subdir in ['tmp', 'logs', 'benchmarks', 'counts', 'evaluation']:
-    os.makedirs(op.join(config['base'], subdir), exist_ok=True)
-for subdir in ['indices', 'refs']:
-    os.makedirs(op.join(config['indices_base'], subdir), exist_ok=True)
+    for _d in ['tmp', 'logs', 'benchmarks', 'counts', 'evaluation']:
+        os.makedirs(op.join(config['base'], _d), exist_ok=True)
+    for _d in ['indices', 'refs']:
+        os.makedirs(op.join(config['indices_base'], _d), exist_ok=True)
 
 
-active_aligners = config.get('aligners', [])
-feature_sets = config.get('feature_sets', ['repeats'])
-sim_cfg = config.get('simulation', {})
-sim_technology = sim_cfg.get('technology', 'smartseq2')
+# Bulk RNA-seq pipeline
 
-starsolo_modes = (config.get('aligner_params', {}).get('starsolo', {})
-                  .get('multimapper_modes', ['unique']))
-bowtie2_modes = (config.get('aligner_params', {}).get('bowtie2', {})
-                 .get('multimapper_modes', ['unique']))
+if _pipeline_type == 'bulk':
+    active_aligners = config.get('aligners', [])
+    feature_sets = config.get('feature_sets', ['repeats'])
+    granularities = config.get('granularities', ['family_id'])
+    counts_dir = op.join(config['base'], 'counts')
+    _repeat_fsets = [fs for fs in feature_sets
+                     if fs in ('repeats', 'genic_repeats', 'intergenic_repeats')]
+    _non_locus_grans = [g for g in granularities if g != 'locus']
+    _has_locus = 'locus' in granularities
+    _library_layout = config.get('real_data', {}).get('library_layout', 'paired')
 
-# STARsolo soloType SmartSeq does not support EM multimappers (STAR manual limitation).
-# soloType CB_UMI_Simple (chromium) does support EM via --soloMultiMappers EM.
-if sim_technology == 'smartseq2' and 'multi' in starsolo_modes:
-    print('Warning: STARsolo soloType SmartSeq does not support EM multimappers '
-          '(STAR limitation; EM is only available for soloType CB_UMI_Simple). '
-          'Removing multi from starsolo_modes.')
-    starsolo_modes = [m for m in starsolo_modes if m != 'multi']
+    _bulk_samples = config['dataset']['samples']
+    _bulk_sample_ids = sorted(_bulk_samples.keys())
 
-sim_cell_ids = [f'cell_{i + 1:03d}' for i in range(sim_cfg.get('n_cells', 20))]
+    def _raw_r1(sample_id):
+        return op.join(config['base'], 'data', 'raw', sample_id, f'{sample_id}_1.fastq.gz')
 
-eval_dir = op.join(config['base'], 'evaluation')
-counts_dir = op.join(config['base'], 'counts')
+    def _raw_r2(sample_id):
+        return op.join(config['base'], 'data', 'raw', sample_id, f'{sample_id}_2.fastq.gz')
 
-granularities = config.get('granularities', ['family_id'])
-_repeat_fsets = [fs for fs in feature_sets
-                 if fs in ('repeats', 'genic_repeats', 'intergenic_repeats')]
-_eval_fsets = _repeat_fsets  # only repeat feature_sets have ground truth
+    config.setdefault('real_data', {})
+    if _library_layout == 'paired':
+        config['real_data']['samples'] = {
+            sid: {'R1': _raw_r1(sid), 'R2': _raw_r2(sid)}
+            for sid in _bulk_sample_ids
+        }
+    else:
+        config['real_data']['samples'] = {
+            sid: {'R1': _raw_r1(sid)}
+            for sid in _bulk_sample_ids
+        }
 
+    _render_report_inputs = []  # set after bulk_count_outputs is defined
+
+    include: "modules/download_references.snmk"
+    include: "modules/reference.snmk"
+    include: "modules/download_sra.snmk"
+    if _library_layout == 'paired':
+        include: "modules/bulk_paired.snmk"
+    else:
+        include: "modules/bulk_single.snmk"
+
+    for _d in ['tmp', 'logs', 'benchmarks', 'counts', 'metadata']:
+        os.makedirs(op.join(config['base'], _d), exist_ok=True)
+    for _d in ['indices', 'refs']:
+        os.makedirs(op.join(config['indices_base'], _d), exist_ok=True)
+
+
+# Single-cell pipeline
+
+if _pipeline_type == 'sc':
+    active_aligners = config.get('aligners', [])
+    feature_sets = config.get('feature_sets', ['genic_repeats'])
+    starsolo_modes = (config.get('aligner_params', {}).get('starsolo', {})
+                      .get('multimapper_modes', ['unique']))
+    _repeat_fsets = [fs for fs in feature_sets
+                     if fs in ('genic_repeats', 'intergenic_repeats')]
+
+    _sc_samples = config['dataset']['samples']
+    _sc_sample_ids = sorted(_sc_samples.keys())
+    _cb_len = config.get('real_data', {}).get('cb_length', 16)
+    _umi_len = config.get('real_data', {}).get('umi_length', 12)
+    _umi_start = _cb_len + 1
+    _sc_cbumi_idx = config.get('real_data', {}).get('sc_cbumi_index', 2)
+    _sc_cdna_idx = config.get('real_data', {}).get('sc_cdna_index', 3)
+
+    def srrs_for(sample_id):
+        return _sc_samples[sample_id]['srrs']
+
+    def srr_cb(sample_id, srr):
+        return op.join(config['base'], 'data', 'raw', sample_id, f'{srr}_{_sc_cbumi_idx}.fastq.gz')
+
+    def srr_cdna(sample_id, srr):
+        return op.join(config['base'], 'data', 'raw', sample_id, f'{srr}_{_sc_cdna_idx}.fastq.gz')
+
+    def sample_cb_files(sample_id):
+        return [srr_cb(sample_id, srr) for srr in srrs_for(sample_id)]
+
+    def sample_cdna_files(sample_id):
+        return [srr_cdna(sample_id, srr) for srr in srrs_for(sample_id)]
+
+    _metadata_url = config.get('dataset', {}).get('metadata_url', '')
+    _metadata_gz = op.join(config['base'], 'metadata', 'cell_metadata.txt.gz')
+    _metadata_txt = op.join(config['base'], 'metadata', 'cell_metadata.txt')
+
+    _render_report_inputs = []  # set after starsolo_bams/kallisto_counts are defined
+
+    include: "modules/download_references.snmk"
+    include: "modules/reference.snmk"
+    include: "modules/download_sra.snmk"
+    include: "modules/starsolo_sc.snmk"
+    include: "modules/kallisto_sc.snmk"
+
+    for _d in ['tmp', 'logs', 'benchmarks', 'metadata']:
+        os.makedirs(op.join(config['base'], _d), exist_ok=True)
+    for _d in ['indices', 'refs']:
+        os.makedirs(op.join(config['indices_base'], _d), exist_ok=True)
+
+
+# Noise report pipeline
+
+if _pipeline_type == 'noise_report':
+    include: "modules/noise_report.snmk"
+
+
+# Target collection functions
 
 def reference_outputs():
     refs = op.join(config['indices_base'], 'indices', genome_tag)
     return [
         op.join(refs, 'genic_repeats.gtf'),
         op.join(refs, 'intergenic_repeats.gtf'),
-        op.join(refs, 'repeat_harboring_genes.gtf')
+        op.join(refs, 'repeat_harboring_genes.gtf'),
+        op.join(refs, 'repeat_biology_annotation.tsv'),
     ]
 
 
 def simulation_outputs():
-    outputs = []
     if sim_technology == 'smartseq2':
-        outputs += expand(
-            op.join(config['base'], 'simulations', 'smartseq2', '{cell_id}.fastq.gz'),
-            cell_id=sim_cell_ids)
-        outputs.append(op.join(config['base'], 'simulations', 'smartseq2', 'ground_truth.tsv'))
-    else:
-        outputs += [
-            op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz'),
-            op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz'),
-            op.join(config['base'], 'simulations', 'chromium', 'ground_truth.tsv')
-        ]
-    return outputs
+        return (
+            expand(op.join(config['base'], 'simulations', 'smartseq2',
+                           '{cell_id}.fastq.gz'), cell_id=sim_cell_ids)
+            + [op.join(config['base'], 'simulations', 'smartseq2', 'ground_truth.tsv')]
+        )
+    return [
+        op.join(config['base'], 'simulations', 'chromium', 'R1.fastq.gz'),
+        op.join(config['base'], 'simulations', 'chromium', 'R2.fastq.gz'),
+        op.join(config['base'], 'simulations', 'chromium', 'ground_truth.tsv'),
+    ]
 
 
-def aligner_count_outputs():
+def simulation_count_outputs():
     outputs = []
-    # locus granularity requires a BAM-based counting rule for starsolo;
-    # all other aligners handle locus via updated wildcard constraints.
     _non_locus_grans = [g for g in granularities if g != 'locus']
     _has_locus = 'locus' in granularities
 
@@ -109,70 +223,147 @@ def aligner_count_outputs():
         if _non_locus_grans:
             outputs += expand(
                 op.join(counts_dir, 'starsolo_{feature_set}_{granularity}_{multimapper_mode}.tsv'),
-                feature_set=_repeat_fsets,
-                granularity=_non_locus_grans,
+                feature_set=_repeat_fsets, granularity=_non_locus_grans,
                 multimapper_mode=starsolo_modes)
         if _has_locus:
             outputs += expand(
                 op.join(counts_dir, 'starsolo_{feature_set}_locus_{multimapper_mode}.tsv'),
-                feature_set=_repeat_fsets,
-                multimapper_mode=starsolo_modes)
+                feature_set=_repeat_fsets, multimapper_mode=starsolo_modes)
 
-    for aligner in ['kallisto', 'alevin']:
+    for aligner in ('kallisto', 'alevin'):
         if aligner not in active_aligners:
             continue
         if 'genes' in feature_sets:
             outputs.append(op.join(counts_dir, f'{aligner}_genes_gene_id_unique.tsv'))
         outputs += expand(
             op.join(counts_dir, f'{aligner}_{{feature_set}}_{{granularity}}_unique.tsv'),
-            feature_set=_repeat_fsets,
-            granularity=granularities)
+            feature_set=_repeat_fsets, granularity=granularities)
 
     if 'bowtie2' in active_aligners:
         outputs += expand(
             op.join(counts_dir, 'bowtie2_{feature_set}_{granularity}_{multimapper_mode}.tsv'),
-            feature_set=_repeat_fsets,
-            granularity=granularities,
+            feature_set=_repeat_fsets, granularity=granularities,
             multimapper_mode=bowtie2_modes)
-
     return outputs
 
 
-def evaluation_outputs():
+def simulation_evaluation_outputs():
     outputs = []
-
     if 'starsolo' in active_aligners:
         outputs += expand(
             op.join(eval_dir,
                     'starsolo_{feature_set}_{granularity}_{multimapper_mode}_global_metrics.tsv'),
-            feature_set=_eval_fsets,
-            granularity=granularities,
+            feature_set=_eval_fsets, granularity=granularities,
             multimapper_mode=starsolo_modes)
-
     if 'bowtie2' in active_aligners:
         outputs += expand(
             op.join(eval_dir,
                     'bowtie2_{feature_set}_{granularity}_{multimapper_mode}_global_metrics.tsv'),
-            feature_set=_eval_fsets,
-            granularity=granularities,
+            feature_set=_eval_fsets, granularity=granularities,
             multimapper_mode=bowtie2_modes)
-
-    for aligner in ['kallisto', 'alevin']:
+    for aligner in ('kallisto', 'alevin'):
         if aligner in active_aligners:
             outputs += expand(
                 op.join(eval_dir,
                         f'{aligner}_{{feature_set}}_{{granularity}}_unique_global_metrics.tsv'),
-                feature_set=_eval_fsets,
-                granularity=granularities)
-
+                feature_set=_eval_fsets, granularity=granularities)
     outputs.append(op.join(eval_dir, 'summary_global_metrics.tsv'))
     outputs.append(op.join(eval_dir, 'evaluation_report.html'))
     return outputs
 
 
+def bulk_count_outputs():
+    outputs = []
+    for aligner in ('star', 'kallisto', 'salmon'):
+        if aligner not in active_aligners:
+            continue
+        if 'genes' in feature_sets:
+            outputs.append(op.join(counts_dir, f'{aligner}_genes_gene_id_unique.tsv'))
+        if _non_locus_grans:
+            outputs += expand(
+                op.join(counts_dir, f'{aligner}_{{feature_set}}_{{granularity}}_unique.tsv'),
+                feature_set=_repeat_fsets, granularity=_non_locus_grans)
+        if _has_locus:
+            outputs += expand(
+                op.join(counts_dir, f'{aligner}_{{feature_set}}_locus_unique.tsv'),
+                feature_set=_repeat_fsets)
+    return outputs
+
+
+def starsolo_bams():
+    if 'starsolo' not in active_aligners:
+        return []
+    return [
+        op.join(config['base'], 'starsolo', sid, f'{mode}_{fs}',
+                'Aligned.sortedByCoord.out.bam')
+        for sid in _sc_sample_ids
+        for mode in starsolo_modes
+        for fs in feature_sets
+    ]
+
+
+def kallisto_counts():
+    if 'kallisto' not in active_aligners:
+        return []
+    return [
+        op.join(config['base'], 'kallisto', fs, sid, 'counts.mtx')
+        for sid in _sc_sample_ids
+        for fs in feature_sets
+    ]
+
+
+# Set render_report inputs now that the output functions are defined
+if _pipeline_type == 'bulk' and config.get('report'):
+    _render_report_inputs = bulk_count_outputs() + [
+        op.join(config['indices_base'], 'indices', genome_tag,
+                'repeat_biology_annotation.tsv')]
+    include: "modules/render_report.snmk"
+
+if _pipeline_type == 'sc' and config.get('report'):
+    _render_report_inputs = (
+        starsolo_bams() + kallisto_counts()
+        + ([_metadata_txt] if _metadata_url else [])
+        + [op.join(config['indices_base'], 'indices', genome_tag,
+                   'repeat_biology_annotation.tsv')]
+    )
+    include: "modules/render_report.snmk"
+
+
+def _all_inputs():
+    if _pipeline_type == 'noise_report':
+        return [config['report']['output']]
+
+    inputs = reference_outputs()
+
+    if _pipeline_type == 'simulation':
+        inputs += simulation_outputs()
+        inputs += simulation_count_outputs()
+        inputs += simulation_evaluation_outputs()
+
+    elif _pipeline_type == 'bulk':
+        inputs += [_raw_r1(sid) for sid in _bulk_sample_ids]
+        if _library_layout == 'paired':
+            inputs += [_raw_r2(sid) for sid in _bulk_sample_ids]
+        inputs += bulk_count_outputs()
+        if config.get('report'):
+            inputs.append(op.join(config['base'], config['report']['output']))
+
+    elif _pipeline_type == 'sc':
+        for sid in _sc_sample_ids:
+            for srr in srrs_for(sid):
+                inputs.append(srr_cb(sid, srr))
+                inputs.append(srr_cdna(sid, srr))
+        inputs += starsolo_bams()
+        inputs += kallisto_counts()
+        if _metadata_url:
+            inputs.append(_metadata_txt)
+        if config.get('report'):
+            inputs.append(op.join(config['base'], config['report']['output']))
+
+    return inputs
+
+
 rule all:
+    default_target: True
     input:
-        reference_outputs(),
-        simulation_outputs() if config['mode'] == 'simulation' else [],
-        aligner_count_outputs(),
-        evaluation_outputs() if config['mode'] == 'simulation' else []
+        _all_inputs()

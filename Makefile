@@ -34,7 +34,7 @@ simulation_chromium:
 	$(SM) --configfile configs/simulation_chromium.yaml
 
 # -----------------------------------------------------------------------
-# noise sweep — SmartSeq2
+# noise sweep - SmartSeq2
 # note: genome refs are reused from the base simulation_smartseq2 run;
 #       alignment indices are shared via results/shared/ (never rebuilt)
 # -----------------------------------------------------------------------
@@ -54,7 +54,7 @@ noise_smartseq2_10pct:
 noise_smartseq2: noise_smartseq2_0pct noise_smartseq2_1pct noise_smartseq2_5pct noise_smartseq2_10pct
 
 # -----------------------------------------------------------------------
-# noise sweep — Chromium
+# noise sweep - Chromium
 # -----------------------------------------------------------------------
 
 noise_chromium_0pct:

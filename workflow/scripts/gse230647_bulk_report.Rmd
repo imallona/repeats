@@ -1,5 +1,5 @@
 ---
-title: "GSE230647 bulk RNA-seq repeat quantification"
+title: "GSE230647 bulk RNA-seq repeat quantification (gene-normalized)"
 author: "Izaskun Mallona"
 date: "`r Sys.Date()`"
 output:
@@ -11,6 +11,7 @@ output:
 params:
   counts_dir: "."
   report_outdir: "."
+  indices_base: "."
 ---
 
 ```{r setup, include=FALSE}
@@ -27,6 +28,7 @@ source(file.path("scripts", "ggtheme.R"))
 
 counts_dir = params$counts_dir
 report_outdir = params$report_outdir
+indices_base = params$indices_base
 
 aligners = c("star", "kallisto", "salmon")
 granularities = c("gene_id", "family_id")
@@ -58,6 +60,60 @@ save_rds = function(obj, name) {
 }
 ```
 
+## Biology annotation for detection and DE stratification
+
+```{r biology-setup}
+source(file.path("scripts", "biology_checks.R"))
+
+biology_annotation_path = file.path(indices_base, "repeat_biology_annotation.tsv")
+biology_annotation = load_biology_annotation(biology_annotation_path)
+if (is.null(biology_annotation)) {
+  cat("No biology annotation at", biology_annotation_path,
+      "- biology-stratified panels will be skipped.\n")
+} else {
+  cat("Loaded biology annotation:", nrow(biology_annotation), "subfamilies\n")
+}
+save_rds(biology_annotation, "biology_annotation")
+
+annotate_de_with_biology = function(tt) {
+  tt = annotate_biology(tt, biology_annotation, key = "gene_id")
+  tt$polya = polya_label(tt$class_id)
+  tt$age = family_age_label(tt$family_age)
+  tt$strand = strand_vs_gene_label(tt$strand_vs_gene)
+  tt$a_run = a_run_label(tt$frac_downstream_a_run, class_ids = tt$class_id)
+  tt
+}
+
+de_stratify_counts = function(tt, key, fdr = 0.05) {
+  tt = annotate_de_with_biology(tt)
+  tt$direction = ifelse(is.na(tt$FDR) | tt$FDR >= fdr, "ns",
+                        ifelse(tt$logFC > 0, "up", "down"))
+  facet_cols = c(polya = "polya", family_age = "age",
+                 strand_vs_gene = "strand", downstream_a_run = "a_run")
+  rows = list()
+  for (facet_nm in names(facet_cols)) {
+    col = facet_cols[[facet_nm]]
+    rows[[facet_nm]] = tt %>%
+      group_by(label = .data[[col]], direction) %>%
+      summarize(n = dplyr::n(), .groups = "drop") %>%
+      mutate(facet = facet_nm, key = key)
+  }
+  bind_rows(rows)
+}
+
+plot_de_stratification = function(strat_df, title) {
+  if (is.null(strat_df) || nrow(strat_df) == 0) return(invisible(NULL))
+  strat_df$direction = factor(strat_df$direction, levels = c("up", "down", "ns"))
+  ggplot(strat_df, aes(x = label, y = n, fill = direction)) +
+    geom_col() +
+    facet_grid(facet ~ key, scales = "free", space = "free_x") +
+    scale_fill_manual(values = c(up = "firebrick", down = "steelblue", ns = "grey70")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = title, x = NULL, y = "features")
+}
+```
+
 ## About this report
 
 ```{r provenance}
@@ -81,7 +137,73 @@ Two experiments:
 
 Quantification by STAR, kallisto, and salmon at gene_id and family_id granularities
 for three repeat feature sets: repeats, genic_repeats, and intergenic_repeats.
-Differential expression tested with edgeR QLF (quasi-likelihood F-test).
+
+Repeat counts are normalized by gene library sizes (total gene read counts per
+sample) so that fold changes reflect changes in the repeat-to-gene expression
+ratio. Differential expression tested with edgeR QLF (quasi-likelihood F-test).
+
+## PolyA-competence of detected repeats
+
+Detection and differential-expression results can be split into two groups
+based on the intrinsic ability of each repeat class to produce a
+polyadenylated transcript. This split uses only the `class_id` column from
+`{feature_set}_locus_map.tsv` (equivalent to RepeatMasker `repClass`); no
+sequence-level polyA scanning is performed.
+
+- with polyA (polyA-competent): `LINE`, `SINE`, `LTR`, `Retroposon`.
+  These classes produce polyadenylated transcripts when expressed from their
+  own promoters (LINE-1 and ERV internal transcripts carry canonical AATAAA
+  poly(A) sites, SINE/Alu relies on LINE-1 machinery and poly(A) tails,
+  Retroposon/SVA also polyadenylates).
+- without polyA (not polyA-competent): every other class, including
+  `Satellite`, `Simple_repeat`, `Low_complexity`, `DNA`, `RC`, and the
+  structural-RNA-derived classes (`rRNA`, `tRNA`, `snRNA`, `scRNA`,
+  `srpRNA`). These lack a canonical polyadenylation signal in their body.
+- unknown: loci with no class annotation in the locus map.
+
+The genic vs intergenic feature_set split is complementary: genic repeats can
+be captured through a polyadenylated host transcript regardless of intrinsic
+class, while intergenic repeats need their own poly(A) tail to be detected by
+polyA-selection assays. The class-based facet therefore matters most on the
+`intergenic_repeats` feature set.
+
+## Biology-driven sanity checks for detection
+
+Three additional commonsense checks help reason about why a given repeat is
+or is not detected. Classification logic is shared across reports in
+`workflow/scripts/biology_annotations.py` (Python, pure functions, unit
+tested in `test/unit/test_biology_annotations.py`) and the R-side join and
+labelling helpers live in `workflow/scripts/biology_checks.R`.
+
+- Family age (from RepeatMasker subfamily name or milliDiv). Younger
+  subfamilies are more often transcriptionally active, older ones are
+  generally silenced. Brackets:
+
+      young   L1HS, L1PA2-7, AluY, SVA_A-F, HERVK/HERVH/LTR5
+      medium  L1PA8-16, AluS
+      old     L1PA17+, L1PB, L1M*, AluJ, FLAM, FRAM
+      unknown anything not matching, including DNA/RC/satellite classes
+
+  When milliDiv is available the same brackets are produced from
+  divergence thresholds (<=50 young, <=200 medium, >200 old).
+
+- Strand concordance with overlapping genes. By construction
+  `genic_repeats` is built with a same-strand intersect, so loci in that
+  set are sense-with-host. The shared annotation labels every locus as
+  `sense`, `antisense`, `both`, or `intergenic` against a strand-aware
+  gene-body overlap so reports can also surface antisense loci that the
+  current `intergenic_repeats` set silently absorbs.
+
+- Internal A-tract proxy for polyA priming. Length of the longest run of
+  As in the genomic region downstream of each locus (in mRNA-sense
+  orientation). A long downstream A-run flags a repeat that may be
+  detected by internal priming rather than by a genuine poly(A) tail,
+  which matters most for intergenic non-polyA-competent classes.
+
+The shared annotation is loaded from
+`{indices_base}/indices/{genome_tag}/repeat_biology_annotation.tsv` when
+present; otherwise the helpers no-op and reports fall back to the
+class-only polyA facet.
 
 ## Load counts
 
@@ -112,16 +234,33 @@ cat("Available count matrices:", sum(!sapply(counts_cache, is.null)), "\n")
 save_rds(counts_cache, "gse230647_counts_cache")
 ```
 
+## Gene library sizes for normalization
+
+Gene counts are loaded per aligner to compute gene library sizes. These replace
+the default repeat-derived library sizes in edgeR so that repeat expression is
+measured relative to gene expression depth.
+
+```{r load-gene-lib-sizes}
+gene_lib_cache = list()
+for (al in aligners) {
+  gmat = load_counts(al, "genes", "gene_id")
+  if (!is.null(gmat)) gene_lib_cache[[al]] = colSums(gmat)
+}
+cat("Gene library sizes available for:", paste(names(gene_lib_cache), collapse = ", "), "\n")
+save_rds(gene_lib_cache, "gse230647_gene_lib_sizes")
+```
+
 ```{r edger-function}
-run_edger = function(counts, meta, treat_level, ref_level) {
+run_edger = function(counts, meta, treat_level, ref_level, gene_lib_sizes) {
   samples = intersect(meta$sample, colnames(counts))
   if (length(samples) < 4) return(NULL)
   mat = counts[, samples, drop = FALSE]
   cond = factor(meta[samples, "condition"], levels = c(ref_level, treat_level))
   y = DGEList(counts = mat, group = cond)
   keep = filterByExpr(y)
-  y = y[keep, , keep.lib.sizes = FALSE]
-  y = normLibSizes(y)
+  y = y[keep, ]
+  y$samples$lib.size = gene_lib_sizes[colnames(y)]
+  y$samples$norm.factors = rep(1, ncol(y))
   design = model.matrix(~cond)
   y = estimateDisp(y, design)
   fit = glmQLFit(y, design)
@@ -134,16 +273,20 @@ run_edger = function(counts, meta, treat_level, ref_level) {
 ## Overexpression experiment
 
 TDP-43-HA ON (tdp43_oe) vs DOX off control (oe_ctrl).
+Repeat counts normalized by gene library sizes.
 
 ```{r oe-edger}
 oe_results = list()
 for (al in aligners) {
+  gene_ls = gene_lib_cache[[al]]
+  if (is.null(gene_ls)) next
   for (fs in feature_sets) {
     for (gr in granularities) {
       key = paste(al, fs, gr, sep = "_")
       mat = counts_cache[[key]]
       if (is.null(mat)) next
-      res = run_edger(mat, oe_meta, treat_level = "tdp43_oe", ref_level = "oe_ctrl")
+      res = run_edger(mat, oe_meta, treat_level = "tdp43_oe",
+                      ref_level = "oe_ctrl", gene_ls)
       if (!is.null(res)) oe_results[[key]] = res
     }
   }
@@ -175,7 +318,7 @@ for (al in aligners) {
       ylab(paste0("PC2: ", pct[2], "%")) +
       scale_colour_manual(values = cbbPalette) +
       theme_ng() +
-      ggtitle(paste(al, fs))
+      ggtitle(paste(al, fs, "(gene-normalized)"))
   }
 }
 if (length(pca_plots) > 0) wrap_plots(pca_plots, ncol = 3)
@@ -197,6 +340,7 @@ for (gr in granularities) {
         scale_colour_manual(values = c("grey70", cbbPalette[2]),
                             labels = c("ns", "FDR<0.05 & |lfc|>1")) +
         geom_vline(xintercept = c(-1, 1), linetype = "dashed", linewidth = 0.3) +
+        xlab("log2 FC (repeat/gene ratio)") +
         theme_ng() +
         ggtitle(paste(al, fs, gr))
     }
@@ -220,11 +364,28 @@ for (gr in granularities) {
         scale_colour_manual(values = c("grey70", cbbPalette[2]),
                             labels = c("ns", "FDR<0.05")) +
         geom_hline(yintercept = 0, linewidth = 0.3) +
+        xlab("avg log2 gene-normalized CPM") +
+        ylab("log2 FC (repeat/gene ratio)") +
         theme_ng() +
         ggtitle(paste(al, fs, gr))
     }
   }
   if (length(ma_plots) > 0) print(wrap_plots(ma_plots, ncol = 3))
+}
+```
+
+### OE DE stratified by biology (polyA / age / strand / A-run)
+
+```{r biology-de-strat-oe, fig.width=14, fig.height=10}
+if (!is.null(biology_annotation) && length(oe_results) > 0) {
+  strat_oe = bind_rows(lapply(names(oe_results), function(key) {
+    de_stratify_counts(oe_results[[key]]$tt, key)
+  }))
+  save_rds(strat_oe, "gse230647_oe_biology_stratification")
+  for (facet_nm in unique(strat_oe$facet)) {
+    print(plot_de_stratification(filter(strat_oe, facet == facet_nm),
+                                 paste("OE, stratified by", facet_nm)))
+  }
 }
 ```
 
@@ -263,7 +424,7 @@ for (al in aligners) {
                annotation_col = ann,
                scale = "row",
                show_rownames = nrow(lcpm) <= 40,
-               main = paste("OE", al, fs, gr),
+               main = paste("OE", al, fs, gr, "(gene-normalized)"),
                fontsize = 7,
                silent = TRUE)
     }
@@ -285,7 +446,7 @@ plot_cpm = function(y, feature, title) {
     geom_jitter(aes(shape = factor(replicate)), width = 0.1, size = 2) +
     scale_colour_manual(values = cbbPalette) +
     theme_ng() +
-    ylab("log2 CPM") +
+    ylab("log2 gene-normalized CPM") +
     ggtitle(feature)
 }
 
@@ -310,16 +471,20 @@ for (al in aligners) {
 ## Knockdown experiment
 
 TDP-43 shRNA (tdp43_kd) vs non-targeting shRNA control (nt_kd_ctrl).
+Repeat counts normalized by gene library sizes.
 
 ```{r kd-edger}
 kd_results = list()
 for (al in aligners) {
+  gene_ls = gene_lib_cache[[al]]
+  if (is.null(gene_ls)) next
   for (fs in feature_sets) {
     for (gr in granularities) {
       key = paste(al, fs, gr, sep = "_")
       mat = counts_cache[[key]]
       if (is.null(mat)) next
-      res = run_edger(mat, kd_meta, treat_level = "tdp43_kd", ref_level = "nt_kd_ctrl")
+      res = run_edger(mat, kd_meta, treat_level = "tdp43_kd",
+                      ref_level = "nt_kd_ctrl", gene_ls)
       if (!is.null(res)) kd_results[[key]] = res
     }
   }
@@ -351,7 +516,7 @@ for (al in aligners) {
       ylab(paste0("PC2: ", pct[2], "%")) +
       scale_colour_manual(values = cbbPalette) +
       theme_ng() +
-      ggtitle(paste(al, fs))
+      ggtitle(paste(al, fs, "(gene-normalized)"))
   }
 }
 if (length(pca_plots) > 0) wrap_plots(pca_plots, ncol = 3)
@@ -373,6 +538,7 @@ for (gr in granularities) {
         scale_colour_manual(values = c("grey70", cbbPalette[2]),
                             labels = c("ns", "FDR<0.05 & |lfc|>1")) +
         geom_vline(xintercept = c(-1, 1), linetype = "dashed", linewidth = 0.3) +
+        xlab("log2 FC (repeat/gene ratio)") +
         theme_ng() +
         ggtitle(paste(al, fs, gr))
     }
@@ -396,11 +562,28 @@ for (gr in granularities) {
         scale_colour_manual(values = c("grey70", cbbPalette[2]),
                             labels = c("ns", "FDR<0.05")) +
         geom_hline(yintercept = 0, linewidth = 0.3) +
+        xlab("avg log2 gene-normalized CPM") +
+        ylab("log2 FC (repeat/gene ratio)") +
         theme_ng() +
         ggtitle(paste(al, fs, gr))
     }
   }
   if (length(ma_plots) > 0) print(wrap_plots(ma_plots, ncol = 3))
+}
+```
+
+### KD DE stratified by biology (polyA / age / strand / A-run)
+
+```{r biology-de-strat-kd, fig.width=14, fig.height=10}
+if (!is.null(biology_annotation) && length(kd_results) > 0) {
+  strat_kd = bind_rows(lapply(names(kd_results), function(key) {
+    de_stratify_counts(kd_results[[key]]$tt, key)
+  }))
+  save_rds(strat_kd, "gse230647_kd_biology_stratification")
+  for (facet_nm in unique(strat_kd$facet)) {
+    print(plot_de_stratification(filter(strat_kd, facet == facet_nm),
+                                 paste("KD, stratified by", facet_nm)))
+  }
 }
 ```
 
@@ -439,7 +622,7 @@ for (al in aligners) {
                annotation_col = ann,
                scale = "row",
                show_rownames = nrow(lcpm) <= 40,
-               main = paste("KD", al, fs, gr),
+               main = paste("KD", al, fs, gr, "(gene-normalized)"),
                fontsize = 7,
                silent = TRUE)
     }
@@ -463,6 +646,123 @@ for (al in aligners) {
       }
     }
   }
+}
+```
+
+## Repeat detection summary
+
+Detection is defined as CPM > 1 in at least half the replicates of a condition.
+CPM here uses raw repeat library sizes (not gene-normalized) to reflect absolute
+detectability in the sequencing data. The gene_id granularity is used to count
+individual repeat elements.
+
+```{r detection-helpers}
+detect_features = function(mat, sample_ids, cpm_thr = 1, min_frac = 0.5) {
+  sids = intersect(sample_ids, colnames(mat))
+  if (length(sids) == 0) return(character(0))
+  lib_sizes = colSums(mat[, sids, drop = FALSE])
+  lib_sizes[lib_sizes == 0] = 1
+  cpm_mat = sweep(mat[, sids, drop = FALSE], 2, lib_sizes / 1e6, "/")
+  n_above = rowSums(cpm_mat > cpm_thr)
+  names(n_above)[n_above >= ceiling(min_frac * length(sids))]
+}
+
+load_class_map = function(indices_base, feature_set) {
+  path = file.path(indices_base, paste0(feature_set, "_locus_map.tsv"))
+  if (!file.exists(path)) return(NULL)
+  lm = read_tsv(path,
+                 col_names = c("transcript_id", "gene_id", "family_id", "class_id"),
+                 show_col_types = FALSE)
+  dedup = lm %>% select(gene_id, class_id) %>% distinct()
+  setNames(dedup$class_id, dedup$gene_id)
+}
+```
+
+```{r detection-data}
+class_maps = list()
+for (fs in feature_sets) {
+  class_maps[[fs]] = load_class_map(indices_base, fs)
+}
+
+all_meta = rbind(oe_meta[, c("sample", "condition")],
+                 kd_meta[, c("sample", "condition")])
+
+det_summary = list()
+det_class = list()
+
+for (al in aligners) {
+  for (fs in feature_sets) {
+    mat = counts_cache[[paste(al, fs, "gene_id", sep = "_")]]
+    if (is.null(mat)) next
+    cm = class_maps[[fs]]
+    for (cond_name in unique(all_meta$condition)) {
+      sids = all_meta$sample[all_meta$condition == cond_name]
+      detected = detect_features(mat, sids)
+      det_summary[[length(det_summary) + 1]] = data.frame(
+        aligner = al, feature_set = fs, condition = cond_name,
+        n_detected = length(detected), stringsAsFactors = FALSE)
+      if (!is.null(cm) && length(detected) > 0) {
+        classes = cm[detected]
+        classes[is.na(classes)] = "unknown"
+        class_tab = as.data.frame(table(classes), stringsAsFactors = FALSE)
+        colnames(class_tab) = c("class_id", "n")
+        class_tab$aligner = al
+        class_tab$feature_set = fs
+        class_tab$condition = cond_name
+        det_class[[length(det_class) + 1]] = class_tab
+      }
+    }
+  }
+}
+
+det_summary_df = bind_rows(det_summary)
+det_class_df = bind_rows(det_class)
+
+if (nrow(det_class_df) > 0) {
+  top_classes = det_class_df %>%
+    group_by(class_id) %>%
+    summarize(total = sum(n), .groups = "drop") %>%
+    arrange(desc(total)) %>%
+    head(7) %>%
+    pull(class_id)
+  det_class_df$class_label = ifelse(det_class_df$class_id %in% top_classes,
+                                    det_class_df$class_id, "other")
+  det_class_df = det_class_df %>%
+    group_by(aligner, feature_set, condition, class_label) %>%
+    summarize(n = sum(n), .groups = "drop")
+}
+
+save_rds(det_summary_df, "gse230647_detection_summary")
+save_rds(det_class_df, "gse230647_detection_by_class")
+```
+
+### Features detected per condition
+
+```{r detection-barplot, fig.width=10, fig.height=6}
+if (nrow(det_summary_df) > 0) {
+  ggplot(det_summary_df, aes(x = condition, y = n_detected, fill = feature_set)) +
+    geom_col(position = "dodge") +
+    facet_wrap(~aligner) +
+    scale_fill_manual(values = cbbPalette) +
+    theme_ng() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(y = "detected features (CPM > 1)", fill = "feature set",
+         title = "Repeat features detected per condition (gene_id level)")
+}
+```
+
+### Features detected per condition by repeat class
+
+```{r detection-class-barplot, fig.width=12, fig.height=8}
+if (nrow(det_class_df) > 0) {
+  ggplot(det_class_df, aes(x = condition, y = n, fill = class_label)) +
+    geom_col() +
+    facet_grid(feature_set ~ aligner) +
+    scale_fill_brewer(palette = "Set2") +
+    theme_ng() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(y = "detected features (CPM > 1)", fill = "repeat class",
+         title = "Detected repeats by class per condition (gene_id level)")
 }
 ```
 

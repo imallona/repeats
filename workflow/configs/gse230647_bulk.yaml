@@ -1,7 +1,7 @@
 base: "../results/gse230647_bulk"
 indices_base: "../results/shared"
 
-mode: real_data
+pipeline_type: bulk
 
 reference:
   assembly: hg38
@@ -14,7 +14,7 @@ reference:
   genes_gtf: "../results/shared/refs/GRCh38.112.genes.gtf.gz"
 
 real_data:
-  technology: smartseq2
+  library_layout: paired
 
 # GSE230647 (SRP434658). Paired-end bulk RNA-seq from iPSC-derived neural
 # cultures. Two experiments: doxycycline-inducible TDP-43-HA overexpression
@@ -25,25 +25,41 @@ dataset:
   sra_study: SRP434658
   samples:
     # TDP-43 overexpression (HA-TDP43, DOX on)
-    tdp43_oe_r1: SRR24314007
-    tdp43_oe_r2: SRR24314008
-    tdp43_oe_r3: SRR24314001
-    tdp43_oe_r4: SRR24314002
+    tdp43_oe_r1:
+      srrs: [SRR24314007]
+    tdp43_oe_r2:
+      srrs: [SRR24314008]
+    tdp43_oe_r3:
+      srrs: [SRR24314001]
+    tdp43_oe_r4:
+      srrs: [SRR24314002]
     # OE control (HA-TDP43, DOX off)
-    oe_ctrl_r1: SRR24314003
-    oe_ctrl_r2: SRR24314017
-    oe_ctrl_r3: SRR24314020
-    oe_ctrl_r4: SRR24314004
+    oe_ctrl_r1:
+      srrs: [SRR24314003]
+    oe_ctrl_r2:
+      srrs: [SRR24314017]
+    oe_ctrl_r3:
+      srrs: [SRR24314020]
+    oe_ctrl_r4:
+      srrs: [SRR24314004]
     # TDP-43 shRNA knockdown
-    tdp43_kd_r1: SRR24314015
-    tdp43_kd_r2: SRR24314018
-    tdp43_kd_r3: SRR24314021
-    tdp43_kd_r4: SRR24314005
+    tdp43_kd_r1:
+      srrs: [SRR24314015]
+    tdp43_kd_r2:
+      srrs: [SRR24314018]
+    tdp43_kd_r3:
+      srrs: [SRR24314021]
+    tdp43_kd_r4:
+      srrs: [SRR24314005]
     # Non-targeting shRNA control
-    nt_kd_ctrl_r1: SRR24314016
-    nt_kd_ctrl_r2: SRR24314019
-    nt_kd_ctrl_r3: SRR24314022
-    nt_kd_ctrl_r4: SRR24314006
+    nt_kd_ctrl_r1:
+      srrs: [SRR24314016]
+    nt_kd_ctrl_r2:
+      srrs: [SRR24314019]
+    nt_kd_ctrl_r3:
+      srrs: [SRR24314022]
+    nt_kd_ctrl_r4:
+      srrs: [SRR24314006]
 
 feature_sets:
   - repeats
@@ -71,3 +87,13 @@ granularities:
 resources:
   max_threads: 10
   max_mem_mb: 60000
+
+report:
+  script: scripts/gse230647_bulk_report.Rmd
+  conda: envs/edger.yaml
+  output: gse230647_bulk_report.html
+  outdir: report_rds
+  params:
+    - counts_dir
+    - report_outdir
+    - indices_base
