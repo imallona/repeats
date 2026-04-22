@@ -42,15 +42,37 @@ strand_vs_gene_label <- function(strand_strings) {
   factor(out, levels = c("sense", "antisense", "both", "intergenic", "unknown"))
 }
 
-# Bins a per-gene fraction of loci with a downstream A-run >= the upstream
-# threshold (default 12 bp) into a low/medium/high bucket. Bin edges are
-# tunable so reports can match their own quantification thresholds.
+# Bins a per-subfamily fraction of loci with a downstream A-run >= the
+# upstream threshold (default 12 bp) into a low/medium/high bucket.
+#
+# class_ids is an optional vector aligned to `fractions`. Subfamilies in
+# classes listed in `exclude_classes` (default: Simple_repeat,
+# Low_complexity, Satellite) are returned as NA rather than binned. The
+# downstream A-run flag is intended to proxy the risk that oligo-dT
+# internal-primes on genomic DNA instead of on a real RNA polyA tail, which
+# only matters for classes whose RNA is supposed to be polyadenylated and
+# recovered by polyA-selected library prep. Simple_repeat rows have repeat
+# units that are themselves A-containing, so the flag fires tautologically
+# and carries no information about internal-priming of real transcripts;
+# Low_complexity and Satellite classes do not produce polyadenylated
+# transcripts either and fall into the same "flag is uninformative" bin.
+# Excluding them here keeps the a_run facets focused on subfamilies where
+# the priming question is biologically meaningful (LINEs, SINEs, LTRs,
+# Retroposons, and non-polyA-competent transcribed units like sn/scRNAs).
 a_run_label <- function(fractions,
+                        class_ids = NULL,
                         low_max = 0.1,
-                        high_min = 0.5) {
+                        high_min = 0.5,
+                        exclude_classes = c("Simple_repeat",
+                                            "Low_complexity",
+                                            "Satellite")) {
   out <- ifelse(is.na(fractions), "unknown",
                 ifelse(fractions <= low_max, "low",
                        ifelse(fractions >= high_min, "high", "medium")))
+  if (!is.null(class_ids)) {
+    drop <- !is.na(class_ids) & class_ids %in% exclude_classes
+    out[drop] <- NA_character_
+  }
   factor(out, levels = c("low", "medium", "high", "unknown"))
 }
 

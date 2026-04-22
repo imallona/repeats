@@ -75,7 +75,7 @@ annotate_de_with_biology <- function(tt) {
   tt$polya <- polya_label(tt$class_id)
   tt$age <- family_age_label(tt$family_age)
   tt$strand <- strand_vs_gene_label(tt$strand_vs_gene)
-  tt$a_run <- a_run_label(tt$frac_downstream_a_run)
+  tt$a_run <- a_run_label(tt$frac_downstream_a_run, class_ids = tt$class_id)
   tt
 }
 

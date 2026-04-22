@@ -6,7 +6,11 @@ output:
   html_document:
     toc: true
     toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
     code_folding: hide
+    theme: flatly
 params:
   polymenidou_bulk_rds_dir: "../../results/paper/tdp43/polymenidou_tdp_kd_oe_cultures_bulk/ruv_rds"
   lee_bulk_rds_dir: "../../results/paper/tdp43/lee_nuclear_tdp_retention_bulk/ruv_rds"
@@ -23,6 +27,7 @@ suppressPackageStartupMessages({
   library(dplyr)
   library(tidyr)
   library(ggplot2)
+  library(ggrepel)
   library(purrr)
   library(tibble)
   library(scales)
@@ -112,7 +117,43 @@ contrast_info <- tribble(
 knitr::kable(contrast_info)
 ```
 
-# Harmonize repeat DE tables per category
+
+# RUV-based
+
+All tables and plots in this section use RUV-g-normalized repeat DE. RUV-g adds data-driven unwanted-variation factors (W_1..W_k) to the edgeR design on top of TMM normalization computed on the repeat count matrix. The gene-library-size counterpart for each analysis is in the next top-level section; comparing the two separates normalization-robust signal from signal that depends on RUV factor estimation.
+
+## Biology labels used in the facet plots
+
+Repeat subfamilies are labelled on four biology axes. The labels come from `workflow/scripts/biology_checks.R`; the underlying per-subfamily TSV is produced by `build_repeat_biology_annotation.py`.
+
+- **polyA competence (`polya_class`).** Whether the RepeatMasker class (LINE, SINE, LTR, Retroposon) is thought to carry a terminal polyA tail in its RNA intermediate. Levels: `polyA-competent` (LINE/SINE/LTR/Retroposon), `not polyA-competent` (all other classes), `unknown` (NA). Relevant because polyA-based library prep preferentially captures polyA-competent repeats; a shared polyA-axis shift is one biologically interpretable route for coordinated repeat logFCs.
+- **Downstream A-run (`a_run_class`).** Internal-priming proxy: fraction of loci of a subfamily whose downstream genomic sequence contains a long A-run (default threshold: run length >= 12 bp). Binned into `low` (<= 10% of loci), `medium` (10-50%), `high` (>= 50%), `unknown` (NA). High a_run subfamilies are most at risk of being called as expressed via internal polyA priming of random A-runs rather than by transcription. If a cross-study repeat DE signal is driven mostly by high-a_run subfamilies, it is suspect. `Simple_repeat`, `Low_complexity`, and `Satellite` classes are set to NA here and excluded from a_run facet panels: their repeat units are themselves A-containing, so the flag fires tautologically and carries no information about priming of real polyadenylated transcripts.
+- **Family age (`age_class`).** Subfamily age from milliDiv buckets of RepeatMasker: `young`, `medium`, `old`, `unknown`. Young subfamilies (e.g., L1HS, AluY) are the ones commonly reported as TDP-43 targets; old subfamilies (e.g., MIR, L2) should show weaker and less consistent signal.
+- **Strand vs host gene (`strand_vs_gene`).** Used only for genic repeats: whether the repeat locus is `sense`, `antisense`, `both`, or `intergenic` (no overlap) relative to overlapping host genes. Not faceted in this report.
+
+Facets are ordered `low, medium, high, unknown` for a_run; `young, medium, old, unknown` for age; `polyA-competent, not polyA-competent, unknown` for polyA.
+
+### How `polya_class` and `a_run_class` differ
+
+The two axes are orthogonal and answer different questions:
+
+- `polya_class` is **class-level RNA biology**: does this repeat's RNA intermediate carry a real polyA tail during its life cycle? LINE, SINE, LTR, Retroposon generate polyadenylated RNA; DNA transposons, satellites, snRNAs etc. do not.
+- `a_run_class` is **locus-level genomic DNA context**: do the DNA bases immediately 3' of the repeat end contain long A-runs, making internal priming of oligo-dT beads possible?
+
+Both can generate reads in a polyA-selected library, but only one is real transcription. The 2x2 reading:
+
+| polyA-competent? | high downstream A-run? | interpretation |
+|---|---|---|
+| yes | no | clean: real polyA-tailed transcripts captured, minimal priming artifact |
+| yes | yes | ambiguous: real transcripts AND internal-priming risk. Young L1HS, SVA_B-F, and young LTRs live here. Cannot disambiguate from the data alone. |
+| no | no | typically absent from polyA libraries; any signal is suspect |
+| no | yes | pure artifact risk: no real polyA transcription, but oligo-dT can still prime on genomic A-runs. Excluded from a_run facets here because the class (Simple_repeat/Low_complexity/Satellite) makes the flag tautological. |
+
+A cross-study signal that concentrates in polyA-competent + low-a_run subfamilies (e.g. MIR SINEs, older L1/LTR subfamilies) is the cleanest real signal. A signal that concentrates in polyA-competent + medium/high-a_run subfamilies (L1HS, SVAs, young LTRs) is biologically interesting but needs orthogonal validation because priming-artifact cannot be ruled out by RNA-seq alone.
+
+## Harmonize repeat DE tables per category
+
+
 
 Gene_id granularity is the shared axis across bulk and sc. Genic vs intergenic
 is split upstream at the count matrix level, so each study exposes two
@@ -180,7 +221,7 @@ knitr::kable(de_inventory)
 save_rds(de_tables, "integrative_repeat_de_tables")
 ```
 
-# Biology annotation join
+## Biology annotation join
 
 Each repeat DE table is annotated with the per-subfamily biology TSV produced
 by `build_repeat_biology_annotation.py`. Subfamily id in bulk (gene_id) and
@@ -192,9 +233,9 @@ if (!is.null(biology_annotation)) {
   bio <- as_tibble(biology_annotation) %>%
     select(gene_id, family_id, class_id, family_age,
            frac_intergenic, frac_downstream_a_run) %>%
-    mutate(polya_class = as.character(polya_label(class_id)),
-           age_class   = as.character(family_age_label(family_age)),
-           a_run_class = as.character(a_run_label(frac_downstream_a_run)))
+    mutate(polya_class = polya_label(class_id),
+           age_class   = family_age_label(family_age),
+           a_run_class = a_run_label(frac_downstream_a_run, class_ids = class_id))
   de_tables_anno <- lapply(de_tables, function(df) {
     left_join(df, bio, by = c("feature_id" = "gene_id"))
   })
@@ -205,7 +246,7 @@ if (!is.null(biology_annotation)) {
 save_rds(de_tables_anno, "integrative_repeat_de_tables_annotated")
 ```
 
-# Pairwise repeat logFC concordance, by category
+## Pairwise repeat logFC concordance, by category
 
 For each genic/intergenic axis, inner-join logFC tables between pairs of
 contrasts and compute Pearson / Spearman plus quadrant counts at
@@ -289,8 +330,12 @@ save_rds(list(genic = pair_results_genic,
 ```
 
 ```{r pair_repeat_scatter, fig.width = 5.5, fig.height = 5}
-scatter_pair <- function(r, title_prefix) {
+scatter_pair <- function(r, title_prefix, n_label = 10) {
   j <- r$joined
+  j_label <- j %>%
+    filter(sig_A, sig_B) %>%
+    arrange(desc(abs(logFC_A) + abs(logFC_B))) %>%
+    head(n_label)
   subtitle <- sprintf("n=%d  pearson=%.2f  spearman=%.2f  sig-both=%d (concord=%d discord=%d)",
                       r$n, r$pearson, r$spearman,
                       r$n_sig_both, r$n_concordant_sig, r$n_discordant_sig)
@@ -299,6 +344,14 @@ scatter_pair <- function(r, title_prefix) {
     geom_hline(yintercept = 0, color = "grey70") +
     geom_point(aes(color = interaction(sig_A, sig_B)),
                alpha = 0.7, size = 1.2) +
+    ggrepel::geom_text_repel(data = j_label,
+                             aes(label = feature_id),
+                             size = 2.8, color = "black",
+                             max.overlaps = Inf,
+                             box.padding = 0.4,
+                             segment.color = "grey50",
+                             segment.size = 0.3,
+                             min.segment.length = 0) +
     scale_color_manual(values = c("FALSE.FALSE" = "grey80",
                                   "TRUE.FALSE"  = "steelblue",
                                   "FALSE.TRUE"  = "goldenrod",
@@ -319,7 +372,7 @@ for (nm in names(pair_results_inter)) {
 }
 ```
 
-# Concordance faceted by polyA competence
+## Concordance faceted by polyA competence
 
 Class-based polyA competence from `polya_label(class_id)`: LINE/SINE/LTR/
 Retroposon subfamilies count as polyA-competent; DNA transposons and
@@ -327,16 +380,32 @@ satellites do not. Definition is shared with the per-dataset reports
 (`workflow/scripts/biology_checks.R`).
 
 ```{r polya_scatter, fig.width = 8, fig.height = 4.5}
-scatter_pair_faceted <- function(r, facet_col, title_prefix, palette) {
+scatter_pair_faceted <- function(r, facet_col, title_prefix, palette,
+                                 n_label_per_facet = 5) {
   j <- r$joined
   if (all(is.na(j[[facet_col]]))) return(invisible(NULL))
   subtitle <- sprintf("n=%d  pearson=%.2f  spearman=%.2f",
                       r$n, r$pearson, r$spearman)
   j <- j[!is.na(j[[facet_col]]), , drop = FALSE]
+  j_label <- j %>%
+    filter(sig_A, sig_B) %>%
+    group_by(.data[[facet_col]]) %>%
+    arrange(desc(abs(logFC_A) + abs(logFC_B)), .by_group = TRUE) %>%
+    slice_head(n = n_label_per_facet) %>%
+    ungroup()
   ggplot(j, aes(logFC_A, logFC_B, color = .data[[facet_col]])) +
     geom_vline(xintercept = 0, color = "grey70") +
     geom_hline(yintercept = 0, color = "grey70") +
     geom_point(alpha = 0.7, size = 1.2) +
+    ggrepel::geom_text_repel(data = j_label,
+                             aes(label = feature_id),
+                             size = 2.5, color = "black",
+                             max.overlaps = Inf,
+                             box.padding = 0.3,
+                             segment.color = "grey50",
+                             segment.size = 0.3,
+                             min.segment.length = 0,
+                             show.legend = FALSE) +
     facet_wrap(as.formula(paste("~", facet_col)), nrow = 1) +
     scale_color_manual(values = palette, na.value = "grey70") +
     labs(title = paste(title_prefix, paste(r$pair, collapse = " vs ")),
@@ -390,10 +459,10 @@ knitr::kable(polya_tbl, digits = 3)
 save_csv(polya_tbl, "integrative_polya_stratified_correlation")
 ```
 
-# Concordance faceted by downstream A-run (polyA priming proxy)
+## Concordance faceted by downstream A-run (polyA priming proxy)
 
 Post-integration 3'-downstream A-run fraction from
-`a_run_label(frac_downstream_a_run)` buckets subfamilies into low/medium/high.
+`a_run_label(frac_downstream_a_run, class_ids = class_id)` buckets subfamilies into low/medium/high.
 Complementary to class-based polyA competence; only present for subfamilies
 carried through the biology annotation.
 
@@ -420,7 +489,7 @@ knitr::kable(a_run_tbl, digits = 3)
 save_csv(a_run_tbl, "integrative_a_run_stratified_correlation")
 ```
 
-# Concordance faceted by family age
+## Concordance faceted by family age
 
 ```{r age_correlation_table}
 age_tbl <- bind_rows(
@@ -431,7 +500,7 @@ knitr::kable(age_tbl, digits = 3)
 save_csv(age_tbl, "integrative_age_stratified_correlation")
 ```
 
-# Gene-level naive (gene-norm) concordance
+## Gene-level naive (gene-norm) concordance
 
 Gene-level DE, gene-TMM normalization, no RUV. Lee bulk and sc save
 `ruv_naive_gene_de.rds` directly (two-group contrast or the unique-mode
@@ -533,13 +602,13 @@ for (nm in names(gene_pair_results)) {
 }
 ```
 
-# Shared significant repeats, by category
+## Shared significant repeats, by category
 
 For each pair and category, repeats significant in both tables, ordered by
 summed absolute logFC. Biology annotation columns are carried through for
 manual inspection.
 
-```{r shared_hits}
+```{r shared_hits, results = 'asis'}
 collect_shared_hits <- function(lst, category) {
   lapply(lst, function(r) {
     r$joined %>%
@@ -570,7 +639,9 @@ for (cat_label in c("genic", "intergenic")) {
 ```
 
 
-# Concordance under gene-library-size normalization (no RUV)
+# Alternative (gene-library-size, no RUV)
+
+## Cross-study concordance
 
 Mirror of the RUV concordance above, run on per-dataset `gene_lib_repeat_de`
 tables. Each dataset's repeat DGEList was built with library-size and
@@ -656,6 +727,8 @@ save_rds(list(genic = pair_results_gl_genic,
          "integrative_gene_lib_repeat_pair_results")
 ```
 
+## RUV vs gene-library-size, side by side
+
 ```{r ruv_vs_gene_lib_side_by_side}
 side_by_side <- summary_df %>%
   rename(pearson_ruv = pearson, spearman_ruv = spearman,
@@ -673,7 +746,7 @@ knitr::kable(side_by_side, digits = 3,
 save_csv(side_by_side, "integrative_ruv_vs_gene_lib_concordance_side_by_side")
 ```
 
-# Per-cluster sc counterpart of bulk OE
+## Per-cluster sc counterpart of bulk OE
 
 Cluster 12 is the authors' primary hypothesis for the HA-TDP-43-expressing
 neurons, but nothing forces the bulk-OE-matching repeat signal to live there.
@@ -758,6 +831,47 @@ if (nrow(rank_df) > 0) {
   cat("No per-cluster DE tables available; skipping ranking.\n")
 }
 ```
+
+
+# Overview: concordance across methods and categories
+
+Single-figure summary of cross-study repeat concordance. Rows and columns are the four contrasts (`lee_tdppos`, `poly_kd`, `poly_oe`, `sc_cluster12`). Cell colour is Pearson r on shared features; text is "Pearson (n_sig_both)". Panels split the 2 x 2 grid of `method` (RUV vs gene-library-size) against `category` (genic vs intergenic). A panel where most off-diagonal cells track the expected TDP-43 direction (negative for "opposite TDP-43 state" pairs, positive for "same TDP-43 state" pairs) supports the biology; flat panels suggest the normalization is either hiding the signal (compare panels) or the pair really is null (look at matching `n_sig_both` counts).
+
+```{r overview_heatmap, fig.width = 10, fig.height = 8}
+contrast_levels <- c("lee_tdppos", "poly_kd", "poly_oe", "sc_cluster12")
+
+all_concordance <- bind_rows(
+  summary_df %>% mutate(method = "RUV"),
+  summary_gl %>% mutate(method = "gene-library-size")
+) %>%
+  select(method, category, pair_A, pair_B, pearson, n_sig_both)
+
+mirror <- all_concordance %>%
+  rename(tmp_A = pair_A) %>% rename(pair_A = pair_B) %>% rename(pair_B = tmp_A)
+
+full_mat <- bind_rows(all_concordance, mirror) %>%
+  mutate(pair_A = factor(pair_A, levels = contrast_levels),
+         pair_B = factor(pair_B, levels = contrast_levels),
+         method = factor(method, levels = c("RUV", "gene-library-size")),
+         category = factor(category, levels = c("genic", "intergenic")))
+
+ggplot(full_mat, aes(pair_A, pair_B, fill = pearson)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.2f\n(%d)", pearson, n_sig_both)),
+            size = 3, color = "black") +
+  facet_grid(method ~ category) +
+  scale_fill_gradient2(low = "steelblue", mid = "white", high = "firebrick",
+                       midpoint = 0, name = "Pearson r",
+                       limits = c(-0.5, 0.5), oob = scales::squish) +
+  coord_equal() +
+  labs(title = "Cross-study concordance: methods x category",
+       x = NULL, y = NULL) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid = element_blank())
+```
+
+Readout. Row 1 (RUV): poly_kd/poly_oe off-diagonal is strongly blue (expected negative) in both genic and intergenic; everything else near white. Row 2 (gene-library-size): poly_kd/poly_oe off-diagonal is much closer to white, but the `n_sig_both` counts are 3-4x higher than the RUV row, so the biology is still there, just expressed through more individual hits rather than through feature-wise correlation. Cross-study rows (lee_tdppos) stay near white in both methods, confirming the Lee null is not a normalization artifact. sc_cluster12 rows pick up a small but directionally-correct signal under gene-library-size (positive with poly_oe, negative with poly_kd) that is below noise under RUV.
 
 # Session info
 
