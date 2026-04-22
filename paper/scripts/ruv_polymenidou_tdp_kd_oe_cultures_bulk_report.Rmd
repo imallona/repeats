@@ -25,6 +25,7 @@ suppressPackageStartupMessages({
 })
 
 source("../workflow/scripts/ruv_common.R")
+source("../workflow/scripts/gene_lib_size_common.R")
 
 counts_dir <- params$counts_dir
 report_outdir <- params$report_outdir
@@ -243,6 +244,39 @@ for (fs in names(repeats)) {
 }
 stopifnot(length(all_results) == length(repeats) * length(contrasts))
 save_rds(all_results, "ruv_repeat_de")
+
+## Repeat DE with gene-library-size normalization (no RUV)
+
+Parallel baseline to the RUV analysis above. Library-size factors come from
+TMM on the gene count matrix (`genes_expr`) and are transferred to each
+repeat DGEList; no RUV covariates are added. TMM on the repeat matrix itself
+is avoided because TDP-43 perturbation moves many repeat subfamilies in
+concert, which violates TMM's "most features not DE" assumption and would
+bias repeat logFC toward zero. Concordance between `gene_lib_repeat_de` and
+`ruv_repeat_de` across the same contrasts is a robustness check reported in
+the integrative cross-study Rmd: strong agreement means the RUV signal is
+not an artifact of RUV-g factor estimation; discordance flags a contrast
+where RUV is absorbing or producing structure and deserves manual scrutiny.
+
+```{r gene_lib_repeat_de}
+all_results_gene_lib <- list()
+for (fs in names(repeats)) {
+  for (cname in names(contrasts)) {
+    tag <- paste(fs, cname, sep = ":")
+    cvec <- build_contrast_vec(colnames(design0), levels(group), contrasts[[cname]])
+    tt <- run_gene_lib_repeat_de(repeat_counts = repeats[[fs]],
+                                 gene_counts = genes_expr,
+                                 design = design0,
+                                 test = list(contrast = cvec))
+    out <- file.path(report_outdir,
+                     sprintf("gene_lib_%s_%s.tsv", fs, cname))
+    write.table(tt, out, sep = "\t", quote = FALSE, row.names = FALSE)
+    all_results_gene_lib[[tag]] <- tt
+  }
+}
+stopifnot(length(all_results_gene_lib) == length(repeats) * length(contrasts))
+save_rds(all_results_gene_lib, "gene_lib_repeat_de")
+```
 ```
 
 ## Per-contrast naive gene DE

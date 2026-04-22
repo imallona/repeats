@@ -569,6 +569,196 @@ for (cat_label in c("genic", "intergenic")) {
 }
 ```
 
+
+# Concordance under gene-library-size normalization (no RUV)
+
+Mirror of the RUV concordance above, run on per-dataset `gene_lib_repeat_de`
+tables. Each dataset's repeat DGEList was built with library-size and
+norm factors derived from its own gene count matrix, no RUV covariates.
+Comparing the two concordance matrices side by side indicates how much of
+the cross-study signal depends on RUV factor estimation.
+
+```{r load_gene_lib}
+poly_bulk_gl <- read_rds_safe(file.path(params$polymenidou_bulk_rds_dir,
+                                        "gene_lib_repeat_de.rds"))
+lee_bulk_gl  <- read_rds_safe(file.path(params$lee_bulk_rds_dir,
+                                        "gene_lib_repeat_de.rds"))
+poly_sc_gl   <- read_rds_safe(file.path(params$polymenidou_sc_rds_dir,
+                                        "gene_lib_repeat_de.rds"))
+```
+
+```{r gene_lib_de_tables}
+repeat_rds_map_gl <- list(
+  lee_bulk = lee_bulk_gl,
+  polymenidou_bulk = poly_bulk_gl,
+  polymenidou_sc = poly_sc_gl
+)
+
+pick_repeat_tbl_gl <- function(study, contrast_id, category) {
+  rds <- repeat_rds_map_gl[[study]]
+  if (is.null(rds)) return(NULL)
+  key <- repeat_key_map[[study]][[contrast_id]][[category]]
+  if (is.null(key) || !key %in% names(rds)) return(NULL)
+  df <- as_tibble(rds[[key]]) %>%
+    select(feature_id, logFC, PValue, FDR) %>%
+    mutate(sig = FDR < params$fdr_cutoff & abs(logFC) > params$logfc_cutoff)
+  df
+}
+
+de_tables_gl <- list()
+for (i in seq_len(nrow(contrast_info))) {
+  lbl <- contrast_info$label[i]
+  study <- contrast_info$study[i]
+  cid <- contrast_info$contrast_id[i]
+  for (cat in c("genic", "intergenic")) {
+    tbl <- pick_repeat_tbl_gl(study, cid, cat)
+    if (!is.null(tbl)) {
+      de_tables_gl[[paste(lbl, cat, sep = "__")]] <- tbl
+    }
+  }
+}
+
+if (!is.null(bio)) {
+  de_tables_gl <- lapply(de_tables_gl, function(df) {
+    left_join(df, bio, by = c("feature_id" = "gene_id"))
+  })
+}
+save_rds(de_tables_gl, "integrative_gene_lib_repeat_de_tables_annotated")
+```
+
+```{r gene_lib_pair_results}
+run_pairs_for_category_gl <- function(category) {
+  out <- list()
+  for (p in pairs_of_interest) {
+    tagA <- paste(p[1], category, sep = "__")
+    tagB <- paste(p[2], category, sep = "__")
+    r <- pair_logfc(de_tables_gl[[tagA]], de_tables_gl[[tagB]], p[1], p[2])
+    if (!is.null(r)) {
+      r$category <- category
+      out[[paste(p[1], "vs", p[2], sep = "__")]] <- r
+    }
+  }
+  out
+}
+
+pair_results_gl_genic <- run_pairs_for_category_gl("genic")
+pair_results_gl_inter <- run_pairs_for_category_gl("intergenic")
+
+summary_gl <- bind_rows(
+  summarise_pair_results(pair_results_gl_genic, "genic"),
+  summarise_pair_results(pair_results_gl_inter, "intergenic")
+)
+knitr::kable(summary_gl, digits = 3,
+             caption = "Cross-study concordance with gene-library-size normalization")
+save_csv(summary_gl, "integrative_gene_lib_repeat_concordance_summary")
+save_rds(list(genic = pair_results_gl_genic,
+              intergenic = pair_results_gl_inter),
+         "integrative_gene_lib_repeat_pair_results")
+```
+
+```{r ruv_vs_gene_lib_side_by_side}
+side_by_side <- summary_df %>%
+  rename(pearson_ruv = pearson, spearman_ruv = spearman,
+         n_sig_both_ruv = n_sig_both) %>%
+  select(category, pair_A, pair_B, n, pearson_ruv, spearman_ruv, n_sig_both_ruv) %>%
+  inner_join(
+    summary_gl %>%
+      rename(pearson_gl = pearson, spearman_gl = spearman,
+             n_sig_both_gl = n_sig_both) %>%
+      select(category, pair_A, pair_B, pearson_gl, spearman_gl, n_sig_both_gl),
+    by = c("category", "pair_A", "pair_B")
+  )
+knitr::kable(side_by_side, digits = 3,
+             caption = "Concordance side by side: RUV vs gene-library-size")
+save_csv(side_by_side, "integrative_ruv_vs_gene_lib_concordance_side_by_side")
+```
+
+# Per-cluster sc counterpart of bulk OE
+
+Cluster 12 is the authors' primary hypothesis for the HA-TDP-43-expressing
+neurons, but nothing forces the bulk-OE-matching repeat signal to live there.
+This section ranks every sc cluster by the Pearson and Spearman correlation
+between its own cluster-vs-rest repeat logFC profile (gene-library-size
+normalization, no RUV) and the Polymenidou bulk `tdp43_oe_vs_oe_ctrl` repeat
+logFC profile (also gene-library-size). The cluster at the top of the
+ranking is the empirical sc counterpart of bulk OE; if that is cluster 12
+the paper story holds, and if it is not the choice deserves manual
+inspection before further inference.
+
+Bulk OE is the reference because it is a DOX-on vs DOX-off comparison in
+the same Polymenidou system, so it should share the strongest biological
+drivers with the sc library if any cluster in the sc library is dominated
+by HA-TDP-43-expressing cells.
+
+```{r per_cluster_bulk_oe_ranking, fig.width = 7, fig.height = 5}
+per_cluster_gl <- read_rds_safe(file.path(params$polymenidou_sc_rds_dir,
+                                          "per_cluster_gene_lib_repeat_de.rds"))
+
+parse_cluster_tag <- function(tag) {
+  m <- regmatches(tag, regexec("cluster(\\d+)_vs_other$", tag))[[1]]
+  if (length(m) < 2) return(NA_integer_)
+  as.integer(m[2])
+}
+
+parse_category_from_tag <- function(tag) {
+  if (grepl("genic_repeats:", tag) && !grepl("intergenic_repeats:", tag)) "genic"
+  else if (grepl("intergenic_repeats:", tag))                            "intergenic"
+  else                                                                     NA_character_
+}
+
+bulk_oe_ref <- list(
+  genic      = poly_bulk_gl[[repeat_key_map$polymenidou_bulk$tdp43_oe_vs_oe_ctrl$genic]],
+  intergenic = poly_bulk_gl[[repeat_key_map$polymenidou_bulk$tdp43_oe_vs_oe_ctrl$intergenic]]
+)
+
+rank_rows <- list()
+if (!is.null(per_cluster_gl) && length(per_cluster_gl) > 0) {
+  for (tag in names(per_cluster_gl)) {
+    cl <- parse_cluster_tag(tag)
+    cat_ <- parse_category_from_tag(tag)
+    if (is.na(cl) || is.na(cat_)) next
+    ref <- bulk_oe_ref[[cat_]]
+    if (is.null(ref)) next
+    tbl <- as_tibble(per_cluster_gl[[tag]]) %>% select(feature_id, logFC)
+    ref_tbl <- as_tibble(ref) %>% select(feature_id, logFC_bulk = logFC)
+    j <- inner_join(tbl, ref_tbl, by = "feature_id")
+    if (nrow(j) < 20) next
+    rank_rows[[tag]] <- tibble(
+      cluster = cl,
+      category = cat_,
+      tag = tag,
+      n = nrow(j),
+      pearson = cor(j$logFC, j$logFC_bulk, method = "pearson"),
+      spearman = cor(j$logFC, j$logFC_bulk, method = "spearman")
+    )
+  }
+}
+
+rank_df <- bind_rows(rank_rows)
+if (nrow(rank_df) > 0) {
+  rank_df <- rank_df %>% arrange(category, desc(pearson))
+  knitr::kable(rank_df, digits = 3,
+               caption = "Per-cluster correlation against Polymenidou bulk OE")
+  save_csv(rank_df, "integrative_per_cluster_vs_bulk_oe_ranking")
+  save_rds(rank_df, "integrative_per_cluster_vs_bulk_oe_ranking")
+
+  p_rank <- ggplot(rank_df,
+                   aes(x = reorder(factor(cluster), pearson),
+                       y = pearson, fill = cluster == 12L)) +
+    geom_col() +
+    facet_wrap(~ category, scales = "free_x") +
+    coord_flip() +
+    scale_fill_manual(values = c(`FALSE` = "grey60", `TRUE` = "firebrick"),
+                      name = "cluster 12?") +
+    labs(x = "sc cluster", y = "Pearson r vs Polymenidou bulk OE logFC",
+         title = "Which sc cluster best matches bulk OE?") +
+    theme_bw()
+  print(p_rank)
+} else {
+  cat("No per-cluster DE tables available; skipping ranking.\n")
+}
+```
+
 # Session info
 
 ```{r session}

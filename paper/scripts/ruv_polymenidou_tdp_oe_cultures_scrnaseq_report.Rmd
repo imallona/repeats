@@ -36,6 +36,7 @@ suppressPackageStartupMessages({
 })
 
 source("../workflow/scripts/ruv_common.R")
+source("../workflow/scripts/gene_lib_size_common.R")
 source("../workflow/scripts/ggtheme.R")
 source("../workflow/scripts/ruv_plots.R")
 
@@ -410,6 +411,106 @@ for (mode in starsolo_modes) {
 }
 stopifnot(length(all_results) == length(starsolo_modes) * length(repeat_fsets))
 save_rds(all_results, "ruv_repeat_de")
+
+## Repeat DE with gene-library-size normalization (no RUV)
+
+Parallel baseline to the RUV analysis above, for the same cluster 12 vs
+other contrast. Library-size factors come from TMM on the pseudo-bulk gene
+matrix (`ruv_state_by_mode[[mode]]$genes_expr`) and are transferred to each
+repeat DGEList. No RUV covariates are added. TMM on the repeat matrix is
+avoided because TDP-43 perturbation moves many repeat subfamilies in
+concert. Concordance between `gene_lib_repeat_de` and `ruv_repeat_de` is
+reported in the integrative cross-study Rmd.
+
+```{r gene_lib_repeat_de_cluster12}
+all_results_gene_lib <- list()
+for (mode in starsolo_modes) {
+  st <- ruv_state_by_mode[[mode]]
+  design_no_ruv <- model.matrix(~ sample_block + group)
+  stopifnot(qr(design_no_ruv)$rank == ncol(design_no_ruv),
+            "groupTRUE" %in% colnames(design_no_ruv))
+  for (fs in repeat_fsets) {
+    key <- paste(mode, fs, sep = "_")
+    counts <- pb_list[[key]]
+    stopifnot(identical(colnames(counts), st$pb_samples))
+    storage.mode(counts) <- "integer"
+    tt <- run_gene_lib_repeat_de(repeat_counts = counts,
+                                 gene_counts = st$genes_expr,
+                                 design = design_no_ruv,
+                                 test = list(coef = "groupTRUE"))
+    tag <- paste(key, "cluster12_vs_other", sep = ":")
+    out_tsv <- file.path(report_outdir,
+                         sprintf("gene_lib_%s_%s_cluster12_vs_other.tsv",
+                                 mode, fs))
+    write.table(tt, out_tsv, sep = "\t", quote = FALSE, row.names = FALSE)
+    all_results_gene_lib[[tag]] <- tt
+  }
+}
+stopifnot(length(all_results_gene_lib) == length(starsolo_modes) * length(repeat_fsets))
+save_rds(all_results_gene_lib, "gene_lib_repeat_de")
+```
+
+## Per-cluster vs rest repeat DE (gene-lib only)
+
+Cluster 12 is the authors' primary hypothesis for the HA-TDP-43-expressing
+population. To test that choice empirically, we run the same repeat DE for
+every cluster individually ("cluster c vs all others") and later correlate
+each cluster's repeat logFC profile against Polymenidou bulk OE in the
+integrative Rmd. The cluster that best matches bulk OE is the empirical sc
+counterpart; if that is not cluster 12, the choice deserves scrutiny.
+
+Only the gene-library-size path is run here. RUV-per-cluster would require
+re-ranking empirical control genes for each cluster's contrast (since RUV-g
+controls are selected as the genes least associated with the specific
+contrast under test), which is a different analysis in its own right. We
+keep the RUV path for the primary cluster-12 contrast only.
+
+A cluster is included if at least two samples have more than
+`min_cells_per_col` cells in it, so each pseudo-bulk contrast has
+non-trivial replication.
+
+```{r per_cluster_gene_lib_repeat_de}
+cluster_support <- col_meta %>%
+  group_by(cluster_num) %>%
+  summarize(n_samples = n_distinct(sample_id),
+            total_cells = sum(n_cells),
+            .groups = "drop") %>%
+  filter(n_samples >= 2)
+
+clusters_to_sweep <- sort(cluster_support$cluster_num)
+cat("clusters to sweep:", length(clusters_to_sweep),
+    "|", paste(clusters_to_sweep, collapse = ","), "\n")
+
+per_cluster_results <- list()
+for (mode in starsolo_modes) {
+  st <- ruv_state_by_mode[[mode]]
+  for (cl in clusters_to_sweep) {
+    group_c <- factor(col_meta$cluster_num == cl, levels = c(FALSE, TRUE))
+    if (sum(group_c == "TRUE") < 2 || sum(group_c == "FALSE") < 2) next
+    design_c <- model.matrix(~ sample_block + group_c)
+    if (qr(design_c)$rank < ncol(design_c)) next
+    if (!"group_cTRUE" %in% colnames(design_c)) next
+    for (fs in repeat_fsets) {
+      key <- paste(mode, fs, sep = "_")
+      counts <- pb_list[[key]]
+      stopifnot(identical(colnames(counts), st$pb_samples))
+      storage.mode(counts) <- "integer"
+      tt <- tryCatch(
+        run_gene_lib_repeat_de(repeat_counts = counts,
+                               gene_counts = st$genes_expr,
+                               design = design_c,
+                               test = list(coef = "group_cTRUE")),
+        error = function(e) { cat("skip cluster", cl, mode, fs, ":",
+                                  conditionMessage(e), "\n"); NULL })
+      if (is.null(tt)) next
+      tag <- paste(key, sprintf("cluster%02d_vs_other", cl), sep = ":")
+      per_cluster_results[[tag]] <- tt
+    }
+  }
+}
+cat("per-cluster DE tables:", length(per_cluster_results), "\n")
+save_rds(per_cluster_results, "per_cluster_gene_lib_repeat_de")
+```
 ```
 
 ## DE stratified by biology (polyA / age / strand / A-run)
