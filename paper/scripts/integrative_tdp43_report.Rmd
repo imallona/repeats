@@ -372,9 +372,9 @@ scatter_pair <- function(r, title_prefix, n_label = 10) {
          subtitle = subtitle,
          x = paste0("logFC ", r$pair[1]),
          y = paste0("logFC ", r$pair[2])) +
-    coord_equal() +
+
     theme_bw() +
-    theme(panel.grid = element_blank())
+    theme(aspect.ratio = 1, panel.grid = element_blank())
 }
 
 for (nm in names(pair_results_genic)) {
@@ -429,9 +429,10 @@ scatter_pair_faceted <- function(r, facet_col, title_prefix, palette,
          subtitle = subtitle,
          x = paste0("logFC ", r$pair[1]),
          y = paste0("logFC ", r$pair[2])) +
-    coord_equal() +
+
     theme_bw() +
-    theme(legend.position = "none",
+    theme(aspect.ratio = 1,
+          legend.position = "none",
           panel.grid = element_blank())
 }
 
@@ -616,9 +617,9 @@ for (nm in names(gene_pair_results)) {
       labs(title = nm, subtitle = subtitle,
            x = paste0("logFC ", r$pair[1]),
            y = paste0("logFC ", r$pair[2])) +
-      coord_equal() +
+
       theme_bw() +
-      theme(panel.grid = element_blank())
+      theme(aspect.ratio = 1, panel.grid = element_blank())
   )
 }
 ```
@@ -886,11 +887,12 @@ ggplot(full_mat, aes(pair_A, pair_B, fill = pearson)) +
   scale_fill_gradient2(low = "steelblue", mid = "white", high = "firebrick",
                        midpoint = 0, name = "Pearson r",
                        limits = c(-0.5, 0.5), oob = scales::squish) +
-  coord_equal() +
+
   labs(title = "Cross-study concordance: methods x category",
        x = NULL, y = NULL) +
   theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+  theme(aspect.ratio = 1,
+        axis.text.x = element_text(angle = 45, hjust = 1),
         panel.grid = element_blank())
 ```
 
