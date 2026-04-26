@@ -21,6 +21,7 @@ NOISE_REPORT_CHR := $(RESULTS)/noise_sweep_chromium.html
         noise_smartseq2 noise_smartseq2_0pct noise_smartseq2_1pct noise_smartseq2_5pct noise_smartseq2_10pct \
         noise_chromium noise_chromium_0pct noise_chromium_1pct noise_chromium_5pct noise_chromium_10pct \
         report_noise_smartseq2 report_noise_chromium reports_noise \
+        de_polymenidou_bulk \
         help
 
 # -----------------------------------------------------------------------
@@ -90,6 +91,15 @@ report_noise_chromium:  $(NOISE_REPORT_CHR)
 reports_noise: report_noise_smartseq2 report_noise_chromium
 
 # -----------------------------------------------------------------------
+# DE library size and normalization check (count-level)
+# requires gene and repeat count TSVs from a prior bulk run; see
+# workflow/configs/de_simulations_polymenidou_bulk.yaml for the input paths
+# -----------------------------------------------------------------------
+
+de_polymenidou_bulk:
+	$(SM) --configfile configs/de_simulations_polymenidou_bulk.yaml
+
+# -----------------------------------------------------------------------
 # all
 # -----------------------------------------------------------------------
 
@@ -116,5 +126,9 @@ help:
 	@echo "  report_noise_smartseq2           $(NOISE_REPORT_SS2)"
 	@echo "  report_noise_chromium            $(NOISE_REPORT_CHR)"
 	@echo "  reports_noise                    both noise sweep reports"
+	@echo ""
+	@echo "DE library size and normalization check:"
+	@echo "  de_polymenidou_bulk              count-level RUV power benchmark for the gse230647 bulk gene/repeat counts"
+	@echo "                                   (TSV/RDS, heatmap PDF, and HTML report under results/de_simulations_polymenidou_bulk/de_simulations/)"
 	@echo ""
 	@echo "  all                              run everything in sequence"

@@ -1,0 +1,371 @@
+---
+title: "repeat element quantification - DE library size and normalization check"
+author: "Izaskun Mallona"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    code_folding: hide
+params:
+  de_dir: "."
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 5)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(scales)
+library(patchwork)
+source(file.path("scripts", "ggtheme.R"))
+
+de_dir <- params$de_dir
+
+safe_div <- function(a, b) ifelse(b > 0, a / b, NA_real_)
+```
+
+## What this report shows
+
+This is a check, not a parameter sweep: gene and repeat library sizes are varied multiplicatively to probe how each normalization strategy behaves when the depths drift, but no algorithmic parameter is being tuned. At each grid cell the simulation plants a known fold change at a fixed set of repeat features, runs the methods on `n_iter` replicates, and reports power, false positive rate, and the underlying TP/FN/FP/TN counts.
+
+The question is pragmatic: at which combinations of gene and repeat depth does each strategy still call the planted repeats DE, and where does it either lose power or break FDR control. Comments under each plot say what to look for before reading the numbers.
+
+## Inputs
+
+```{r load-data}
+results_path <- file.path(de_dir, "de_simulations_results.tsv")
+summary_path <- file.path(de_dir, "de_simulations_summary.tsv")
+rds_path     <- file.path(de_dir, "de_simulations_results.rds")
+heatmap_pdf  <- file.path(de_dir, "de_simulations_heatmap.pdf")
+
+stopifnot(file.exists(results_path), file.exists(summary_path))
+
+results <- read_tsv(results_path, show_col_types = FALSE)
+summary_df <- read_tsv(summary_path, show_col_types = FALSE)
+
+run_meta <- if (file.exists(rds_path)) readRDS(rds_path) else NULL
+
+method_levels <- c("none", "TMM",
+                   sort(grep("^RUVg_k", unique(results$method), value = TRUE)))
+results$method <- factor(results$method, levels = method_levels)
+summary_df$method <- factor(summary_df$method, levels = method_levels)
+
+n_planted <- if (!is.null(run_meta) && !is.null(run_meta$params$n_de_repeats))
+               as.integer(run_meta$params$n_de_repeats) else NA_integer_
+
+results <- results %>%
+  mutate(
+    calls = tp + fp,
+    precision = safe_div(tp, tp + fp),
+    recall = safe_div(tp, tp + fn),
+    f1 = safe_div(2 * tp, 2 * tp + fp + fn),
+    n_neg_tested = fp + tn
+  )
+
+cell_summary <- results %>%
+  group_by(method, gene_lib_scale, repeat_lib_scale) %>%
+  summarise(
+    tp_mean = mean(tp, na.rm = TRUE),
+    fp_mean = mean(fp, na.rm = TRUE),
+    fn_mean = mean(fn, na.rm = TRUE),
+    tn_mean = mean(tn, na.rm = TRUE),
+    calls_mean = mean(calls, na.rm = TRUE),
+    precision_mean = mean(precision, na.rm = TRUE),
+    f1_mean = mean(f1, na.rm = TRUE),
+    n_neg_tested_mean = mean(n_neg_tested, na.rm = TRUE),
+    .groups = "drop")
+```
+
+```{r run-params, echo=FALSE, results='asis'}
+if (!is.null(run_meta) && !is.null(run_meta$params)) {
+  p <- run_meta$params
+  cat(sprintf("- planted fold change: %s\n", p$fc))
+  cat(sprintf("- replicates per cell: %s\n", p$n_iter))
+  cat(sprintf("- planted DE repeats: %s\n", p$n_de_repeats))
+  cat(sprintf("- planted DE genes: %s\n", p$n_de_genes))
+  cat(sprintf("- gene library scalers: %s\n",
+              paste(unlist(p$gene_lib_grid), collapse = ", ")))
+  cat(sprintf("- repeat library scalers: %s\n",
+              paste(unlist(p$repeat_lib_grid), collapse = ", ")))
+  cat(sprintf("- RUVg k_max: %s, n_controls: %s\n", p$k_max, p$n_controls))
+  cat(sprintf("- FDR threshold: %s\n", p$fdr))
+}
+```
+
+The heatmaps below are also produced as a standalone PDF copy alongside the Rmd output, at `de_simulations_heatmap.pdf`.
+
+## Power across the library size grid
+
+```{r power-heatmap, fig.width=10, fig.height=6}
+ggplot(summary_df, aes(x = factor(gene_lib_scale),
+                       y = factor(repeat_lib_scale),
+                       fill = power_mean)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%.2f", power_mean)), size = 2.5) +
+  facet_wrap(~ method) +
+  scale_fill_viridis_c(limits = c(0, 1)) +
+  labs(x = "gene library size scaler",
+       y = "repeat library size scaler",
+       fill = "power",
+       title = "Power: probability of calling a planted repeat DE") +
+  theme_minimal()
+```
+
+How to read this. Each panel is one normalization method. Columns are gene library scalers and rows are repeat library scalers; bright cells mean the method recovers the planted FC at that depth combination. Bottom rows darkening means the bottleneck is repeat depth, not the method. Left columns darkening for RUVg panels but not for TMM means RUVg is starved by gene depth (its W estimation needs informative gene counts). A method that stays bright across the whole grid is robust to library size; a method bright only near the diagonal is sensitive to gene/repeat depth balance.
+
+## False positive rate across the grid
+
+```{r fpr-heatmap, fig.width=10, fig.height=6}
+ggplot(summary_df, aes(x = factor(gene_lib_scale),
+                       y = factor(repeat_lib_scale),
+                       fill = fpr_mean)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%.2f", fpr_mean)), size = 2.5) +
+  facet_wrap(~ method) +
+  scale_fill_viridis_c(limits = c(0, max(0.1, summary_df$fpr_mean,
+                                         na.rm = TRUE))) +
+  labs(x = "gene library size scaler",
+       y = "repeat library size scaler",
+       fill = "FPR",
+       title = sprintf("False positive rate at FDR target %s",
+                       if (!is.null(run_meta$params$fdr))
+                         run_meta$params$fdr else "0.05")) +
+  theme_minimal()
+```
+
+How to read this. FPR cells should sit close to the FDR target (default 0.05); systematically higher means the method is anti-conservative at that cell, lower means it is conservative. Hot stripes that follow either axis point to a depth regime where the method's variance estimate breaks down. Compare side by side with the power heatmap: a method that is bright on power but also hot on FPR is buying power with false discoveries.
+
+## Power vs repeat depth, by gene depth
+
+```{r power-vs-repeat-depth, fig.width=10, fig.height=5}
+ggplot(summary_df,
+       aes(x = repeat_lib_scale, y = power_mean,
+           colour = method, group = method)) +
+  geom_line() +
+  geom_point(size = 1.5) +
+  facet_wrap(~ paste0("gene_lib_scale = ", gene_lib_scale), nrow = 1) +
+  scale_x_log10() +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(x = "repeat library size scaler (log10)",
+       y = "mean power",
+       colour = "method",
+       title = "Power vs repeat depth, faceted by gene depth") +
+  theme_minimal()
+```
+
+How to read this. Each panel fixes gene depth and varies repeat depth. The inflection point is where each method gets enough repeat counts to call the planted FC; flatter, higher curves are better. If RUVg curves slide down or flatten low at small gene_lib_scale facets, that is RUVg failing because empirical controls in the gene matrix are themselves too noisy.
+
+## Power vs gene depth, by repeat depth
+
+```{r power-vs-gene-depth, fig.width=10, fig.height=5}
+ggplot(summary_df,
+       aes(x = gene_lib_scale, y = power_mean,
+           colour = method, group = method)) +
+  geom_line() +
+  geom_point(size = 1.5) +
+  facet_wrap(~ paste0("repeat_lib_scale = ", repeat_lib_scale), nrow = 1) +
+  scale_x_log10() +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(x = "gene library size scaler (log10)",
+       y = "mean power",
+       colour = "method",
+       title = "Power vs gene depth, faceted by repeat depth") +
+  theme_minimal()
+```
+
+How to read this. TMM and "none" should be flat across gene depth, since they only see the repeat matrix. RUVg curves that rise with gene depth confirm that RUVg is exploiting the gene matrix to remove unwanted variation; if they instead drop, RUVg is overfitting and removing condition signal.
+
+## Power-FPR tradeoff per cell
+
+```{r power-fpr-scatter, fig.width=8, fig.height=6}
+ggplot(summary_df, aes(x = fpr_mean, y = power_mean,
+                       colour = method, shape = method)) +
+  geom_point(size = 2, alpha = 0.85) +
+  geom_vline(xintercept = if (!is.null(run_meta$params$fdr))
+                            as.numeric(run_meta$params$fdr) else 0.05,
+             linetype = "dashed", colour = "grey50") +
+  scale_x_continuous(labels = label_number(accuracy = 0.01)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(x = "mean FPR (per grid cell)",
+       y = "mean power (per grid cell)",
+       colour = "method", shape = "method",
+       title = "Power vs FPR, one point per (method, grid cell)") +
+  theme_minimal()
+```
+
+How to read this. The dashed line is the FDR target. Methods that pile up points above the line on the right are anti-conservative; methods that pile up on the left at low power are conservative-but-blind. A good method puts most cells in the upper left quadrant: high power, FPR at or below target.
+
+## From planted truth to actual detections
+
+This section walks the same numbers from the truth side to the detection side. The truth set has a fixed size of `r if (!is.na(n_planted)) n_planted else "n_de_repeats"` planted repeats per replicate. TP plus FN always equals that size: features in the truth set that did not pass count filtering still count as FN.
+
+### Confusion outcome counts per cell
+
+```{r confusion-bars, fig.width=11, fig.height=7}
+conf_long <- cell_summary %>%
+  pivot_longer(c(tp_mean, fp_mean, fn_mean),
+               names_to = "outcome", values_to = "count") %>%
+  mutate(outcome = recode(outcome,
+                          tp_mean = "TP", fp_mean = "FP", fn_mean = "FN"),
+         outcome = factor(outcome, levels = c("TP", "FN", "FP")),
+         cell = paste0("g=", gene_lib_scale, ", r=", repeat_lib_scale))
+
+ggplot(conf_long, aes(x = method, y = count, fill = outcome)) +
+  geom_col(position = "stack") +
+  facet_wrap(~ cell) +
+  scale_fill_manual(values = c(TP = "#2ca25f", FN = "#f0e442",
+                                FP = "#d55e00")) +
+  labs(x = NULL, y = "mean count per replicate",
+       title = "Outcome counts per (method, grid cell)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+How to read this. The TP+FN bar height is constant across methods within a cell (truth set size); a tall green TP block on top of a short yellow FN block means the method is finding the truth. The orange FP block sits below the truth bar height and tracks how many spurious calls each method produces. A short orange block plus a tall green block is the goal.
+
+### Total calls, precision, F1
+
+```{r calls-precision, fig.width=11, fig.height=4}
+calls_plot <- ggplot(cell_summary,
+                    aes(x = factor(gene_lib_scale),
+                        y = factor(repeat_lib_scale),
+                        fill = calls_mean)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%.0f", calls_mean)), size = 2.5) +
+  facet_wrap(~ method, nrow = 1) +
+  scale_fill_viridis_c() +
+  labs(x = "gene scaler", y = "repeat scaler", fill = "calls",
+       title = "Mean number of calls (TP + FP) per replicate") +
+  theme_minimal()
+
+precision_plot <- ggplot(cell_summary,
+                         aes(x = factor(gene_lib_scale),
+                             y = factor(repeat_lib_scale),
+                             fill = precision_mean)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%.2f", precision_mean)), size = 2.5) +
+  facet_wrap(~ method, nrow = 1) +
+  scale_fill_viridis_c(limits = c(0, 1)) +
+  labs(x = "gene scaler", y = "repeat scaler", fill = "precision",
+       title = "Mean precision = TP / (TP + FP)") +
+  theme_minimal()
+
+f1_plot <- ggplot(cell_summary,
+                  aes(x = factor(gene_lib_scale),
+                      y = factor(repeat_lib_scale),
+                      fill = f1_mean)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%.2f", f1_mean)), size = 2.5) +
+  facet_wrap(~ method, nrow = 1) +
+  scale_fill_viridis_c(limits = c(0, 1)) +
+  labs(x = "gene scaler", y = "repeat scaler", fill = "F1",
+       title = "Mean F1 score") +
+  theme_minimal()
+
+calls_plot
+precision_plot
+f1_plot
+```
+
+How to read these. Calls volume tells you how aggressive a method is at a given depth: a method with very few calls but high power is fine; a method with thousands of calls and high power is suspect (look at precision and FPR). Precision answers the inverse of FPR scaled by call set size: in cells where the planted truth is rare relative to spurious calls, precision collapses even if FPR stays low. F1 collapses both into a single number to rank methods per cell.
+
+### Detected vs not-tested null space
+
+```{r null-tested, fig.width=10, fig.height=4}
+ggplot(cell_summary,
+       aes(x = factor(gene_lib_scale),
+           y = factor(repeat_lib_scale),
+           fill = n_neg_tested_mean)) +
+  geom_tile() +
+  geom_text(aes(label = sprintf("%.0f", n_neg_tested_mean)), size = 2.5) +
+  facet_wrap(~ method, nrow = 1) +
+  scale_fill_viridis_c() +
+  labs(x = "gene scaler", y = "repeat scaler", fill = "tested null",
+       title = "Mean number of null repeat features that survived filtering") +
+  theme_minimal()
+```
+
+How to read this. This is the FP+TN count: how many non-planted repeat features survived the count filter and got tested. If this collapses at low repeat scalers, the test had little material to call from in the first place. Use it to interpret apparent "good FPR" at very low repeat depth: a test that tested 5 features cannot generate many FPs.
+
+## Spread across replicates
+
+```{r iter-spread, fig.width=11, fig.height=7}
+results %>%
+  filter(!is.na(power)) %>%
+  mutate(cell = paste0("g=", gene_lib_scale, ", r=", repeat_lib_scale)) %>%
+  ggplot(aes(x = method, y = power, colour = method)) +
+  geom_jitter(width = 0.15, alpha = 0.5, size = 0.8) +
+  stat_summary(fun = mean, geom = "crossbar", width = 0.5,
+               colour = "black", linewidth = 0.3) +
+  facet_wrap(~ cell) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(x = NULL, y = "power per replicate",
+       title = "Per-replicate power; black bar is mean") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+```
+
+How to read this. Each dot is one simulation replicate; the black bar is the mean. Tall vertical scatter at a given (method, cell) means the heatmap average is averaging over a bimodal outcome (often "always succeeds" vs "always fails" depending on planted feature draw), and the heatmap point estimate is less reliable. Use this plot to decide where to bump n_iter.
+
+## Method ranking at the canonical cell
+
+```{r ranking, fig.width=8, fig.height=4}
+canonical_g <- 1
+canonical_r <- 1
+ranking <- summary_df %>%
+  filter(gene_lib_scale == canonical_g, repeat_lib_scale == canonical_r) %>%
+  arrange(desc(power_mean))
+
+knitr::kable(ranking, digits = 3,
+             caption = sprintf(
+               "Methods at gene_lib_scale=%s, repeat_lib_scale=%s",
+               canonical_g, canonical_r))
+```
+
+How to read this. The canonical cell uses the unscaled mean and dispersion fit from the real data; this is the closest the simulation gets to "what will happen on this dataset as is". The ordering here is the operational recommendation for the input dataset, conditional on the planted FC and the DE plant size.
+
+## Fitted NB params (sanity check)
+
+```{r nb-params, fig.width=10, fig.height=4, eval = !is.null(run_meta)}
+if (!is.null(run_meta$gene_params) && !is.null(run_meta$repeat_params)) {
+  nb_df <- bind_rows(
+    data.frame(feature_set = "gene",
+               mu = run_meta$gene_params$mu,
+               dispersion = run_meta$gene_params$dispersion),
+    data.frame(feature_set = "repeat",
+               mu = run_meta$repeat_params$mu,
+               dispersion = run_meta$repeat_params$dispersion))
+  ggplot(nb_df, aes(x = mu, y = dispersion)) +
+    geom_point(alpha = 0.2, size = 0.6) +
+    facet_wrap(~ feature_set, scales = "free") +
+    scale_x_log10() + scale_y_log10() +
+    labs(x = "mean count (per feature)",
+         y = "tagwise dispersion",
+         title = "Fitted NB parameters from the input matrices") +
+    theme_minimal()
+}
+```
+
+How to read this. This is a sanity plot, not a result. The simulation draws counts from these mean and dispersion vectors, so if the gene panel looks nothing like a typical bulk dispersion-mean trend (for example dispersion not decreasing with mean) the simulation is starting from a bad fit and the rest of the report should be read with caution.
+
+## Heatmap PDF
+
+```{r pdf-link, results='asis', echo=FALSE}
+if (file.exists(heatmap_pdf)) {
+  cat(sprintf("A standalone PDF copy of the power and FPR heatmaps is at `%s`.\n",
+              heatmap_pdf))
+} else {
+  cat("Heatmap PDF not found; the inline panels above are the only copy.\n")
+}
+```
+
+## Session info
+
+```{r session-info}
+sessionInfo()
+```

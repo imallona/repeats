@@ -22,6 +22,7 @@ Planted features that fail the count filter still count as false negatives.
 - `de_simulations_summary.tsv`: per-cell mean and SD across replicates.
 - `de_simulations_results.rds`: full results plus fitted NB params and the planted indices.
 - `de_simulations_heatmap.pdf`: power and FPR heatmaps faceted by method.
+- `de_simulations_report.html`: rendered report with the heatmaps embedded plus precision, calls volume, F1, confusion outcome bars, per-replicate spread, and a sanity NB-params check. Each plot has a "How to read this" paragraph next to it. The Rmd source is `workflow/scripts/de_simulations_report.Rmd`.
 
 ## How to read the heatmap
 
@@ -53,11 +54,21 @@ Under `config['de_simulation']`:
 
 ## Run
 
+Via the Makefile from the project root:
+
+```
+make de_polymenidou_bulk CORES=N
+```
+
+This invokes the main `workflow/Snakefile` with `pipeline_type: de_simulation` (declared inside the configfile), runs the `de_simulations` rule, and then renders the HTML report in the same DAG.
+
+Or directly:
+
 ```
 snakemake --use-conda --cores N --configfile configs/de_simulations_polymenidou_bulk.yaml
 ```
 
-Outputs go to `{base}/de_simulations/`.
+Outputs go to `{base}/de_simulations/`. The report is rendered by `rule render_de_simulations_report` inside `workflow/modules/de_simulations.snmk` using the `rmarkdown` conda env, and depends on the four artifacts above so it is rebuilt whenever the simulation outputs change.
 
 ## Scope
 

@@ -71,10 +71,42 @@ rule de_simulations:
         op.join(workflow.basedir, 'scripts', 'de_simulations.R')
 
 
+_de_rmd = op.join(workflow.basedir, 'scripts', 'de_simulations_report.Rmd')
+
+
+rule render_de_simulations_report:
+    conda:
+        op.join(workflow.basedir, 'envs', 'rmarkdown.yaml')
+    input:
+        rmd = _de_rmd,
+        results_tsv = op.join(_outdir, 'de_simulations_results.tsv'),
+        summary_tsv = op.join(_outdir, 'de_simulations_summary.tsv'),
+        results_rds = op.join(_outdir, 'de_simulations_results.rds'),
+        heatmap_pdf = op.join(_outdir, 'de_simulations_heatmap.pdf'),
+    output:
+        html = op.join(_outdir, 'de_simulations_report.html'),
+    params:
+        rmd = _de_rmd,
+        de_dir = op.abspath(_outdir),
+        output_file = op.abspath(op.join(_outdir, 'de_simulations_report.html')),
+    log:
+        op.join(config['base'], 'logs', 'de_simulations_report.log'),
+    shell:
+        """
+        Rscript -e "rmarkdown::render(
+            '{params.rmd}',
+            output_file = '{params.output_file}',
+            knit_root_dir = getwd(),
+            params = list(de_dir = '{params.de_dir}')
+        )" 2> {log}
+        """
+
+
 def de_simulation_outputs():
     return [
         op.join(_outdir, 'de_simulations_results.tsv'),
         op.join(_outdir, 'de_simulations_summary.tsv'),
         op.join(_outdir, 'de_simulations_results.rds'),
         op.join(_outdir, 'de_simulations_heatmap.pdf'),
+        op.join(_outdir, 'de_simulations_report.html'),
     ]

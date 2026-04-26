@@ -62,6 +62,7 @@ make noise_smartseq2           # SmartSeq2 noise sweep (0%, 1%, 5%, 10% mutation
 make noise_chromium            # Chromium noise sweep
 make report_noise_smartseq2    # Render SmartSeq2 noise sweep HTML report
 make report_noise_chromium     # Render Chromium noise sweep HTML report
+make de_polymenidou_bulk       # Count-level DE library size and normalization check (TSV/RDS, heatmap PDF, HTML report)
 make help                      # List all targets
 ```
 
