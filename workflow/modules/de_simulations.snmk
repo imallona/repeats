@@ -1,0 +1,80 @@
+#!/usr/bin/env snakemake -s
+"""
+de_simulations: count-level power benchmark for repeat differential expression.
+
+Sweeps a 2D grid of multiplicative gene-library and repeat-library scalers,
+plants a known fold change at a fixed set of repeat features, and reports
+power and false positive rate per normalization strategy across simulation
+replicates. Inputs are pre-computed gene and repeat count TSVs from a real
+bulk run; this module does not execute alignment.
+
+Required keys under config['de_simulation']:
+  gene_counts        path to gene count TSV (rows = features, cols = samples)
+  repeat_counts      path to repeat count TSV with same sample columns
+
+Optional keys (defaults shown):
+  metadata           ""           sample/condition TSV; empty splits halves
+  sample_column      sample
+  condition_column   condition
+  fc                 3
+  n_iter             20
+  n_de_repeats       50
+  n_de_genes         1000
+  gene_lib_grid      [0.1, 0.5, 1, 2, 5]
+  repeat_lib_grid    [0.1, 0.5, 1, 2, 5]
+  sigma_w            0.5
+  k_max              4
+  n_controls         200
+  fdr                0.05
+  seed               42
+"""
+
+import os.path as op
+
+
+_de = config['de_simulation']
+_outdir = op.join(config['base'], 'de_simulations')
+
+
+rule de_simulations:
+    conda:
+        op.join(workflow.basedir, 'envs', 'edger.yaml')
+    input:
+        gene_counts = _de['gene_counts'],
+        repeat_counts = _de['repeat_counts'],
+    output:
+        results_tsv = op.join(_outdir, 'de_simulations_results.tsv'),
+        summary_tsv = op.join(_outdir, 'de_simulations_summary.tsv'),
+        results_rds = op.join(_outdir, 'de_simulations_results.rds'),
+        heatmap_pdf = op.join(_outdir, 'de_simulations_heatmap.pdf'),
+    params:
+        outdir = _outdir,
+        metadata = _de.get('metadata', ''),
+        sample_column = _de.get('sample_column', 'sample'),
+        condition_column = _de.get('condition_column', 'condition'),
+        n_iter = _de.get('n_iter', 20),
+        fc = _de.get('fc', 3),
+        n_de_repeats = _de.get('n_de_repeats', 50),
+        n_de_genes = _de.get('n_de_genes', 1000),
+        gene_lib_grid = _de.get('gene_lib_grid', [0.1, 0.5, 1, 2, 5]),
+        repeat_lib_grid = _de.get('repeat_lib_grid', [0.1, 0.5, 1, 2, 5]),
+        sigma_w = _de.get('sigma_w', 0.5),
+        seed = _de.get('seed', 42),
+        k_max = _de.get('k_max', 4),
+        n_controls = _de.get('n_controls', 200),
+        fdr = _de.get('fdr', 0.05),
+    log:
+        op.join(config['base'], 'logs', 'de_simulations.log'),
+    benchmark:
+        op.join(config['base'], 'benchmarks', 'de_simulations.txt'),
+    script:
+        op.join(workflow.basedir, 'scripts', 'de_simulations.R')
+
+
+def de_simulation_outputs():
+    return [
+        op.join(_outdir, 'de_simulations_results.tsv'),
+        op.join(_outdir, 'de_simulations_summary.tsv'),
+        op.join(_outdir, 'de_simulations_results.rds'),
+        op.join(_outdir, 'de_simulations_heatmap.pdf'),
+    ]

@@ -14,12 +14,13 @@ We are extremely grateful to SNF for their funding in ca. 2020.
 
 ## Overview
 
-A single `Snakefile` drives four pipeline modes selected by `pipeline_type` in the config:
+A single `Snakefile` drives five pipeline modes selected by `pipeline_type` in the config:
 
 - `simulation` - simulate reads from repeat loci (SmartSeq2 or 10x Chromium), align, and evaluate against ground truth
 - `bulk` - download FASTQs from SRA (paired or single, set via `real_data.library_layout`), align with STAR/kallisto/salmon, quantify repeats, render a differential expression report
 - `sc` - download 10x Chromium FASTQs from SRA, run STARsolo and kallisto|bustools, render a single-cell report
 - `noise_report` - render a noise sweep HTML report across multiple simulation runs
+- `de_simulation` - count-level power benchmark for repeat differential expression under varying gene and repeat library sizes (see [docs/de_simulations.md](docs/de_simulations.md))
 
 For method details see [docs/methods.md](docs/methods.md). Dataset-specific paper reanalyses live under [paper/](paper/) with their own Snakefile. Workflow diagrams (mermaid, renders on GitHub) are in [docs/diagrams.md](docs/diagrams.md).
 
@@ -140,7 +141,7 @@ Indices are shared with the bulk GSE230647 pipeline via `indices_base: ../result
 
 Key config parameters (shared across pipeline types):
 
-- `pipeline_type`: `simulation`, `bulk`, `sc`, or `noise_report`.
+- `pipeline_type`: `simulation`, `bulk`, `sc`, `noise_report`, or `de_simulation`.
 - `base`: run-specific output directory.
 - `indices_base`: shared directory for aligner indices. Multiple runs can share one index.
 - `feature_sets`: which repeat subsets to quantify (`repeats`, `genic_repeats`, `intergenic_repeats`).
