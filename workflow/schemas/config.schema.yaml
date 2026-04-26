@@ -20,7 +20,7 @@ properties:
 
   pipeline_type:
     type: string
-    enum: [simulation, bulk, sc, noise_report]
+    enum: [simulation, bulk, sc, noise_report, de_simulation]
 
   reference:
     type: object

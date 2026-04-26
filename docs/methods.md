@@ -2,13 +2,15 @@
 
 ## Overview
 
-A single Snakefile drives four pipeline modes selected by `pipeline_type` in the config.
+A single Snakefile drives five pipeline modes selected by `pipeline_type` in the config.
 
 The simulation pipeline generates reads from repeat loci (SmartSeq2 or 10x Chromium), aligns them with four tools, and evaluates quantification accuracy against ground truth.
 
 The bulk pipeline downloads FASTQs from SRA via fasterq-dump. Reads are aligned with STAR, kallisto, and salmon. edgeR produces differential expression reports at gene_id and family_id granularity. Read layout is controlled by `real_data.library_layout`: `paired` (R1 + R2) or `single` (R1 only). Paired-end runs use `bulk_paired.snmk`. Single-end runs use `bulk_single.snmk`, which passes `--single --fragment-length --sd` to kallisto and `--unmatedReads` to salmon.
 
 The sc pipeline downloads 10x Chromium FASTQs from SRA with `fasterq-dump --include-technical`. File numbering follows fasterq-dump conventions. File `_1` is the index read and is discarded. The CB+UMI and cDNA reads are selected via `sc_cbumi_index` and `sc_cdna_index` (defaults 2 and 3, matching 10x Chromium v2/v3). STARsolo (CB_UMI_Simple) and kallisto|bustools quantify genic and intergenic repeat annotations.
+
+The de_simulation pipeline is a count-level power benchmark. It loads pre-computed gene and repeat count TSVs from a real run, fits NB parameters, and resamples count matrices over a 2D grid of gene and repeat library size scalers, planting a known fold change at a fixed feature set. It scores no-norm, TMM, and RUVg(k=1..k_max) for power and FPR. See [docs/de_simulations.md](de_simulations.md) for the full description.
 
 ## Reference preparation
 

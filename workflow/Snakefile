@@ -7,6 +7,7 @@ Select the pipeline type via --configfile:
   pipeline_type: bulk        - bulk RNA-seq (STAR + kallisto + salmon)
   pipeline_type: sc          - 10x Chromium single-cell (STARsolo + kallisto)
   pipeline_type: noise_report - render noise sweep HTML report
+  pipeline_type: de_simulation - count-level RUV power benchmark
 
 Example:
   snakemake --use-conda --cores N --configfile configs/simulation_smartseq2.yaml
@@ -24,9 +25,9 @@ configfile: "config.yaml"
 validate(config, op.join(workflow.basedir, 'schemas', 'config.schema.yaml'))
 
 _pipeline_type = config.get('pipeline_type')
-if _pipeline_type not in ('simulation', 'bulk', 'sc', 'noise_report'):
+if _pipeline_type not in ('simulation', 'bulk', 'sc', 'noise_report', 'de_simulation'):
     raise ValueError(
-        f"pipeline_type must be simulation|bulk|sc|noise_report, got {_pipeline_type!r}"
+        f"pipeline_type must be simulation|bulk|sc|noise_report|de_simulation, got {_pipeline_type!r}"
     )
 
 if 'indices_base' not in config:
@@ -183,6 +184,13 @@ if _pipeline_type == 'sc':
 if _pipeline_type == 'noise_report':
     include: "modules/noise_report.snmk"
 
+# de_simulation pipeline (count-level RUV power benchmark)
+
+if _pipeline_type == 'de_simulation':
+    for _d in ['logs', 'benchmarks', 'de_simulations']:
+        os.makedirs(op.join(config['base'], _d), exist_ok=True)
+    include: "modules/de_simulations.snmk"
+
 
 # Target collection functions
 
@@ -332,6 +340,9 @@ if _pipeline_type == 'sc' and config.get('report'):
 def _all_inputs():
     if _pipeline_type == 'noise_report':
         return [config['report']['output']]
+
+    if _pipeline_type == 'de_simulation':
+        return de_simulation_outputs()
 
     inputs = reference_outputs()
 
