@@ -110,6 +110,16 @@ jobs:
             --rerun-triggers mtime \
             --quiet --cores 2
 
+      - name: Dry-run main Snakefile with de_simulation config
+        shell: bash -el {0}
+        working-directory: workflow
+        run: |
+          snakemake \
+            --configfile ../test/workflow/configs/test_de_simulation.yaml \
+            --dry-run \
+            --rerun-triggers mtime \
+            --quiet --cores 2
+
       - name: Run workflow dry-run pytest tests
         shell: bash -el {0}
         run: |

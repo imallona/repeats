@@ -1,0 +1,32 @@
+base: "../test/de_simulation_test_out"
+indices_base: "../test/de_simulation_test_out"
+
+pipeline_type: de_simulation
+
+reference:
+  genome_fasta: "../test/data/de_simulation/genes.tsv"
+  repeats_gtf: "../test/data/de_simulation/repeats.tsv"
+
+aligners: [star]
+
+resources:
+  max_threads: 1
+  max_mem_mb: 1000
+
+de_simulation:
+  gene_counts: "../test/data/de_simulation/genes.tsv"
+  repeat_counts: "../test/data/de_simulation/repeats.tsv"
+  metadata: ""
+  sample_column: sample
+  condition_column: condition
+  fc: 3
+  n_iter: 2
+  n_de_repeats: 2
+  n_de_genes: 3
+  gene_lib_grid: [1, 2]
+  repeat_lib_grid: [1, 2]
+  sigma_w: 0.3
+  k_max: 1
+  n_controls: 3
+  fdr: 0.05
+  seed: 1
