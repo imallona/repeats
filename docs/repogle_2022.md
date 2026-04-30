@@ -68,7 +68,7 @@ Phase 2 (alignment, run separately on the compute machine): SRA fastq download a
 Phase 3 (implemented as Rmd plus rule, requires Phase 2 alignment outputs): per-perturbation pseudobulk RUVg DE.
 
   - Rule `render_repogle_2022_perturbseq_report` invokes `paper/scripts/ruv_repogle_2022_perturbseq_report.Rmd`.
-  - Loads STARsolo matrices, joins cells to perturbations via `cells_to_perturbation.tsv`, builds per-(perturbation) pseudobulk by summing UMIs across cells. Top 30 perturbations plus a `control_pool` column = ~31 columns per (mode, featureset).
+  - Loads STARsolo matrices, joins cells to perturbations via `cells_to_perturbation.tsv`, and builds per-(perturbation, gem_group) pseudobulks by summing UMIs across cells of each perturbation within each gemgroup. Each perturbation contributes ~30-48 columns (one per gemgroup with cells of that perturbation), and the control_pool similarly contributes ~48 columns from the sampled controls. Per-contrast designs use gemgroup as a blocking factor.
   - RUVg is fit on the gene pseudobulk using the existing `workflow/scripts/ruv_common.R` helpers; the same W is applied to every repeat featureset for that mode, mirroring the TDP-43 bulk RUVg pattern.
   - Per-perturbation DE under `~ W + group` per repeat featureset, with each perturbation tested against `control_pool`.
   - Validation: REclaim's per-perturbation `te_total_fraction` versus `replogle_te_ratio` from `selected_perturbations.tsv`. Pearson and Spearman correlations per starsolo mode. Strong correlation across the top 30 confirms the pipeline reproduces Replogle's signal at class level; disagreement beyond noise points to subfamily-specific effects that the class-level metric cannot resolve.

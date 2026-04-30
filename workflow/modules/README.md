@@ -85,5 +85,4 @@ SmartSeq2 and bulk single both produce one FASTQ per sample or cell and share th
 
 1. Create `modules/<aligner>.snmk` with rules gated on `sim_technology`.
 2. Add a normalization block in `normalize.snmk` producing `counts/<aligner>_{feature_set}[_{granularity}].tsv`.
-3. Add the aligner name to `granular_aligners` in `evaluation.snmk` if it supports granularity, or
-add a dedicated `evaluate_<aligner>` rule otherwise.
+3. Add the aligner name to `granular_aligners` in `evaluation.snmk` if it supports granularity, or add a dedicated `evaluate_<aligner>` rule otherwise.

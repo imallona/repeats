@@ -95,8 +95,7 @@ test_evaluate.py covers:
 - log1p_rmse: perfect recovery gives 0.0, symmetry, empty input
 - detection_metrics: all-correct, no-overlap, partial overlap, specificity
 - build_aligned_vectors: zero-filling for missing features, cell ordering
-- load_ground_truth: all four granularities (locus, gene_id, family_id, class_id)
-and the valid_locus_ids filter that was added to fix the genic/intergenic partitioning bug
+- load_ground_truth: all four granularities (locus, gene_id, family_id, class_id) and the valid_locus_ids filter that was added to fix the genic/intergenic partitioning bug
 - load_count_matrix: feature tracking including zero-count rows
 - compute_metrics_for_subset: perfect observer and null observer
 
@@ -112,13 +111,11 @@ test_simulate_reads.py covers:
 
 test_build_rmsk_gtf.py covers:
 - make_gtf_attributes: format and dup index incrementing
-- convert_rmsk_to_gtf: basic output, dup index, length filter, chrom filter,
-1-based GTF coordinates, gzip output
+- convert_rmsk_to_gtf: basic output, dup index, length filter, chrom filter, 1-based GTF coordinates, gzip output
 
 test_parse_gtf_t2g.py covers:
 - parse_attrs: quoted values, missing keys, empty string
-- main() with sys.argv patching: 2-col and 4-col output, correct mapping,
-deduplication, feature-type filtering
+- main() with sys.argv patching: 2-col and 4-col output, correct mapping, deduplication, feature-type filtering
 
 
 ## Integration tests (test/integration/)
@@ -129,8 +126,7 @@ Root cause: evaluate.py was aggregating ground truth counts across all loci for 
 
 The fix adds locus-level filtering before aggregation (see valid_locus_ids in load_ground_truth). The tests in this file verify:
 
-1. gene_ids overlap between genic and intergenic locus maps (structural
-precondition for the bug, expected in real data)
+1. gene_ids overlap between genic and intergenic locus maps (structural precondition for the bug, expected in real data)
 2. full repeats at gene_id with a perfect observer gives metrics of 1.0
 (baseline sanity check)
 3. genic_repeats at locus granularity with a perfect observer gives 1.0
@@ -143,15 +139,12 @@ precondition for the bug, expected in real data)
 
 test_metamorphic.py tests properties that must hold across input transformations without needing exact expected values:
 
-- scale invariance: multiplying observed counts by a constant does not change
-Pearson or Spearman
+- scale invariance: multiplying observed counts by a constant does not change Pearson or Spearman
 - scaling does change log1p_rmse
 - monotone recall: adding true positives never decreases recall
 - noise degrades metrics: progressively noisier observers give lower Pearson
-- perfect beats null: a perfect observer strictly outperforms a zero observer
-on all metrics
-- granularity aggregation consistency: a perfect locus-level count matrix
-summed to family_id also gives metrics of 1.0
+- perfect beats null: a perfect observer strictly outperforms a zero observer on all metrics
+- granularity aggregation consistency: a perfect locus-level count matrix summed to family_id also gives metrics of 1.0
 - random counts give low correlation (below 0.7 for 50-feature random data)
 
 

@@ -119,7 +119,13 @@ pseudobulk_one_library <- function(library, gem_group, mode, feature_set,
   lib_cells <- lib_cells[ok, ]
   m <- m[, matched_idx[ok], drop = FALSE]
   groups <- factor(lib_cells$pseudobulk_id)
-  pb <- t(rowsum(t(as.matrix(m)), groups))
+  group_indicator <- Matrix::sparseMatrix(
+    i = seq_along(groups),
+    j = as.integer(groups),
+    x = 1,
+    dims = c(length(groups), nlevels(groups)),
+    dimnames = list(NULL, levels(groups)))
+  pb <- as.matrix(m %*% group_indicator)
   storage.mode(pb) <- "integer"
   pb
 }
@@ -354,3 +360,5 @@ Per-(perturbation, gem_group) pseudobulks give each contrast ~30-48 perturbed co
 `min_cells_per_col` (default 3) drops sparse (perturbation, gem_group) pseudobulks. The control_pool side keeps all gemgroups so per-contrast it is always ≥ the per-pert pseudobulk count.
 
 Validation in this report is the per-perturbation TE_total_fraction summed across all that perturbation's pseudobulks, compared to Replogle's published `TE_ratio`. The DE tables let downstream analyses go beyond the class-level fraction to subfamily and locus resolution.
+
+`te_total = sum(genic_repeats) + sum(intergenic_repeats)` is exact under unique mode (each read maps to one locus that is either genic or intergenic, so the partition is additive). Under multi/EM mode the two partitions overcount any multimapper that has copies in both genic and intergenic loci, since EM redistributes the read separately within each featureset's GTF. The simulation evaluation outputs (`summary_global_metrics.tsv` per `feature_set`) quantify this gap. The EM-mode `te_total` here is therefore an upper bound on the true total repeat fraction; the unique-mode sum is exact. A future PR adding `repeats` (full undivided set) as a sc featureset would let this validation use the direct full-repeats total.

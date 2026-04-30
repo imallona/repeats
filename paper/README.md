@@ -96,5 +96,5 @@ snakemake -s Snakefile_repogle_2022 --use-conda --cores 2 \
   --configfile configs/repogle_2022.yaml
 ```
 
-Phases 2 and 3 are not yet wired (SRA download + STARsolo alignment, then per-perturbation pseudobulk RUVg DE).
+Phase 2 prep (SRA accession resolution) and Phase 3 (per-perturbation pseudobulk RUVg DE) are wired in `Snakefile_repogle_2022`. The remaining manual step is the workflow-side SRA download + STARsolo alignment, run separately on the compute machine via `workflow/configs/repogle_kd6_sc.yaml`.
 

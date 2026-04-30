@@ -93,7 +93,7 @@ def main():
 
     if augmented:
         keys = list(augmented[0].keys())
-        with open(args.out_tsv, "w") as fh:
+        with open(args.out_tsv, "w", newline="") as fh:
             w = csv.DictWriter(fh, fieldnames=keys, delimiter="\t")
             w.writeheader()
             w.writerows(augmented)

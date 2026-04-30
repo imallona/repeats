@@ -135,7 +135,7 @@ def parse_manifest(path, gemgroup_subset):
 
 
 def write_tsv(path, rows, fieldnames):
-    with open(path, "w") as fh:
+    with open(path, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=fieldnames, delimiter="\t")
         w.writeheader()
         for r in rows:
