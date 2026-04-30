@@ -55,14 +55,14 @@ Phase 2 prep (implemented): SRA accession resolution per library.
   - Rule `resolve_repogle_2022_sra` runs `paper/scripts/resolve_repogle_2022_sra.py`, which queries SRA via `pysradb` for BioProject PRJNA831566 and matches each KD6 library's mRNA fastqs by `library_name` regex `KD6_seq\d+_essential_mRNA_lane_<gem_group>_`.
   - Outputs:
     - `selected_libraries_with_srrs.tsv` (the original libraries TSV plus `srrs` and `n_srrs` columns)
-    - `repogle_2022_samples.yaml` (a YAML snippet `dataset.samples.<KD6_N_essential>.srrs: [SRR...]`, consumed by the workflow side as a second `--configfile`)
+    - `repogle_kd6_sc_merged.yaml` (a single complete workflow config with `dataset.samples` injected, used as the only `--configfile` for Phase 2 alignment)
   - The sgRNA SRRs are deliberately excluded by the `mRNA` source pattern; per-cell guide assignments come from Replogle's published `obs.gene_transcript` already in `cells_to_perturbation.tsv`.
 
 Phase 2 (alignment, run separately on the compute machine): SRA fastq download and STARsolo alignment.
 
   - Driven by `workflow/configs/repogle_kd6_sc.yaml` reusing `pipeline_type: sc`. Reference is `hg38` Ensembl 112 (shared with `gse230647_sc.yaml`, no extra index build).
   - Aligners restricted to STARsolo. `multimapper_modes: [unique, multi]` keeps both unique counts (clean baseline) and EM-distributed multi counts (recovers young repeat elements).
-  - Run: `cd workflow; snakemake --use-conda --cores N --configfile configs/repogle_kd6_sc.yaml --configfile ../results/paper/repogle_2022/data/repogle_2022_samples.yaml`.
+  - Run: `cd workflow; snakemake --use-conda --cores N --configfile ../results/paper/repogle_2022/data/repogle_kd6_sc_merged.yaml`.
   - Output: per-library STARsolo `Solo.out/Gene/raw/` matrices for genes, genic_repeats, intergenic_repeats at gene_id and family_id granularity, under `results/repogle_kd6_sc/starsolo/<KD6_N_essential>/<mode>_<feature_set>/`.
 
 Phase 3 (implemented as Rmd plus rule, requires Phase 2 alignment outputs): per-perturbation pseudobulk RUVg DE.
@@ -111,8 +111,7 @@ Phase 2 alignment (run on the compute machine after Phase 1+prep):
 ```
 cd workflow
 snakemake --use-conda --cores N \
-    --configfile configs/repogle_kd6_sc.yaml \
-    --configfile ../results/paper/repogle_2022/data/repogle_2022_samples.yaml
+    --configfile ../results/paper/repogle_2022/data/repogle_kd6_sc_merged.yaml
 ```
 
 Phase 3 (per-perturbation pseudobulk RUVg DE, after Phase 2 alignment outputs are in place):
@@ -124,4 +123,4 @@ snakemake -s Snakefile_repogle_2022 --use-conda --cores 4 \
     -- ../results/paper/repogle_2022/report/ruv_repogle_2022_perturbseq_report.html
 ```
 
-Outputs land under `../results/paper/repogle_2022/`: `data/` for the slim TSVs and `repogle_2022_samples.yaml`, `figshare/` for the (uncommitted) h5ad and manifest, `report/` for the Phase 3 HTML and `ruv_rds/` snapshots, and `logs/` for per-rule logs.
+Outputs land under `../results/paper/repogle_2022/`: `data/` for the slim TSVs and `repogle_kd6_sc_merged.yaml`, `figshare/` for the (uncommitted) h5ad and manifest, `report/` for the Phase 3 HTML and `ruv_rds/` snapshots, and `logs/` for per-rule logs.

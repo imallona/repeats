@@ -10,6 +10,7 @@ The config report: section must contain:
   params  - list of param keys to pass to the Rmd (subset of known keys below)
 
 Known resolvable param keys:
+  cells_to_perturbation (resolved from config.report.cells_to_perturbation)
   counts_dir, report_outdir, starsolo_base, kallisto_base, indices_base,
   metadata, sample_metadata, feature_sets, starsolo_modes
 """
@@ -35,6 +36,10 @@ _known_params = {
     'sample_metadata': op.abspath(op.join(
         workflow.basedir,
         config.get('dataset', {}).get('sample_metadata', '')
+    )),
+    'cells_to_perturbation': op.abspath(op.join(
+        workflow.basedir,
+        _report_cfg.get('cells_to_perturbation', '')
     )),
     'feature_sets': ' '.join(config.get('feature_sets', [])),
     'starsolo_modes': ' '.join(

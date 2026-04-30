@@ -11,16 +11,18 @@ Phase 1 - figshare metadata download and cell selection.
 
 Phase 2 prep - SRA accession resolution per library.
   Rule: resolve_repogle_2022_sra.
-  Output: selected_libraries_with_srrs.tsv (augmented),
-          repogle_2022_samples.yaml (consumed by workflow/Snakefile as a
-          second --configfile alongside workflow/configs/repogle_kd6_sc.yaml).
+  Outputs:
+    selected_libraries_with_srrs.tsv  augmented manifest with SRR ids
+    repogle_kd6_sc_merged.yaml        complete workflow config with samples
+                                       merged in, used as the single
+                                       --configfile for Phase 2 alignment
 
 The actual alignment (Phase 2) is invoked separately on the compute machine:
 
   cd workflow
   snakemake --use-conda --cores N \\
-      --configfile configs/repogle_kd6_sc.yaml \\
-      --configfile ../results/paper/repogle_2022/data/repogle_2022_samples.yaml
+      --configfile ../results/paper/repogle_2022/data/repogle_kd6_sc_merged.yaml
+
 
 Phase 3 - per-perturbation pseudobulk RUVg DE.
   Rule: render_repogle_2022_perturbseq_report.
@@ -31,8 +33,7 @@ Phase 3 - per-perturbation pseudobulk RUVg DE.
 Run Phase 1 + Phase 2 prep:
   cd paper
   snakemake -s Snakefile_repogle_2022 --use-conda --cores 2 \\
-      --configfile configs/repogle_2022.yaml \\
-      ../results/paper/repogle_2022/data/repogle_2022_samples.yaml
+      --configfile configs/repogle_2022.yaml
 
 Run Phase 3 after the workflow alignment completes:
   snakemake -s Snakefile_repogle_2022 --use-conda --cores 4 \\
@@ -69,7 +70,7 @@ rule all:
         op.join(_data, "cells_to_perturbation.tsv"),
         op.join(_data, "selected_libraries.tsv"),
         op.join(_data, "selected_libraries_with_srrs.tsv"),
-        op.join(_data, "repogle_2022_samples.yaml"),
+        op.join(_data, "repogle_kd6_sc_merged.yaml"),
 
 
 rule download_repogle_2022_figshare:
@@ -155,9 +156,11 @@ rule resolve_repogle_2022_sra:
         libraries = op.join(_data, "selected_libraries.tsv"),
         script = op.join(workflow.basedir, "scripts",
                          "resolve_repogle_2022_sra.py"),
+        workflow_config = op.join(workflow.basedir, "..", "workflow",
+                                   "configs", "repogle_kd6_sc.yaml"),
     output:
         tsv = op.join(_data, "selected_libraries_with_srrs.tsv"),
-        yaml = op.join(_data, "repogle_2022_samples.yaml"),
+        merged_yaml = op.join(_data, "repogle_kd6_sc_merged.yaml"),
     params:
         outdir = _data,
         bioproject = config['sra']['bioproject'],
@@ -176,7 +179,8 @@ rule resolve_repogle_2022_sra:
             --source-pattern {params.source_pattern} \\
             --libraries {input.libraries} \\
             --out-tsv {output.tsv} \\
-            --out-yaml {output.yaml} \\
+            --workflow-config {input.workflow_config} \\
+            --out-merged-yaml {output.merged_yaml} \\
             2> {log}
         """
 

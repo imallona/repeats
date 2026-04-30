@@ -57,8 +57,16 @@ def main():
     ap.add_argument("--bioproject", default="PRJNA831566")
     ap.add_argument("--libraries", required=True,
                     help="selected_libraries.tsv from Phase 1")
-    ap.add_argument("--out-yaml", required=True)
     ap.add_argument("--out-tsv", required=True)
+    ap.add_argument("--workflow-config", required=True,
+                    help="path to the workflow-side sc config yaml "
+                         "(workflow/configs/repogle_kd6_sc.yaml); the merged "
+                         "config emitted at --out-merged-yaml has the "
+                         "dataset.samples block injected here")
+    ap.add_argument("--out-merged-yaml", required=True,
+                    help="path for the complete workflow config yaml with "
+                         "samples merged in; this is the single --configfile "
+                         "consumed by the workflow Phase 2 alignment")
     ap.add_argument("--kd-label", default="KD6",
                     help="library prefix used in SRA library_name (KD6 for "
                          "K562 essential, KD8 for K562 gwps)")
@@ -87,10 +95,6 @@ def main():
         augmented.append(out_lib)
         print(f"  {library_id} (gemgroup {gg}): {len(srrs)} SRRs", file=sys.stderr)
 
-    with open(args.out_yaml, "w") as fh:
-        yaml.safe_dump({"dataset": {"samples": samples}}, fh,
-                       default_flow_style=False, sort_keys=True)
-
     if augmented:
         keys = list(augmented[0].keys())
         with open(args.out_tsv, "w", newline="") as fh:
@@ -98,10 +102,16 @@ def main():
             w.writeheader()
             w.writerows(augmented)
 
-    n_total = sum(s.get("srrs", []) and len(s["srrs"]) or 0 for s in samples.values())
-    print(f"wrote {args.out_yaml} ({len(samples)} samples, {n_total} SRRs total)",
-          file=sys.stderr)
+    with open(args.workflow_config) as fh:
+        merged = yaml.safe_load(fh)
+    merged.setdefault("dataset", {})["samples"] = samples
+    with open(args.out_merged_yaml, "w") as fh:
+        yaml.safe_dump(merged, fh, sort_keys=False, default_flow_style=False)
+
+    n_total = sum(len(s["srrs"]) for s in samples.values())
     print(f"wrote {args.out_tsv}", file=sys.stderr)
+    print(f"wrote {args.out_merged_yaml} ({len(samples)} samples, {n_total} SRRs total)",
+          file=sys.stderr)
 
 
 if __name__ == "__main__":

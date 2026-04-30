@@ -59,3 +59,21 @@ granularities:
 resources:
   max_threads: 16
   max_mem_mb: 60000
+
+# Short alignment-QC report rendered at the end of Phase 2.
+# Reports per-library cell counts, perturbations represented, and gene/repeat
+# features detected. The full per-perturbation pseudobulk RUVg DE lives
+# paper-side in paper/scripts/ruv_repogle_2022_perturbseq_report.Rmd.
+report:
+  script: scripts/repogle_kd6_sc_report.Rmd
+  conda: envs/edger.yaml
+  output: repogle_kd6_sc_report.html
+  outdir: report_rds
+  cells_to_perturbation: "../results/paper/repogle_2022/data/cells_to_perturbation.tsv"
+  params:
+    - starsolo_base
+    - indices_base
+    - cells_to_perturbation
+    - report_outdir
+    - feature_sets
+    - starsolo_modes
