@@ -23,6 +23,7 @@ Modules are conditionally included based on `config['pipeline_type']` and `confi
 | `normalize.snmk` | always | Convert each aligner's native output to a common feature x cell TSV |
 | `evaluation.snmk` | `pipeline_type: simulation` | Compare normalized counts against simulation ground truth; produce metric tables and HTML report |
 | `noise_report.snmk` | `pipeline_type: noise_report` | Render the cross-mutation-rate noise sweep HTML report from existing evaluation dirs |
+| `de_simulations.snmk` | `pipeline_type: de_simulation` | Count-level power benchmark for repeat DE: resamples gene/repeat counts over a 2D library-size grid, plants a known fold change, scores no-norm/TMM/RUVg, and renders the HTML report |
 
 ## Chromosome subsetting and `genome_tag`
 
