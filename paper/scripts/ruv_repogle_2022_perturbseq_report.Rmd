@@ -1,0 +1,356 @@
+---
+title: "Replogle 2022 K562 essential Perturb-seq: per-perturbation pseudobulk RUVg DE on repeats"
+author: "Izaskun Mallona"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    code_folding: hide
+params:
+  cells_to_perturbation: "."
+  selected_perturbations: "."
+  starsolo_base: "."
+  indices_base: "."
+  report_outdir: "."
+  feature_sets: "genes genic_repeats intergenic_repeats"
+  starsolo_modes: "unique multi"
+  n_controls: 3000
+  k_selected: 1
+  min_cells_per_col: 3
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+suppressPackageStartupMessages({
+  library(Matrix)
+  library(edgeR)
+  library(RUVSeq)
+  library(matrixStats)
+  library(readr)
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  library(ggrepel)
+})
+
+source("../workflow/scripts/ruv_common.R")
+source("../workflow/scripts/gene_lib_size_common.R")
+source("../workflow/scripts/ggtheme.R")
+source("../workflow/scripts/ruv_plots.R")
+
+cells_to_perturbation_path <- params$cells_to_perturbation
+selected_perturbations_path <- params$selected_perturbations
+starsolo_base <- params$starsolo_base
+report_outdir <- params$report_outdir
+indices_base <- params$indices_base
+n_controls <- as.integer(params$n_controls)
+k_selected <- as.integer(params$k_selected)
+min_cells_per_col <- as.integer(params$min_cells_per_col)
+feature_sets <- strsplit(params$feature_sets, " ")[[1]]
+starsolo_modes <- strsplit(params$starsolo_modes, " ")[[1]]
+repeat_fsets <- feature_sets[feature_sets != "genes"]
+
+stopifnot(file.exists(cells_to_perturbation_path),
+          file.exists(selected_perturbations_path),
+          dir.exists(starsolo_base),
+          dir.exists(report_outdir),
+          n_controls >= 500, k_selected >= 1, min_cells_per_col >= 1,
+          "genes" %in% feature_sets, length(repeat_fsets) >= 1,
+          length(starsolo_modes) >= 1)
+
+save_rds <- function(obj, name) {
+  saveRDS(obj, file.path(report_outdir, paste0(name, ".rds")))
+}
+
+csv_dir <- file.path(report_outdir, "csv")
+dir.create(csv_dir, showWarnings = FALSE, recursive = TRUE)
+save_csv <- function(df, name) {
+  path <- file.path(csv_dir, paste0(name, ".csv"))
+  write.csv(df, path, row.names = FALSE)
+  invisible(path)
+}
+```
+
+## Inputs
+
+```{r load-metadata}
+cells <- read_tsv(cells_to_perturbation_path, show_col_types = FALSE)
+top_perts <- read_tsv(selected_perturbations_path, show_col_types = FALSE)
+
+cells$is_control <- grepl("non-targeting", cells$gene_transcript)
+cells$pert_id <- ifelse(cells$is_control, "control_pool", cells$gene_transcript)
+cells$pseudobulk_id <- paste(cells$pert_id, cells$gem_group, sep = "__")
+
+cat("cells loaded:", nrow(cells), "\n")
+cat("perturbations + control_pool:", length(unique(cells$pert_id)), "\n")
+cat("gem groups:", length(unique(cells$gem_group)), "\n")
+cat("(pert, gem_group) pseudobulk columns:", length(unique(cells$pseudobulk_id)),
+    "\n")
+```
+
+## Per-(perturbation, gemgroup) pseudobulks
+
+Each (perturbation, gem_group) pair becomes its own pseudobulk column. This gives ~30-48 columns per perturbation across all gem_groups, plus ~48 control columns drawn from the same 48 gemgroups. Per-contrast designs include gemgroup as a blocking factor and W from RUVg.
+
+```{r pseudobulk-helpers}
+load_starsolo_matrix <- function(library, mode, feature_set) {
+  mtx_dir <- file.path(starsolo_base, library,
+                       paste0(mode, "_", feature_set), "Solo.out", "Gene", "raw")
+  if (!dir.exists(mtx_dir)) return(NULL)
+  m <- readMM(file.path(mtx_dir, "matrix.mtx"))
+  features <- readLines(file.path(mtx_dir, "features.tsv"))
+  barcodes <- readLines(file.path(mtx_dir, "barcodes.tsv"))
+  rownames(m) <- features
+  colnames(m) <- barcodes
+  m
+}
+
+pseudobulk_one_library <- function(library, gem_group, mode, feature_set,
+                                    cell_assign) {
+  m <- load_starsolo_matrix(library, mode, feature_set)
+  if (is.null(m)) return(NULL)
+  lib_cells <- cell_assign[cell_assign$gem_group == gem_group, ]
+  bc_strip <- sub("-[0-9]+$", "", lib_cells$cell_barcode)
+  matched_idx <- match(bc_strip, colnames(m))
+  ok <- !is.na(matched_idx)
+  if (sum(ok) == 0) return(NULL)
+  lib_cells <- lib_cells[ok, ]
+  m <- m[, matched_idx[ok], drop = FALSE]
+  groups <- factor(lib_cells$pseudobulk_id)
+  pb <- t(rowsum(t(as.matrix(m)), groups))
+  storage.mode(pb) <- "integer"
+  pb
+}
+
+build_pseudobulk <- function(mode, feature_set) {
+  parts <- list()
+  for (gg in sort(unique(cells$gem_group))) {
+    library_id <- paste0("KD6_", gg, "_essential")
+    pb <- pseudobulk_one_library(library_id, gg, mode, feature_set, cells)
+    if (is.null(pb)) next
+    parts[[library_id]] <- pb
+  }
+  if (length(parts) == 0) {
+    stop("no pseudobulk parts produced for ", mode, " ", feature_set)
+  }
+  all_features <- Reduce(union, lapply(parts, rownames))
+  all_groups <- Reduce(union, lapply(parts, colnames))
+  out <- matrix(0L, nrow = length(all_features), ncol = length(all_groups),
+                dimnames = list(all_features, all_groups))
+  for (p in parts) {
+    out[rownames(p), colnames(p)] <- out[rownames(p), colnames(p)] + p
+  }
+  cells_per_col <- table(cells$pseudobulk_id)
+  keep_cols <- intersect(colnames(out),
+                          names(cells_per_col)[cells_per_col >= min_cells_per_col])
+  out <- out[, keep_cols, drop = FALSE]
+
+  meta <- data.frame(
+    pseudobulk_id = colnames(out),
+    pert_id = sub("__[0-9]+$", "", colnames(out)),
+    gem_group = as.integer(sub("^.*__", "", colnames(out))),
+    n_cells = as.integer(cells_per_col[colnames(out)]),
+    stringsAsFactors = FALSE)
+  meta$is_control <- meta$pert_id == "control_pool"
+  list(counts = out, meta = meta)
+}
+```
+
+```{r build-pseudobulks, results = "hide"}
+pseudobulks <- list()
+for (mode in starsolo_modes) {
+  for (fs in feature_sets) {
+    key <- paste(mode, fs, sep = "_")
+    pseudobulks[[key]] <- build_pseudobulk(mode, fs)
+    cat(sprintf("%-30s %d cols x %d features\n", key,
+                ncol(pseudobulks[[key]]$counts),
+                nrow(pseudobulks[[key]]$counts)))
+  }
+}
+save_rds(pseudobulks, "pseudobulks")
+```
+
+## RUVg fit on the gene matrix
+
+The gene pseudobulk drives empirical-control selection and RUVg fitting per STARsolo mode. The same W is reused across all repeat featuresets for that mode. The naive design is `~ gemgroup + perturbed`, where `perturbed` is TRUE for any pert column and FALSE for control columns.
+
+```{r ruv-fit}
+ruv_fits <- list()
+for (mode in starsolo_modes) {
+  gene_pb <- pseudobulks[[paste(mode, "genes", sep = "_")]]
+  if (is.null(gene_pb)) next
+  meta <- gene_pb$meta
+  meta$gem_group_f <- factor(meta$gem_group)
+  meta$perturbed <- factor(!meta$is_control, levels = c(FALSE, TRUE))
+
+  gene_dge <- DGEList(counts = gene_pb$counts, samples = meta)
+  keep <- rowSums(gene_dge$counts >= 5) >= ceiling(ncol(gene_dge) / 2)
+  gene_dge <- gene_dge[keep, , keep.lib.sizes = FALSE]
+  gene_dge <- calcNormFactors(gene_dge, method = "TMM")
+
+  design_naive <- model.matrix(~ gem_group_f + perturbed,
+                                data = gene_dge$samples)
+  gene_dge <- estimateDisp(gene_dge, design_naive)
+  fit <- glmQLFit(gene_dge, design_naive)
+  coef_idx <- grep("^perturbedTRUE$", colnames(design_naive))
+  qlf <- glmQLFTest(fit, coef = coef_idx)
+  ranked <- topTags(qlf, n = Inf, sort.by = "PValue")$table
+  controls <- rownames(ranked)[order(ranked$PValue,
+                                      decreasing = TRUE)][seq_len(min(n_controls,
+                                                                       nrow(ranked)))]
+
+  ruv_state <- fit_ruv_range(gene_dge, controls, k_max = max(4L, k_selected))
+  W <- pick_W_matrix(ruv_state, k = k_selected)
+  ruv_fits[[mode]] <- list(meta = meta, W = W, controls = controls,
+                            gene_dge = gene_dge, ruv_state = ruv_state)
+}
+save_rds(ruv_fits, "ruv_fits")
+```
+
+## Per-perturbation DE
+
+For each top perturbation, restrict to its pseudobulks plus all control_pool pseudobulks from the same gemgroups, then fit `~ gem_group_f + W + group` with `group = factor(c("ctrl","pert"))`.
+
+```{r per-perturbation-de}
+top_pert_ids <- top_perts$gene_transcript
+
+de_results <- list()
+for (mode in names(ruv_fits)) {
+  fit_state <- ruv_fits[[mode]]
+  W <- fit_state$W
+  meta_global <- fit_state$meta
+  rownames(W) <- meta_global$pseudobulk_id
+
+  for (fs in repeat_fsets) {
+    pb <- pseudobulks[[paste(mode, fs, sep = "_")]]
+    if (is.null(pb)) next
+
+    rep_dge_full <- DGEList(counts = pb$counts, samples = pb$meta)
+
+    for (pert in top_pert_ids) {
+      pert_cols <- pb$meta$pseudobulk_id[pb$meta$pert_id == pert]
+      pert_gemgroups <- pb$meta$gem_group[pb$meta$pseudobulk_id %in% pert_cols]
+      ctrl_cols <- pb$meta$pseudobulk_id[
+        pb$meta$pert_id == "control_pool" &
+        pb$meta$gem_group %in% pert_gemgroups]
+      keep_cols <- c(pert_cols, ctrl_cols)
+      if (length(pert_cols) < 3 || length(ctrl_cols) < 3) next
+
+      sub_dge <- rep_dge_full[, keep_cols, keep.lib.sizes = FALSE]
+      sub_dge$samples$group <- factor(
+        ifelse(sub_dge$samples$pert_id == "control_pool", "ctrl", "pert"),
+        levels = c("ctrl", "pert"))
+      sub_dge$samples$gem_group_f <- droplevels(factor(sub_dge$samples$gem_group))
+      sub_dge <- calcNormFactors(sub_dge, method = "TMM")
+
+      W_sub <- W[keep_cols, , drop = FALSE]
+      colnames(W_sub) <- paste0("W_", seq_len(ncol(W_sub)))
+      sub_dge$samples <- cbind(sub_dge$samples, W_sub)
+
+      design_terms <- c("gem_group_f", colnames(W_sub), "group")
+      design_terms <- design_terms[
+        sapply(design_terms, function(t) {
+          v <- sub_dge$samples[[t]]
+          length(unique(v)) > 1
+        })]
+      design_formula <- as.formula(paste("~", paste(design_terms, collapse = " + ")))
+      design <- model.matrix(design_formula, data = sub_dge$samples)
+      if (nrow(design) - ncol(design) < 1) next
+
+      sub_dge <- estimateDisp(sub_dge, design)
+      fit <- glmQLFit(sub_dge, design)
+      coef_idx <- grep("^grouppert$", colnames(design))
+      if (length(coef_idx) == 0) next
+      qlf <- glmQLFTest(fit, coef = coef_idx)
+      tt <- topTags(qlf, n = Inf, sort.by = "none")$table
+      tt$feature_id <- rownames(tt)
+      tt$mode <- mode
+      tt$feature_set <- fs
+      tt$gene_transcript <- pert
+      tt$n_pert_cols <- length(pert_cols)
+      tt$n_ctrl_cols <- length(ctrl_cols)
+      de_results[[paste(mode, fs, pert, sep = "|")]] <- tt
+    }
+  }
+}
+save_rds(de_results, "de_results")
+
+de_long <- bind_rows(de_results)
+save_csv(de_long, "ruv_de_long")
+```
+
+## Validation: REclaim TE_total_fraction vs Replogle TE_ratio
+
+```{r validation}
+te_total_per_pert <- function(mode) {
+  rep_pb <- pseudobulks[[paste(mode, "genic_repeats", sep = "_")]]
+  ig_pb <- pseudobulks[[paste(mode, "intergenic_repeats", sep = "_")]]
+  gene_pb <- pseudobulks[[paste(mode, "genes", sep = "_")]]
+  if (is.null(rep_pb) || is.null(ig_pb) || is.null(gene_pb)) return(NULL)
+
+  agg_by_pert <- function(pb) {
+    counts <- colSums(pb$counts)
+    df <- data.frame(pseudobulk_id = names(counts), total = counts,
+                     stringsAsFactors = FALSE)
+    df <- merge(df, pb$meta[, c("pseudobulk_id", "pert_id")],
+                by = "pseudobulk_id")
+    aggregate(total ~ pert_id, data = df, FUN = sum)
+  }
+  rep_per_pert <- agg_by_pert(rep_pb)
+  ig_per_pert <- agg_by_pert(ig_pb)
+  gene_per_pert <- agg_by_pert(gene_pb)
+
+  m <- merge(rep_per_pert, ig_per_pert, by = "pert_id",
+             suffixes = c("_rep", "_ig"))
+  m <- merge(m, gene_per_pert, by = "pert_id")
+  names(m)[names(m) == "total"] <- "total_genes"
+  m$te_total <- m$total_rep + m$total_ig
+  m$total_umi <- m$te_total + m$total_genes
+  m$reclaim_te_total_fraction <- m$te_total / m$total_umi
+  m$mode <- mode
+  m
+}
+
+validation_dfs <- lapply(starsolo_modes, te_total_per_pert)
+validation <- bind_rows(validation_dfs[!sapply(validation_dfs, is.null)])
+
+validation <- left_join(
+  validation,
+  top_perts %>% transmute(pert_id = gene_transcript,
+                           replogle_te_ratio,
+                           n_cells_replogle),
+  by = "pert_id")
+save_csv(validation, "validation_te_fraction")
+
+cor_summary <- validation %>%
+  filter(!is.na(replogle_te_ratio)) %>%
+  group_by(mode) %>%
+  summarise(
+    pearson = cor(reclaim_te_total_fraction, replogle_te_ratio, method = "pearson"),
+    spearman = cor(reclaim_te_total_fraction, replogle_te_ratio, method = "spearman"),
+    n = n(),
+    .groups = "drop")
+save_csv(cor_summary, "validation_correlation")
+cor_summary
+```
+
+```{r validation-plot}
+ggplot(validation %>% filter(!is.na(replogle_te_ratio)),
+       aes(x = replogle_te_ratio, y = reclaim_te_total_fraction)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~ mode) +
+  labs(x = "Replogle TE_ratio (bulk h5ad)",
+       y = "REclaim TE_total_fraction (per-perturbation pseudobulk sum)") +
+  theme_paper()
+```
+
+## Notes on the design
+
+Per-(perturbation, gem_group) pseudobulks give each contrast ~30-48 perturbed columns vs ~30-48 control columns drawn from the matched gemgroups. Without this stratification a per-perturbation contrast would be 1 vs 1 and edgeR would have zero residual degrees of freedom. The trade-off is per-pseudobulk depth: a (perturbation, gem_group) pseudobulk has ~3-5 cells, ~30-50k UMIs. TMM and quasi-likelihood handle that fine; gemgroup blocking absorbs the library-of-origin batch effect.
+
+`min_cells_per_col` (default 3) drops sparse (perturbation, gem_group) pseudobulks. The control_pool side keeps all gemgroups so per-contrast it is always ≥ the per-pert pseudobulk count.
+
+Validation in this report is the per-perturbation TE_total_fraction summed across all that perturbation's pseudobulks, compared to Replogle's published `TE_ratio`. The DE tables let downstream analyses go beyond the class-level fraction to subfamily and locus resolution.
