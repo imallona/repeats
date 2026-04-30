@@ -22,10 +22,13 @@ real_data:
   chemistry: 10xv3
   cb_length: 16
   umi_length: 12
-  # fasterq-dump --include-technical numbering for 10x Chromium v3:
-  # _1 = index read (discarded), _2 = CB+UMI, _3 = cDNA
-  sc_cbumi_index: 2
-  sc_cdna_index: 3
+  # Replogle 2022 SRA submission has 2 reads per spot (no separate technical
+  # i7 index):
+  #   _1 = CB+UMI, _2 = cDNA
+  # The TDP-43 sc dataset (gse230647_sc.yaml) has 3 reads per spot
+  # (_1 = index, _2 = CB+UMI, _3 = cDNA) and uses indices 2 and 3 instead.
+  sc_cbumi_index: 1
+  sc_cdna_index: 2
 
 # Replogle et al. 2022 K562 essential Perturb-seq (KD6 libraries on figshare).
 # BioProject PRJNA831566. Per-library mRNA SRRs come from paper Phase 2 prep

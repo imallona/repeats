@@ -98,7 +98,12 @@ rule download_sra_sc:
             f={params.outdir}/{wildcards.srr}_${{idx}}.fastq
             [ -f "$f" ] && gzip "$f"
         done
-        rm -f {params.outdir}/{wildcards.srr}_1.fastq.gz
+        for idx in $(seq 1 10); do
+            f={params.outdir}/{wildcards.srr}_${{idx}}.fastq.gz
+            if [ -f "$f" ] && [ "$idx" != "{params.cb_idx}" ] && [ "$idx" != "{params.cdna_idx}" ]; then
+                rm -f "$f"
+            fi
+        done
         """
 
 
