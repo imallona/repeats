@@ -1,0 +1,32 @@
+base: "../results/de_simulations_polymenidou_bulk"
+indices_base: "../results/shared"
+
+pipeline_type: de_simulation
+
+reference:
+  genome_fasta: "../results/shared/refs/GRCh38.dna.primary_assembly.fa.gz"
+  repeats_gtf: "../results/shared/refs/hg38_rmsk_TE.gtf.gz"
+
+aligners: [star]
+
+resources:
+  max_threads: 2
+  max_mem_mb: 8000
+
+de_simulation:
+  gene_counts: "../results/gse230647_bulk/counts/star_genes_gene_id_unique.tsv"
+  repeat_counts: "../results/gse230647_bulk/counts/star_repeats_family_id_unique.tsv"
+  metadata: ""
+  sample_column: sample
+  condition_column: condition
+  fc: 3
+  n_iter: 20
+  n_de_repeats: 50
+  n_de_genes: 1000
+  gene_lib_grid: [0.1, 0.5, 1, 2, 5]
+  repeat_lib_grid: [0.1, 0.5, 1, 2, 5]
+  sigma_w: 0.5
+  k_max: 4
+  n_controls: 200
+  fdr: 0.05
+  seed: 42
