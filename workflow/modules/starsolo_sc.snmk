@@ -41,7 +41,7 @@ rule starsolo_chromium_sc:
         tmp_dir = op.join(config['base'], 'tmp',
                           'starsolo_{sample_id}_{multimapper_mode}_{feature_set}'),
         solo_multimappers = lambda wc: multimapper_mode_to_star_param[wc.multimapper_mode],
-        max_ram_bytes = lambda wc, resources: min(resources.mem_mb, config['resources']['max_mem_mb']) * 1024 * 1024,
+        max_ram_bytes = lambda wc, resources: max(8000, min(resources.mem_mb, config['resources']['max_mem_mb']) - 36000) * 1024 * 1024,
         cb_len = _cb_len,
         umi_len = _umi_len,
         umi_start = _umi_start,
