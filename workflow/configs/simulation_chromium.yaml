@@ -41,22 +41,14 @@ aligners:
   - kallisto
   - alevin
   - bowtie2
-  # Add `starsolo_tagcount` to evaluate the pysam-based recount path
-  # against ground truth. Re-uses STARsolo's chromium BAM (so requires
-  # `starsolo` to also be present) and emits an alternative count tree
-  # under starsolo_tagcount/. Chromium-only (BAM needs CB/UB tags).
-  # - starsolo_tagcount
 
 aligner_params:
   starsolo:
     multimapper_modes: ["unique", "multi"]
     extra_args: ""
-    # sc_count: { canonical_feature_set: genes, umi_dedup: 1mm_all, threads_per_recount: 8 }
   kallisto:
-    # multimapper_modes: ["unique", "em"]   # opt in to compare bustools EM against the unique-only baseline
     extra_args: ""
   alevin:
-    # multimapper_modes: ["unique", "noem"]  # opt in to compare alevin VBEM ("unique" label) against --noem
     extra_args: ""
   bowtie2:
     multimapper_modes: ["unique", "multi"]

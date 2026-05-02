@@ -60,14 +60,21 @@ def eval_benchmark(wildcards):
         if sim_technology == 'smartseq2':
             return op.join(config['base'], 'benchmarks',
                            f'salmon_{fs}_quant_smartseq2_cell_001.txt')
+        # alevin chromium rule writes per-mode benchmark files
         return op.join(config['base'], 'benchmarks',
-                       f'salmon_{fs}_alevin_chromium.txt')
+                       f'salmon_{fs}_alevin_chromium_{mm}.txt')
+    if aligner == 'starsolo_tagcount':
+        # one tagcount benchmark per (sample, mode, feature_set); the
+        # evaluation looks at the canonical sim_technology sample.
+        return op.join(config['base'], 'benchmarks',
+                       f'starsolo_tagcount_{sim_technology}_{mm}_{fs}.txt')
     # kallisto
     if sim_technology == 'smartseq2':
         return op.join(config['base'], 'benchmarks',
                        f'kallisto_{fs}_smartseq2_cell_001.txt')
+    # kallisto chromium: bustools count rule writes per-mode benchmark files
     return op.join(config['base'], 'benchmarks',
-                   f'kallisto_{fs}_bus_chromium.txt')
+                   f'bustools_{fs}_count_{mm}.txt')
 rule evaluate_combination:
     """Evaluate one (aligner, feature_set, granularity, multimapper_mode) combination."""
     conda: op.join(workflow.basedir, 'envs', 'evaluation.yaml')

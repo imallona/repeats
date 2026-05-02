@@ -207,16 +207,36 @@ def _worker_init(bam_path, intervals_by_chrom, cb_index, multimapper):
     _WORKER_MULTIMAPPER = multimapper
 
 
-def _gene_id_for_read(chrom, start, end):
+_NO_OVERLAP = object()
+_AMBIGUOUS = object()
+
+
+def _gene_id_for_read(chrom, blocks):
+    """Resolve the gene_id for an alignment given its aligned blocks.
+
+    `blocks` is the list of (start, end) tuples returned by
+    pysam.AlignedSegment.get_blocks(): one entry per CIGAR M/=/X run, with
+    skipped intronic regions (CIGAR N) NOT included. We union overlaps
+    across blocks so a spliced read counts toward the gene if every aligned
+    block sits inside (or touches) that gene's interval — and any overlap
+    with a second gene's interval makes the read ambiguous.
+
+    Returns:
+      gene_id (str)   -- exactly one gene_id overlaps any block
+      _NO_OVERLAP     -- chrom not in the tree, or no block touches any feature
+      _AMBIGUOUS      -- two or more distinct gene_ids overlap aligned blocks
+    """
     tree = _WORKER_TREE.get(chrom)
     if tree is None:
-        return None
-    hits = tree.overlap(start, end)
-    if not hits:
-        return None
-    gene_ids = {iv.data for iv in hits}
-    if len(gene_ids) != 1:
-        return None
+        return _NO_OVERLAP
+    gene_ids = set()
+    for s, e in blocks:
+        for iv in tree.overlap(s, e):
+            gene_ids.add(iv.data)
+            if len(gene_ids) > 1:
+                return _AMBIGUOUS
+    if not gene_ids:
+        return _NO_OVERLAP
     return next(iter(gene_ids))
 
 
@@ -263,8 +283,17 @@ def _process_contig(chrom):
         if not has_chrom:
             n_no_feature += 1
             continue
-        gid = _gene_id_for_read(chrom, r.reference_start, r.reference_end)
-        if gid is None:
+        # get_blocks() excludes CIGAR-N gaps (introns) so a spliced read
+        # only counts as overlapping features its exonic blocks actually
+        # cover. Falls back to the full span when get_blocks() returns
+        # nothing (e.g. soft-clipped-only alignments, which shouldn't
+        # arise but defended against).
+        blocks = r.get_blocks() or [(r.reference_start, r.reference_end)]
+        gid = _gene_id_for_read(chrom, blocks)
+        if gid is _NO_OVERLAP:
+            n_no_feature += 1
+            continue
+        if gid is _AMBIGUOUS:
             n_ambiguous += 1
             continue
         umi_map = counts[(cb_i, gid)]

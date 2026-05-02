@@ -225,9 +225,19 @@ def test_gtf_falls_back_to_exon_when_no_gene(repeat_gtf):
 # Read assignment behaviour (using the in-process worker init path).
 
 
-def _run(bam_path, gtf_path, whitelist_path, multimapper='unique', threads=1):
-    """Drive the script in-process and parse outputs from a fresh tmp dir
-    inside the BAM's parent directory."""
+def _run(bam_path, gtf_path, whitelist_path, multimapper='unique', threads=1,
+         umi_dedup='exact'):
+    """Drive the script in-process and return:
+
+      cbs                - whitelist barcodes in order
+      raw_counts         - {(cb_idx, gene_id): {umi: weight}} (pre-dedup)
+      collapsed_counts   - {(cb_idx, gene_id): scalar} after the chosen
+                            UMI-dedup method (default exact, returning
+                            the count of distinct UMIs so tests can
+                            compare against integer expectations)
+      fam, cls           - gene_id -> family_id and -> class_id maps from
+                            the GTF
+    """
     cbs = scf.load_whitelist(whitelist_path)
     cb_index = {cb: i for i, cb in enumerate(cbs)}
     intervals, fam, cls, _ = scf.parse_gtf(gtf_path)
@@ -239,7 +249,9 @@ def _run(bam_path, gtf_path, whitelist_path, multimapper='unique', threads=1):
     scf._worker_init(bam_path, intervals, cb_index, multimapper)
     results = [scf._process_contig(c) for c in contigs]
     per_contig = [p for _, p, _ in results]
-    return cbs, scf.merge_counts(per_contig), fam, cls
+    raw_counts = scf.merge_counts(per_contig)
+    collapsed_counts = scf.collapse(raw_counts, umi_dedup)
+    return cbs, raw_counts, collapsed_counts, fam, cls
 
 
 def test_exonic_read_counts(tmp_path, repeat_gtf, whitelist_path):
@@ -247,8 +259,8 @@ def test_exonic_read_counts(tmp_path, repeat_gtf, whitelist_path):
     _write_bam(bam, [('chr1', 1000), ('chr2', 1000)], [
         {'chrom': 'chr1', 'pos': 120, 'seq': 'A' * 30, 'cb': 'AAAA', 'ub': 'U1'},
     ])
-    cbs, counts, _, _ = _run(bam, repeat_gtf, whitelist_path)
-    assert counts == {(0, 'L1HS_dup1'): {'U1'}}
+    _, _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path)
+    assert counts == {(0, 'L1HS_dup1'): 1}
 
 
 def test_intronic_read_counts_with_gene_level(tmp_path, gene_gtf, whitelist_path):
@@ -257,8 +269,8 @@ def test_intronic_read_counts_with_gene_level(tmp_path, gene_gtf, whitelist_path
         # Read sits in the intron 201-800 — outside any exon, inside the gene.
         {'chrom': 'chr1', 'pos': 400, 'seq': 'A' * 30, 'cb': 'AAAA', 'ub': 'U1'},
     ])
-    _, counts, _, _ = _run(bam, gene_gtf, whitelist_path)
-    assert counts == {(0, 'GeneA'): {'U1'}}
+    _, _, counts, _, _ = _run(bam, gene_gtf, whitelist_path)
+    assert counts == {(0, 'GeneA'): 1}
 
 
 def test_intronic_read_skipped_with_exon_only_gtf(
@@ -268,7 +280,7 @@ def test_intronic_read_skipped_with_exon_only_gtf(
         # Between the two repeats — not inside any exon.
         {'chrom': 'chr1', 'pos': 250, 'seq': 'A' * 20, 'cb': 'AAAA', 'ub': 'U1'},
     ])
-    _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path)
+    _, _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path)
     assert counts == {}
 
 
@@ -278,7 +290,7 @@ def test_ambiguous_overlap_discarded(tmp_path, overlap_gtf, whitelist_path):
         # Read at 170 spans both GeneL[100-200] and GeneR[150-250].
         {'chrom': 'chr1', 'pos': 165, 'seq': 'A' * 20, 'cb': 'AAAA', 'ub': 'U1'},
     ])
-    _, counts, _, _ = _run(bam, overlap_gtf, whitelist_path)
+    _, _, counts, _, _ = _run(bam, overlap_gtf, whitelist_path)
     assert counts == {}
 
 
@@ -294,8 +306,8 @@ def test_unmapped_and_secondary_skipped(tmp_path, repeat_gtf, whitelist_path):
         {'chrom': 'chr1', 'pos': 110, 'seq': 'A' * 20,  # primary, kept
          'cb': 'AAAA', 'ub': 'U4'},
     ])
-    _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path)
-    assert counts == {(0, 'L1HS_dup1'): {'U4'}}
+    _, _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path)
+    assert counts == {(0, 'L1HS_dup1'): 1}
 
 
 # CB / UB / whitelist behaviour.
@@ -309,8 +321,8 @@ def test_missing_cb_or_ub_skipped(tmp_path, repeat_gtf, whitelist_path):
         {'chrom': 'chr1', 'pos': 110, 'seq': 'A' * 20,
          'cb': 'AAAA', 'ub': 'U_kept'},
     ])
-    _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path)
-    assert counts == {(0, 'L1HS_dup1'): {'U_kept'}}
+    _, _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path)
+    assert counts == {(0, 'L1HS_dup1'): 1}
 
 
 def test_off_whitelist_cb_skipped(tmp_path, repeat_gtf, whitelist_path):
@@ -321,8 +333,8 @@ def test_off_whitelist_cb_skipped(tmp_path, repeat_gtf, whitelist_path):
         {'chrom': 'chr1', 'pos': 110, 'seq': 'A' * 20,
          'cb': 'BBBB', 'ub': 'U2'},
     ])
-    _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path)
-    assert counts == {(1, 'L1HS_dup1'): {'U2'}}
+    _, _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path)
+    assert counts == {(1, 'L1HS_dup1'): 1}
 
 
 def test_umi_dedup_within_cb_gene(tmp_path, repeat_gtf, whitelist_path):
@@ -335,9 +347,9 @@ def test_umi_dedup_within_cb_gene(tmp_path, repeat_gtf, whitelist_path):
         {'chrom': 'chr1', 'pos': 120, 'seq': 'A' * 20,
          'cb': 'AAAA', 'ub': 'OTHER'},
     ])
-    _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path)
+    _, _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path)
     # Two distinct UMIs counted once each.
-    assert counts == {(0, 'L1HS_dup1'): {'SAME', 'OTHER'}}
+    assert counts == {(0, 'L1HS_dup1'): 2}
 
 
 def test_umi_independent_across_genes(tmp_path, repeat_gtf, whitelist_path):
@@ -348,9 +360,9 @@ def test_umi_independent_across_genes(tmp_path, repeat_gtf, whitelist_path):
         {'chrom': 'chr1', 'pos': 320, 'seq': 'A' * 20,
          'cb': 'AAAA', 'ub': 'SHARED'},   # → AluY (different gene)
     ])
-    _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path)
-    assert counts == {(0, 'L1HS_dup1'): {'SHARED'},
-                      (0, 'AluY_dup1'): {'SHARED'}}
+    _, _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path)
+    assert counts == {(0, 'L1HS_dup1'): 1,
+                      (0, 'AluY_dup1'): 1}
 
 
 # Multimapper handling.
@@ -364,9 +376,9 @@ def test_multimapper_unique_skips_nh_gt_1(tmp_path, repeat_gtf, whitelist_path):
         {'chrom': 'chr1', 'pos': 110, 'seq': 'A' * 20,
          'cb': 'AAAA', 'ub': 'U2', 'nh': 1},
     ])
-    _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path,
-                            multimapper='unique')
-    assert counts == {(0, 'L1HS_dup1'): {'U2'}}
+    _, _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path,
+                              multimapper='unique')
+    assert counts == {(0, 'L1HS_dup1'): 1}
 
 
 def test_multimapper_multi_keeps_nh_gt_1(tmp_path, repeat_gtf, whitelist_path):
@@ -377,9 +389,12 @@ def test_multimapper_multi_keeps_nh_gt_1(tmp_path, repeat_gtf, whitelist_path):
         {'chrom': 'chr1', 'pos': 110, 'seq': 'A' * 20,
          'cb': 'AAAA', 'ub': 'U2', 'nh': 1},
     ])
-    _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path,
-                            multimapper='multi')
-    assert counts == {(0, 'L1HS_dup1'): {'U1', 'U2'}}
+    # With --multimapper multi, NH=3 contributes weight 1/3 and NH=1
+    # contributes weight 1.0; sum (under exact dedup) = 4/3.
+    _, _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path,
+                              multimapper='multi')
+    assert (0, 'L1HS_dup1') in counts
+    assert counts[(0, 'L1HS_dup1')] == pytest.approx(1 / 3 + 1.0)
 
 
 # Granularity rollup.
@@ -400,7 +415,7 @@ def test_family_class_rollup_post_dedup(tmp_path, repeat_gtf, whitelist_path):
         {'chrom': 'chr2', 'pos': 520, 'seq': 'A' * 20,
          'cb': 'AAAA', 'ub': 'U4'},
     ])
-    _, counts, fam, cls = _run(bam, repeat_gtf, whitelist_path)
+    _, _, counts, fam, cls = _run(bam, repeat_gtf, whitelist_path)
     fam_counts = scf.rollup(counts, fam)
     cls_counts = scf.rollup(counts, cls)
     assert fam_counts[(0, 'L1')] == 2
@@ -414,7 +429,7 @@ def test_family_class_rollup_post_dedup(tmp_path, repeat_gtf, whitelist_path):
 # End-to-end: matrix file integrity.
 
 
-def test_end_to_end_outputs(tmp_path, repeat_gtf, whitelist_path):
+def test_end_to_end_outputs(tmp_path, repeat_gtf, whitelist_path, monkeypatch):
     bam = str(tmp_path / 'r.bam')
     _write_bam(bam, [('chr1', 1000), ('chr2', 1000)], [
         {'chrom': 'chr1', 'pos': 110, 'seq': 'A' * 20,
@@ -423,7 +438,7 @@ def test_end_to_end_outputs(tmp_path, repeat_gtf, whitelist_path):
          'cb': 'BBBB', 'ub': 'U1'},
     ])
     out = tmp_path / 'out'
-    sys.argv = [
+    monkeypatch.setattr(sys, 'argv', [
         'sc_count_features',
         '--bam', bam,
         '--gtf', repeat_gtf,
@@ -431,7 +446,7 @@ def test_end_to_end_outputs(tmp_path, repeat_gtf, whitelist_path):
         '--out-dir', str(out),
         '--multimapper', 'unique',
         '--threads', '1',
-    ]
+    ])
     scf.main()
 
     gene_dir = out / 'Solo.out' / 'Gene' / 'raw'
