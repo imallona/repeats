@@ -69,8 +69,7 @@ rule starsolo_chromium_sc:
     benchmark:
         op.join(config['base'], 'benchmarks',
                 'starsolo_{sample_id}_{feature_set}.txt'),
-    threads: min(workflow.cores,
-                 config.get('resources', {}).get('starsolo_threads', 14))
+    threads: min(workflow.cores, config.get('resources', {}).get('starsolo_threads', 14))
     resources:
         mem_mb = config['resources']['max_mem_mb']
     shell:
