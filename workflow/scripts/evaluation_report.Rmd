@@ -190,7 +190,7 @@ ggplot(corr, aes(x = gran_label, y = r,
 
 Two complementary panels.
 
-The first computes a per-aligner **multi-minus-unique delta** for each metric: how much does that aligner's multimapper-aware mode help (or hurt) accuracy, against ground truth, relative to its own unique-only baseline? Aligners with only one mode appear as zero-height bars and can be ignored. Once kallisto/alevin uniform-mode wiring lands (see `internal_use/todo_simulation_recount.md`) they'll appear here automatically next to STARsolo's `EM` and `starsolo_tagcount`'s `1/NH`.
+The first computes a per-aligner **multi-minus-unique delta** for each metric: how much does that aligner's multimapper-aware mode help (or hurt) accuracy, against ground truth, relative to its own unique-only baseline? Any aligner with both a unique baseline and a multimapper-aware mode in the workflow appears here automatically — STARsolo's `EM`, `starsolo_tagcount`'s `1/NH`, kallisto's `em`, alevin's `noem`. Aligners with only one mode in the data show as zero-height bars and can be ignored.
 
 The second is the targeted **starsolo vs starsolo_tagcount** scatter when both are present: same BAM source, two counting strategies. Unique-mode points should sit on the diagonal (regression check on `sc_count_features.py`); multi-mode deviations isolate the EM-vs-1/NH bias.
 

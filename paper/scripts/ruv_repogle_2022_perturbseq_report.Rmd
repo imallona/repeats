@@ -509,7 +509,7 @@ ggplot(validation %>% filter(!is.na(replogle_te_ratio)),
 
 ## Tagcount vs STARsolo (when both are present)
 
-When the workflow ran with `sc_count_mode: gene_align_recount` in addition to the default per_featureset path, the per-perturbation TE_total_fraction can be recomputed from the tagcount matrices and compared directly. Identity in unique mode is a regression check on `sc_count_features.py`; the multi-mode delta exposes the EM-vs-1/NH bias against this paper-side validation target. The chunk is skipped silently when `starsolo_tagcount_base` is empty.
+When the workflow ran with `sc_count_mode: tagcount` in addition to the default per_featureset path, the per-perturbation TE_total_fraction can be recomputed from the tagcount matrices and compared directly. Identity in unique mode is a regression check on `sc_count_features.py`; the multi-mode delta exposes the EM-vs-1/NH bias against this paper-side validation target. The chunk is skipped silently when `starsolo_tagcount_base` is empty.
 
 ```{r tagcount-comparison, fig.width = 7, fig.height = 4}
 tagcount_starsolo_base <- params$starsolo_tagcount_base
@@ -562,19 +562,19 @@ if (nzchar(tagcount_starsolo_base) && dir.exists(tagcount_starsolo_base)) {
   # Aggregate to per-perturbation TE_total_fraction for comparison.
   tagcount_te <- list()
   for (mode in starsolo_modes) {
-    rep_total <- ig_total <- gene_total <- NULL
+    totals <- list()
     for (fs in c("genic_repeats", "intergenic_repeats", "genes")) {
       parts <- build_tagcount_pseudobulks(mode, fs)
       if (length(parts) == 0) next
       lib_totals <- vapply(parts, function(p) sum(Matrix::colSums(p)),
                             numeric(1))
-      assign(paste0(fs, "_total"), sum(lib_totals))
+      totals[[fs]] <- sum(lib_totals)
     }
-    if (!is.null(rep_total) && !is.null(ig_total) && !is.null(gene_total)) {
-      te <- rep_total + ig_total
+    if (all(c("genic_repeats", "intergenic_repeats", "genes") %in% names(totals))) {
+      te <- totals$genic_repeats + totals$intergenic_repeats
       tagcount_te[[mode]] <- data.frame(
         mode = mode,
-        tagcount_te_total_fraction = te / (te + gene_total))
+        tagcount_te_total_fraction = te / (te + totals$genes))
     }
   }
 

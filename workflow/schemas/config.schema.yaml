@@ -24,7 +24,7 @@ properties:
 
   sc_count_mode:
     type: string
-    enum: [per_featureset, gene_align_recount]
+    enum: [per_featureset, tagcount]
     default: per_featureset
     description: >-
       sc-only switch between native STARsolo per-feature_set counting

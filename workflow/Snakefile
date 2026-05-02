@@ -198,18 +198,18 @@ if _pipeline_type == 'sc':
     # sc_count_mode toggles the STAR-side counting architecture without
     # rebuilding existing analyses on disk. Default is per_featureset (one
     # STAR run per (sample, feature_set), STARsolo emits the count matrix
-    # natively). gene_align_recount switches to one STAR run per library
+    # natively). tagcount switches to one STAR run per library
     # aligned with genes.gtf, plus pysam-based recount per feature_set
     # (starsolo_tagcount); its outputs live under
     # <base>/starsolo_tagcount/ so they coexist with per_featureset
     # outputs at <base>/starsolo/ without collision.
     sc_count_mode = config.get('sc_count_mode', 'per_featureset')
-    if sc_count_mode not in ('per_featureset', 'gene_align_recount'):
+    if sc_count_mode not in ('per_featureset', 'tagcount'):
         raise ValueError(
             f'unknown sc_count_mode: {sc_count_mode}; '
-            f'expected one of per_featureset, gene_align_recount')
+            f'expected one of per_featureset, tagcount')
 
-    if sc_count_mode == 'gene_align_recount':
+    if sc_count_mode == 'tagcount':
         _tagcount_sample_ids = _sc_sample_ids
         _tagcount_canonical_fs = config.get('aligner_params', {}).get(
             'starsolo', {}).get('sc_count', {}).get(
@@ -220,7 +220,7 @@ if _pipeline_type == 'sc':
     include: "modules/download_sra.snmk"
     include: "modules/starsolo_sc.snmk"
     include: "modules/kallisto_sc.snmk"
-    if sc_count_mode == 'gene_align_recount':
+    if sc_count_mode == 'tagcount':
         include: "modules/starsolo_tagcount.snmk"
 
     for _d in ['tmp', 'logs', 'benchmarks', 'metadata']:
@@ -383,9 +383,32 @@ def bulk_count_outputs():
 def starsolo_bams():
     if 'starsolo' not in active_aligners:
         return []
+    # In tagcount mode only the canonical-feature_set BAM is needed (the
+    # tagcount path re-counts that single BAM against every feature_set),
+    # so we drop the per-feature_set fanout. per_featureset keeps the
+    # full enumeration for backward compatibility.
+    if sc_count_mode == 'tagcount':
+        canonical = _tagcount_canonical_fs
+        return [
+            op.join(config['base'], 'starsolo', sid, f'unique_{canonical}',
+                    'Aligned.sortedByCoord.out.bam')
+            for sid in _sc_sample_ids
+        ]
     return [
         op.join(config['base'], 'starsolo', sid, f'{mode}_{fs}',
                 'Aligned.sortedByCoord.out.bam')
+        for sid in _sc_sample_ids
+        for mode in starsolo_modes
+        for fs in feature_sets
+    ]
+
+
+def starsolo_tagcount_outputs():
+    if sc_count_mode != 'tagcount':
+        return []
+    return [
+        op.join(config['base'], 'starsolo_tagcount', sid,
+                f'{mode}_{fs}', 'Solo.out', 'Gene', 'raw')
         for sid in _sc_sample_ids
         for mode in starsolo_modes
         for fs in feature_sets
@@ -447,6 +470,7 @@ def _all_inputs():
                 inputs.append(srr_cb(sid, srr))
                 inputs.append(srr_cdna(sid, srr))
         inputs += starsolo_bams()
+        inputs += starsolo_tagcount_outputs()
         inputs += kallisto_counts()
         if _metadata_url:
             inputs.append(_metadata_txt)

@@ -259,7 +259,13 @@ def _process_contig(chrom):
     has_chrom = chrom in _WORKER_TREE
     for r in bf.fetch(contig=chrom):
         n_total += 1
-        if r.is_unmapped or r.is_secondary or r.is_supplementary:
+        if r.is_unmapped or r.is_supplementary:
+            continue
+        # STAR emits multimappers as one primary + (NH-1) secondary records,
+        # all sharing the same UB. unique mode keeps only the primary;
+        # multi mode keeps every locus so the per-record 1/NH weights sum
+        # toward 1.0 across the molecule's reference loci.
+        if r.is_secondary and mm == 'unique':
             continue
         try:
             cb = r.get_tag('CB')

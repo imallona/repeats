@@ -397,6 +397,45 @@ def test_multimapper_multi_keeps_nh_gt_1(tmp_path, repeat_gtf, whitelist_path):
     assert counts[(0, 'L1HS_dup1')] == pytest.approx(1 / 3 + 1.0)
 
 
+def test_multimapper_multi_distributes_secondary_records(
+        tmp_path, repeat_gtf, whitelist_path):
+    """STAR emits multimappers as one primary + (NH-1) secondary records,
+    all sharing UB. multi mode must include the secondary records, else
+    the molecule's contribution collapses to 1/NH at the primary's gene
+    instead of summing to ~1.0 across the alternative loci."""
+    bam = str(tmp_path / 'r.bam')
+    _write_bam(bam, [('chr1', 1000), ('chr2', 1000)], [
+        # primary alignment on L1HS_dup1
+        {'chrom': 'chr1', 'pos': 110, 'seq': 'A' * 20,
+         'cb': 'AAAA', 'ub': 'SHARED', 'nh': 2, 'flag': 0},
+        # secondary alignment of the same molecule on AluY_dup1
+        {'chrom': 'chr1', 'pos': 320, 'seq': 'A' * 20,
+         'cb': 'AAAA', 'ub': 'SHARED', 'nh': 2, 'flag': 256},
+    ])
+    _, _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path,
+                              multimapper='multi')
+    # Both genes should get weight 1/NH = 0.5; sum across them is 1.0.
+    assert counts[(0, 'L1HS_dup1')] == pytest.approx(0.5)
+    assert counts[(0, 'AluY_dup1')] == pytest.approx(0.5)
+
+
+def test_multimapper_unique_skips_secondary_records(
+        tmp_path, repeat_gtf, whitelist_path):
+    """unique mode must drop secondary records; only the primary
+    contributes, and its NH > 1 means it's also dropped, so the molecule
+    is excluded entirely (which is the documented unique-only semantic)."""
+    bam = str(tmp_path / 'r.bam')
+    _write_bam(bam, [('chr1', 1000), ('chr2', 1000)], [
+        {'chrom': 'chr1', 'pos': 110, 'seq': 'A' * 20,
+         'cb': 'AAAA', 'ub': 'SHARED', 'nh': 2, 'flag': 0},
+        {'chrom': 'chr1', 'pos': 320, 'seq': 'A' * 20,
+         'cb': 'AAAA', 'ub': 'SHARED', 'nh': 2, 'flag': 256},
+    ])
+    _, _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path,
+                              multimapper='unique')
+    assert counts == {}
+
+
 # Granularity rollup.
 
 
