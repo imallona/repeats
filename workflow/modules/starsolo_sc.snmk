@@ -7,18 +7,22 @@ Expects these globals from the including Snakefile:
   starsolo_modes, feature_sets, genome_tag,
   sample_cb_files(sample_id), sample_cdna_files(sample_id)
 
-Reads are supplied as comma-separated lists across lanes (SRRs) so that
-fasterq-dump outputs are fed directly to STAR without concatenation.
+Reads are supplied as comma-separated lists across lanes (SRRs) so
+fasterq-dump outputs feed directly into STAR without concatenation.
+
+One STAR run per (sample_id, feature_set) writes both the unique and
+the EM count matrix via --soloMultiMappers Unique EM. The rule declares
+both unique_{feature_set}/ and multi_{feature_set}/ outputs and copies
+the EM matrix plus the shared barcodes/features into the multi/ sister
+directory, so downstream rules see both modes from one alignment.
+Halves the number of STAR runs.
 """
 
 import os.path as op
 
-multimapper_mode_to_star_param = {'unique': 'Unique', 'multi': 'EM'}
-
 
 rule starsolo_chromium_sc:
     wildcard_constraints:
-        multimapper_mode = 'unique|multi',
         feature_set = 'genes|genic_repeats|intergenic_repeats',
     conda:
         op.join(workflow.basedir, 'envs', 'star.yaml')
@@ -28,20 +32,31 @@ rule starsolo_chromium_sc:
         cb = lambda wc: sample_cb_files(wc.sample_id),
         cdna = lambda wc: sample_cdna_files(wc.sample_id),
     output:
-        bam = op.join(config['base'], 'starsolo', '{sample_id}',
-                      '{multimapper_mode}_{feature_set}',
-                      'Aligned.sortedByCoord.out.bam'),
-        raw_dir = directory(op.join(config['base'], 'starsolo', '{sample_id}',
-                                    '{multimapper_mode}_{feature_set}',
-                                    'Solo.out', 'Gene', 'raw')),
+        unique_bam = op.join(config['base'], 'starsolo', '{sample_id}',
+                             'unique_{feature_set}',
+                             'Aligned.sortedByCoord.out.bam'),
+        multi_bam = op.join(config['base'], 'starsolo', '{sample_id}',
+                            'multi_{feature_set}',
+                            'Aligned.sortedByCoord.out.bam'),
+        unique_raw_dir = directory(op.join(config['base'], 'starsolo',
+                                           '{sample_id}',
+                                           'unique_{feature_set}',
+                                           'Solo.out', 'Gene', 'raw')),
+        multi_raw_dir = directory(op.join(config['base'], 'starsolo',
+                                          '{sample_id}',
+                                          'multi_{feature_set}',
+                                          'Solo.out', 'Gene', 'raw')),
+        unique_log_final = op.join(config['base'], 'starsolo', '{sample_id}',
+                                   'unique_{feature_set}', 'Log.final.out'),
     params:
-        out_prefix = op.join(config['base'], 'starsolo', '{sample_id}',
-                             '{multimapper_mode}_{feature_set}') + '/',
+        unique_outdir = op.join(config['base'], 'starsolo', '{sample_id}',
+                                'unique_{feature_set}') + '/',
+        multi_outdir = op.join(config['base'], 'starsolo', '{sample_id}',
+                               'multi_{feature_set}') + '/',
         index_dir = op.join(config['indices_base'], 'indices', genome_tag, 'star'),
         tmp_dir = op.join(config['base'], 'tmp',
-                          'starsolo_{sample_id}_{multimapper_mode}_{feature_set}'),
-        solo_multimappers = lambda wc: multimapper_mode_to_star_param[wc.multimapper_mode],
-        max_ram_bytes = lambda wc, resources: min(resources.mem_mb, config['resources']['max_mem_mb']) * 1024 * 1024,
+                          'starsolo_{sample_id}_{feature_set}'),
+        max_ram_bytes = lambda wc, resources: max(8000, min(resources.mem_mb, config['resources']['max_mem_mb']) - 36000) * 1024 * 1024,
         cb_len = _cb_len,
         umi_len = _umi_len,
         umi_start = _umi_start,
@@ -50,17 +65,18 @@ rule starsolo_chromium_sc:
         extra_args = config.get('aligner_params', {}).get('starsolo', {}).get('extra_args', ''),
     log:
         op.join(config['base'], 'logs',
-                'starsolo_{sample_id}_{multimapper_mode}_{feature_set}.log'),
+                'starsolo_{sample_id}_{feature_set}.log'),
     benchmark:
         op.join(config['base'], 'benchmarks',
-                'starsolo_{sample_id}_{multimapper_mode}_{feature_set}.txt'),
+                'starsolo_{sample_id}_{feature_set}.txt'),
     threads: workflow.cores
     resources:
         mem_mb = config['resources']['max_mem_mb']
     shell:
         """
-        rm -rf {params.tmp_dir} {params.out_prefix}Solo.out
-        mkdir -p {params.tmp_dir} {params.out_prefix}
+        mkdir -p {params.unique_outdir} {params.multi_outdir} {params.tmp_dir}
+        rm -rf {params.tmp_dir} {params.unique_outdir}Solo.out
+        mkdir -p {params.tmp_dir}
 
         STAR --runThreadN {threads} \
              --runDirPerm All_RWX \
@@ -68,7 +84,7 @@ rule starsolo_chromium_sc:
              --genomeDir {params.index_dir} \
              --readFilesIn {params.cdna_csv} {params.cb_csv} \
              --readFilesCommand pigz -d -c \
-             --outFileNamePrefix {params.out_prefix} \
+             --outFileNamePrefix {params.unique_outdir} \
              --sjdbGTFfile {input.gtf} \
              --soloFeatures Gene \
              --soloCBwhitelist None \
@@ -76,11 +92,23 @@ rule starsolo_chromium_sc:
              --soloCBstart 1 --soloCBlen {params.cb_len} \
              --soloUMIstart {params.umi_start} \
              --soloUMIlen {params.umi_len} \
-             --soloMultiMappers {params.solo_multimappers} \
+             --soloMultiMappers Unique EM \
              --outSAMattributes NH HI AS NM CB UB \
              --outSAMtype BAM SortedByCoordinate \
              --limitBAMsortRAM {params.max_ram_bytes} \
              {params.extra_args} 2> {log}
+
+        mkdir -p {params.multi_outdir}Solo.out/Gene/raw
+        cp -af {params.unique_outdir}Solo.out/Gene/raw/features.tsv \
+               {params.multi_outdir}Solo.out/Gene/raw/features.tsv
+        cp -af {params.unique_outdir}Solo.out/Gene/raw/barcodes.tsv \
+               {params.multi_outdir}Solo.out/Gene/raw/barcodes.tsv
+        cp -af {params.unique_outdir}Solo.out/Gene/raw/UniqueAndMult-EM.mtx \
+               {params.multi_outdir}Solo.out/Gene/raw/UniqueAndMult-EM.mtx
+        ln -sf $(realpath {params.unique_outdir}Aligned.sortedByCoord.out.bam) \
+               {params.multi_outdir}Aligned.sortedByCoord.out.bam
+        cp -af {params.unique_outdir}Log.final.out \
+               {params.multi_outdir}Log.final.out
 
         rm -rf {params.tmp_dir}
         """

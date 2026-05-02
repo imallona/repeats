@@ -1,0 +1,163 @@
+---
+title: "Replogle 2022 K562 essential Perturb-seq alignment QC"
+author: "Izaskun Mallona"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    code_folding: hide
+params:
+  starsolo_base: "."
+  cells_to_perturbation: "."
+  indices_base: "."
+  report_outdir: "."
+  feature_sets: "genes genic_repeats intergenic_repeats"
+  starsolo_modes: "unique multi"
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+suppressPackageStartupMessages({
+  library(Matrix)
+  library(readr)
+  library(dplyr)
+  library(tidyr)
+  library(knitr)
+})
+
+starsolo_base <- params$starsolo_base
+cells_path <- params$cells_to_perturbation
+feature_sets <- strsplit(params$feature_sets, " ")[[1]]
+starsolo_modes <- strsplit(params$starsolo_modes, " ")[[1]]
+
+stopifnot(dir.exists(starsolo_base), file.exists(cells_path),
+          length(feature_sets) >= 1, length(starsolo_modes) >= 1)
+```
+
+Short alignment QC for the Replogle 2022 K562 essential Perturb-seq run. Counts cells, detected genes, and detected repeats per library and per (mode, featureset). The downstream per-perturbation pseudobulk RUVg analysis lives in `paper/scripts/ruv_repogle_2022_perturbseq_report.Rmd`.
+
+## Cells and perturbations in the analysis subset
+
+```{r cells-summary}
+cells <- read_tsv(cells_path, show_col_types = FALSE)
+n_cells <- nrow(cells)
+n_perturbations <- length(unique(cells$gene_transcript))
+n_target_genes <- length(unique(cells$gene))
+n_gemgroups <- length(unique(cells$gem_group))
+cat("Cells in cells_to_perturbation.tsv:", n_cells, "\n")
+cat("Distinct gene_transcript ids:    ", n_perturbations, "\n")
+cat("Distinct target genes:           ", n_target_genes, "\n")
+cat("Distinct gemgroups:              ", n_gemgroups, "\n")
+```
+
+## Per-library STARsolo summary
+
+For each library and each (multimapper_mode, feature_set), counts cells with at least one UMI, total UMIs, and features with at least one UMI.
+
+```{r per-lib-summary}
+read_starsolo <- function(library_id, mode, fs) {
+  mtx_dir <- file.path(starsolo_base, library_id,
+                       paste0(mode, "_", fs), "Solo.out", "Gene", "raw")
+  if (!dir.exists(mtx_dir)) return(NULL)
+  m <- readMM(file.path(mtx_dir, "matrix.mtx"))
+  barcodes <- readLines(file.path(mtx_dir, "barcodes.tsv"))
+  list(matrix = m, barcodes = barcodes)
+}
+
+libraries <- sort(unique(paste0("KD6_", cells$gem_group, "_essential")))
+
+per_lib_rows <- list()
+for (lib in libraries) {
+  for (mode in starsolo_modes) {
+    for (fs in feature_sets) {
+      r <- read_starsolo(lib, mode, fs)
+      if (is.null(r)) next
+      cells_with_umi <- sum(colSums(r$matrix) > 0)
+      features_detected <- sum(rowSums(r$matrix) > 0)
+      total_umi <- sum(r$matrix)
+      per_lib_rows[[length(per_lib_rows) + 1]] <- data.frame(
+        library = lib, mode = mode, feature_set = fs,
+        n_barcodes = length(r$barcodes),
+        n_cells_with_umi = cells_with_umi,
+        n_features_detected = features_detected,
+        total_umi = total_umi,
+        stringsAsFactors = FALSE)
+    }
+  }
+}
+per_lib <- bind_rows(per_lib_rows)
+kable(per_lib)
+```
+
+## Aggregated totals
+
+Cells, genes, and repeat features detected across all libraries (union) per (mode, featureset).
+
+```{r totals}
+totals <- per_lib %>%
+  group_by(mode, feature_set) %>%
+  summarise(
+    libraries = n(),
+    total_barcodes = sum(n_barcodes),
+    total_cells_with_umi = sum(n_cells_with_umi),
+    total_umi = sum(total_umi),
+    .groups = "drop")
+kable(totals)
+```
+
+## Cells matched to the perturbation table
+
+How many of the STARsolo barcodes per library appear in `cells_to_perturbation.tsv`. Mismatches indicate cells filtered out by the Phase 1 selection or barcode-format mismatches.
+
+```{r cells-matched}
+match_rows <- list()
+for (lib in libraries) {
+  gg <- as.integer(sub("^KD6_(\\d+)_essential$", "\\1", lib))
+  expected_bc <- sub("-[0-9]+$", "", cells$cell_barcode[cells$gem_group == gg])
+  for (mode in starsolo_modes) {
+    fs <- feature_sets[1]
+    r <- read_starsolo(lib, mode, fs)
+    if (is.null(r)) next
+    matched <- sum(expected_bc %in% r$barcodes)
+    match_rows[[length(match_rows) + 1]] <- data.frame(
+      library = lib, mode = mode,
+      n_expected = length(expected_bc),
+      n_matched = matched,
+      pct_matched = round(100 * matched / max(1, length(expected_bc)), 1),
+      stringsAsFactors = FALSE)
+  }
+}
+matches <- bind_rows(match_rows)
+kable(matches)
+```
+
+## Repeat feature totals
+
+Distinct repeat features detected (union across libraries) per (mode, repeat featureset). Compares to gene featureset for context.
+
+```{r repeat-totals}
+union_rows <- list()
+for (mode in starsolo_modes) {
+  for (fs in feature_sets) {
+    detected <- character(0)
+    for (lib in libraries) {
+      r <- read_starsolo(lib, mode, fs)
+      if (is.null(r)) next
+      mtx_dir <- file.path(starsolo_base, lib,
+                            paste0(mode, "_", fs), "Solo.out", "Gene", "raw")
+      features <- readLines(file.path(mtx_dir, "features.tsv"))
+      features <- sapply(strsplit(features, "\t"), `[`, 1)
+      detected <- union(detected,
+                         features[rowSums(r$matrix) > 0])
+    }
+    union_rows[[length(union_rows) + 1]] <- data.frame(
+      mode = mode, feature_set = fs,
+      n_features_union = length(detected),
+      stringsAsFactors = FALSE)
+  }
+}
+unions <- bind_rows(union_rows)
+kable(unions)
+```

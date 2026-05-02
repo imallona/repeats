@@ -197,6 +197,24 @@ cd paper
 snakemake --use-conda --cores 4 --configfile configs/tdp43.yaml
 ```
 
+### Replogle 2022 K562 essential Perturb-seq (`repogle_2022`)
+
+A second paper-side use case reanalyses the Replogle et al. 2022 K562 essential Perturb-seq screen at higher repeat granularity than the published class-level `TE_ratio`. See [docs/repogle_2022.md](docs/repogle_2022.md) for the full procedure, data sources (figshare DOIs 20022944 and 20029387), cell selection rules, and rationale.
+
+Phase 1 retrieves figshare metadata and selects cells:
+
+```
+cd paper
+snakemake -s Snakefile_repogle_2022 --use-conda --cores 2 \
+    --configfile configs/repogle_2022.yaml
+```
+
+Outputs three slim TSVs under `results/paper/repogle_2022/data/`: `selected_perturbations.tsv` (top 30 perturbations by `TE_ratio` plus their published value, for validation), `cells_to_perturbation.tsv` (~6,200 cells joined to perturbation and gemgroup), `selected_libraries.tsv` (per-gemgroup fastq and BAM filenames parsed from the KD6 manifest).
+
+Phase 2 (planned): SRA fastq download and STARsolo alignment via a new `workflow/configs/repogle_kd6_sc.yaml` reusing `pipeline_type: sc`. Aligners restricted to STARsolo with both `unique` and `multi` (EM) multimapper modes. Other aligners are skipped to halve compute since the simulation benchmark already shows STAR is best for repeats.
+
+Phase 3 (planned): per-perturbation pseudobulk DE under `~ W + group` with RUVg, mirroring the TDP-43 paper-side workflow. Validation step correlates REclaim's per-perturbation `te_total_fraction` against Replogle's `replogle_te_ratio` from `selected_perturbations.tsv`.
+
 ## Implementation notes
 
 Chromium normalization (kallisto, alevin) uses sparse accumulators to avoid allocating a dense cells x features matrix. Only non-zero (cell_index, count) pairs are stored per feature group, keeping memory proportional to expressed pairs rather than O(features x cells).

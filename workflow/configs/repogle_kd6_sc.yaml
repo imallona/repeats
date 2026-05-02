@@ -1,0 +1,82 @@
+base: "../results/repogle_kd6_sc"
+indices_base: "../results/shared"
+
+pipeline_type: sc
+
+# samples are populated from a second --configfile (paper Phase 1 output):
+#   ../results/paper/repogle_2022/data/repogle_2022_samples.yaml
+# That file provides dataset.samples.{KD6_<gemgroup>_essential}.srrs.
+
+reference:
+  assembly: hg38
+  ensembl_release: "112"
+  chromosomes: []
+  filter_genic: true
+  rmsk_source: ucsc_flatfile
+  genome_fasta: "../results/shared/refs/GRCh38.dna.primary_assembly.fa.gz"
+  repeats_gtf: "../results/shared/refs/hg38_rmsk_TE.gtf.gz"
+  genes_gtf: "../results/shared/refs/GRCh38.112.genes.gtf.gz"
+
+real_data:
+  technology: chromium
+  chemistry: 10xv3
+  cb_length: 16
+  umi_length: 12
+  # Replogle 2022 SRA submission has 2 reads per spot (no separate technical
+  # i7 index):
+  #   _1 = CB+UMI, _2 = cDNA
+  # The TDP-43 sc dataset (gse230647_sc.yaml) has 3 reads per spot
+  # (_1 = index, _2 = CB+UMI, _3 = cDNA) and uses indices 2 and 3 instead.
+  sc_cbumi_index: 1
+  sc_cdna_index: 2
+
+# Replogle et al. 2022 K562 essential Perturb-seq (KD6 libraries on figshare).
+# BioProject PRJNA831566. Per-library mRNA SRRs come from paper Phase 2 prep
+# (resolve_repogle_2022_sra.py, emitted as repogle_2022_samples.yaml).
+dataset:
+  sra_study: SRP376262
+  bioproject: PRJNA831566
+  geo_accession: GSE264667
+  # sample_metadata is the augmented selected_libraries.tsv (Phase 2 prep).
+  sample_metadata: "../results/paper/repogle_2022/data/selected_libraries_with_srrs.tsv"
+
+feature_sets:
+  - genes
+  - genic_repeats
+  - intergenic_repeats
+
+aligners:
+  - starsolo
+
+aligner_params:
+  starsolo:
+    multimapper_modes:
+      - unique
+      - multi
+    extra_args: ""
+
+granularities:
+  - gene_id
+  - family_id
+
+resources:
+  max_threads: 16
+  max_mem_mb: 60000
+
+# Short alignment-QC report rendered at the end of Phase 2.
+# Reports per-library cell counts, perturbations represented, and gene/repeat
+# features detected. The full per-perturbation pseudobulk RUVg DE lives
+# paper-side in paper/scripts/ruv_repogle_2022_perturbseq_report.Rmd.
+report:
+  script: scripts/repogle_kd6_sc_report.Rmd
+  conda: envs/edger.yaml
+  output: repogle_kd6_sc_report.html
+  outdir: report_rds
+  cells_to_perturbation: "../results/paper/repogle_2022/data/cells_to_perturbation.tsv"
+  params:
+    - starsolo_base
+    - indices_base
+    - cells_to_perturbation
+    - report_outdir
+    - feature_sets
+    - starsolo_modes

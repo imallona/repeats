@@ -1,0 +1,517 @@
+---
+title: "Replogle 2022 K562 essential Perturb-seq: per-perturbation pseudobulk RUVg DE on repeats"
+author: "Izaskun Mallona"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    code_folding: hide
+params:
+  cells_to_perturbation: "."
+  selected_perturbations: "."
+  alignment_qc: "."
+  starsolo_base: "."
+  indices_base: "."
+  report_outdir: "."
+  feature_sets: "genes genic_repeats intergenic_repeats"
+  starsolo_modes: "unique multi"
+  n_controls: 3000
+  k_selected: 1
+  min_cells_per_col: 3
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+suppressPackageStartupMessages({
+  library(Matrix)
+  library(edgeR)
+  library(RUVSeq)
+  library(matrixStats)
+  library(readr)
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  library(ggrepel)
+})
+
+source("../workflow/scripts/ruv_common.R")
+source("../workflow/scripts/gene_lib_size_common.R")
+source("../workflow/scripts/ggtheme.R")
+source("../workflow/scripts/ruv_plots.R")
+source("../workflow/scripts/biology_checks.R")
+source("../workflow/scripts/granularity_rollup.R")
+
+cells_to_perturbation_path <- params$cells_to_perturbation
+selected_perturbations_path <- params$selected_perturbations
+alignment_qc_path <- params$alignment_qc
+starsolo_base <- params$starsolo_base
+report_outdir <- params$report_outdir
+indices_base <- params$indices_base
+n_controls <- as.integer(params$n_controls)
+k_selected <- as.integer(params$k_selected)
+min_cells_per_col <- as.integer(params$min_cells_per_col)
+feature_sets <- strsplit(params$feature_sets, " ")[[1]]
+starsolo_modes <- strsplit(params$starsolo_modes, " ")[[1]]
+repeat_fsets <- feature_sets[feature_sets != "genes"]
+granularities <- c("gene_id", "family_id", "class_id")
+
+stopifnot(file.exists(cells_to_perturbation_path),
+          file.exists(selected_perturbations_path),
+          dir.exists(starsolo_base),
+          dir.exists(report_outdir),
+          n_controls >= 500, k_selected >= 1, min_cells_per_col >= 1,
+          "genes" %in% feature_sets, length(repeat_fsets) >= 1,
+          length(starsolo_modes) >= 1)
+
+save_rds <- function(obj, name) {
+  saveRDS(obj, file.path(report_outdir, paste0(name, ".rds")))
+}
+
+csv_dir <- file.path(report_outdir, "csv")
+dir.create(csv_dir, showWarnings = FALSE, recursive = TRUE)
+save_csv <- function(df, name) {
+  path <- file.path(csv_dir, paste0(name, ".csv"))
+  write.csv(df, path, row.names = FALSE)
+  invisible(path)
+}
+
+biology_annotation_path <- file.path(indices_base, "indices", "all",
+                                     "repeat_biology_annotation.tsv")
+locus_map_paths <- setNames(
+  file.path(indices_base, "indices", "all",
+            paste0(repeat_fsets, "_locus_map.tsv")),
+  repeat_fsets)
+biology_annotation <- load_biology_annotation(biology_annotation_path)
+locus_maps <- lapply(locus_map_paths, load_locus_map)
+```
+
+## Inputs
+
+```{r load-metadata}
+cells <- read_tsv(cells_to_perturbation_path, show_col_types = FALSE)
+top_perts <- read_tsv(selected_perturbations_path, show_col_types = FALSE)
+
+cells$is_control <- grepl("non-targeting", cells$gene_transcript)
+cells$pert_id <- ifelse(cells$is_control, "control_pool", cells$gene_transcript)
+cells$pseudobulk_id <- paste(cells$pert_id, cells$gem_group, sep = "__")
+cells$library_id <- paste0("KD6_", cells$gem_group, "_essential")
+
+cat("cells loaded:", nrow(cells), "\n")
+cat("perturbations + control_pool:", length(unique(cells$pert_id)), "\n")
+cat("gem groups:", length(unique(cells$gem_group)), "\n")
+cat("(pert, gem_group) pseudobulk columns:", length(unique(cells$pseudobulk_id)),
+    "\n")
+```
+
+## Per-library alignment QC
+
+Mismatch, mapping, and unmapped rates come from each library's STAR `Log.final.out` (one log per library; the alignment is identical across modes and feature_sets, only counting differs). The scatter below has one point per (perturbation, library) pair, sized by cell count, with the per-perturbation median highlighted.
+
+STAR logs are library-level, so the differences across perturbations reflect which libraries each one drew cells from, not per-perturbation alignment quality. The panel works as a batch-confound check: a perturbation whose median sits high is enriched in libraries with poor alignment, and its TE_fraction shift should be read with that caveat.
+
+```{r alignment-qc}
+align_qc <- if (file.exists(alignment_qc_path)) {
+  read_tsv(alignment_qc_path, show_col_types = FALSE)
+} else {
+  NULL
+}
+if (!is.null(align_qc)) {
+  align_qc <- align_qc %>%
+    mutate(mismatch_rate_pct = as.numeric(mismatch_rate_pct),
+           uniquely_mapped_pct = as.numeric(uniquely_mapped_pct),
+           multi_mapped_pct = as.numeric(multi_mapped_pct))
+  save_rds(align_qc, "alignment_qc_per_library")
+  knitr::kable(align_qc %>%
+                 select(sample_id, n_input_reads, uniquely_mapped_pct,
+                        multi_mapped_pct, mismatch_rate_pct,
+                        unmapped_too_short_pct),
+               digits = 3, format = "html")
+}
+```
+
+```{r alignment-qc-scatter, fig.width = 8, fig.height = 5}
+if (!is.null(align_qc)) {
+  cells_per_pert_lib <- cells %>%
+    group_by(pert_id, library_id) %>%
+    summarise(n_cells = n(), .groups = "drop")
+  qc_long <- cells_per_pert_lib %>%
+    inner_join(align_qc %>% select(library_id = sample_id,
+                                    value = mismatch_rate_pct),
+               by = "library_id") %>%
+    filter(!is.na(value))
+  if (nrow(qc_long) > 0) {
+    save_csv(qc_long, "alignment_qc_per_pert_library")
+    print(perturbation_qc_scatter(qc_long,
+                                  value_label = "STAR mismatch rate per base, %",
+                                  title_tag = "per-library alignment QC, per perturbation"))
+  } else {
+    cat("no library-level QC rows joined to perturbations\n")
+  }
+} else {
+  cat("alignment_qc TSV not found at", alignment_qc_path, "\n")
+}
+```
+
+## Per-(perturbation, gemgroup) pseudobulks
+
+Each (perturbation, gem_group) pair becomes its own pseudobulk column. This gives ~30-48 columns per perturbation across all gem_groups, plus ~48 control columns drawn from the same 48 gemgroups. Per-contrast designs include gemgroup as a blocking factor and W from RUVg.
+
+```{r pseudobulk-helpers}
+load_starsolo_matrix <- function(library, mode, feature_set) {
+  mtx_dir <- file.path(starsolo_base, library,
+                       paste0(mode, "_", feature_set), "Solo.out", "Gene", "raw")
+  if (!dir.exists(mtx_dir)) return(NULL)
+  em_path <- file.path(mtx_dir, "UniqueAndMult-EM.mtx")
+  mtx_path <- if (mode == "multi" && file.exists(em_path)) em_path else
+    file.path(mtx_dir, "matrix.mtx")
+  m <- readMM(mtx_path)
+  features <- read.table(file.path(mtx_dir, "features.tsv"), sep = "\t",
+                         header = FALSE, stringsAsFactors = FALSE,
+                         quote = "", comment.char = "")$V1
+  barcodes <- readLines(file.path(mtx_dir, "barcodes.tsv"))
+  rownames(m) <- features
+  colnames(m) <- barcodes
+  m
+}
+
+pseudobulk_one_library <- function(library, gem_group, mode, feature_set,
+                                    cell_assign) {
+  m <- load_starsolo_matrix(library, mode, feature_set)
+  if (is.null(m)) return(NULL)
+  lib_cells <- cell_assign[cell_assign$gem_group == gem_group, ]
+  bc_strip <- sub("-[0-9]+$", "", lib_cells$cell_barcode)
+  matched_idx <- match(bc_strip, colnames(m))
+  ok <- !is.na(matched_idx)
+  if (sum(ok) == 0) return(NULL)
+  lib_cells <- lib_cells[ok, ]
+  m <- m[, matched_idx[ok], drop = FALSE]
+  groups <- factor(lib_cells$pseudobulk_id)
+  group_indicator <- Matrix::sparseMatrix(
+    i = seq_along(groups),
+    j = as.integer(groups),
+    x = 1,
+    dims = c(length(groups), nlevels(groups)),
+    dimnames = list(NULL, levels(groups)))
+  m %*% group_indicator
+}
+
+build_pseudobulk <- function(mode, feature_set) {
+  parts <- list()
+  for (gg in sort(unique(cells$gem_group))) {
+    library_id <- paste0("KD6_", gg, "_essential")
+    pb <- pseudobulk_one_library(library_id, gg, mode, feature_set, cells)
+    if (is.null(pb)) next
+    parts[[library_id]] <- pb
+  }
+  if (length(parts) == 0) {
+    stop("no pseudobulk parts produced for ", mode, " ", feature_set)
+  }
+  all_features <- Reduce(union, lapply(parts, rownames))
+  feat_idx <- setNames(seq_along(all_features), all_features)
+  triplets_i <- integer(0)
+  triplets_j <- integer(0)
+  triplets_x <- numeric(0)
+  col_names <- character(0)
+  for (p in parts) {
+    cur_features <- rownames(p)
+    cur_cols <- colnames(p)
+    p_t <- as(p, "TsparseMatrix")
+    triplets_i <- c(triplets_i, feat_idx[cur_features][p_t@i + 1L])
+    triplets_j <- c(triplets_j, p_t@j + 1L + length(col_names))
+    triplets_x <- c(triplets_x, p_t@x)
+    col_names <- c(col_names, cur_cols)
+  }
+  out <- Matrix::sparseMatrix(
+    i = triplets_i, j = triplets_j, x = triplets_x,
+    dims = c(length(all_features), length(col_names)),
+    dimnames = list(all_features, col_names))
+  cells_per_col <- table(cells$pseudobulk_id)
+  keep_cols <- intersect(colnames(out),
+                          names(cells_per_col)[cells_per_col >= min_cells_per_col])
+  out <- out[, keep_cols, drop = FALSE]
+
+  meta <- data.frame(
+    pseudobulk_id = colnames(out),
+    pert_id = sub("__[0-9]+$", "", colnames(out)),
+    gem_group = as.integer(sub("^.*__", "", colnames(out))),
+    n_cells = as.integer(cells_per_col[colnames(out)]),
+    stringsAsFactors = FALSE)
+  meta$is_control <- meta$pert_id == "control_pool"
+  list(counts = out, meta = meta)
+}
+```
+
+```{r build-pseudobulks, results = "hide"}
+pseudobulks <- list()
+for (mode in starsolo_modes) {
+  for (fs in feature_sets) {
+    key <- paste(mode, fs, sep = "_")
+    pseudobulks[[key]] <- build_pseudobulk(mode, fs)
+    cat(sprintf("%-30s %d cols x %d features\n", key,
+                ncol(pseudobulks[[key]]$counts),
+                nrow(pseudobulks[[key]]$counts)))
+  }
+}
+save_rds(pseudobulks, "pseudobulks")
+```
+
+## RUVg fit on the gene matrix
+
+The gene pseudobulk drives empirical-control selection and RUVg fitting per STARsolo mode. The same W is reused across all repeat featuresets for that mode. The naive design is `~ gemgroup + perturbed`, where `perturbed` is TRUE for any pert column and FALSE for control columns.
+
+```{r ruv-fit}
+ruv_fits <- list()
+for (mode in starsolo_modes) {
+  gene_pb <- pseudobulks[[paste(mode, "genes", sep = "_")]]
+  if (is.null(gene_pb)) next
+  meta <- gene_pb$meta
+  meta$gem_group_f <- factor(meta$gem_group)
+  meta$perturbed <- factor(!meta$is_control, levels = c(FALSE, TRUE))
+
+  gene_dge <- DGEList(counts = as.matrix(gene_pb$counts), samples = meta)
+  keep <- rowSums(gene_dge$counts >= 5) >= ceiling(ncol(gene_dge) / 2)
+  gene_dge <- gene_dge[keep, , keep.lib.sizes = FALSE]
+  gene_dge <- calcNormFactors(gene_dge, method = "TMM")
+
+  design_naive <- model.matrix(~ gem_group_f + perturbed,
+                                data = gene_dge$samples)
+  gene_dge <- estimateDisp(gene_dge, design_naive)
+  fit <- glmQLFit(gene_dge, design_naive)
+  coef_idx <- grep("^perturbedTRUE$", colnames(design_naive))
+  qlf <- glmQLFTest(fit, coef = coef_idx)
+  ranked <- topTags(qlf, n = Inf, sort.by = "PValue")$table
+  controls <- rownames(ranked)[order(ranked$PValue,
+                                      decreasing = TRUE)][seq_len(min(n_controls,
+                                                                       nrow(ranked)))]
+
+  ruv_state <- fit_ruv_range(gene_dge, controls, k_max = max(4L, k_selected))
+  W <- pick_W_matrix(ruv_state, k = k_selected)
+  ruv_fits[[mode]] <- list(meta = meta, W = W, controls = controls,
+                            gene_dge = gene_dge, ruv_state = ruv_state)
+}
+save_rds(ruv_fits, "ruv_fits")
+```
+
+## Per-perturbation DE at gene_id, family_id, and class_id
+
+Per perturbation, keep its pseudobulks plus the control_pool pseudobulks from the same gemgroups, then fit `~ gem_group_f + W + group` with `group = factor(c("ctrl","pert"))`. The contrast is run once at gene_id, family_id, and class_id. gene_id is the STARsolo-native level; family_id and class_id roll the same counts up through `granularity_rollup.R` using the locus_map at `indices_base`. Counts stay sparse through the rollup and are densified only at DGEList construction.
+
+```{r per-perturbation-de, results = "hide"}
+top_pert_ids <- top_perts$gene_transcript
+
+de_one <- function(pb_counts_dense, pb_meta, W, pert) {
+  pert_cols <- pb_meta$pseudobulk_id[pb_meta$pert_id == pert]
+  pert_gemgroups <- pb_meta$gem_group[pb_meta$pseudobulk_id %in% pert_cols]
+  ctrl_cols <- pb_meta$pseudobulk_id[
+    pb_meta$pert_id == "control_pool" &
+    pb_meta$gem_group %in% pert_gemgroups]
+  keep_cols <- c(pert_cols, ctrl_cols)
+  if (length(pert_cols) < 3 || length(ctrl_cols) < 3) return(NULL)
+
+  sub_meta <- pb_meta[match(keep_cols, pb_meta$pseudobulk_id), ]
+  sub_dge <- DGEList(counts = pb_counts_dense[, keep_cols, drop = FALSE],
+                      samples = sub_meta)
+  sub_dge$samples$group <- factor(
+    ifelse(sub_dge$samples$pert_id == "control_pool", "ctrl", "pert"),
+    levels = c("ctrl", "pert"))
+  sub_dge$samples$gem_group_f <- droplevels(factor(sub_dge$samples$gem_group))
+  sub_dge <- calcNormFactors(sub_dge, method = "TMM")
+
+  W_sub <- W[keep_cols, , drop = FALSE]
+  colnames(W_sub) <- paste0("W_", seq_len(ncol(W_sub)))
+  sub_dge$samples <- cbind(sub_dge$samples, W_sub)
+
+  design_terms <- c("gem_group_f", colnames(W_sub), "group")
+  design_terms <- design_terms[
+    sapply(design_terms, function(t) {
+      v <- sub_dge$samples[[t]]
+      length(unique(v)) > 1
+    })]
+  design_formula <- as.formula(paste("~", paste(design_terms, collapse = " + ")))
+  design <- model.matrix(design_formula, data = sub_dge$samples)
+  if (nrow(design) - ncol(design) < 1) return(NULL)
+
+  sub_dge <- estimateDisp(sub_dge, design)
+  fit <- glmQLFit(sub_dge, design)
+  coef_idx <- grep("^grouppert$", colnames(design))
+  if (length(coef_idx) == 0) return(NULL)
+  qlf <- glmQLFTest(fit, coef = coef_idx)
+  tt <- topTags(qlf, n = Inf, sort.by = "none")$table
+  tt$feature_id <- rownames(tt)
+  tt$n_pert_cols <- length(pert_cols)
+  tt$n_ctrl_cols <- length(ctrl_cols)
+  tt
+}
+
+de_results <- list()
+for (mode in names(ruv_fits)) {
+  fit_state <- ruv_fits[[mode]]
+  W <- fit_state$W
+  rownames(W) <- fit_state$meta$pseudobulk_id
+
+  for (fs in repeat_fsets) {
+    pb <- pseudobulks[[paste(mode, fs, sep = "_")]]
+    if (is.null(pb)) next
+
+    for (gran in granularities) {
+      counts_rolled <- rollup_matrix(pb$counts, locus_maps[[fs]], gran)
+      if (is.null(counts_rolled)) next
+      counts_dense <- as.matrix(counts_rolled)
+      storage.mode(counts_dense) <- "integer"
+
+      for (pert in top_pert_ids) {
+        tt <- de_one(counts_dense, pb$meta, W, pert)
+        if (is.null(tt)) next
+        tt$mode <- mode
+        tt$feature_set <- fs
+        tt$granularity <- gran
+        tt$gene_transcript <- pert
+        de_results[[paste(mode, fs, gran, pert, sep = "|")]] <- tt
+      }
+    }
+  }
+}
+save_rds(de_results, "de_results")
+
+de_long <- bind_rows(de_results)
+
+bio_gene <- if (!is.null(biology_annotation)) {
+  biology_annotation %>%
+    distinct(gene_id, class_id, family_age, strand_vs_gene,
+             frac_downstream_a_run)
+} else NULL
+
+family_to_class <- bind_rows(lapply(locus_maps, function(lm) {
+  if (is.null(lm)) return(NULL)
+  dplyr::distinct(lm, family_id, class_id)
+})) %>% distinct(family_id, class_id)
+
+if (!is.null(bio_gene)) {
+  de_long <- de_long %>%
+    left_join(bio_gene %>% transmute(feature_id = gene_id,
+                                      class_from_gene_id = class_id,
+                                      family_age, strand_vs_gene,
+                                      frac_downstream_a_run),
+              by = "feature_id")
+} else {
+  de_long$class_from_gene_id <- NA_character_
+  de_long$family_age <- NA_character_
+  de_long$strand_vs_gene <- NA_character_
+  de_long$frac_downstream_a_run <- NA_real_
+}
+
+de_long$class_id <- NA_character_
+de_long$class_id[de_long$granularity == "class_id"] <-
+  de_long$feature_id[de_long$granularity == "class_id"]
+gene_idx <- de_long$granularity == "gene_id"
+de_long$class_id[gene_idx] <- de_long$class_from_gene_id[gene_idx]
+if (nrow(family_to_class) > 0) {
+  fam_idx <- de_long$granularity == "family_id"
+  de_long$class_id[fam_idx] <- family_to_class$class_id[
+    match(de_long$feature_id[fam_idx], family_to_class$family_id)]
+}
+de_long$polya <- polya_label(de_long$class_id)
+save_csv(de_long, "ruv_de_long")
+```
+
+## Family-level and class-level summaries
+
+Family- and class-level rollups collapse per-locus DE into one row per family_id (or class_id) per perturbation. They show structure that the per-locus volcanoes hide, and the polyA-competence facet separates classes 10x can capture (LINE, SINE, LTR, Retroposon) from classes it cannot (snRNA, scRNA, tRNA, Simple_repeat, etc).
+
+```{r family-class-summaries, fig.width = 9, fig.height = 6}
+for (mode_i in starsolo_modes) {
+  for (fs_i in repeat_fsets) {
+    df_class <- de_long %>%
+      filter(mode == mode_i, feature_set == fs_i, granularity == "class_id")
+    if (nrow(df_class) == 0) next
+    cat(sprintf("\n### class_id heatmap: %s / %s\n\n", mode_i, fs_i))
+    print(class_logfc_heatmap(df_class, group_col = "feature_id",
+                              title_tag = paste(mode_i, fs_i, "class_id logFC")))
+    df_family <- de_long %>%
+      filter(mode == mode_i, feature_set == fs_i, granularity == "family_id")
+    if (nrow(df_family) == 0) next
+    cat(sprintf("\n### family_id distribution by polyA-competence: %s / %s\n\n",
+                mode, fs))
+    print(class_logfc_box(df_family, facet_col = "polya",
+                          title_tag = paste(mode_i, fs_i, "family_id logFC")))
+  }
+}
+```
+
+## Validation: REclaim TE_total_fraction vs Replogle TE_ratio
+
+```{r validation}
+te_total_per_pert <- function(mode) {
+  rep_pb <- pseudobulks[[paste(mode, "genic_repeats", sep = "_")]]
+  ig_pb <- pseudobulks[[paste(mode, "intergenic_repeats", sep = "_")]]
+  gene_pb <- pseudobulks[[paste(mode, "genes", sep = "_")]]
+  if (is.null(rep_pb) || is.null(ig_pb) || is.null(gene_pb)) return(NULL)
+
+  agg_by_pert <- function(pb) {
+    counts <- Matrix::colSums(pb$counts)
+    df <- data.frame(pseudobulk_id = names(counts), total = as.numeric(counts),
+                     stringsAsFactors = FALSE)
+    df <- merge(df, pb$meta[, c("pseudobulk_id", "pert_id")],
+                by = "pseudobulk_id")
+    aggregate(total ~ pert_id, data = df, FUN = sum)
+  }
+  rep_per_pert <- agg_by_pert(rep_pb)
+  ig_per_pert <- agg_by_pert(ig_pb)
+  gene_per_pert <- agg_by_pert(gene_pb)
+
+  m <- merge(rep_per_pert, ig_per_pert, by = "pert_id",
+             suffixes = c("_rep", "_ig"))
+  m <- merge(m, gene_per_pert, by = "pert_id")
+  names(m)[names(m) == "total"] <- "total_genes"
+  m$te_total <- m$total_rep + m$total_ig
+  m$total_umi <- m$te_total + m$total_genes
+  m$reclaim_te_total_fraction <- m$te_total / m$total_umi
+  m$mode <- mode
+  m
+}
+
+validation_dfs <- lapply(starsolo_modes, te_total_per_pert)
+validation <- bind_rows(validation_dfs[!sapply(validation_dfs, is.null)])
+
+validation <- left_join(
+  validation,
+  top_perts %>% transmute(pert_id = gene_transcript,
+                           replogle_te_ratio,
+                           n_cells_replogle),
+  by = "pert_id")
+save_csv(validation, "validation_te_fraction")
+
+cor_summary <- validation %>%
+  filter(!is.na(replogle_te_ratio)) %>%
+  group_by(mode) %>%
+  summarise(
+    pearson = cor(reclaim_te_total_fraction, replogle_te_ratio, method = "pearson"),
+    spearman = cor(reclaim_te_total_fraction, replogle_te_ratio, method = "spearman"),
+    n = n(),
+    .groups = "drop")
+save_csv(cor_summary, "validation_correlation")
+cor_summary
+```
+
+```{r validation-plot}
+ggplot(validation %>% filter(!is.na(replogle_te_ratio)),
+       aes(x = replogle_te_ratio, y = reclaim_te_total_fraction)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~ mode) +
+  labs(x = "Replogle TE_ratio (bulk h5ad)",
+       y = "REclaim TE_total_fraction (per-perturbation pseudobulk sum)") +
+  theme_ng()
+```
+
+## Notes on the design
+
+Per-(perturbation, gem_group) pseudobulks give each contrast ~30-48 perturbed columns vs ~30-48 control columns drawn from the matched gemgroups. Without this stratification a per-perturbation contrast would be 1 vs 1 and edgeR would have zero residual degrees of freedom. The trade-off is per-pseudobulk depth: a (perturbation, gem_group) pseudobulk has ~3-5 cells, ~30-50k UMIs. TMM and quasi-likelihood handle that fine; gemgroup blocking absorbs the library-of-origin batch effect.
+
+`min_cells_per_col` (default 3) drops sparse (perturbation, gem_group) pseudobulks. The control_pool side keeps all gemgroups so per-contrast it is always ≥ the per-pert pseudobulk count.
+
+Validation in this report is the per-perturbation TE_total_fraction summed across all that perturbation's pseudobulks, compared to Replogle's published `TE_ratio`. The DE tables let downstream analyses go beyond the class-level fraction to subfamily and locus resolution.
+
+`te_total = sum(genic_repeats) + sum(intergenic_repeats)` is exact under unique mode (each read maps to one locus that is either genic or intergenic, so the partition is additive). Under multi/EM mode the two partitions overcount any multimapper that has copies in both genic and intergenic loci, since EM redistributes the read separately within each featureset's GTF. The simulation evaluation outputs (`summary_global_metrics.tsv` per `feature_set`) quantify this gap. The EM-mode `te_total` here is therefore an upper bound on the true total repeat fraction; the unique-mode sum is exact. A future PR adding `repeats` (full undivided set) as a sc featureset would let this validation use the direct full-repeats total.
