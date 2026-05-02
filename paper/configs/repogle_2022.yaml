@@ -40,7 +40,7 @@ selection:
 # Restrict to a subset of gemgroups for pilot scale. Empty list means all 48.
 # Useful values: [1, 2, 3, 4] for a four-library dev run.
 # gemgroup_subset: []  # full screen, all 48 libraries
-gemgroup_subset: [1, 2, 3, 4]  # 4-library dev pilot, ~6,200 cells
+gemgroup_subset: []  # all 48 KD6 libraries (full screen)
 
 # Phase 2 prep: SRA accession resolution.
 sra:

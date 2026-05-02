@@ -24,11 +24,13 @@ The actual alignment (Phase 2) is invoked separately on the compute machine:
       --configfile ../results/paper/repogle_2022/data/repogle_kd6_sc_merged.yaml
 
 
-Phase 3 - per-perturbation pseudobulk RUVg DE.
-  Rule: render_repogle_2022_perturbseq_report.
-  Consumes STARsolo matrices produced by Phase 2 plus
-  cells_to_perturbation.tsv from Phase 1. Renders an HTML report and
-  CSV/RDS outputs under <out_base>/report/.
+Phase 3 - per-perturbation pseudobulk RUVg DE plus per-library alignment QC.
+  Rules: aggregate_star_alignment_qc, render_repogle_2022_perturbseq_report.
+  The first scans STAR Log.final.out files emitted by Phase 2 and emits a
+  per-library QC TSV. The second consumes STARsolo matrices, the QC TSV,
+  the locus_map files for family/class rollups, and cells_to_perturbation
+  to render the paper-figure HTML plus CSV/RDS outputs under
+  <out_base>/report/.
 
 Run Phase 1 + Phase 2 prep:
   cd paper
@@ -185,6 +187,42 @@ rule resolve_repogle_2022_sra:
         """
 
 
+# Per-library STAR alignment QC. Reads one Log.final.out per library
+# (unique_genes is canonical; the alignment is identical across modes and
+# feature_sets so the unique_genes log captures mismatch rate, mapping
+# rates, and read counts for the library). Discovery is by glob so the
+# rule does not need to enumerate the 48 KD6 libraries explicitly.
+rule aggregate_star_alignment_qc:
+    conda:
+        "envs/repogle_metadata.yaml"
+    input:
+        libraries = op.join(_data, "selected_libraries_with_srrs.tsv"),
+        script = op.join(workflow.basedir, "..", "workflow", "scripts",
+                         "parse_star_log.py"),
+    output:
+        tsv = op.join(_report, "alignment_qc_per_library.tsv"),
+    params:
+        outdir = _report,
+        starsolo_base = op.abspath(config['phase3']['starsolo_base']),
+    log:
+        op.join(_out, "logs", "alignment_qc_per_library.log"),
+    resources:
+        mem_mb = 1000,
+    shell:
+        """
+        mkdir -p {params.outdir} $(dirname {log})
+        shopt -s nullglob
+        logs=({params.starsolo_base}/*/unique_genes/Log.final.out)
+        if [ ${{#logs[@]}} -eq 0 ]; then
+            echo "no STAR Log.final.out found under {params.starsolo_base}" >&2
+            exit 1
+        fi
+        args=()
+        for f in "${{logs[@]}}"; do args+=(--log "$f"); done
+        python {input.script} "${{args[@]}}" --out {output.tsv} 2> {log}
+        """
+
+
 rule render_repogle_2022_perturbseq_report:
     conda:
         "envs/ruvseq.yaml"
@@ -193,6 +231,7 @@ rule render_repogle_2022_perturbseq_report:
                       "ruv_repogle_2022_perturbseq_report.Rmd"),
         cells = op.join(_data, "cells_to_perturbation.tsv"),
         perturbations = op.join(_data, "selected_perturbations.tsv"),
+        alignment_qc = op.join(_report, "alignment_qc_per_library.tsv"),
     output:
         html = op.join(_report, "ruv_repogle_2022_perturbseq_report.html"),
         rds_dir = directory(op.join(_report, "ruv_rds")),
@@ -204,6 +243,7 @@ rule render_repogle_2022_perturbseq_report:
         outdir = op.abspath(op.join(_report, "ruv_rds")),
         cells = op.abspath(op.join(_data, "cells_to_perturbation.tsv")),
         perturbations = op.abspath(op.join(_data, "selected_perturbations.tsv")),
+        alignment_qc = op.abspath(op.join(_report, "alignment_qc_per_library.tsv")),
         starsolo_base = op.abspath(config['phase3']['starsolo_base']),
         indices_base = op.abspath(config['phase3']['indices_base']),
         feature_sets = config['phase3']['feature_sets'],
@@ -225,6 +265,7 @@ rule render_repogle_2022_perturbseq_report:
             params = list(
                 cells_to_perturbation = '{params.cells}',
                 selected_perturbations = '{params.perturbations}',
+                alignment_qc = '{params.alignment_qc}',
                 starsolo_base = '{params.starsolo_base}',
                 indices_base = '{params.indices_base}',
                 report_outdir = '{params.outdir}',

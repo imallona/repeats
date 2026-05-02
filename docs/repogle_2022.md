@@ -60,18 +60,21 @@ Phase 2 prep (implemented): SRA accession resolution per library.
 
 Phase 2 (alignment, run separately on the compute machine): SRA fastq download and STARsolo alignment.
 
-  - Driven by `workflow/configs/repogle_kd6_sc.yaml` reusing `pipeline_type: sc`. Reference is `hg38` Ensembl 112 (shared with `gse230647_sc.yaml`, no extra index build).
-  - Aligners restricted to STARsolo. `multimapper_modes: [unique, multi]` keeps both unique counts (clean baseline) and EM-distributed multi counts (recovers young repeat elements).
+  - Driven by `workflow/configs/repogle_kd6_sc.yaml` with `pipeline_type: sc`. Reference is `hg38` Ensembl 112 (shared with `gse230647_sc.yaml`).
+  - One STAR run per (library, feature_set) with `--soloMultiMappers Unique EM`. The unique and EM count matrices are written from the same alignment, and the EM matrix is mirrored into the `multi_<feature_set>/` sister directory so downstream rules see both modes without re-aligning.
   - Run: `cd workflow; snakemake --use-conda --cores N --configfile ../results/paper/repogle_2022/data/repogle_kd6_sc_merged.yaml`.
-  - Output: per-library STARsolo `Solo.out/Gene/raw/` matrices for genes, genic_repeats, intergenic_repeats at gene_id and family_id granularity, under `results/repogle_kd6_sc/starsolo/<KD6_N_essential>/<mode>_<feature_set>/`.
+  - Output: per-library STARsolo matrices for genes, genic_repeats, intergenic_repeats at gene_id, family_id, and class_id granularity, under `results/repogle_kd6_sc/starsolo/<KD6_N_essential>/<mode>_<feature_set>/`.
 
-Phase 3 (implemented as Rmd plus rule, requires Phase 2 alignment outputs): per-perturbation pseudobulk RUVg DE.
+Phase 3 (per-perturbation RUVg DE plus per-library alignment QC; needs Phase 2 outputs):
 
-  - Rule `render_repogle_2022_perturbseq_report` invokes `paper/scripts/ruv_repogle_2022_perturbseq_report.Rmd`.
-  - Loads STARsolo matrices, joins cells to perturbations via `cells_to_perturbation.tsv`, and builds per-(perturbation, gem_group) pseudobulks by summing UMIs across cells of each perturbation within each gemgroup. Each perturbation contributes ~30-48 columns (one per gemgroup with cells of that perturbation), and the control_pool similarly contributes ~48 columns from the sampled controls. Per-contrast designs use gemgroup as a blocking factor.
-  - RUVg is fit on the gene pseudobulk using the existing `workflow/scripts/ruv_common.R` helpers; the same W is applied to every repeat featureset for that mode, mirroring the TDP-43 bulk RUVg pattern.
-  - Per-perturbation DE under `~ W + group` per repeat featureset, with each perturbation tested against `control_pool`.
-  - Validation: REclaim's per-perturbation `te_total_fraction` versus `replogle_te_ratio` from `selected_perturbations.tsv`. Pearson and Spearman correlations per starsolo mode. Strong correlation across the top 30 confirms the pipeline reproduces Replogle's signal at class level; disagreement beyond noise points to subfamily-specific effects that the class-level metric cannot resolve.
+  - `aggregate_star_alignment_qc` parses each library's `unique_genes/Log.final.out` via `workflow/scripts/parse_star_log.py` and writes `report/alignment_qc_per_library.tsv` (mismatch rate, mapping rate, unmapped fractions, average mapped length).
+  - `render_repogle_2022_perturbseq_report` runs `paper/scripts/ruv_repogle_2022_perturbseq_report.Rmd`.
+  - The Rmd loads STARsolo matrices (multi mode reads `UniqueAndMult-EM.mtx`), joins cells to perturbations via `cells_to_perturbation.tsv`, and builds per-(perturbation, gem_group) pseudobulks. Each perturbation gets ~30-48 columns (one per gemgroup with cells of it), matched by ~48 control columns from the same gemgroups. Gemgroup is the blocking factor. Pseudobulks stay sparse until they enter DGEList.
+  - RUVg fit on the gene pseudobulk via `workflow/scripts/ruv_common.R`; the same W is reused across repeat featuresets per mode.
+  - Per-perturbation DE under `~ gem_group + W + group`, run at gene_id, family_id, and class_id. Family and class matrices come from `workflow/scripts/granularity_rollup.R` plus the locus_map TSVs at `<indices_base>/indices/all/<feature_set>_locus_map.tsv`.
+  - Alignment-QC scatter: one strip per perturbation, one point per contributing library (size = cell count), median highlighted. Library mismatch rates come from STAR `Log.final.out`. Used as a batch-confound check: a perturbation whose median sits high is enriched in poorly-aligning libraries.
+  - Family/class summary: per-perturbation logFC heatmap at class_id and logFC distribution at family_id, faceted by polyA-competence (`POLYA_CLASSES` from `workflow/scripts/biology_checks.R`). Class for family_id rows comes from the locus_map; class for gene_id rows comes from `repeat_biology_annotation.tsv`.
+  - Validation: REclaim's per-perturbation `te_total_fraction` against Replogle's `te_ratio`, with Pearson and Spearman per mode.
 
 ## Why pseudobulk
 
