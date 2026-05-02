@@ -186,6 +186,87 @@ ggplot(corr, aes(x = gran_label, y = r,
   theme(axis.text.x = element_text(angle = 25, hjust = 1))
 ```
 
+## EM / multi-mode effect across aligners
+
+Two complementary panels.
+
+The first computes a per-aligner **multi-minus-unique delta** for each metric: how much does that aligner's multimapper-aware mode help (or hurt) accuracy, against ground truth, relative to its own unique-only baseline? Aligners with only one mode appear as zero-height bars and can be ignored. Once kallisto/alevin uniform-mode wiring lands (see `internal_use/todo_simulation_recount.md`) they'll appear here automatically next to STARsolo's `EM` and `starsolo_tagcount`'s `1/NH`.
+
+The second is the targeted **starsolo vs starsolo_tagcount** scatter when both are present: same BAM source, two counting strategies. Unique-mode points should sit on the diagonal (regression check on `sc_count_features.py`); multi-mode deviations isolate the EM-vs-1/NH bias.
+
+```{r multi-effect-per-aligner, fig.height=8, fig.width=11}
+bias_metrics <- intersect(
+  c("pearson_r", "spearman_r", "f1", "jaccard", "log1p_rmse"),
+  names(global))
+
+per_aligner_delta <- global %>%
+  select(aligner, multimapper_mode, feature_set, gran_label,
+         all_of(bias_metrics)) %>%
+  pivot_longer(all_of(bias_metrics), names_to = "metric",
+               values_to = "value") %>%
+  pivot_wider(names_from = multimapper_mode, values_from = value)
+
+if ("multi" %in% names(per_aligner_delta) && "unique" %in% names(per_aligner_delta)) {
+  per_aligner_delta <- per_aligner_delta %>%
+    filter(!is.na(multi) & !is.na(unique)) %>%
+    mutate(delta = multi - unique,
+           metric = factor(metric, levels = bias_metrics))
+
+  if (nrow(per_aligner_delta) > 0) {
+    ggplot(per_aligner_delta,
+           aes(x = aligner, y = delta, fill = feature_set)) +
+      geom_col(position = position_dodge(width = 0.85), width = 0.8) +
+      geom_hline(yintercept = 0, linetype = "dashed", colour = "grey40") +
+      facet_grid(metric ~ gran_label, scales = "free_y") +
+      labs(x = "aligner", y = "multi minus unique",
+           title = "multi-mode effect per aligner (multi minus unique)",
+           subtitle = "rows = metric, columns = granularity; positive = multi helps, negative = multi hurts") +
+      theme_ng() +
+      theme(axis.text.x = element_text(angle = 30, hjust = 1, size = 8),
+            legend.position = "bottom")
+  } else {
+    cat("no aligner has both unique and multi rows; multi-effect panel skipped.\n")
+  }
+} else {
+  cat("global table is missing one of {unique, multi} multimapper_mode rows;",
+      "multi-effect panel skipped.\n")
+}
+```
+
+```{r tagcount-vs-starsolo-scatter, fig.height=4, fig.width=10}
+have_pair <- (any(global$aligner == "starsolo")
+              && any(global$aligner == "starsolo_tagcount"))
+
+if (have_pair) {
+  agree <- global %>%
+    filter(aligner %in% c("starsolo", "starsolo_tagcount")) %>%
+    select(aligner, multimapper_mode, feature_set, gran_label,
+           pearson_r) %>%
+    pivot_wider(names_from = aligner, values_from = pearson_r) %>%
+    filter(!is.na(starsolo) & !is.na(starsolo_tagcount))
+
+  if (nrow(agree) > 0) {
+    ggplot(agree, aes(x = starsolo, y = starsolo_tagcount,
+                      colour = feature_set, shape = gran_label)) +
+      geom_abline(slope = 1, intercept = 0, linetype = "dashed",
+                  colour = "grey40") +
+      geom_point(size = 2.5, alpha = 0.85) +
+      facet_wrap(~ multimapper_mode) +
+      coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
+      labs(x = "starsolo Pearson r",
+           y = "starsolo_tagcount Pearson r",
+           title = "starsolo vs starsolo_tagcount Pearson r per (feature_set, granularity)",
+           subtitle = "diagonal = perfect agreement; below = tagcount worse, above = tagcount better") +
+      theme_ng()
+  } else {
+    cat("not enough paired rows to render the scatter.\n")
+  }
+} else {
+  cat("only one of {starsolo, starsolo_tagcount} present;",
+      "scatter panel skipped.\n")
+}
+```
+
 ## log1p RMSE
 
 log1p RMSE is computed over all (feature, cell) pairs in the feature universe.
