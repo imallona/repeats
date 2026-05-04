@@ -226,7 +226,7 @@ def test_gtf_falls_back_to_exon_when_no_gene(repeat_gtf):
 
 
 def _run(bam_path, gtf_path, whitelist_path, multimapper='unique', threads=1,
-         umi_dedup='exact'):
+         umi_dedup='exact', cb_tag='CB'):
     """Drive the script in-process and return:
 
       cbs                - whitelist barcodes in order
@@ -246,7 +246,7 @@ def _run(bam_path, gtf_path, whitelist_path, multimapper='unique', threads=1,
     contigs = list(bam_header.references)
     bam_header.close()
 
-    scf._worker_init(bam_path, intervals, cb_index, multimapper, umi_dedup)
+    scf._worker_init(bam_path, intervals, cb_index, multimapper, umi_dedup, cb_tag)
     results = [scf._process_contig(c) for c in contigs]
     per_contig = [p for _, p, _ in results]
     raw_counts = scf.merge_counts(per_contig)

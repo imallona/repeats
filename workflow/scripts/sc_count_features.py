@@ -191,13 +191,15 @@ _WORKER_TREE = None
 _WORKER_CB_INDEX = None
 _WORKER_MULTIMAPPER = None
 _WORKER_UMI_DEDUP = None
+_WORKER_CB_TAG = None
 
 
-def _worker_init(bam_path, intervals_by_chrom, cb_index, multimapper, umi_dedup):
+def _worker_init(bam_path, intervals_by_chrom, cb_index, multimapper,
+                  umi_dedup, cb_tag):
     import pysam
     from intervaltree import IntervalTree
     global _WORKER_BAM, _WORKER_TREE, _WORKER_CB_INDEX
-    global _WORKER_MULTIMAPPER, _WORKER_UMI_DEDUP
+    global _WORKER_MULTIMAPPER, _WORKER_UMI_DEDUP, _WORKER_CB_TAG
     _WORKER_BAM = pysam.AlignmentFile(bam_path, 'rb')
     _WORKER_TREE = {}
     for chrom, recs in intervals_by_chrom.items():
@@ -208,6 +210,7 @@ def _worker_init(bam_path, intervals_by_chrom, cb_index, multimapper, umi_dedup)
     _WORKER_CB_INDEX = cb_index
     _WORKER_MULTIMAPPER = multimapper
     _WORKER_UMI_DEDUP = umi_dedup
+    _WORKER_CB_TAG = cb_tag
 
 
 _NO_OVERLAP = object()
@@ -276,7 +279,7 @@ def _process_contig(chrom):
         if r.is_secondary and mm == 'unique':
             continue
         try:
-            cb = r.get_tag('CB')
+            cb = r.get_tag(_WORKER_CB_TAG)
         except KeyError:
             n_no_cb += 1
             continue
@@ -517,6 +520,12 @@ def main():
                     help='1mm_all (default, matches STARsolo) collapses '
                          'UMIs within Hamming-1; exact counts distinct UB '
                          'strings (debug only, over-counts)')
+    ap.add_argument('--cb-tag', default='CB',
+                    help='BAM tag carrying the cell identifier. CB '
+                         '(default) for Chromium and bowtie2 chromium '
+                         'output. RG for STARsolo SmartSeq output, where '
+                         'CB is forbidden by STAR and the cell-id sits in '
+                         'the read-group tag.')
     ap.add_argument('--threads', type=int, default=1)
     args = ap.parse_args()
 
@@ -529,7 +538,7 @@ def main():
     contigs = list(bam_header.references)
     bam_header.close()
 
-    init_args = (args.bam, intervals_by_chrom, cb_index, args.multimapper, args.umi_dedup)
+    init_args = (args.bam, intervals_by_chrom, cb_index, args.multimapper, args.umi_dedup, args.cb_tag)
     if args.threads <= 1:
         _worker_init(*init_args)
         results = [_process_contig(c) for c in contigs]
