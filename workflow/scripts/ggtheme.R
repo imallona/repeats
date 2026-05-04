@@ -89,7 +89,12 @@ aligner_mode_palette <- c(
   "kallisto (em)"     = "#FB9A99",
   "kallisto (unique)" = "#E31A1C",
   "starsolo (multi)"  = "#FDBF6F",
-  "starsolo (unique)" = "#FF7F00"
+  "starsolo (unique)" = "#FF7F00",
+  # starsolo_tagcount is the recount path: same STARsolo alignment, different
+  # counter. Given its own paired hue (purple) so plots can show it next to
+  # starsolo as a distinct method.
+  "starsolo_tagcount (multi)"  = "#CAB2D6",
+  "starsolo_tagcount (unique)" = "#6A3D9A"
 )
 
 granularity_linetypes <- c(

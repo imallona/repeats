@@ -47,7 +47,7 @@ rule starsolo_smartseq2:
         raw_matrix_dir = directory(op.join(config['base'], 'starsolo', 'smartseq2',
                                            '{multimapper_mode}_{feature_set}',
                                            'Solo.out', 'Gene', 'raw')),
-        # Named so smartseq2_tagcount can use it as the cell whitelist (SS2
+        # Named so smartseq2_tagcount can use it as the cell whitelist (SmartSeq2
         # has --soloCellFilter None, so raw/ is the only output).
         raw_barcodes = op.join(config['base'], 'starsolo', 'smartseq2',
                                '{multimapper_mode}_{feature_set}',

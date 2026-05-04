@@ -80,14 +80,14 @@ if _pipeline_type == 'simulation':
     # technology variants:
     #   * chromium: real UMIs in UB tag; --umi-dedup 1mm_all (default).
     #   * smartseq2: no real UMIs; --umi-dedup none. Requires CB tag on
-    #                STARsolo SS2 reads (see starsolo.snmk).
+    #                STARsolo SmartSeq2 reads (see starsolo.snmk).
     # Only repeat feature_sets are produced; (genes, gene_id) is served by
     # STARsolo's own Solo.out/Gene matrix.
     _has_chromium_tagcount = ('starsolo_tagcount' in active_aligners
                               and sim_technology == 'chromium')
-    _has_ss2_tagcount = ('starsolo_tagcount' in active_aligners
+    _has_smartseq2_tagcount = ('starsolo_tagcount' in active_aligners
                          and sim_technology == 'smartseq2')
-    _has_tagcount = _has_chromium_tagcount or _has_ss2_tagcount
+    _has_tagcount = _has_chromium_tagcount or _has_smartseq2_tagcount
     if _has_chromium_tagcount:
         _tagcount_sample_ids = [sim_technology]
         _tagcount_canonical_fs = config.get('aligner_params', {}).get(
@@ -97,9 +97,9 @@ if _pipeline_type == 'simulation':
         # Sim uses --soloCellFilter None (raw/ only); real-data sc uses
         # EmptyDrops_CR (filtered/ exists). See starsolo_tagcount.snmk.
         _tagcount_whitelist_dir = 'raw'
-    if _has_ss2_tagcount:
-        _ss2_tagcount_sample_ids = [sim_technology]
-        _ss2_tagcount_canonical_fs = config.get('aligner_params', {}).get(
+    if _has_smartseq2_tagcount:
+        _smartseq2_tagcount_sample_ids = [sim_technology]
+        _smartseq2_tagcount_canonical_fs = config.get('aligner_params', {}).get(
             'starsolo', {}).get('sc_count', {}).get(
             'canonical_feature_set',
             'genes' if 'genes' in feature_sets else feature_sets[0])
@@ -118,7 +118,7 @@ if _pipeline_type == 'simulation':
         include: "modules/bam_index.snmk"
     if _has_chromium_tagcount:
         include: "modules/starsolo_tagcount.snmk"
-    if _has_ss2_tagcount:
+    if _has_smartseq2_tagcount:
         include: "modules/smartseq2_tagcount.snmk"
 
     for _d in ['tmp', 'logs', 'benchmarks', 'counts', 'evaluation']:
