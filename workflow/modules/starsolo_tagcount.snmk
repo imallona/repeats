@@ -57,6 +57,9 @@ rule starsolo_tagcount:
         bam = op.join(config['base'], 'starsolo', '{sample_id}',
                       'unique_' + _tagcount_canonical_fs,
                       'Aligned.sortedByCoord.out.bam'),
+        bai = op.join(config['base'], 'starsolo', '{sample_id}',
+                      'unique_' + _tagcount_canonical_fs,
+                      'Aligned.sortedByCoord.out.bam.bai'),
         # EmptyDrops_CR-passed cells from the canonical genes alignment;
         # the recount restricts to these so the matrix has one column per
         # real cell rather than per all-CB-seen-during-alignment.
@@ -88,7 +91,7 @@ rule starsolo_tagcount:
         python {input.script} \
             --bam {input.bam} \
             --gtf {input.gtf} \
-            --whitelist {input.whitelist_dir}/barcodes.tsv \
+            --whitelist {input.whitelist} \
             --out-dir {params.out_dir} \
             --multimapper {wildcards.multimapper_mode} \
             --umi-dedup {params.umi_dedup} \
@@ -113,3 +116,33 @@ rule starsolo_tagcount_all:
     tagcount output without touching the default `all` rule."""
     input:
         _all_tagcount_targets(),
+
+rule index_starsolo_sortedbam:
+    """Build a BAI for a STARsolo coordinate-sorted BAM. Generic over
+    {sample_id}/{multimapper_mode}_{feature_set} so any tagcount or
+    downstream rule can depend on the index by adding the .bai path
+    to its input list."""
+    wildcard_constraints:
+        feature_set = 'genes|repeats|genic_repeats|intergenic_repeats',
+        multimapper_mode = 'unique|multi',
+    input:
+        bam = op.join(config['base'], 'starsolo', '{sample_id}',
+                      '{multimapper_mode}_{feature_set}',
+                      'Aligned.sortedByCoord.out.bam'),
+    output:
+        bai = op.join(config['base'], 'starsolo', '{sample_id}',
+                      '{multimapper_mode}_{feature_set}',
+                      'Aligned.sortedByCoord.out.bam.bai'),
+    conda:
+        op.join(workflow.basedir, 'envs', 'repeats.yaml')
+    log:
+        op.join(config['base'], 'logs',
+                'index_starsolo_{sample_id}_{multimapper_mode}_{feature_set}.log'),
+    threads: 4
+    resources:
+        mem_mb = 2000,
+    shell:
+        """
+        mkdir -p $(dirname {output.bai}) $(dirname {log})
+        samtools index -@ {threads} {input.bam} 2> {log}
+        """
