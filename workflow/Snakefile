@@ -355,7 +355,10 @@ def simulation_evaluation_outputs():
                     'starsolo_{feature_set}_{granularity}_{multimapper_mode}_global_metrics.tsv'),
             feature_set=_eval_fsets, granularity=granularities,
             multimapper_mode=starsolo_modes)
-    if 'starsolo_tagcount' in active_aligners and sim_technology == 'chromium':
+    if 'starsolo_tagcount' in active_aligners:
+        # tagcount produces gene_id/family_id/class_id (no locus). Both
+        # chromium and smartseq2 simulations now go through tagcount, so
+        # no technology guard here.
         _tc_grans = [g for g in granularities if g != 'locus']
         outputs += expand(
             op.join(eval_dir,

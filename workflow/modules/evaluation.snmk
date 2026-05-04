@@ -135,8 +135,7 @@ rule aggregate_global_metrics:
                 feature_set=_eval_fsets,
                 granularity=[g for g in granularities if g != 'locus'],
                 multimapper_mode=starsolo_modes)
-             if 'starsolo_tagcount' in active_aligners
-                and sim_technology == 'chromium' else [])
+             if 'starsolo_tagcount' in active_aligners else [])
             +
             (expand(
                 op.join(eval_dir,
@@ -197,8 +196,7 @@ rule render_evaluation_report:
                 feature_set=_eval_fsets,
                 granularity=[g for g in granularities if g != 'locus'],
                 multimapper_mode=starsolo_modes)
-             if 'starsolo_tagcount' in active_aligners
-                and sim_technology == 'chromium' else [])
+             if 'starsolo_tagcount' in active_aligners else [])
             +
             (expand(
                 op.join(eval_dir,

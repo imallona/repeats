@@ -283,6 +283,10 @@ properties:
         type: integer
         minimum: 1000
         description: per-rule mem_mb budget for render_report, defaults to max_mem_mb
+      starsolo_threads:
+        type: integer
+        minimum: 1
+        description: thread cap for STARsolo alignment rules; defaults to min(workflow.cores, 14)
 
   report:
     type: object

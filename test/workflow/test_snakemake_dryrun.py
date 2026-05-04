@@ -146,9 +146,10 @@ def test_main_snakefile_lint():
     assert 'Error' not in r.stdout, f'Snakemake lint errors:\n{r.stdout}'
 
 
-# Tagcount opt-in coverage. The default sim configs do not include
-# starsolo_tagcount in `aligners`, so these tests pass it via --config
-# to verify the DAG builds with tagcount on.
+# Tagcount coverage with explicit aligner overrides. The default sim
+# configs already include starsolo_tagcount; these tests pass an aligner
+# list via --config that drops bowtie2 and keeps tagcount, exercising
+# the code path where tagcount is the only opt-in extra.
 
 def run_dryrun_with_config(snakefile, configfile, extra_config,
                            workdir=WORKFLOW_DIR):
