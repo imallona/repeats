@@ -190,12 +190,14 @@ _WORKER_BAM = None
 _WORKER_TREE = None
 _WORKER_CB_INDEX = None
 _WORKER_MULTIMAPPER = None
+_WORKER_UMI_DEDUP = None
 
 
-def _worker_init(bam_path, intervals_by_chrom, cb_index, multimapper):
+def _worker_init(bam_path, intervals_by_chrom, cb_index, multimapper, umi_dedup):
     import pysam
     from intervaltree import IntervalTree
-    global _WORKER_BAM, _WORKER_TREE, _WORKER_CB_INDEX, _WORKER_MULTIMAPPER
+    global _WORKER_BAM, _WORKER_TREE, _WORKER_CB_INDEX
+    global _WORKER_MULTIMAPPER, _WORKER_UMI_DEDUP
     _WORKER_BAM = pysam.AlignmentFile(bam_path, 'rb')
     _WORKER_TREE = {}
     for chrom, recs in intervals_by_chrom.items():
@@ -205,6 +207,7 @@ def _worker_init(bam_path, intervals_by_chrom, cb_index, multimapper):
         _WORKER_TREE[chrom] = tree
     _WORKER_CB_INDEX = cb_index
     _WORKER_MULTIMAPPER = multimapper
+    _WORKER_UMI_DEDUP = umi_dedup
 
 
 _NO_OVERLAP = object()
@@ -261,6 +264,11 @@ def _process_contig(chrom):
         n_total += 1
         if r.is_unmapped or r.is_supplementary:
             continue
+        # Paired BAMs (typical SmartSeq2): count R1 only so a fragment is
+        # not double-counted at both ends. Single-end BAMs have is_paired
+        # False, so the filter is a no-op there.
+        if r.is_paired and r.is_read2:
+            continue
         # STAR emits multimappers as one primary + (NH-1) secondary records,
         # all sharing the same UB. unique mode keeps only the primary;
         # multi mode keeps every locus so the per-record 1/NH weights sum
@@ -276,11 +284,19 @@ def _process_contig(chrom):
         if cb_i is None:
             n_off_wl += 1
             continue
-        try:
-            ub = r.get_tag('UB')
-        except KeyError:
-            n_no_ub += 1
-            continue
+        if _WORKER_UMI_DEDUP == 'none':
+            # No real UMI: use a per-record synthetic key so each BAM record
+            # is distinct in the (cb, gid) bucket. (qname, ref_start) is
+            # unique per record because different reads have distinct qnames,
+            # while primary + secondary records of the same multi-mapper
+            # share qname but sit at different ref_start.
+            ub = (r.query_name, r.reference_start)
+        else:
+            try:
+                ub = r.get_tag('UB')
+            except KeyError:
+                n_no_ub += 1
+                continue
         nh = r.get_tag('NH') if r.has_tag('NH') else 1
         if nh > 1 and mm == 'unique':
             n_multi_skipped += 1
@@ -386,9 +402,24 @@ def dedup_1mm_all(umi_weights):
     return sum(component_max.values())
 
 
+def dedup_none(umi_weights):
+    """No UMI deduplication: sum every weight in the bucket. Pair with
+    --umi-dedup none, which makes _process_contig key the bucket by a
+    per-record synthetic UB so every BAM record contributes its weight.
+
+    Use case: SmartSeq2 BAMs without real UMIs. Paired-end BAMs are
+    handled upstream by skipping is_read2 records so a fragment is counted
+    once. The pipeline does not attempt duplicate removal: with no UMI it
+    cannot distinguish technical PCR duplicates from biologically real
+    reads at the same coordinates.
+    """
+    return sum(umi_weights.values())
+
+
 DEDUP_FUNCS = {
     'exact': dedup_exact,
     '1mm_all': dedup_1mm_all,
+    'none': dedup_none,
 }
 
 
@@ -498,7 +529,7 @@ def main():
     contigs = list(bam_header.references)
     bam_header.close()
 
-    init_args = (args.bam, intervals_by_chrom, cb_index, args.multimapper)
+    init_args = (args.bam, intervals_by_chrom, cb_index, args.multimapper, args.umi_dedup)
     if args.threads <= 1:
         _worker_init(*init_args)
         results = [_process_contig(c) for c in contigs]

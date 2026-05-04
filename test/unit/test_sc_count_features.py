@@ -246,7 +246,7 @@ def _run(bam_path, gtf_path, whitelist_path, multimapper='unique', threads=1,
     contigs = list(bam_header.references)
     bam_header.close()
 
-    scf._worker_init(bam_path, intervals, cb_index, multimapper)
+    scf._worker_init(bam_path, intervals, cb_index, multimapper, umi_dedup)
     results = [scf._process_contig(c) for c in contigs]
     per_contig = [p for _, p, _ in results]
     raw_counts = scf.merge_counts(per_contig)
@@ -518,3 +518,138 @@ def test_end_to_end_outputs(tmp_path, repeat_gtf, whitelist_path, monkeypatch):
     # LINE for AAAA, SINE for BBBB.
     assert cls_entries[(cls_index['LINE'], 1)] == 1
     assert cls_entries[(cls_index['SINE'], 2)] == 1
+
+
+# --umi-dedup none semantics: SmartSeq2 path with no real UMIs.
+# Reads are keyed by a synthetic (qname, ref_start), so every record
+# contributes its weight regardless of whether a UB tag is present or
+# whether multiple reads share the same UB.
+
+
+def test_dedup_none_counts_every_read(tmp_path, repeat_gtf, whitelist_path):
+    bam = str(tmp_path / 'r.bam')
+    _write_bam(bam, [('chr1', 1000), ('chr2', 1000)], [
+        # Three reads at the L1HS locus, all with the SAME fixed UB. Under
+        # exact/1mm_all this would collapse to 1; under none it stays 3.
+        {'chrom': 'chr1', 'pos': 110, 'seq': 'A' * 20,
+         'cb': 'AAAA', 'ub': 'GATTACAGCTA'},
+        {'chrom': 'chr1', 'pos': 130, 'seq': 'A' * 20,
+         'cb': 'AAAA', 'ub': 'GATTACAGCTA'},
+        {'chrom': 'chr1', 'pos': 150, 'seq': 'A' * 20,
+         'cb': 'AAAA', 'ub': 'GATTACAGCTA'},
+    ])
+    _, _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path,
+                              umi_dedup='none')
+    assert counts == {(0, 'L1HS_dup1'): 3}
+
+
+def test_dedup_none_works_without_ub_tag(tmp_path, repeat_gtf, whitelist_path):
+    """In none mode, missing UB tags must NOT drop the read; the synthetic
+    key is built from the alignment record itself, not from UB."""
+    bam = str(tmp_path / 'r.bam')
+    _write_bam(bam, [('chr1', 1000), ('chr2', 1000)], [
+        {'chrom': 'chr1', 'pos': 110, 'seq': 'A' * 20, 'cb': 'AAAA'},
+        {'chrom': 'chr1', 'pos': 130, 'seq': 'A' * 20, 'cb': 'AAAA'},
+    ])
+    _, _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path,
+                              umi_dedup='none')
+    assert counts == {(0, 'L1HS_dup1'): 2}
+
+
+def test_dedup_none_multimapper_distributes_across_loci(
+        tmp_path, repeat_gtf, whitelist_path):
+    """A multi-mapper (NH=2) primary + secondary should still distribute
+    weight 1/NH across loci under --multimapper multi + --umi-dedup none.
+    The synthetic key (qname, ref_start) keeps primary and secondary
+    distinct because they sit at different ref_start."""
+    bam = str(tmp_path / 'r.bam')
+    _write_bam(bam, [('chr1', 1000), ('chr2', 1000)], [
+        {'chrom': 'chr1', 'pos': 110, 'seq': 'A' * 20,
+         'cb': 'AAAA', 'nh': 2, 'flag': 0},
+        {'chrom': 'chr1', 'pos': 320, 'seq': 'A' * 20,
+         'cb': 'AAAA', 'nh': 2, 'flag': 256},
+    ])
+    _, _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path,
+                              multimapper='multi', umi_dedup='none')
+    assert counts[(0, 'L1HS_dup1')] == pytest.approx(0.5)
+    assert counts[(0, 'AluY_dup1')] == pytest.approx(0.5)
+
+
+def test_dedup_none_off_whitelist_still_skipped(
+        tmp_path, repeat_gtf, whitelist_path):
+    """none mode does not bypass whitelist filtering: a read whose CB is
+    not in the whitelist still contributes nothing."""
+    bam = str(tmp_path / 'r.bam')
+    _write_bam(bam, [('chr1', 1000), ('chr2', 1000)], [
+        {'chrom': 'chr1', 'pos': 110, 'seq': 'A' * 20, 'cb': 'ZZZZ'},
+        {'chrom': 'chr1', 'pos': 130, 'seq': 'A' * 20, 'cb': 'AAAA'},
+    ])
+    _, _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path,
+                              umi_dedup='none')
+    assert counts == {(0, 'L1HS_dup1'): 1}
+
+
+def test_dedup_none_endtoend_outputs(tmp_path, repeat_gtf, whitelist_path,
+                                      monkeypatch):
+    """End-to-end: run main() with --umi-dedup none on a SS2-like BAM that
+    has CB but no UB, and verify the matrix sums match read counts."""
+    bam = str(tmp_path / 'r.bam')
+    _write_bam(bam, [('chr1', 1000), ('chr2', 1000)], [
+        # Cell AAAA: 2 reads on L1HS, 1 on AluY.
+        {'chrom': 'chr1', 'pos': 110, 'seq': 'A' * 20, 'cb': 'AAAA'},
+        {'chrom': 'chr1', 'pos': 130, 'seq': 'A' * 20, 'cb': 'AAAA'},
+        {'chrom': 'chr1', 'pos': 320, 'seq': 'A' * 20, 'cb': 'AAAA'},
+        # Cell BBBB: 1 read on MIR.
+        {'chrom': 'chr2', 'pos': 520, 'seq': 'A' * 20, 'cb': 'BBBB'},
+    ])
+    out = tmp_path / 'out'
+    monkeypatch.setattr(sys, 'argv', [
+        'sc_count_features',
+        '--bam', bam,
+        '--gtf', repeat_gtf,
+        '--whitelist', whitelist_path,
+        '--out-dir', str(out),
+        '--multimapper', 'unique',
+        '--umi-dedup', 'none',
+        '--threads', '1',
+    ])
+    scf.main()
+
+    gene_dir = out / 'Solo.out' / 'Gene' / 'raw'
+    rows, cols, entries = _read_mtx(str(gene_dir / 'matrix.mtx'))
+    feats = _read_features(str(gene_dir / 'features.tsv'))
+    feat_index = {f: i + 1 for i, f in enumerate(sorted(feats))}
+    # AAAA = column 1, BBBB = column 2 (whitelist order).
+    assert entries[(feat_index['L1HS_dup1'], 1)] == 2
+    assert entries[(feat_index['AluY_dup1'], 1)] == 1
+    assert entries[(feat_index['MIR_dup1'],  2)] == 1
+
+
+def test_paired_bam_skips_read2_to_avoid_fragment_double_count(
+        tmp_path, repeat_gtf, whitelist_path):
+    """Paired SmartSeq2 BAMs deposit R1 and R2 of the same fragment at
+    different ref_start. Without an is_read2 filter the synthetic UB key
+    keeps them distinct and the fragment is counted twice. Skipping R2
+    when is_paired is set collapses the pair to one count."""
+    bam = str(tmp_path / 'r.bam')
+    # Two fragments on L1HS, each as a R1 + R2 pair. Both reads of each
+    # fragment carry is_paired (flag bit 1) and is_read1 (flag bit 64) /
+    # is_read2 (flag bit 128). We only need the flag bits set; the BAM
+    # writer doesn't validate mate fields.
+    F1, F2 = 0x1 | 0x40, 0x1 | 0x80   # paired + read1, paired + read2
+    _write_bam(bam, [('chr1', 1000), ('chr2', 1000)], [
+        # Fragment 1, R1 and R2.
+        {'chrom': 'chr1', 'pos': 110, 'seq': 'A' * 20, 'cb': 'AAAA',
+         'flag': F1},
+        {'chrom': 'chr1', 'pos': 130, 'seq': 'A' * 20, 'cb': 'AAAA',
+         'flag': F2},
+        # Fragment 2, R1 and R2.
+        {'chrom': 'chr1', 'pos': 150, 'seq': 'A' * 20, 'cb': 'AAAA',
+         'flag': F1},
+        {'chrom': 'chr1', 'pos': 170, 'seq': 'A' * 20, 'cb': 'AAAA',
+         'flag': F2},
+    ])
+    _, _, counts, _, _ = _run(bam, repeat_gtf, whitelist_path,
+                              umi_dedup='none')
+    # Two fragments, R2 skipped, so 2 counts not 4.
+    assert counts == {(0, 'L1HS_dup1'): 2}

@@ -75,14 +75,31 @@ if _pipeline_type == 'simulation':
                      if fs in ('repeats', 'genic_repeats', 'intergenic_repeats')]
     _eval_fsets = _repeat_fsets
 
-    # starsolo_tagcount as an opt-in aligner: re-counts the chromium STAR
-    # BAM via sc_count_features.py against each feature_set GTF. Only valid
-    # for chromium (BAM has CB/UB tags); skipped for smartseq2.
-    _has_tagcount = ('starsolo_tagcount' in active_aligners
-                     and sim_technology == 'chromium')
-    if _has_tagcount:
+    # starsolo_tagcount as an opt-in aligner: re-counts the STARsolo BAM
+    # via sc_count_features.py against each repeat feature_set GTF. Two
+    # technology variants:
+    #   * chromium: real UMIs in UB tag; --umi-dedup 1mm_all (default).
+    #   * smartseq2: no real UMIs; --umi-dedup none. Requires CB tag on
+    #                STARsolo SS2 reads (see starsolo.snmk).
+    # Only repeat feature_sets are produced; (genes, gene_id) is served by
+    # STARsolo's own Solo.out/Gene matrix.
+    _has_chromium_tagcount = ('starsolo_tagcount' in active_aligners
+                              and sim_technology == 'chromium')
+    _has_ss2_tagcount = ('starsolo_tagcount' in active_aligners
+                         and sim_technology == 'smartseq2')
+    _has_tagcount = _has_chromium_tagcount or _has_ss2_tagcount
+    if _has_chromium_tagcount:
         _tagcount_sample_ids = [sim_technology]
         _tagcount_canonical_fs = config.get('aligner_params', {}).get(
+            'starsolo', {}).get('sc_count', {}).get(
+            'canonical_feature_set',
+            'genes' if 'genes' in feature_sets else feature_sets[0])
+        # Sim uses --soloCellFilter None (raw/ only); real-data sc uses
+        # EmptyDrops_CR (filtered/ exists). See starsolo_tagcount.snmk.
+        _tagcount_whitelist_dir = 'raw'
+    if _has_ss2_tagcount:
+        _ss2_tagcount_sample_ids = [sim_technology]
+        _ss2_tagcount_canonical_fs = config.get('aligner_params', {}).get(
             'starsolo', {}).get('sc_count', {}).get(
             'canonical_feature_set',
             'genes' if 'genes' in feature_sets else feature_sets[0])
@@ -98,7 +115,11 @@ if _pipeline_type == 'simulation':
     include: "modules/normalize.snmk"
     include: "modules/evaluation.snmk"
     if _has_tagcount:
+        include: "modules/bam_index.snmk"
+    if _has_chromium_tagcount:
         include: "modules/starsolo_tagcount.snmk"
+    if _has_ss2_tagcount:
+        include: "modules/smartseq2_tagcount.snmk"
 
     for _d in ['tmp', 'logs', 'benchmarks', 'counts', 'evaluation']:
         os.makedirs(op.join(config['base'], _d), exist_ok=True)
@@ -211,6 +232,7 @@ if _pipeline_type == 'sc':
 
     if sc_count_mode == 'tagcount':
         _tagcount_sample_ids = _sc_sample_ids
+        _tagcount_whitelist_dir = 'filtered'
         _tagcount_canonical_fs = config.get('aligner_params', {}).get(
             'starsolo', {}).get('sc_count', {}).get(
             'canonical_feature_set', 'genes')
@@ -221,6 +243,7 @@ if _pipeline_type == 'sc':
     include: "modules/starsolo_sc.snmk"
     include: "modules/kallisto_sc.snmk"
     if sc_count_mode == 'tagcount':
+        include: "modules/bam_index.snmk"
         include: "modules/starsolo_tagcount.snmk"
 
     for _d in ['tmp', 'logs', 'benchmarks', 'metadata']:
@@ -288,15 +311,11 @@ def simulation_count_outputs():
                 op.join(counts_dir, 'starsolo_{feature_set}_locus_{multimapper_mode}.tsv'),
                 feature_set=_repeat_fsets, multimapper_mode=starsolo_modes)
 
-    if 'starsolo_tagcount' in active_aligners and sim_technology == 'chromium':
-        # tagcount is a sc-only path; smartseq2 simulation has no CB/UB tags.
-        # The locus granularity is not produced by sc_count_features.py
-        # (gene_id is the finest level it emits), so only non-locus grans
-        # are requested here.
-        if 'genes' in feature_sets:
-            outputs += expand(
-                op.join(counts_dir, 'starsolo_tagcount_genes_gene_id_{multimapper_mode}.tsv'),
-                multimapper_mode=starsolo_modes)
+    if 'starsolo_tagcount' in active_aligners:
+        # tagcount runs on chromium (real UMIs) and smartseq2 (none-dedup).
+        # Repeat feature_sets only; (genes, gene_id) comes from STARsolo's
+        # own Solo.out/Gene matrix. Locus is not produced by
+        # sc_count_features.py (gene_id is the finest level it emits).
         if _non_locus_grans:
             outputs += expand(
                 op.join(counts_dir,
@@ -406,12 +425,16 @@ def starsolo_bams():
 def starsolo_tagcount_outputs():
     if sc_count_mode != 'tagcount':
         return []
+    # Restricted to repeat feature_sets: at (genes, gene_id) STARsolo's
+    # filtered/ matrix is canonical (see starsolo_tagcount.snmk).
+    repeat_fsets = [fs for fs in feature_sets
+                    if fs in ('repeats', 'genic_repeats', 'intergenic_repeats')]
     return [
         op.join(config['base'], 'starsolo_tagcount', sid,
                 f'{mode}_{fs}', 'Solo.out', 'Gene', 'raw')
         for sid in _sc_sample_ids
         for mode in starsolo_modes
-        for fs in feature_sets
+        for fs in repeat_fsets
     ]
 
 

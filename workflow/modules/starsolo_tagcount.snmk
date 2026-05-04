@@ -2,22 +2,22 @@
 """
 starsolo_tagcount: re-count a STARsolo-tagged BAM via sc_count_features.py.
 
-Architecture: one STARsolo alignment per library produces a BAM with CB
-and UB tags plus a gene-counted barcodes whitelist. This module then runs
-workflow/scripts/sc_count_features.py per (sample, multimapper_mode,
-feature_set) to emit a count matrix from that BAM, restricted to the
-whitelisted barcodes. No re-alignment.
+Architecture: one STARsolo alignment per library on the genes feature_set
+produces a BAM with CB and UB tags plus an EmptyDrops_CR-filtered cell
+whitelist. This module then runs workflow/scripts/sc_count_features.py
+per (sample, multimapper_mode, repeat-feature_set) to emit count matrices
+at gene_id, family_id and class_id granularity from that BAM, restricted
+to the whitelisted cells. No re-alignment.
+
+feature_set is constrained to repeats|genic_repeats|intergenic_repeats:
+at (genes, gene_id) STARsolo's own Solo.out/Gene/filtered/ matrix is the
+canonical output and re-counting there is pure duplication.
 
 Outputs land at
   <base>/starsolo_tagcount/<sample_id>/<multimapper_mode>_<feature_set>/Solo.out/Gene/raw/
 mirroring STARsolo's Solo.out/Gene/raw/ layout. Companion paths
-Solo.out/Gene_family_id/raw/ and Solo.out/Gene_class_id/raw/ are also
-populated when the feature_set GTF carries family_id and class_id
-attributes (the repeat GTFs do).
-
-This path coexists with the per_featureset STARsolo outputs at
-<base>/starsolo/...; the two roots never collide. Selection between the
-two sc architectures is via the top-level config flag sc_count_mode.
+Solo.out/Gene_family_id/raw/ and Solo.out/Gene_class_id/raw/ are populated
+in the same pass because the repeat GTFs carry family_id and class_id.
 
 Reusable across pipeline_types. Expects from the including Snakefile:
   _tagcount_sample_ids   — list of sample-id-or-technology strings used
@@ -49,7 +49,7 @@ def _tagcount_param(name, default):
 
 rule starsolo_tagcount:
     wildcard_constraints:
-        feature_set = 'genes|repeats|genic_repeats|intergenic_repeats',
+        feature_set = 'repeats|genic_repeats|intergenic_repeats',
         multimapper_mode = 'unique|multi',
     conda:
         op.join(workflow.basedir, 'envs', 'sc_count.yaml')
@@ -60,12 +60,16 @@ rule starsolo_tagcount:
         bai = op.join(config['base'], 'starsolo', '{sample_id}',
                       'unique_' + _tagcount_canonical_fs,
                       'Aligned.sortedByCoord.out.bam.bai'),
-        # EmptyDrops_CR-passed cells from the canonical genes alignment;
-        # the recount restricts to these so the matrix has one column per
-        # real cell rather than per all-CB-seen-during-alignment.
+        # Whitelist source depends on whether the upstream STARsolo run
+        # called cells. Real-data sc uses --soloCellFilter EmptyDrops_CR
+        # and writes filtered/barcodes.tsv (the called cells); simulation
+        # uses --soloCellFilter None and only writes raw/barcodes.tsv (all
+        # CBs seen). The including Snakefile sets _tagcount_whitelist_dir
+        # ("filtered" for real-data sc, "raw" for simulation).
         whitelist = op.join(config['base'], 'starsolo', '{sample_id}',
                             'unique_' + _tagcount_canonical_fs,
-                            'Solo.out', 'Gene', 'filtered', 'barcodes.tsv'),
+                            'Solo.out', 'Gene', _tagcount_whitelist_dir,
+                            'barcodes.tsv'),
         gtf = gtf_for_feature_set,
         script = op.join(workflow.basedir, 'scripts', 'sc_count_features.py'),
     output:
@@ -100,14 +104,21 @@ rule starsolo_tagcount:
         """
 
 
+_TAGCOUNT_FEATURE_SETS = ('repeats', 'genic_repeats', 'intergenic_repeats')
+
+
 def _all_tagcount_targets():
-    """Expand to all (sample, mode, feature_set) tagcount outputs."""
+    """Expand to all (sample, mode, feature_set) tagcount outputs. Limited
+    to repeat feature sets: at (genes, gene_id) the canonical count matrix
+    is STARsolo's own Solo.out/Gene/filtered/, so re-counting there would
+    duplicate work."""
+    fs_subset = [fs for fs in feature_sets if fs in _TAGCOUNT_FEATURE_SETS]
     return [
         op.join(config['base'], 'starsolo_tagcount', sid,
                 f'{mm}_{fs}', 'Solo.out', 'Gene', 'raw')
         for sid in _tagcount_sample_ids
         for mm in starsolo_modes
-        for fs in feature_sets
+        for fs in fs_subset
     ]
 
 
@@ -116,33 +127,3 @@ rule starsolo_tagcount_all:
     tagcount output without touching the default `all` rule."""
     input:
         _all_tagcount_targets(),
-
-rule index_starsolo_sortedbam:
-    """Build a BAI for a STARsolo coordinate-sorted BAM. Generic over
-    {sample_id}/{multimapper_mode}_{feature_set} so any tagcount or
-    downstream rule can depend on the index by adding the .bai path
-    to its input list."""
-    wildcard_constraints:
-        feature_set = 'genes|repeats|genic_repeats|intergenic_repeats',
-        multimapper_mode = 'unique|multi',
-    input:
-        bam = op.join(config['base'], 'starsolo', '{sample_id}',
-                      '{multimapper_mode}_{feature_set}',
-                      'Aligned.sortedByCoord.out.bam'),
-    output:
-        bai = op.join(config['base'], 'starsolo', '{sample_id}',
-                      '{multimapper_mode}_{feature_set}',
-                      'Aligned.sortedByCoord.out.bam.bai'),
-    conda:
-        op.join(workflow.basedir, 'envs', 'repeats.yaml')
-    log:
-        op.join(config['base'], 'logs',
-                'index_starsolo_{sample_id}_{multimapper_mode}_{feature_set}.log'),
-    threads: 4
-    resources:
-        mem_mb = 2000,
-    shell:
-        """
-        mkdir -p $(dirname {output.bai}) $(dirname {log})
-        samtools index -@ {threads} {input.bam} 2> {log}
-        """
